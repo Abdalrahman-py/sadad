@@ -351,4 +351,26 @@ public final class LedgerClientTest {
         assertFalse("and one changed byte does not", signer.verify(lastMethod, lastRoute, lastBody + " ", lastTime,
                 lastNonce, lastInstallation, lastSignature, signer.publicKeyObject()));
     }
+
+    /**
+     * The canonical text is the entire wire contract, and the server builds it in proof.ts. This pins the
+     * bytes, and pins that the method is case-folded the way the server folds it — including on a device
+     * whose locale would fold "i" into a dotted capital, which is how a Turkish phone breaks a signature
+     * that every other phone signs correctly.
+     */
+    @Test public void theCanonicalTextIsPinnedAndLocaleProof() {
+        assertEquals("sadid-v3\nPOST\n/mobile/v3/operations\nabc123\ntime-1\nnonce-1\ninstall-1",
+                InstallationKey.proofText("POST", "/mobile/v3/operations", "abc123", "time-1", "nonce-1", "install-1"));
+        assertEquals(InstallationKey.proofText("POST", "/mobile/v3/operations", "abc123", "time-1", "nonce-1", "install-1"),
+                InstallationKey.proofText("post", "/mobile/v3/operations", "abc123", "time-1", "nonce-1", "install-1"));
+
+        java.util.Locale original = java.util.Locale.getDefault();
+        try {
+            java.util.Locale.setDefault(new java.util.Locale("tr", "TR"));
+            assertEquals("sadid-v3\nOPTIONS\n/mobile/v3/operations\nabc123\ntime-1\nnonce-1\ninstall-1",
+                    InstallationKey.proofText("options", "/mobile/v3/operations", "abc123", "time-1", "nonce-1", "install-1"));
+        } finally {
+            java.util.Locale.setDefault(original);
+        }
+    }
 }
