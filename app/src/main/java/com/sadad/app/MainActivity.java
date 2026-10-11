@@ -258,8 +258,19 @@ public final class MainActivity extends Activity {
             URI uri = new URI(normalized);
             String scheme = uri.getScheme();
             if (uri.getHost() == null || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
-                    || !"/api".equals(uri.getPath()) || !("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)))
-                throw new IllegalArgumentException("أدخل رابط الخادم كاملًا وينتهي بـ /api.");
+                    || !("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)))
+                throw new IllegalArgumentException("أدخل رابط الخادم كاملًا.");
+            // The built-in endpoint is the Supabase sadad-api function (.../functions/v1/sadad-api).
+            // A self-hosted legacy server still ends in /api. Anything else is rejected.
+            URI builtIn = new URI(BuildConfig.API_BASE_URL);
+            boolean matchesBuiltIn = uri.getHost().equalsIgnoreCase(builtIn.getHost()) && effectivePort(uri) == effectivePort(builtIn);
+            boolean legacyPath = uri.getPath() != null && uri.getPath().endsWith("/api");
+            if (!matchesBuiltIn && !legacyPath)
+                throw new IllegalArgumentException("رابط الخادم غير معروف. استخدم الخادم الرسمي للتطبيق.");
+            // A release build only ever talks to the built-in origin: the session token must not be
+            // redirectable to a host the user types in.
+            if (!BuildConfig.DEBUG && !matchesBuiltIn)
+                throw new IllegalArgumentException("عنوان الخادم محدد في نسخة التطبيق.");
             if (!BuildConfig.DEBUG && !"https".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("يتطلب إصدار التطبيق اتصال HTTPS آمنًا.");
             sessions.setApiBaseUrl(normalized);
             return true;
@@ -267,6 +278,11 @@ public final class MainActivity extends Activity {
             showBrandedMessage(e.getMessage() == null ? "رابط الخادم غير صالح." : e.getMessage());
             return false;
         }
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() != -1) return uri.getPort();
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
     void saveStoreProfile(String store, String owner) {
         String id=sessions==null?"":sessions.syncAccountId();
@@ -541,6 +557,7 @@ public final class MainActivity extends Activity {
         connection.setConnectTimeout(6000);
         connection.setReadTimeout(10000);
         connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
         if (token != null && !token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
         if (body != null) {
             connection.setDoOutput(true);

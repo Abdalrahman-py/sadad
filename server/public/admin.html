@@ -2,15 +2,18 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Strict CSP: no inline script or style, no eval, forms may not post anywhere, and the only
+       network origin is this project's Supabase functions endpoint. If the project ref ever
+       changes, update connect-src here too (see AGENTS.md: the backend is pinned).
+       frame-ancestors cannot be set from a meta tag, so clickjacking protection needs a real
+       response header — GitHub Pages cannot send one. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://vhftjmiltqfwmrszdtgf.supabase.co; base-uri 'self'; form-action 'none'">
   <meta name="sadad-api-base-url" content="https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api">
   <meta name="sadad-publishable-key" content="sb_publishable_dK7HuYY8TbO8ZiBPbOZ2cw_1ZRL_chh">
   <title>إدارة سدد</title>
   <link rel="stylesheet" href="admin.css">
-  <script>
-    window.SADAD_API_BASE_URL = document.querySelector('meta[name="sadad-api-base-url"]')?.content || '';
-    window.SADAD_SUPABASE_PUBLISHABLE_KEY = document.querySelector('meta[name="sadad-publishable-key"]')?.content || '';
-  </script>
+  <script src="config.js"></script>
   <script defer src="admin.js"></script>
 </head>
 <body>
@@ -109,7 +112,15 @@
                 <label>أو اختر ملف قائمة الأوامر<input id="recoveryFile" type="file" accept="application/json,.json"></label>
                 <label>سبب الاسترداد<textarea id="recoveryReason" rows="2" maxlength="2000" required></textarea></label>
                 <button class="button primary">اعتماد الاسترداد</button></fieldset><p id="recoveryError" class="form-error" role="alert"></p>
-              </form><div id="recoveryResult" class="result hidden" role="status"></div><div id="recoveryHistory" class="record-list"></div>
+              </form>
+              <div id="recoverySummary" class="panel-inset stack" hidden>
+                <div class="panel-head"><h4>معاينة قبل الاعتماد</h4><span class="small muted" id="recoverySummaryVerdict" role="status"></span></div>
+                <div class="mini-metrics" id="recoverySummaryStats"></div>
+                <p class="small muted" id="recoverySummaryRange"></p>
+                <div class="record-list" id="recoverySummaryProblems"></div>
+                <details><summary>تفاصيل الإدخالات</summary><div class="record-list" id="recoverySummaryDetails"></div></details>
+              </div>
+              <div id="recoveryResult" class="result hidden" role="status"></div><div id="recoveryHistory" class="record-list"></div>
             </section>
             <section class="panel-inset stack">
               <h3>سجل نشاط المتجر</h3>

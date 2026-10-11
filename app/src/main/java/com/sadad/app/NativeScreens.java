@@ -204,7 +204,8 @@ final class NativeScreens {
         if (BuildConfig.STANDALONE_MODE) {
             body.addView(button("دخول آمن", primary, Color.WHITE, () -> host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString())), match());
         } else {
-            EditText serverUrl = input("رابط الخادم وينتهي بـ /api", false); serverUrl.setSingleLine(true); serverUrl.setText(host.sessions.apiBaseUrl());
+            EditText serverUrl = input(BuildConfig.DEBUG ? "رابط الخادم" : "رابط الخادم (ثابت في هذه النسخة)", false); serverUrl.setSingleLine(true); serverUrl.setText(host.sessions.apiBaseUrl());
+            serverUrl.setEnabled(BuildConfig.DEBUG); serverUrl.setFocusable(BuildConfig.DEBUG);
             body.addView(serverUrl, matchWithBottom(16));
             body.addView(button("دخول آمن", primary, Color.WHITE, () -> {
                 if (host.configureApiBaseUrl(serverUrl.getText().toString())) host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString());

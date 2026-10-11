@@ -1,41 +1,100 @@
-# متابعة الإصدار الثالث
+# حالة العمل — سدد (آخر تحديث: 11 أكتوبر 2026)
 
-اكتمل تنفيذ النسخة التجريبية الجديدة. ابدأ من [تقرير التنفيذ](../delivery/SADID_IMPLEMENTATION_REPORT_AR.md) و[دليل التشغيل](../delivery/SADID_RUNBOOK_AR.md). المصدر الحالي في Supabase-Setup/android-official/Sadad-AndroidStudio ووظائف الخادم في Supabase-Setup/supabase. بيانات الدخول خارج المستودع.
+هذه الصفحة هي المرجع الوحيد لحالة العمل. الخطط والمراجعات القديمة في `docs/archive/`،
+ووقائع كل إصدار في `docs/CHANGELOG.md`، وأدلة الاختبار في `delivery/`.
 
-التوثيق التالي محفوظ كسجل سابق؛ حالة التسليم الحالية في التقرير أعلاه.
+## الحالة الفعلية (مُتحقَّق منها بالتنفيذ، لا بالنقل)
 
----
+حُقّق في 11 أكتوبر 2026 مقابل المشروع الحي `vhftjmiltqfwmrszdtgf`:
 
-# Sadid continuation handoff — 10 October 2026
+| ما تم فحصه | النتيجة |
+| --- | --- |
+| `GET /health` | `200` — `{"service":"sadad","version":"2.0.0","storage":"supabase-postgres"}` |
+| `GET /setup/status` | `200` — `{"bootstrapRequired":false}` (يوجد مدير منشأ) |
+| `GET /mobile/session` بجلسة غير صحيحة | `401` — «انتهت الجلسة. سجّل الدخول من جديد.» |
+| `POST /mobile/login` بصيغة التطبيق نفسها | يصل للدائرة ويعيد `401` برسالة بيانات الدخول |
+| `POST /admin/login` | يصل للدائرة ويعيد `401` برسالة بيانات الدخول |
+| ترويسة `apikey` | غير مطلوبة حاليًا لبوابة هذه الوظيفة، والتطبيق يرسلها على أي حال |
+| بناء التطبيق | `assembleServerDebug` و`assembleStandaloneDebug` ينجحان، والعنوان والمفتاح داخل `classes2.dex` |
+| النسخة المنشورة من الوظيفة | **مطابقة للمصدر المحلي بايت ببايت** (`index.ts` 919 سطرًا، `admin-ledger.ts`، `deno.json`) — الإصدار 5، `verify_jwt=false` |
 
-The published Android 2.5.10 source is at the repository root. The ongoing Supabase and Android v3 work from the local project is preserved in `Supabase-Setup/`. That work was still being tested in another chat when this snapshot was saved; review it before replacing the published root Android project. `Sadad-Flutter/` preserves the separate Flutter implementation for reference.
+مطابقة المصدر المحلي للمنشور تعني أن تعديل الملف المحلي ثم نشره لا يفقد شيئًا من تعديلات
+جرت في مكان آخر.
 
-## Admin dashboard connection
+## ما تغيّر في التطبيق
 
-Both `server/public/admin.html` and `Supabase-Setup/admin/Sadad-Admin-Server/public/admin.html` now point to:
+- التطبيق المتصل يشير افتراضيًا إلى وظيفة `sadad-api` على Supabase بدل عنوان يكتبه المستخدم.
+- إصدار الإصدار (release) يرفض أي عنوان خادم غير العنوان المدمج، فلا يمكن توجيه جلسة المتجر
+  إلى خادم آخر — كانت ثغرة قابلة للاستغلال قبل ذلك.
+- الحقل النصي لعنوان الخادم للقراءة فقط خارج نسخة التطوير.
 
-`https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api`
+## العائق الحالي: نقص في تطابق المسارات (مُتحقَّق منه في الإنتاج)
 
-The pages contain only the public publishable key. The JavaScript sends it as `apikey`, and sends the admin session as the bearer token after login. Financial data and private keys are not included in this repository.
+الوظيفة المنشورة لا تنفّذ المسارين اللذين يزامن بهما التطبيق 2.5.10. لا يظهر أي من
+`sync-delta` أو `snapshot-page` أو `snapshotDeferred` أو `pagedSnapshot` في أي ملف من ملفات
+الوظيفة المنشورة:
 
-Verified live during this work: health returned HTTP 200 and `storage: supabase-postgres`; setup status returned HTTP 200 and `bootstrapRequired: false`; unauthenticated admin store/overview requests returned HTTP 401; browser CORS preflight returned HTTP 204 with permitted headers. The local dashboard loaded its login screen without console errors. Successful admin login and authenticated data loading remain unverified because no admin session was supplied.
+| مسار يستدعيه التطبيق | في `sadad-api` المنشورة | في خادم Node القديم |
+| --- | --- | --- |
+| `POST /mobile/sync-delta` | غير موجود | `server/server.js:1022` |
+| `GET /mobile/snapshot-page` | غير موجود | `server/server.js:1013` |
+| `snapshotDeferred` في رد الدخول | غير موجود | `server/server.js:854` |
+| `POST /mobile/sync` | موجود | موجود |
 
-The hosted dashboard has NOT been updated or verified. Its URL and deployment access were unavailable. Pushing these changes to GitHub does not prove deployment. Publish the updated static assets to the actual existing host, then verify login, overview, store list and permitted account management through the browser. Do not guess the hosting URL or create replacement admin credentials.
+الأثر: `SadadDatabase.onOpen` تجعل `deltaReady()` صحيحة لأي متجر تقريبًا، أي أن مسار
+«دفعات المزامنة» هو المسار الطبيعي لا تحسينًا. والمسار المفقود يعيد `404`، و
+`LedgerSyncService` لا تعتبره قابلًا لإعادة المحاولة ولا محجوبًا، فلا يُقرّ استلام الدفعة
+ولا تصل تعديلات المتجر إلى Supabase. أي: **الدخول إلى Supabase يعمل، والمزامنة عبره لا تعمل.**
 
-## Backend and future implementation
+هذا موثّق في المشروع نفسه: `Supabase-Setup/supabase/README.md` يقول «The existing local API
+default is retained while the Edge API is being brought to route parity.»
 
-Read `SADID_IMPLEMENTATION_HANDOFF.md` in this directory for the agreed backend, ledger, offline sync and recovery specification. It is the original plan with explicit gaps, not evidence of completed implementation. It records an earlier database snapshot; the live backend now reports an existing admin, so recheck live state before continuing. Additional v3 migrations, Android integration, scripts and `Supabase-Setup/docs/V3_CONTRACT_AR.md` have since been created by the implementation chat and are included here. Its latest progress reported an Android build and emulator testing in progress. Do not treat the earlier plan's list of missing features as a current live-state report.
+## ادّعاءات قديمة يجب عدم اعتبارها حالة حالية
 
-The live Edge Function and local source can differ. Inspect deployed source before deploying the local function or applying pending migrations. Do not blindly apply the prepared v3 migration. Existing legacy sync routes still need the controlled cutover described in the comprehensive handoff.
+- «نجحت اختبارات HTTP الحيّة» في `delivery/` تغطي المسارات الإدارية وEdge وauth والدفتر،
+  ولا تذكر `sync-delta` أو `snapshot-page` ولا مرة واحدة.
+- «بيانات SQLite لم تُستورد» في `Supabase-Setup/supabase/README.md` مع أن المشروع الحي يقول
+  إن مديرًا موجود فعلًا. طابق الحالة قبل أي نشر أو ترحيل.
+- لا تُطبَّق الترحيلات الجاهزة على قاعدة الإنتاج بلا مراجعة؛ سجل الترحيلات على الخادم هو
+  المرجع، والتحذير مكتوب في `docs/archive/SADID_IMPLEMENTATION_HANDOFF.md`.
+- لوحة الإدارة المنشورة لم تُحدَّث ولم تُتحقق؛ النشر عبر GitHub Pages مُعدّ ولم يُفعّل.
 
-## Local dashboard
+## الخطوة التالية
 
-From the repository root with Node installed:
-
-```powershell
-node tools/admin-preview.cjs
-```
-
-Open `http://localhost:8081`. This serves only static admin assets; the page calls Supabase. It does not initialize a local SQLite database. An existing SQLite server may already occupy that port; stop it or use `SADAD_ADMIN_PREVIEW_PORT` to choose another port.
-
-Local credentials, databases, caches and generated builds were excluded. The existing GitHub v2.5.10 release remains the source of previously published APKs; this commit does not build or release a new APK.
+1. **نقل عميل الدفتر المعتمد (v3) إلى التطبيق — جارٍ.** كل المتاجر الحيّة على الدفتر المعتمد:
+   `sadid_is_v3_store(2)` و`sadid_is_v3_store(3)` كلاهما `true`، وبيانات السجل الحقيقية في جداول
+   `sadid_*` (15 شخصًا للمتجر 2، و1 للمتجر 3) بينما جداول البروتوكول القديم فارغة تمامًا
+   (`public.contacts` = 0). ولهذا تُرجع كل مسارات `/mobile/*` — بما فيها المساران المضافان
+   حديثًا — `409 legacy_ledger_read_only` لهذين المتجرين.
+   - **أُنجز:** نُقلت طبقة النقل والتخزين من المشروع الموقوف إلى `app/`:
+     `InstallationKey.java`، `LedgerTransport.java`، `EncryptedJournal.java`،
+     `RecoveryCrypto.java`، وأُضيف إلى `SessionStore` مغلّف المصادقة (`auth()`/`updateAuth()`)
+     ووضع الدفتر (`ledgerMode()`/`setLedgerMode()`). البناء ناجح.
+   - **متبقٍّ ويحتاج قرارًا:** نموذج المعرّفات. قاعدة التطبيق المحلية تعتمد
+     `INTEGER PRIMARY KEY AUTOINCREMENT`، والدفتر المعتمد يعتمد UUID. هذا قرار معماري شامل
+     (خيارات: عمود `uuid` مع جدول ربط، أو عرض الواجهات من `LedgerRepository.view()`، أو
+     قاعدة وسيطة تُترجم `view()` إلى المعرّفات الرقمية الحالية). التفاصيل في
+     `docs/V3_CLIENT_PORT_SPEC.md` القسم 4.3.
+   - **متبقٍّ آخر: الدخول يجب أن يمرّ عبر بوابة `sadad-auth`** لأنها الوحيدة التي تُصدر
+     مغلّف المصادقة (`auth`) الذي تحتاجه الطلبات الموقّعة؛ `sadad-api` لا تُصدره.
+   - **تنبيه مهم عند تحويل العنوان إلى البوابة (مُتحقَّق منه في `sadad-auth/handler.ts`):**
+     البوابة تتحقق من رمز Supabase Auth أولًا (`handler.ts:196-211`) ثم تمرّر أي مسار خاص إلى
+     `sadad-api` عبر `upstream(request, route + url.search, deviceToken, raw)` (`:247-254`)،
+     فالطلب يحتاج **ترويسين**: `Authorization: Bearer <accessToken من مغلّف auth>` و
+     `X-Sadad-Session: <deviceToken>` (البوابة تستبدل ترويسة Authorization بـ deviceToken عند
+     التمرير، و`sadad-api` يقرأ جلسته منها). التطبيق الحالي يرسل `Authorization: Bearer
+     <deviceToken>` فقط، لذا تحويل العنوان إلى البوابة **بدون** تعديل `MainActivity.apiRequest`
+     و`LedgerSyncService.request` سيُرجع 401 لكل مسار خاص. التعديلان مرتبطان ولا يجوز فصل أحدهما.
+     تحقّق آخر: البوابة تمرّر المسارات العامة بلا قائمة ثابتة (`:248`)، فالمساران المضافان
+     `/mobile/snapshot-page` و`/mobile/sync-delta` يعملان عبرها.
+2. المساران المضافان (`POST /mobile/sync-delta` و`GET /mobile/snapshot-page`) صحيحان ومختبران
+   ولا يضرّان متاجر v3، لكنهما لا يحلّان مشكلة المتاجر الحيّة وحدهما. يبقيان لأنهما ما يحتاجه أي
+   متجر على البروتوكول القديم، ويُثبتان أن نقص التطابق كان حقيقيًا.
+3. **نُشرت الوظيفة وتحقّقت:** `sadad-api` الإصدار 6 منشور (`verify_jwt=false`) والملفات المنشورة
+   مطابقة للمحلي بايت ببايت (`index.ts` 1028 سطرًا، `ledger-sync.ts`، `admin-ledger.ts`)،
+   والمساران الجديدان موجودان في الكود المنشور. وطُبّق ترحيل `sync_receipts` (الإصدار
+   20261011082443، RLS مفعّل، بلا صلاحيات للعملاء).
+4. التحقق الحيّ المتبقي: لا يمكن اختبار مسار الدفعات على متجر حيّ لأن كل المتاجر على v3
+   (تُرجع 409 `legacy_ledger_read_only`)، ولا يوجد متجر على البروتوكول القديم. إثبات هذا
+   المسار يحتاج متجرًا تجريبيًا على البروتوكول القديم، ثم: تسجيل دخول ← تعديل ← مزامنة ←
+   وصول الصف إلى الخادم. اختبار العميل v3 يحتاج هاتفًا فعليًا أو محاكيًا.

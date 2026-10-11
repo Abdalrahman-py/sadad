@@ -24,6 +24,10 @@ import javax.crypto.spec.GCMParameterSpec;
 final class SessionStore {
     private static final String PREFS = "sadad.session";
     private static final String KEY_ALIAS = "sadad.session.aes";
+    /** Separate pref keys so existing installs keep working unchanged: the device token and the
+     *  Auth envelope (issued only by the sadad-auth gateway) are stored independently. */
+    private static final String AUTH_KEY = "auth_envelope";
+    private static final String LEDGER_MODE_KEY = "ledger_mode";
     private final SharedPreferences preferences;
 
     SessionStore(Context context) { preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
@@ -31,6 +35,10 @@ final class SessionStore {
     synchronized void save(JSONObject response) throws Exception {
         String token = response.getString("token");
         String encryptedToken = encryptToken(token);
+        // Only the sadad-auth gateway returns an Auth envelope; a login through sadad-api leaves
+        // any previously stored one untouched.
+        JSONObject auth = response.optJSONObject("auth");
+        if (auth != null) preferences.edit().putString(AUTH_KEY, encryptToken(auth.toString())).apply();
         JSONObject account = response.optJSONObject("account");
         String accountId = account == null ? "" : account.optString("id", "");
         if (!accountId.isEmpty() && !canSaveAccount(accountId)) throw new IllegalStateException("يمكن حفظ ثلاثة حسابات متاجر كحد أقصى على هذا الجهاز.");
@@ -52,7 +60,8 @@ final class SessionStore {
                     .put("name", account.optString("name", "")).put("account", account.toString()).put("encryptedToken", encryptedToken)
                     .put("expiresAt", response.optLong("expiresAt", 0L)).put("revision", response.optJSONObject("snapshot") == null ? 0L : response.optJSONObject("snapshot").optLong("revision", 0L))
                     .put("apiBaseUrl", apiBaseUrl()).put("staffName", staffName).put("devicePermissions", devicePermissions == null ? "{}" : devicePermissions.toString())
-                    .put("forcePasswordChange", response.optBoolean("forcePasswordChange", false));
+                    .put("forcePasswordChange", response.optBoolean("forcePasswordChange", false))
+                    .put("encryptedAuth", preferences.getString(AUTH_KEY, ""));
             upsertSavedAccount(saved);
         }
     }
@@ -103,6 +112,7 @@ final class SessionStore {
                         .putString("api_base_url", item.optString("apiBaseUrl", BuildConfig.API_BASE_URL))
                         .putString("device_staff_name", item.optString("staffName", ""))
                         .putString("device_permissions", item.optString("devicePermissions", "{}"))
+                        .putString(AUTH_KEY, item.optString("encryptedAuth", ""))
                         .apply();
                 return true;
             } catch (Exception e) { return false; }
@@ -216,7 +226,25 @@ final class SessionStore {
     void setAccount(JSONObject account) { preferences.edit().putString("account", account == null ? "{}" : account.toString()).apply(); updateCurrentSavedBundle(); }
     String apiBaseUrl() { return preferences.getString("api_base_url", BuildConfig.API_BASE_URL); }
     void setApiBaseUrl(String value) { preferences.edit().putString("api_base_url", value).apply(); updateCurrentSavedBundle(); }
-    void clear() { preferences.edit().remove("token").remove("expires_at").remove("account").remove("force_password_change").apply(); }
+
+    /** Auth envelope (accessToken/refreshToken/expiresAt) issued by the sadad-auth gateway.
+     *  Empty when the account has never logged in through the gateway. */
+    synchronized JSONObject auth() {
+        try { return new JSONObject(decryptToken(preferences.getString(AUTH_KEY, ""))); }
+        catch (Exception e) { return new JSONObject(); }
+    }
+
+    synchronized void updateAuth(JSONObject auth) throws Exception {
+        if (auth == null) return;
+        preferences.edit().putString(AUTH_KEY, encryptToken(auth.toString())).apply();
+    }
+
+    /** "v3" for a store on the signed ledger, "legacy" for the older protocol, "" before the
+     *  first probe. Set once per login from the server's answer, never guessed mid-sync. */
+    String ledgerMode() { return preferences.getString(LEDGER_MODE_KEY, ""); }
+    void setLedgerMode(String mode) { preferences.edit().putString(LEDGER_MODE_KEY, mode == null ? "" : mode).apply(); }
+
+    void clear() { preferences.edit().remove("token").remove("expires_at").remove("account").remove("force_password_change").remove(AUTH_KEY).remove(LEDGER_MODE_KEY).apply(); }
 
     synchronized boolean devicePermissionAllowed(String key) { return devicePermissions().optBoolean(key, true); }
 
@@ -229,7 +257,8 @@ final class SessionStore {
                     .put("name", account.optString("name", "")).put("account", account.toString())
                     .put("encryptedToken", preferences.getString("token", "")).put("expiresAt", expiresAt())
                     .put("revision", revision()).put("apiBaseUrl", apiBaseUrl()).put("staffName", deviceStaffName())
-                    .put("devicePermissions", devicePermissions().toString()).put("forcePasswordChange", forcePasswordChange());
+                    .put("devicePermissions", devicePermissions().toString()).put("forcePasswordChange", forcePasswordChange())
+                    .put("encryptedAuth", preferences.getString(AUTH_KEY, ""));
             upsertSavedAccount(saved);
         } catch (Exception ignored) { }
     }
