@@ -20,7 +20,8 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.repository == 'ibrahem57/sadad'
+    # Publish from the upstream repo and from the owner's mirror; any other fork stays quiet.
+    if: github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
