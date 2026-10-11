@@ -10,6 +10,11 @@ project into the product module `app/`.
 Every claim below is cited `file:line`. Path shorthand used throughout:
 
 - `CLIENT` = `Supabase-Setup/android-official/Sadad-AndroidStudio/app/src/main/java/com/sadad/app/`
+  — **this tree is no longer in the working tree.** It was the reference for the port and was removed on
+  2026-10-11 once every class below had landed in `APP`. Read any cited file with
+  `git show pre-consolidation-2026-10-11:<path>` (also on `archive/pre-consolidation`). One piece is still
+  unported and matters: the `view()` projection in `CLIENT/LedgerRepository.java`, which folds the signed
+  snapshot into the tables the screens read.
 - `APP`    = `app/src/main/java/com/sadad/app/`
 - `EDGE`   = `Supabase-Setup/supabase/functions/`
 - `MIG`    = `Supabase-Setup/supabase/migrations/`
