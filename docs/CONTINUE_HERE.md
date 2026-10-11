@@ -75,9 +75,18 @@ default is retained while the Edge API is being brought to route parity.»
      (خيارات: عمود `uuid` مع جدول ربط، أو عرض الواجهات من `LedgerRepository.view()`، أو
      قاعدة وسيطة تُترجم `view()` إلى المعرّفات الرقمية الحالية). التفاصيل في
      `docs/V3_CLIENT_PORT_SPEC.md` القسم 4.3.
-   - **متبقٍّ آخر:** الدخول يجب أن يمرّ عبر بوابة `sadad-auth` لأنها الوحيدة التي تُصدر مغلّف
-     المصادقة (`auth`) الذي تحتاجه الطلبات الموقّعة؛ `sadad-api` لا تُصدره. وتفعيل أول تركيب
-     يحتاج موافقة الأدمن ولا توجد له شاشة في التطبيق.
+   - **متبقٍّ آخر: الدخول يجب أن يمرّ عبر بوابة `sadad-auth`** لأنها الوحيدة التي تُصدر
+     مغلّف المصادقة (`auth`) الذي تحتاجه الطلبات الموقّعة؛ `sadad-api` لا تُصدره.
+   - **تنبيه مهم عند تحويل العنوان إلى البوابة (مُتحقَّق منه في `sadad-auth/handler.ts`):**
+     البوابة تتحقق من رمز Supabase Auth أولًا (`handler.ts:196-211`) ثم تمرّر أي مسار خاص إلى
+     `sadad-api` عبر `upstream(request, route + url.search, deviceToken, raw)` (`:247-254`)،
+     فالطلب يحتاج **ترويسين**: `Authorization: Bearer <accessToken من مغلّف auth>` و
+     `X-Sadad-Session: <deviceToken>` (البوابة تستبدل ترويسة Authorization بـ deviceToken عند
+     التمرير، و`sadad-api` يقرأ جلسته منها). التطبيق الحالي يرسل `Authorization: Bearer
+     <deviceToken>` فقط، لذا تحويل العنوان إلى البوابة **بدون** تعديل `MainActivity.apiRequest`
+     و`LedgerSyncService.request` سيُرجع 401 لكل مسار خاص. التعديلان مرتبطان ولا يجوز فصل أحدهما.
+     تحقّق آخر: البوابة تمرّر المسارات العامة بلا قائمة ثابتة (`:248`)، فالمساران المضافان
+     `/mobile/snapshot-page` و`/mobile/sync-delta` يعملان عبرها.
 2. المساران المضافان (`POST /mobile/sync-delta` و`GET /mobile/snapshot-page`) صحيحان ومختبران
    ولا يضرّان متاجر v3، لكنهما لا يحلّان مشكلة المتاجر الحيّة وحدهما. يبقيان لأنهما ما يحتاجه أي
    متجر على البروتوكول القديم، ويُثبتان أن نقص التطابق كان حقيقيًا.
