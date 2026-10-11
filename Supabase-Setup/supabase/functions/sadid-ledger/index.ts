@@ -1,5 +1,6 @@
 import { createClient } from 'supabase';
 import { sha256,verifyProof } from './proof.ts';
+import { makeAdmin } from './admin.ts';
 import { createECDH,createHash } from 'node:crypto';
 const url=Deno.env.get('SUPABASE_URL')!;
 const serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -17,10 +18,13 @@ const respond=(status:number,data:unknown)=>new Response(JSON.stringify(data),{s
 const messages:Record<string,string>={authorization_required:'يلزم التحقق من الجلسة والجهاز.',installation_or_session_revoked:'الجلسة أو الجهاز غير معتمد.',installation_revoked:'تم إلغاء هذا الجهاز.',store_suspended:'المتجر موقوف؛ حُفظت الإدخالات المعلقة.',password_change_required:'غيّر كلمة المرور المؤقتة أولًا.',dependency_pending:'لم تصل العملية التي يعتمد عليها هذا الإدخال بعد.',operation_id_reused:'رقم العملية مستخدم بمحتوى مختلف.',overpayment:'الدفعة تتجاوز المتبقي.',admin_authorization_required:'يلزم حساب إدارة صالح.',ledger_not_initialized:'انتظر اعتماد الجهاز من الإدارة.',epoch_changed:'تغير إصدار استرداد الخادم؛ افحص الإيصالات وصالح الطابور قبل الإرسال.',request_rate_limited:'طلبات كثيرة؛ الإدخالات محفوظة، انتظر دقيقة ثم حاول مجددًا.',enrollment_rate_limited:'وصل عدد طلبات الأجهزة المعلقة إلى الحد. راجع الإدارة.',recovery_not_authorized:'الإدخال غير مشمول بتصريح استرداد صالح.',invalid_manifest:'قائمة الاسترداد أو السبب غير صالح.',invalid_input:'بيانات الطلب غير صالحة.',invalid_dependencies:'اعتمادات العملية غير صالحة.',invalid_operation:'نوع العملية غير صالح.',invalid_public_key:'مفتاح الجهاز غير صالح.',installation_key_changed:'مفتاح الجهاز مختلف؛ يلزم اعتماد تركيب جديد.',session_installation_conflict:'الجلسة مرتبطة بتركيب مختلف.',duplicate_operation_id:'قائمة الاسترداد تكرر رقم عملية.',invalid_ids:'قائمة أرقام العمليات غير صالحة.',installation_unavailable:'التركيب المطلوب غير موجود.',store_permission_denied:'لا توجد صلاحية لهذا الإجراء.',unsupported_schema:'إصدار الطلب غير مدعوم.',invalid_timestamp:'وقت الإدخال غير صالح.'};
 function requireData(r:any){if(r.error)throw r.error;return r.data;}
 function sessionId(jwt:string){try{return JSON.parse(atob(jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).session_id||'';}catch{return '';}}
+const admin=makeAdmin({db,respond});
 Deno.serve(async(request:Request)=>{
  if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
  const route=new URL(request.url).pathname.replace(/^.*\/sadid-ledger/,'').replace(/^\/api/,'');
  try{
+  const moved=await admin.route(request,route);
+  if(moved)return moved;
   if(request.method!=='GET'&&request.method!=='POST')return respond(405,{ok:false,message:'طريقة الطلب غير مدعومة.'});
   const raw=request.method==='GET'?'':await request.text();
   if(new TextEncoder().encode(raw).length>(route==='/admin/recovery/approve'?4000000:65536))return respond(413,{ok:false,message:'الطلب أكبر من الحد المسموح.'});
