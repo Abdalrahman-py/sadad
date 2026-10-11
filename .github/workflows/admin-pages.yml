@@ -30,6 +30,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          # Enable Pages on first run instead of requiring a manual repository setting. If the
+          # workflow token is not allowed to create the site, this step fails with the same
+          # "repository has Pages enabled" error and an owner must enable it by hand.
+          enablement: true
       - name: Build dashboard assets
         run: node tools/build-admin-pages.cjs
       - name: Upload Pages artifact
