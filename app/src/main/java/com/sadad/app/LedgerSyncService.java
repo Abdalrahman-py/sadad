@@ -59,7 +59,7 @@ public final class LedgerSyncService extends JobService {
     static final class HttpError extends Exception{final int code;HttpError(int code){this.code=code;}}
     static JSONObject request(SessionStore session,String method,String path,JSONObject body,String token)throws Exception{
         HttpURLConnection connection=(HttpURLConnection)new URL(session.apiBaseUrl().replaceAll("/+$","")+path).openConnection();
-        try{connection.setRequestMethod(method);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Authorization","Bearer "+token);
+        try{connection.setRequestMethod(method);connection.setConnectTimeout(6000);connection.setReadTimeout(10000);connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("apikey",BuildConfig.SUPABASE_PUBLISHABLE_KEY);connection.setRequestProperty("Authorization","Bearer "+token);
             if(body!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=utf-8");try(OutputStream out=connection.getOutputStream()){out.write(body.toString().getBytes(StandardCharsets.UTF_8));}}
             int code=connection.getResponseCode();if(code<200||code>=300)throw new HttpError(code);
             ByteArrayOutputStream bytes=new ByteArrayOutputStream();try(InputStream in=connection.getInputStream()){byte[] buffer=new byte[8192];int count;while((count=in.read(buffer))!=-1){if(Thread.currentThread().isInterrupted())throw new InterruptedException();bytes.write(buffer,0,count);}}

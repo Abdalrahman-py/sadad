@@ -11,7 +11,13 @@ val releaseSigningReady = listOf(releaseStoreFile, releaseStorePassword, release
 android {
     namespace = "com.sadad.app"
     buildFeatures { buildConfig = true }
-    val apiBaseUrl = providers.gradleProperty("SADAD_API_BASE_URL").getOrElse("http://10.0.2.2:8081/api")
+    // Live backend: the Supabase project's sadad-api edge function.
+    // A legacy self-hosted server ending in /api still works for debug builds.
+    val apiBaseUrl = providers.gradleProperty("SADAD_API_BASE_URL")
+        .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api")
+    // Publishable key only. The service-role key must never reach the app.
+    val supabasePublishableKey = providers.gradleProperty("SADAD_SUPABASE_PUBLISHABLE_KEY")
+        .getOrElse("sb_publishable_dK7HuYY8TbO8ZiBPbOZ2cw_1ZRL_chh")
     compileSdk {
         version = release(36)
     }
@@ -23,6 +29,7 @@ android {
         versionCode = 36
         versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("2.5.10")
         buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         manifestPlaceholders["allowCleartextTraffic"] = "false"
     }
     flavorDimensions += "edition"
