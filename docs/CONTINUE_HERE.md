@@ -74,7 +74,7 @@ default is retained while the Edge API is being brought to route parity.»
      `INTEGER PRIMARY KEY AUTOINCREMENT`، والدفتر المعتمد يعتمد UUID. هذا قرار معماري شامل
      (خيارات: عمود `uuid` مع جدول ربط، أو عرض الواجهات من `LedgerRepository.view()`، أو
      قاعدة وسيطة تُترجم `view()` إلى المعرّفات الرقمية الحالية). التفاصيل في
-     `v3-client-port-spec.md` القسم 4.3.
+     `docs/V3_CLIENT_PORT_SPEC.md` القسم 4.3.
    - **متبقٍّ آخر:** الدخول يجب أن يمرّ عبر بوابة `sadad-auth` لأنها الوحيدة التي تُصدر مغلّف
      المصادقة (`auth`) الذي تحتاجه الطلبات الموقّعة؛ `sadad-api` لا تُصدره. وتفعيل أول تركيب
      يحتاج موافقة الأدمن ولا توجد له شاشة في التطبيق.

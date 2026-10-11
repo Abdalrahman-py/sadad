@@ -1,6 +1,6 @@
 # Spec: port the signed v3 ledger client into the product app
 
-> NOTE ON PATH: the task asked for this file at `.hermes/v3-client-port-spec.md`, but writes
+> NOTE ON PATH: the task asked for this file at `.hermes/v3-client-port-spec.md` (moved to `docs/` during the consolidation), but writes
 > under `.hermes/` are blocked by the environment's protected-path guard. The file is placed at
 > the repository root instead. Move it to `.hermes/` manually if that location is required.
 
