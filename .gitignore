@@ -1,63 +1,49 @@
+# Android / Gradle
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
+.gradle/
 /build
+**/build/
 /captures
+local.properties
 .externalNativeBuild
 .cxx
-local.properties
+.idea/
 
-/tools/qa-sync-session.json
-**/build/
+# Signing material and local SDK config
 *.jks
 *.keystore
-*.db
-*.db-wal
-*.db-shm
 
-
-/tools/qa-scale-result.json
-
-# Local backend credentials, databases and generated dependencies
-**/node_modules/
-**/.wrangler/
-**/.dart_tool/
-**/.gradle/
-**/.idea/
-**/data/
-.env
-.env.*
-!.env.example
-.dev.vars
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
-*.log
-.local-tools/
-node_modules/
-.gradle/
-**/build/
-local.properties
-.env
-.env.*
-!.env.example
-*.jks
-*.keystore
+# Local databases and generated dependencies
 *.db
 *.db-*
 *.sqlite
 *.sqlite-*
+**/node_modules/
+node_modules/
+**/.wrangler/
+**/.dart_tool/
+**/data/
+.local-tools/
+work/
+
+# Local secrets and credentials — never commit these
+.env
+.env.*
+!.env.example
+.dev.vars
 SADID_ACCESS.txt
 credentials.json
 *session*.json
-work/
+
+# Local test artefacts
+/tools/qa-sync-session.json
+/tools/qa-scale-result.json
 
 # Generated GitHub Pages dashboard
 /_site/
+
+# Agent working state (plans, scratch) — not a deliverable
+/.hermes/
+
+.DS_Store
+*.log

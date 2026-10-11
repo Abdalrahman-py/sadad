@@ -29,7 +29,7 @@ The existing local API default is retained while the Edge API is being brought t
 
 The publishable key is safe for client use; it only passes the Supabase gateway. The private service-role key remains in the function. Do not switch production builds until the SQLite data import is complete.
 
-The static admin page in `admin/Sadad-Admin-Server/public/admin.html` is configured to use the deployed Supabase API with these two meta tags. Publish the updated static page to apply this configuration to a hosted dashboard:
+The static admin page in `server/public/admin.html` is configured to use the deployed Supabase API with these two meta tags. Publish the updated static page to apply this configuration to a hosted dashboard:
 
 ```html
 <meta name="sadad-api-base-url" content="https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api">
