@@ -41,18 +41,66 @@
     if (error) node.classList.add('error');
     setTimeout(() => node.classList.add('hidden'), 5500);
   }
-  async function api(path, options = {}) {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-    if (publishableKey) headers.apikey = publishableKey;
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(`${apiBase}${path}`, { ...options, headers });
-    const data = await response.json().catch(() => ({ ok: false, message: 'استجابة الخادم غير مفهومة.' }));
+  // The dashboard reaches two backends, and they are not interchangeable. The admin surface on
+  // apiBase authenticates with `Authorization: Bearer`; sadid-ledger lives on a derived origin
+  // and authenticates with `X-Sadad-Admin`. So this stays one request interface with two
+  // adapters, not one adapter pretending to be both: a caller names its target explicitly, so no
+  // call site can silently reach the wrong origin or send the wrong auth header. Everything the
+  // two share lives here once — the prefixed URL, the header set, the tolerant JSON parse, the
+  // error-message fallback, and the session-clear-on-401 path.
+  function ledgerOrigin() {
+    // Derived, not configured twice. If the base URL no longer ends in /sadad-api the
+    // replacement would silently produce a wrong origin and every ledger call would fail as an
+    // unexplained 401, so surface it instead.
+    const derived = apiBase.replace(/\/sadad-api$/, '/sadid-ledger');
+    if (derived === apiBase) {
+      const message = 'إعداد اللوحة غير صحيح: عنوان الخدمة يجب أن ينتهي بـ /sadad-api.';
+      console.error(message, apiBase);
+      const state = document.querySelector('#connectionState'); if (state) state.textContent = message;
+    }
+    return derived;
+  }
+  function clearSession() { sessionStorage.removeItem(tokenKey); token = ''; showAuth(false); }
+  const requestTargets = {
+    sadad: {
+      url: path => `${apiBase}${path}`,
+      method: options => options.method,
+      body: options => options.body,
+      headers: options => {
+        const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        if (publishableKey) headers.apikey = publishableKey;
+        if (token) headers.Authorization = `Bearer ${token}`;
+        return headers;
+      },
+      unreadable: 'استجابة الخادم غير مفهومة.',
+      failed: 'تعذر تنفيذ العملية.',
+      rejected: response => response.status === 401 && token,
+    },
+    ledger: {
+      url: path => `${ledgerOrigin()}/api/admin${path}`,
+      method: options => options.body === undefined ? 'GET' : 'POST',
+      body: options => options.body === undefined ? undefined : JSON.stringify(options.body),
+      headers: () => ({ apikey: publishableKey, 'Content-Type': 'application/json', 'X-Sadad-Admin': token }),
+      unreadable: 'تعذر قراءة رد الخادم.',
+      failed: 'تعذر تنفيذ الإجراء.',
+      rejected: (response, data) => response.status === 401 || data.code === 'admin_authorization_required',
+    },
+  };
+  async function request(target, path, options = {}) {
+    const adapter = requestTargets[target];
+    const body = adapter.body(options);
+    const init = { method: adapter.method(options), headers: adapter.headers(options) };
+    if (body !== undefined) init.body = body;
+    const response = await fetch(adapter.url(path), init);
+    const data = await response.json().catch(() => ({ ok: false, message: adapter.unreadable }));
     if (!response.ok || data.ok === false) {
-      if (response.status === 401 && token) { sessionStorage.removeItem(tokenKey); token = ''; showAuth(false); }
-      throw new Error(data.message || 'تعذر تنفيذ العملية.');
+      if (adapter.rejected(response, data)) clearSession();
+      throw new Error(data.message || adapter.failed);
     }
     return data;
   }
+  const api = (path, options = {}) => request('sadad', path, options);
+  const ledgerApi = (path, body) => request('ledger', path, { body });
   function showAuth(setup, passwordChange = false) {
     ++storeRequest; current=null; currentSnapshot=null; $('#authPassword').value=''; $('#storePanel').classList.add('hidden'); $('#ledgerPanel').classList.add('hidden'); $('#tempPasswordResult').textContent='';
     bootstrap = setup; $('#authView').classList.remove('hidden'); $('#appView').classList.add('hidden');
@@ -322,25 +370,6 @@
   const directionName = direction => direction==='receivable' ? 'للـمتجر' : direction==='payable' ? 'على المتجر' : '—';
   const actionName = action => ({'contact.create':'إضافة شخص','contact.archive':'أرشفة شخص','contact.unarchive':'إعادة شخص','debt.create':'إضافة دين','debt.correct':'تصحيح دين','payment.create':'تسجيل دفعة','payment.reverse':'عكس دفعة','operation.rejected':'عملية مرفوضة','installation.approved':'اعتماد هاتف','installation.revoked':'إلغاء اعتماد هاتف','recovery.approved':'اعتماد استرداد','account.archive':'أرشفة حساب','account.unarchive':'إعادة حساب من الأرشيف','account.end-sessions':'إنهاء الجلسات','account.revoke-all':'إلغاء جميع الأجهزة'}[action] || action);
   const isoDate = value => value ? new Date(value).toLocaleString('ar-PS') : '—';
-  async function ledgerApi(path, body) {
-    // Derived, not configured twice. If the base URL no longer ends in /sadad-api the
-    // replacement would silently produce a wrong origin and every ledger call would fail as an
-    // unexplained 401, so surface it instead.
-    const derived=apiBase.replace(/\/sadad-api$/, '/sadid-ledger');
-    if(derived===apiBase){
-      const message='إعداد اللوحة غير صحيح: عنوان الخدمة يجب أن ينتهي بـ /sadad-api.';
-      console.error(message, apiBase);
-      const state=document.querySelector('#connectionState'); if(state) state.textContent=message;
-    }
-    const ledgerBase=derived;
-    const response=await fetch(`${ledgerBase}/api/admin${path}`, {method:body===undefined?'GET':'POST',headers:{apikey:publishableKey,'Content-Type':'application/json','X-Sadad-Admin':token},body:body===undefined?undefined:JSON.stringify(body)});
-    const data=await response.json().catch(()=>({ok:false,message:'تعذر قراءة رد الخادم.'}));
-    if(!response.ok || data.ok===false) {
-      if(response.status===401 || data.code==='admin_authorization_required'){token='';sessionStorage.removeItem(tokenKey);showAuth(false);}
-      throw new Error(data.message || 'تعذر تنفيذ الإجراء.');
-    }
-    return data;
-  }
   function renderInstallations() {
     $('#installationList').innerHTML=currentInstallations.length ? currentInstallations.map(phone=>`<article class="device-card"><div class="record-row"><div><b class="installation-state ${esc(phone.status)}">${esc({pending:'بانتظار اعتمادك',active:'هاتف معتمد',revoked:'أُلغي الاعتماد'}[phone.status])} · ${fmt(phone.generation)}</b><code dir="ltr">${esc(phone.installationId)}</code><small>سُجل ${esc(isoDate(phone.createdAt))}${phone.approvedBy?` · اعتمده ${esc(phone.approvedBy)}`:''}</small>${phone.reason?`<small>${esc(phone.reason)}</small>`:''}</div><div class="button-row">${phone.status==='pending'?`<button class="button primary" data-installation-approve="${esc(phone.installationId)}" ${current.archived?'disabled':''}>اعتماد الهاتف</button>`:''}${phone.status!=='revoked'?`<button class="button danger" data-installation-revoke="${esc(phone.installationId)}" ${current.archived?'disabled':''}>إلغاء الاعتماد</button>`:''}</div></div>${phone.status==='revoked'?'<p class="small muted">لإعادة هذا الهاتف، سجله كجهاز جديد من التطبيق ثم اعتمد طلبه الجديد.</p>':''}</article>`).join('') : '<p class="muted">لا توجد طلبات هواتف. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور المؤقتة ثم يظهر طلب هاتفه هنا.</p>';
     $('#installationList').querySelectorAll('[data-installation-approve]').forEach(button=>button.addEventListener('click',()=>installationAction(button.dataset.installationApprove,'approve')));
