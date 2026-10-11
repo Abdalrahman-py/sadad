@@ -323,7 +323,16 @@
   const actionName = action => ({'contact.create':'إضافة شخص','contact.archive':'أرشفة شخص','contact.unarchive':'إعادة شخص','debt.create':'إضافة دين','debt.correct':'تصحيح دين','payment.create':'تسجيل دفعة','payment.reverse':'عكس دفعة','operation.rejected':'عملية مرفوضة','installation.approved':'اعتماد هاتف','installation.revoked':'إلغاء اعتماد هاتف','recovery.approved':'اعتماد استرداد','account.archive':'أرشفة حساب','account.unarchive':'إعادة حساب من الأرشيف','account.end-sessions':'إنهاء الجلسات','account.revoke-all':'إلغاء جميع الأجهزة'}[action] || action);
   const isoDate = value => value ? new Date(value).toLocaleString('ar-PS') : '—';
   async function ledgerApi(path, body) {
-    const ledgerBase=apiBase.replace(/\/sadad-api$/, '/sadid-ledger');
+    // Derived, not configured twice. If the base URL no longer ends in /sadad-api the
+    // replacement would silently produce a wrong origin and every ledger call would fail as an
+    // unexplained 401, so surface it instead.
+    const derived=apiBase.replace(/\/sadad-api$/, '/sadid-ledger');
+    if(derived===apiBase){
+      const message='إعداد اللوحة غير صحيح: عنوان الخدمة يجب أن ينتهي بـ /sadad-api.';
+      console.error(message, apiBase);
+      const state=document.querySelector('#connectionState'); if(state) state.textContent=message;
+    }
+    const ledgerBase=derived;
     const response=await fetch(`${ledgerBase}/api/admin${path}`, {method:body===undefined?'GET':'POST',headers:{apikey:publishableKey,'Content-Type':'application/json','X-Sadad-Admin':token},body:body===undefined?undefined:JSON.stringify(body)});
     const data=await response.json().catch(()=>({ok:false,message:'تعذر قراءة رد الخادم.'}));
     if(!response.ok || data.ok===false) {
