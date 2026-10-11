@@ -71,10 +71,8 @@ adb -s emulator-5554 shell am instrument -w com.sadad.qa.offline.test/com.sadad.
   npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
   npx --yes --package=node@22.16.0 node --max-old-space-size=256 Supabase-Setup/scripts/test-v3-ledger.mjs
   ```
-- اختبار المزامنة بخادم مؤقت: `node tools/qa-sync-server.cjs` على Node 24 (خادم مؤقت على
-  18082 وملف `tools/qa-sync-session.json`)، ثم انسخ الملف عبر adb push إلى
-  `/data/local/tmp/sadad-qa-sync.json` وابنِ `serverDebug` بمعرّف `com.sadad.qa.connected`
-  واختبار `Sync254Instrumentation`. أوقف الخادم بعد الاختبار.
+- اختبارات وحدة JVM بلا هاتف: `./gradlew testServerDebugUnitTest` — محرّك المزامنة وعميل
+  الدفتر الموقّع.
 - اختبارات وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/`.
 
 ## Team admin dashboard — live Supabase
@@ -100,6 +98,8 @@ needed. See [team setup and verification](docs/ADMIN_TEAM_SETUP.md).
 لم يُنشر نطاق عام. دخول الزبائن المتصل يحتاج تفعيل SMS وبوابة موثّقة. إرسال WhatsApp الآلي
 يحتاج إعداد Meta/WhatsApp Business. رابط الدعم يفتح الرقم `+970****2401` عند طلب المستخدم فقط.
 
-الخادم القديم `server/server.js` (Node/SQLite) مُستبدل بوظائف Supabase، وما زال في المستودع
-مؤقتًا لأنه المرجع الوحيد لمسارين ما زالا ناقصين في الوظيفة السحابية — التفاصيل في
-`docs/CONTINUE_HERE.md`.
+## مسار واحد: الدفتر المعتمد (v3)
+
+حُذف خادم Node/SQLite القديم (`server/server.js`) وملفات تشغيله واختباراته، فلم يكن يشغّله أي
+عميل: التطبيق واللوحة يتصلان بـ Supabase. والبروتوكول القديم في `/mobile/*` في طريق الإزالة
+بعد أن ينقل التطبيق كتاباته إلى الدفتر الموقّع — الحالة في `docs/CONTINUE_HERE.md`.

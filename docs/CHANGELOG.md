@@ -9,6 +9,43 @@
 
 ---
 
+## قيد العمل — لم يُصدَر (تنظيف معماري لمسار المزامنة)
+
+- المزامنة: صار منطق الرفع والتنزيل وقرار معنى كل رفض في وحدة واحدة،
+  `app/src/main/java/com/sadad/app/LedgerSync.java`، بدل نسختين متباعدتين: واحدة داخل
+  `LedgerSyncService.onStartJob` وأخرى موزّعة على `MainActivity.syncLocalChanges`
+  و`checkServerUpdates`. والعقد عند الحدّ ثلاث واجهات: `SyncSession` و`SyncLedger`
+  و`SyncTransport` (تُنفّذها `SessionStore` و`SadadDatabase` مباشرة).
+- النقل الشبكي: تنفيذ واحد للطلبات، `HttpSyncTransport`، بدل ثلاثة تنفيذات منفصلة في
+  `LedgerSyncService` و`MainActivity` و`LedgerTransport`، فتوقف اختلاف المهل (6000/10000 مقابل
+  10000/20000) والترويسات. حُذف `PagedSnapshotTransfer.java` ودخل حلقه في `LedgerSync`.
+- تغيير سلوك مقصود في سياسة الفشل، لأن النسختين كانتا تختلفان:
+  - `401`/`423` → مسح الجلسة والعودة لشاشة الدخول (كما كان في التطبيق).
+  - `403` أو `409` مع `reloadRequired` → تنزيل نسخة الخادم وعرض تعارض (كما كان في التطبيق).
+  - `409` بلا `reloadRequired` → تعليق المزامنة لهذا المتجر (كما كان في مهمة الخلفية).
+  - `404`/`405` → حالة `PROTOCOL_MISMATCH` تُعرض للمستخدم ويبقى الطابور كاملًا. سابقًا كانت
+    مهمة الخلفية تنهي الجولة دون إقرار الدفعة، فلا تصل تعديلات المتجر ولا يُخبر أحد.
+  - `500`/`408`/`429` أو انقطاع الشبكة → إعادة محاولة.
+  - لا تُخترع مراجعة عند غيابها: تُقرأ من رد الخادم فقط (كان مسار واحد يستخدم `revision()+1`).
+- حُذف خادم Node/SQLite القديم وملفات تشغيله واختباراته (3259 سطرًا في 19 ملفًا)، ومعه
+  `Sync254Instrumentation` و`LedgerSyncService.request` بلا مستدعٍ. لا مرجع معلّق.
+- دورة المزامنة الموقّعة في التطبيق: `SignedLedgerSync` (اعتماد، ترخيص مُتحقَّق، نسخة، دفع
+  الطابور، إيصالات، إصدار استرداد) وحدّاها `LedgerJournal` و`DeviceEnvironment`، ومعهما
+  `Base64Url` بدل `java.util.Base64` غير المتوفر قبل أندرويد 26. اختبارات جديدة: 17 لـ
+  `SignedLedgerSync` و5 لـ`Base64Url`، فصار مجموع اختبارات الـJVM 44.
+- تسجيل الدخول يعلن أي دفتر يتحدث المتجر: `ledger: "v3" | "legacy"` في رد `/mobile/login`،
+  فلا يحتاج التطبيق إلى استكشاف الحارس.
+- عميل الدفتر المعتمد: `LedgerClient` و`LedgerApi` و`LedgerSession` و`InstallationSigner`
+  (خمس عمليات موقّعة)، و`InstallationKey` صار تنفيذًا لـ`InstallationSigner`. وحُذف
+  `LedgerTransport.java` بلا مستدعين.
+- اختبارات JVM جديدة: `app/src/test/java/com/sadad/app/LedgerClientTest.java` (8 اختبارات)
+  تُشغّل خادمًا محليًا يتحقّق من التوقيع بنفس قاعدة `proof.ts`. واختبارات JVM: 22 إجمالًا.
+- اختبارات JVM جديدة: `app/src/test/java/com/sadad/app/LedgerSyncTest.java` (14 اختبارًا) تعمل
+  بلا هاتف، وأول اعتماديتَي اختبار في `app/build.gradle.kts` (`junit`، `org.json` — لا تصل إلى
+  نسخة الإصدار).
+- التحقّق: `./gradlew testServerDebugUnitTest assembleServerDebug assembleStandaloneDebug
+  assembleServerDebugAndroidTest` → ناجح، 14/14 اختبارًا.
+
 ## 2.5.10 — 10 أكتوبر 2026
 
 - قاعدة التطبيق بالإصدار 6: تنقل الدفعات القديمة دون مسحها وتضيف محفظتي جوال وبال بي.
