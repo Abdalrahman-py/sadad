@@ -72,6 +72,11 @@ android {
     }
 }
 
-dependencies { }
+dependencies {
+    // JVM tests only. LedgerSync is pure Java over org.json, and Android's unit-test runtime stubs
+    // org.json, so the real implementation has to be on the test classpath for it to run at all.
+    testImplementation(libs.junit)
+    testImplementation(libs.json)
+}
 
 

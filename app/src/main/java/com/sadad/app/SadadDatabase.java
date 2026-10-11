@@ -20,12 +20,12 @@ import java.util.List;
 import java.util.Map;
 
 /** Offline ledger. Contact balances are derived from debts minus recorded payments. */
-public final class SadadDatabase extends SQLiteOpenHelper {
+public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger {
     private static final String DB_NAME = "sadad.db";
     private static final int DB_VERSION = 7;
 
     /** Includes changes from this connection and other connections, without rebuilding the ledger. */
-    synchronized long changeToken() {
+    public synchronized long changeToken() {
         long version = 0, changes = 0;
         try (Cursor c = getReadableDatabase().rawQuery("PRAGMA data_version", null)) { if (c.moveToFirst()) version = c.getLong(0); }
         try (Cursor c = getReadableDatabase().rawQuery("SELECT total_changes()", null)) { if (c.moveToFirst()) changes = c.getLong(0); }
@@ -54,17 +54,17 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         }
     }
 
-    synchronized boolean deltaReady() { return scalarLong(getReadableDatabase(), "SELECT ready FROM sync_control WHERE id=1", null) == 1; }
-    synchronized boolean hasPendingSync() { return scalarLong(getReadableDatabase(), "SELECT EXISTS(SELECT 1 FROM sync_outbox)", null) == 1; }
-    synchronized void acknowledgeDelta(long watermark) { getWritableDatabase().delete("sync_outbox", "seq<=?", new String[]{String.valueOf(watermark)}); }
-    synchronized void acknowledgeDelta(JSONObject packet) throws JSONException {
+    public synchronized boolean deltaReady() { return scalarLong(getReadableDatabase(), "SELECT ready FROM sync_control WHERE id=1", null) == 1; }
+    public synchronized boolean hasPendingSync() { return scalarLong(getReadableDatabase(), "SELECT EXISTS(SELECT 1 FROM sync_outbox)", null) == 1; }
+    public synchronized void acknowledgeDelta(long watermark) { getWritableDatabase().delete("sync_outbox", "seq<=?", new String[]{String.valueOf(watermark)}); }
+    public synchronized void acknowledgeDelta(JSONObject packet) throws JSONException {
         JSONArray sequences=packet.getJSONArray("sequences");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {
             for(int n=0;n<sequences.length();n++)db.delete("sync_outbox","seq=?",new String[]{String.valueOf(sequences.getLong(n))});
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}
     }
     /** Only queued rows are read, capped at 500 changes, including deletions and cascades. */
-    synchronized JSONObject pendingDelta() throws JSONException {
+    public synchronized JSONObject pendingDelta() throws JSONException {
         SQLiteDatabase db = getReadableDatabase();
         java.util.LinkedHashMap<String, Long> changes = new java.util.LinkedHashMap<>(); long watermark = 0; JSONArray sequences=new JSONArray();
         String parents="SELECT q.seq,q.entity,q.row_id FROM sync_outbox q WHERE (q.entity='contacts' AND NOT EXISTS(SELECT 1 FROM contacts r WHERE r.id=q.row_id)) OR (q.entity='debts' AND NOT EXISTS(SELECT 1 FROM debts r WHERE r.id=q.row_id)) ORDER BY CASE q.entity WHEN 'contacts' THEN 0 ELSE 1 END,q.seq LIMIT 500";
@@ -94,11 +94,11 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         delta.put("deleted", deleted); return new JSONObject().put("delta", delta).put("watermark", watermark).put("sequences",sequences);
     }
 
-    synchronized long outboxWatermark() { return scalarLong(getReadableDatabase(), "SELECT COALESCE(MAX(seq),0) FROM sync_outbox", null); }
-    synchronized void beginSnapshotStage() {
+    public synchronized long outboxWatermark() { return scalarLong(getReadableDatabase(), "SELECT COALESCE(MAX(seq),0) FROM sync_outbox", null); }
+    public synchronized void beginSnapshotStage() {
         for(String table : new String[]{"contacts","debts","payments"}) { getWritableDatabase().execSQL("DROP TABLE IF EXISTS stage_"+table); getWritableDatabase().execSQL("CREATE TABLE stage_"+table+" AS SELECT * FROM "+table+" WHERE 0"); }
     }
-    synchronized void stageSnapshotPage(String table, JSONArray rows) throws JSONException {
+    public synchronized void stageSnapshotPage(String table, JSONArray rows) throws JSONException {
         if(!table.equals("contacts")&&!table.equals("debts")&&!table.equals("payments"))throw new IllegalArgumentException();
         SQLiteDatabase db=getWritableDatabase(); java.util.LinkedHashMap<String,String> columns=new java.util.LinkedHashMap<>();
         try(Cursor schema=db.rawQuery("PRAGMA table_info("+table+")",null)){while(schema.moveToNext())columns.put(schema.getString(1),schema.getString(2));}
@@ -117,7 +117,7 @@ public final class SadadDatabase extends SQLiteOpenHelper {
             }db.setTransactionSuccessful();
         } finally {db.endTransaction();}
     }
-    synchronized void commitSnapshotStage(long expectedWatermark) {
+    public synchronized void commitSnapshotStage(long expectedWatermark) {
         if(outboxWatermark()!=expectedWatermark)throw new IllegalStateException("حُفظت تعديلات جديدة أثناء التحميل. بقيت سجلاتك المحلية محفوظة؛ أعد المزامنة.");
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {
             db.execSQL("UPDATE sync_control SET suppress=1 WHERE id=1");
@@ -126,7 +126,7 @@ public final class SadadDatabase extends SQLiteOpenHelper {
             db.execSQL("DELETE FROM sync_outbox");db.execSQL("UPDATE sync_control SET suppress=0,ready=1 WHERE id=1");db.setTransactionSuccessful();
         }finally{db.endTransaction();dropSnapshotStage();}
     }
-    synchronized void dropSnapshotStage() {for(String table:new String[]{"contacts","debts","payments"})getWritableDatabase().execSQL("DROP TABLE IF EXISTS stage_"+table);}
+    public synchronized void dropSnapshotStage() {for(String table:new String[]{"contacts","debts","payments"})getWritableDatabase().execSQL("DROP TABLE IF EXISTS stage_"+table);}
 
     synchronized JSONObject dueReminderSnapshot(String today,String tomorrow) throws JSONException {
         JSONArray people=new JSONArray(),debts=new JSONArray();SQLiteDatabase db=getReadableDatabase();
@@ -965,4 +965,3 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         return result.toString();
     }
 }
-

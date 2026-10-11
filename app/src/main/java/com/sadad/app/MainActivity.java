@@ -65,7 +65,7 @@ public final class MainActivity extends Activity {
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     static final java.lang.ref.WeakReference<MainActivity> EMPTY_INSTANCE = new java.lang.ref.WeakReference<>(null);
     static volatile java.lang.ref.WeakReference<MainActivity> activeInstance = EMPTY_INSTANCE;
-    void syncTick() { if (sessions == null || !sessions.isActive()) return; if(database!=null && database.hasPendingSync())sessions.setUnsyncedChanges(true); if (sessions.hasUnsyncedChanges()) syncLocalChanges(); else checkServerUpdates(); }
+    void syncTick() { if (sessions == null || !sessions.isActive()) return; if(database!=null && database.hasPendingSync())sessions.setUnsyncedChanges(true); syncNow(); }
     private final AtomicBoolean syncing = new AtomicBoolean(false);
     private volatile boolean syncAgain;
     private final Handler statusHandler = new Handler(Looper.getMainLooper());
@@ -327,7 +327,7 @@ public final class MainActivity extends Activity {
                     if ("force_password".equals(currentRoute)) {
                         showAfterAuthentication();
                         if (pendingLegacyServerSnapshot != null) offerLegacyDataChoice(pendingLegacyServerSnapshot, pendingLegacyServerHasRows);
-                        else syncLocalChanges();
+                        else syncNow();
                     }
                 });
             } catch (Exception e) {
@@ -448,7 +448,7 @@ public final class MainActivity extends Activity {
                 if (pending) { sessions.setRevision(oldRevision); sessions.setUnsyncedChanges(true); }
                 else if (legacyLocal) { sessions.setUnsyncedChanges(true); sessions.setSyncBlocked(true); }
                 else {
-                    if (response.optBoolean("snapshotDeferred")) PagedSnapshotTransfer.download(sessions, database, snapshot.optLong("revision", sessions.revision()));
+                    if (response.optBoolean("snapshotDeferred")) LedgerSync.pull(sessions, database, new HttpSyncTransport(sessions));
                     else if (snapshot != null) database.importSnapshot(snapshot);
                     DueReminderManager.checkDueDates(getApplicationContext());
                     sessions.setUnsyncedChanges(false);
@@ -464,7 +464,7 @@ public final class MainActivity extends Activity {
                         pendingLegacyServerSnapshot = snapshot;
                         pendingLegacyServerHasRows = hasLedgerRows(snapshot);
                         if (!mustChange) offerLegacyDataChoice(snapshot, pendingLegacyServerHasRows);
-                    } else if (pending && !mustChange) syncLocalChanges();
+                    } else if (pending && !mustChange) syncNow();
                 });
             } catch (Exception e) {
                 boolean networkFailure = e instanceof java.net.SocketTimeoutException
@@ -532,7 +532,7 @@ public final class MainActivity extends Activity {
                 .setNeutralButton("اعتماد سجلات الخادم", (d, w) -> applyServerSnapshot(serverSnapshot, true))
                 .setNegativeButton("لاحقًا", (d, w) -> { sessions.setSyncBlocked(true); showBrandedMessage("احتفظنا بالسجلات المحلية دون مزامنتها."); });
         dialog.setPositiveButton(serverHasRows ? "استبدال سجل الخادم" : "رفع السجلات القديمة", (d, w) -> {
-            sessions.setSyncBlocked(false); sessions.setUnsyncedChanges(true); syncLocalChanges();
+            sessions.setSyncBlocked(false); sessions.setUnsyncedChanges(true); syncNow();
         }).show();
         pendingLegacyServerSnapshot = null;
     }
@@ -590,7 +590,7 @@ public final class MainActivity extends Activity {
         SyncScheduler.schedule(this, true);
         statusHandler.removeCallbacks(uploadDebounce); statusHandler.postDelayed(uploadDebounce, 750L);
     }
-    private final Runnable uploadDebounce = this::syncLocalChanges;
+    private final Runnable uploadDebounce = this::syncNow;
 
     private void registerConnectivitySync() {
         if (BuildConfig.STANDALONE_MODE || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
@@ -600,73 +600,53 @@ public final class MainActivity extends Activity {
             connectivityCallback = new ConnectivityManager.NetworkCallback() {
                 @Override public void onAvailable(Network network) {
                     if (!sessions.isActive() || sessions.forcePasswordChange()) return;
-                    if (sessions.hasUnsyncedChanges() && !sessions.syncBlocked()) syncLocalChanges();
-                    else checkServerUpdates();
+                    syncNow();
                 }
             };
             connectivityManager.registerDefaultNetworkCallback(connectivityCallback);
         } catch (Exception ignored) { connectivityCallback = null; }
     }
 
-    void syncLocalChanges() {
-        if (BuildConfig.STANDALONE_MODE || !sessions.isActive() || sessions.forcePasswordChange() || !sessions.hasUnsyncedChanges() || sessions.syncBlocked()) return;
+    /** One sync pass on the network thread. The protocol lives in LedgerSync; this method owns the lock, the executor and the mapping of an outcome onto the screen. */
+    void syncNow() {
+        if (BuildConfig.STANDALONE_MODE || !sessions.isActive() || sessions.forcePasswordChange()) return;
         if (!syncing.compareAndSet(false, true)) { syncAgain = true; return; }
         network.execute(() -> {
             synchronized (SyncScheduler.LOCK) {
-            final SadadDatabase targetDatabase = database;
-            final String accountId = sessions.syncAccountId(), token = sessions.token();
-            try {
-                long change;
-                JSONObject local;
-                boolean incremental;
-                synchronized (targetDatabase) { change = targetDatabase.changeToken(); incremental = targetDatabase.deltaReady(); local = incremental ? targetDatabase.pendingDelta() : targetDatabase.getSnapshot(); }
-                JSONObject body = incremental ? new JSONObject().put("baseRevision", sessions.revision()).put("delta", local.getJSONObject("delta")).put("batchId", sessions.deviceId()+":"+local.optLong("watermark")) : new JSONObject().put("baseRevision", sessions.revision()).put("snapshot", local);
-                JSONObject result = apiRequest("POST", incremental ? "/mobile/sync-delta" : "/mobile/sync", body, token);
-                if (incremental) {
-                    if (targetDatabase != database || !accountId.equals(sessions.syncAccountId()) || !token.equals(sessions.token())) return;
-                    synchronized (targetDatabase) {
-                        targetDatabase.acknowledgeDelta(local.optLong("watermark")); sessions.setRevision(result.optLong("revision", sessions.revision()));
-                        sessions.setUnsyncedChanges(targetDatabase.hasPendingSync()); sessions.setSyncBlocked(false);
-                        if (sessions.hasUnsyncedChanges()) syncAgain = true;
-                    }
-                    return;
+                try { applySyncResult(LedgerSync.sync(sessions, database, new HttpSyncTransport(sessions))); }
+                finally {
+                    syncing.set(false);
+                    if (syncAgain) { syncAgain = false; syncNow(); }
                 }
-                JSONObject snapshot = result.optJSONObject("snapshot");
-                if (targetDatabase != database || !accountId.equals(sessions.syncAccountId()) || !token.equals(sessions.token())) return;
-                synchronized (targetDatabase) {
-                if (targetDatabase.changeToken() != change) {
-                    sessions.setRevision(result.optLong("revision", snapshot == null ? sessions.revision() : snapshot.optLong("revision", sessions.revision())));
-                    sessions.setUnsyncedChanges(true); syncAgain = true; return;
-                }
-                if (snapshot != null) {
-                    targetDatabase.importSnapshot(snapshot);
-                    DueReminderManager.checkDueDates(getApplicationContext());
-                    JSONObject account = snapshot.optJSONObject("account"); if (account != null) sessions.setAccount(account);
-                }
-                sessions.setRevision(result.optLong("revision", snapshot == null ? sessions.revision() + 1 : snapshot.optLong("revision", sessions.revision() + 1)));
-                sessions.setUnsyncedChanges(false); sessions.setSyncBlocked(false);
-                }
-            } catch (ApiFailure failure) {
-                JSONObject latest = failure.body.optJSONObject("snapshot");
-                if (failure.status == 409 && latest == null && failure.body.optBoolean("reloadRequired")) {
-                    try { latest = apiRequest("GET", "/mobile/snapshot", null, token).optJSONObject("snapshot"); }
-                    catch (Exception ignored) { sessions.setSyncBlocked(true); }
-                }
-                if (latest != null) handleServerSnapshot(latest, "تغيّرت بيانات الحساب من جهاز آخر أو من الإدارة.");
-                else if (failure.status == 401 || failure.status == 423) {
-                    sessions.clear(); runOnUiThread(() -> { show("login"); showBrandedMessage(failure.getMessage()); });
-                } else if (failure.status == 403) {
-                    try { JSONObject response = apiRequest("GET", "/mobile/snapshot", null, sessions.token()); JSONObject snapshot = response.optJSONObject("snapshot"); if (snapshot != null) handleServerSnapshot(snapshot, failure.getMessage()); }
-                    catch (Exception ignored) { runOnUiThread(() -> showBrandedMessage(failure.getMessage())); }
-                } else runOnUiThread(() -> showBrandedMessage(failure.getMessage()));
-            } catch (Exception error) {
-                SyncScheduler.schedule(this, true);
-            } finally {
-                syncing.set(false);
-                if (syncAgain) { syncAgain = false; syncLocalChanges(); }
-            }
             }
         });
+    }
+
+    /** The only place an outcome becomes a dialog, a logout, a reschedule or a silent success. */
+    private void applySyncResult(LedgerSync.Result result) {
+        switch (result.outcome) {
+            case SYNCED: case PULLED:
+                runOnUiThread(this::refreshCurrentScreen);
+                break;
+            case UP_TO_DATE:
+                break;
+            case CONFLICT:
+                runOnUiThread(() -> handleServerSnapshot(result.snapshot, result.message == null ? "وجد الخادم نسخة أحدث من سجلات المتجر." : result.message));
+                break;
+            case UNAUTHORIZED:
+                runOnUiThread(() -> { sessions.clear(); show("login"); showBrandedMessage(result.message); });
+                break;
+            case PASSWORD_CHANGE_REQUIRED:
+                runOnUiThread(() -> show("force_password"));
+                break;
+            case RETRY_LATER:
+                SyncScheduler.schedule(this, true);
+                break;
+            default:
+                if (result.message != null) runOnUiThread(() -> showBrandedMessage(result.message));
+                break;
+        }
+        if (result.movedData()) network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
     }
 
     private void handleServerSnapshot(JSONObject snapshot, String message) {
@@ -706,42 +686,21 @@ public final class MainActivity extends Activity {
     void retryLocalSync() {
         if (!sessions.hasUnsyncedChanges()) { showBrandedMessage("لا توجد تغييرات محلية بانتظار المزامنة."); return; }
         sessions.setSyncBlocked(false);
-        syncLocalChanges();
+        syncNow();
     }
 
     private void requestServerSnapshot() {
-        if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("هذه نسخة مستقلة ولا تتصل بخادم."); return; }
+        if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("هذه النسخة مستقلة ولا تتصل بخادم."); return; }
         network.execute(() -> {
-            try {
-                JSONObject status = apiRequest("GET", "/mobile/session", null, sessions.token());
-                PagedSnapshotTransfer.download(sessions, database, status.optLong("revision", sessions.revision()));
+            LedgerSync.Result result = LedgerSync.pull(sessions, database, new HttpSyncTransport(sessions));
+            if (result.movedData() || result.outcome == LedgerSync.Outcome.UP_TO_DATE) {
+                network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
                 runOnUiThread(() -> { refreshCurrentScreen(); showBrandedMessage("تم تحميل أحدث السجلات من الخادم."); });
-            } catch (Exception e) { runOnUiThread(() -> showBrandedMessage(e.getMessage() == null ? "تعذر الاتصال بالخادم." : e.getMessage())); }
-        });
-    }
-
-    private void checkServerUpdates() {
-        if (BuildConfig.STANDALONE_MODE || sessions.token().isEmpty() || sessions.forcePasswordChange()) return;
-        network.execute(() -> {
-            try {
-                JSONObject status = apiRequest("GET", "/mobile/session", null, sessions.token());
-                JSONObject account = status.optJSONObject("account"); if (account != null) sessions.setAccount(account);
-                sessions.setForcePasswordChange(status.optBoolean("forcePasswordChange", false));
-                long serverRevision = status.optLong("revision", sessions.revision());
-                if (serverRevision != sessions.revision() && !sessions.syncBlocked()) {
-                    if (!sessions.hasUnsyncedChanges()) {
-                        PagedSnapshotTransfer.download(sessions, database, serverRevision);
-                        runOnUiThread(() -> refreshCurrentScreen());
-                    } else {
-                        JSONObject response = apiRequest("GET", "/mobile/snapshot", null, sessions.token());
-                        JSONObject snapshot = response.optJSONObject("snapshot");
-                        if (snapshot != null) handleServerSnapshot(snapshot, "وجد الخادم نسخة أحدث من سجلات المتجر.");
-                    }
-                }
-                if (sessions.forcePasswordChange()) runOnUiThread(() -> show("force_password"));
-            } catch (ApiFailure failure) {
-                if (failure.status == 401 || failure.status == 423) runOnUiThread(() -> { sessions.clear(); show("login"); showBrandedMessage(failure.getMessage()); });
-            } catch (Exception ignored) { }
+            } else if (result.outcome == LedgerSync.Outcome.UNAUTHORIZED) {
+                runOnUiThread(() -> { sessions.clear(); show("login"); showBrandedMessage(result.message); });
+            } else if (result.message != null) {
+                runOnUiThread(() -> showBrandedMessage(result.message));
+            }
         });
     }
 
@@ -1235,8 +1194,7 @@ public final class MainActivity extends Activity {
                 && !"customer_login".equals(currentRoute) && !("customer_portal".equals(currentRoute) && demoCustomerSession)) show("login");
         leftAt = 0;
         if (!BuildConfig.STANDALONE_MODE && sessions.isActive() && !"force_password".equals(currentRoute)) {
-            if (sessions.hasUnsyncedChanges() && !sessions.syncBlocked()) syncLocalChanges();
-            else checkServerUpdates();
+            syncNow();
             statusHandler.removeCallbacks(statusPoll);
             statusHandler.postDelayed(statusPoll, 3_600_000L);
         }

@@ -21,7 +21,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 /** Keeps the server bearer token encrypted with an Android Keystore key. */
-final class SessionStore {
+final class SessionStore implements SyncSession, LedgerSession {
     private static final String PREFS = "sadad.session";
     private static final String KEY_ALIAS = "sadad.session.aes";
     /** Separate pref keys so existing installs keep working unchanged: the device token and the
@@ -66,7 +66,7 @@ final class SessionStore {
         }
     }
 
-    synchronized String token() {
+    public synchronized String token() {
         try { return decryptToken(preferences.getString("token", "")); }
         catch (Exception e) { return ""; }
     }
@@ -192,7 +192,7 @@ final class SessionStore {
         return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
     }
 
-    boolean isActive() {
+    public boolean isActive() {
         String currentToken = token();
         if (currentToken.isEmpty() || expiresAt() <= System.currentTimeMillis()) return false;
         if (currentToken.startsWith("offline-")) return BuildConfig.STANDALONE_MODE;
@@ -202,39 +202,39 @@ final class SessionStore {
         return !"paused".equals(mode) && (!"timed".equals(mode) || subscriptionExpiry > System.currentTimeMillis());
     }
     long expiresAt() { return preferences.getLong("expires_at", 0L); }
-    long revision() { return preferences.getLong("revision", 0L); }
-    void setRevision(long revision) { preferences.edit().putLong("revision", revision).apply(); updateCurrentSavedBundle(); }
-    String deviceId() {
+    public long revision() { return preferences.getLong("revision", 0L); }
+    public void setRevision(long revision) { preferences.edit().putLong("revision", revision).apply(); updateCurrentSavedBundle(); }
+    public String deviceId() {
         String value = preferences.getString("device_id", "");
         if (!value.isEmpty()) return value;
         value = UUID.randomUUID().toString();
         preferences.edit().putString("device_id", value).apply();
         return value;
     }
-    boolean hasUnsyncedChanges() { return preferences.getBoolean("sync_dirty", false); }
-    void setUnsyncedChanges(boolean value) { preferences.edit().putBoolean("sync_dirty", value).apply(); }
-    boolean syncBlocked() { return preferences.getBoolean("sync_blocked", false); }
-    void setSyncBlocked(boolean value) { preferences.edit().putBoolean("sync_blocked", value).apply(); }
+    public boolean hasUnsyncedChanges() { return preferences.getBoolean("sync_dirty", false); }
+    public void setUnsyncedChanges(boolean value) { preferences.edit().putBoolean("sync_dirty", value).apply(); }
+    public boolean syncBlocked() { return preferences.getBoolean("sync_blocked", false); }
+    public void setSyncBlocked(boolean value) { preferences.edit().putBoolean("sync_blocked", value).apply(); }
     String syncOwner() { return preferences.getString("sync_owner", ""); }
-    String syncAccountId() { return preferences.getString("sync_account_id", ""); }
-    boolean forcePasswordChange() { return preferences.getBoolean("force_password_change", false); }
-    void setForcePasswordChange(boolean value) { preferences.edit().putBoolean("force_password_change", value).apply(); updateCurrentSavedBundle(); }
-    JSONObject account() {
+    public String syncAccountId() { return preferences.getString("sync_account_id", ""); }
+    public boolean forcePasswordChange() { return preferences.getBoolean("force_password_change", false); }
+    public void setForcePasswordChange(boolean value) { preferences.edit().putBoolean("force_password_change", value).apply(); updateCurrentSavedBundle(); }
+    public JSONObject account() {
         try { return new JSONObject(preferences.getString("account", "{}")); }
         catch (JSONException e) { return new JSONObject(); }
     }
-    void setAccount(JSONObject account) { preferences.edit().putString("account", account == null ? "{}" : account.toString()).apply(); updateCurrentSavedBundle(); }
-    String apiBaseUrl() { return preferences.getString("api_base_url", BuildConfig.API_BASE_URL); }
+    public void setAccount(JSONObject account) { preferences.edit().putString("account", account == null ? "{}" : account.toString()).apply(); updateCurrentSavedBundle(); }
+    public String apiBaseUrl() { return preferences.getString("api_base_url", BuildConfig.API_BASE_URL); }
     void setApiBaseUrl(String value) { preferences.edit().putString("api_base_url", value).apply(); updateCurrentSavedBundle(); }
 
     /** Auth envelope (accessToken/refreshToken/expiresAt) issued by the sadad-auth gateway.
      *  Empty when the account has never logged in through the gateway. */
-    synchronized JSONObject auth() {
+    public synchronized JSONObject auth() {
         try { return new JSONObject(decryptToken(preferences.getString(AUTH_KEY, ""))); }
         catch (Exception e) { return new JSONObject(); }
     }
 
-    synchronized void updateAuth(JSONObject auth) throws Exception {
+    public synchronized void updateAuth(JSONObject auth) throws Exception {
         if (auth == null) return;
         preferences.edit().putString(AUTH_KEY, encryptToken(auth.toString())).apply();
     }
