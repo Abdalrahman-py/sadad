@@ -112,7 +112,15 @@
                 <label>أو اختر ملف قائمة الأوامر<input id="recoveryFile" type="file" accept="application/json,.json"></label>
                 <label>سبب الاسترداد<textarea id="recoveryReason" rows="2" maxlength="2000" required></textarea></label>
                 <button class="button primary">اعتماد الاسترداد</button></fieldset><p id="recoveryError" class="form-error" role="alert"></p>
-              </form><div id="recoveryResult" class="result hidden" role="status"></div><div id="recoveryHistory" class="record-list"></div>
+              </form>
+              <div id="recoverySummary" class="panel-inset stack" hidden>
+                <div class="panel-head"><h4>معاينة قبل الاعتماد</h4><span class="small muted" id="recoverySummaryVerdict" role="status"></span></div>
+                <div class="mini-metrics" id="recoverySummaryStats"></div>
+                <p class="small muted" id="recoverySummaryRange"></p>
+                <div class="record-list" id="recoverySummaryProblems"></div>
+                <details><summary>تفاصيل الإدخالات</summary><div class="record-list" id="recoverySummaryDetails"></div></details>
+              </div>
+              <div id="recoveryResult" class="result hidden" role="status"></div><div id="recoveryHistory" class="record-list"></div>
             </section>
             <section class="panel-inset stack">
               <h3>سجل نشاط المتجر</h3>

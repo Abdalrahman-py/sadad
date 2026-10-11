@@ -379,12 +379,115 @@
     $('#recoveryOld').innerHTML='<option value="">اختر الهاتف السابق</option>'+old.map(phone=>`<option value="${esc(phone.installationId)}">${fmt(phone.generation)} · ${esc(phone.installationId)}</option>`).join('');
     $('#recoveryNew').innerHTML=active?`<option value="${esc(active.installationId)}">${fmt(active.generation)} · ${esc(active.installationId)}</option>`:'<option value="">اعتمد الهاتف الجديد أولًا</option>';
     $('#recoveryForm button').disabled=!active || !old.length || current.archived;
+    renderRecoverySummary();
     $('#recoveryHistory').innerHTML=permits.length?'<h4>تصاريح الاسترداد السابقة</h4>'+permits.map(permit=>`<div class="record-row"><div><b>${esc(permit.approved_by)} · ${new Date(permit.expires_at)>new Date()?'صالح':'منتهي'}</b><code dir="ltr">${esc(permit.id)}</code><small>${esc(permit.reason)} · ينتهي ${esc(isoDate(permit.expires_at))}</small></div></div>`).join(''):'';
   }
+  // --- Recovery manifest pre-flight ---------------------------------------------------
+  // Approving a recovery is irreversible, and the server only reports the first problem it
+  // finds. sadid_private.approve_recovery requires a JSON array of 1..1000 original commands,
+  // each with schemaVersion "1", the OLD installation's id and generation, a unique
+  // operationId, and a type in {contact.create, debt.create, payment.create}. Check all of that
+  // here so the admin sees what they are authorising before they authorise it.
+  const recoveryTypes = { 'contact.create': 'إضافة شخص', 'debt.create': 'إضافة دين', 'payment.create': 'تسجيل دفعة' };
+  const recoveryMethods = { cash: 'نقدي', bank: 'بنكي', wallet: 'محفظة' };
+  const latinDigits = value => String(value ?? '').replace(/[٠-٩]/g, digit => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
+  const recoveryMoney = cents => `${fmt(Number(cents || 0) / 100)} ₪`;
+
+  function readRecoveryCommands(text) {
+    let parsed; try { parsed = JSON.parse(text); } catch { return { error: 'النص ليس JSON صالحًا.' }; }
+    const commands = Array.isArray(parsed) ? parsed
+      : Array.isArray(parsed?.commands) ? parsed.commands
+      : Array.isArray(parsed?.manifest) ? parsed.manifest
+      : Array.isArray(parsed?.entries) ? parsed.entries.map(entry => entry?.command).filter(Boolean)
+      : null;
+    if (!commands) return { error: 'لم أجد قائمة أوامر. الصق مصفوفة الأوامر من شاشة الاسترداد أو ملفها.' };
+    return { commands };
+  }
+
+  function inspectRecoveryManifest(text, oldPhone) {
+    const read = readRecoveryCommands(text);
+    if (read.error) return { problems: [{ level: 'block', message: read.error }] };
+    const commands = read.commands, problems = [], seen = new Map(), byType = {}, details = [];
+    let debtCents = 0, paymentCents = 0, first = null, last = null;
+    commands.forEach((cmd, index) => {
+      const at = `الأمر ${fmt(index + 1)}`;
+      if (!cmd || typeof cmd !== 'object') { problems.push({ level: 'block', message: `${at}: ليس كائنًا.` }); return; }
+      if (!recoveryTypes[cmd.type]) problems.push({ level: 'block', message: `${at}: نوع غير مدعوم (${cmd.type ?? 'فارغ'}).` });
+      else byType[cmd.type] = (byType[cmd.type] || 0) + 1;
+      if (cmd.schemaVersion !== '1') problems.push({ level: 'block', message: `${at}: schemaVersion يجب أن يكون "1".` });
+      if (!cmd.operationId) problems.push({ level: 'block', message: `${at}: بلا operationId.` });
+      else if (seen.has(cmd.operationId)) problems.push({ level: 'block', message: `${at}: رقم عملية مكرر مع ${seen.get(cmd.operationId)}.` });
+      else seen.set(cmd.operationId, at);
+      if (oldPhone) {
+        if (String(cmd.originInstallationId || '') !== String(oldPhone.installationId)) problems.push({ level: 'block', message: `${at}: originInstallationId لا يطابق الهاتف السابق المختار.` });
+        if (Number(cmd.originGeneration) !== Number(oldPhone.generation)) problems.push({ level: 'block', message: `${at}: originGeneration لا يطابق جيل الهاتف السابق (${fmt(oldPhone.generation ?? 0)}).` });
+      }
+      const payload = cmd.payload && typeof cmd.payload === 'object' ? cmd.payload : null;
+      if (!payload) problems.push({ level: 'block', message: `${at}: بلا payload.` });
+      const created = Date.parse(cmd.createdAt);
+      if (Number.isFinite(created)) { if (first === null || created < first) first = created; if (last === null || created > last) last = created; }
+      if (type0(cmd) && payload) {
+        if (cmd.type === 'contact.create') {
+          const name = String(payload.name || '').trim();
+          if (!name) problems.push({ level: 'block', message: `${at}: شخص بلا اسم.` });
+          const phone = latinDigits(payload.phone).replace(/[\s()\-]/g, '');
+          if (phone && !/^\+[1-9][0-9]{7,14}$/.test(phone)) problems.push({ level: 'warn', message: `${at}: رقم الهاتف ليس بصيغة دولية (${phone}).` });
+          details.push({ at, text: `شخص: ${name || '—'}`, sub: phone || 'بلا رقم' });
+        } else if (cmd.type === 'debt.create') {
+          const cents = Number(latinDigits(payload.amountCents));
+          if (!Number.isFinite(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدين غير صالح.` }); else debtCents += cents;
+          if (!['receivable', 'payable'].includes(payload.direction)) problems.push({ level: 'block', message: `${at}: اتجاه الدين غير صالح.` });
+          details.push({ at, text: `دين: ${recoveryMoney(cents)}`, sub: payload.direction === 'payable' ? 'مستحق على المتجر' : 'مستحق للمتجر' });
+        } else if (cmd.type === 'payment.create') {
+          const cents = Number(latinDigits(payload.amountCents));
+          if (!Number.isFinite(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدفعة غير صالح.` }); else paymentCents += cents;
+          if (!['cash', 'bank', 'wallet'].includes(payload.method)) problems.push({ level: 'block', message: `${at}: طريقة الدفع غير صالحة.` });
+          details.push({ at, text: `دفعة: ${recoveryMoney(cents)}`, sub: recoveryMethods[payload.method] || payload.method || '—' });
+        }
+      }
+    });
+    if (!commands.length) problems.push({ level: 'block', message: 'القائمة فارغة.' });
+    if (commands.length > 1000) problems.push({ level: 'block', message: `${fmt(commands.length)} أمرًا يتجاوز الحد الأقصى 1000.` });
+    return { stats: { total: commands.length, byType, debtCents, paymentCents, first, last }, problems, details };
+  }
+  function type0(cmd) { return !!recoveryTypes[cmd.type]; }
+
+  function renderRecoverySummary() {
+    const box = $('#recoverySummary'), button = $('#recoveryForm button');
+    if (!box || !button) return;
+    const text = $('#recoveryManifest').value.trim();
+    const active = currentInstallations.find(phone => phone.status === 'active');
+    const oldReady = currentInstallations.some(phone => phone.status === 'revoked' && active && phone.generation < active.generation);
+    const permitted = !!active && oldReady && !current.archived;
+    if (!text) { box.hidden = true; button.disabled = !permitted; return; }
+    box.hidden = false;
+    const oldPhone = currentInstallations.find(phone => phone.installationId === $('#recoveryOld').value);
+    const result = inspectRecoveryManifest(text, oldPhone);
+    const blocking = (result.problems || []).filter(item => item.level === 'block');
+    const warnings = (result.problems || []).filter(item => item.level !== 'block');
+    const stats = result.stats;
+    $('#recoverySummaryStats').innerHTML = stats ? [
+      ['الإدخالات', fmt(stats.total)], ['أشخاص', fmt(stats.byType['contact.create'] || 0)],
+      ['ديون', fmt(stats.byType['debt.create'] || 0)], ['دفعات', fmt(stats.byType['payment.create'] || 0)],
+      ['إجمالي الديون', recoveryMoney(stats.debtCents)], ['إجمالي الدفعات', recoveryMoney(stats.paymentCents)],
+    ].map(([label, value]) => `<div class="mini-metric"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('') : '';
+    $('#recoverySummaryRange').textContent = stats && stats.first ? `أقدم إدخال ${isoDate(new Date(stats.first).toISOString())} · أحدث إدخال ${isoDate(new Date(stats.last).toISOString())}` : '';
+    $('#recoverySummaryProblems').innerHTML = [
+      ...blocking.map(item => `<div class="record-row"><div><b class="form-error">يمنع الاعتماد</b><small>${esc(item.message)}</small></div></div>`),
+      ...warnings.map(item => `<div class="record-row"><div><b>تنبيه</b><small>${esc(item.message)}</small></div></div>`),
+    ].join('') || '<div class="record-row"><div><b>لا مشاكل في الصيغة</b><small>كل إدخال يحمل النوع ومعرّف العملية وهوية الهاتف السابق.</small></div></div>';
+    $('#recoverySummaryDetails').innerHTML = (result.details || []).slice(0, 200).map(item => `<div class="record-row"><div><b>${esc(item.at)}</b><small>${esc(item.text)} · ${esc(item.sub)}</small></div></div>`).join('') || '<div class="record-row"><div><small>لا إدخالات قابلة للعرض.</small></div></div>';
+    $('#recoverySummaryVerdict').textContent = !stats ? 'تعذّرت قراءة القائمة.' : blocking.length ? `${fmt(blocking.length)} مشكلة تمنع الاعتماد.` : warnings.length ? `جاهز للاعتماد مع ${fmt(warnings.length)} تنبيه.` : 'جاهز للاعتماد.';
+    button.disabled = !permitted || !stats || blocking.length > 0;
+  }
+
+  $('#recoveryManifest').addEventListener('input', renderRecoverySummary);
+  $('#recoveryOld').addEventListener('change', renderRecoverySummary);
+  $('#recoveryNew').addEventListener('change', renderRecoverySummary);
   $('#recoveryFile').addEventListener('change',async()=>{
     const file=$('#recoveryFile').files[0];if(!file)return;
     if(file.size>4000000){$('#recoveryError').textContent='ملف القائمة أكبر من الحد المسموح (4 MB).';return;}
-    try{$('#recoveryManifest').value=await file.text();$('#recoveryError').textContent='';}catch(error){$('#recoveryError').textContent='تعذر قراءة الملف.';}
+    try{$('#recoveryManifest').value=await file.text();$('#recoveryError').textContent='';renderRecoverySummary();}catch(error){$('#recoveryError').textContent='تعذر قراءة الملف.';}
   });
   $('#recoveryForm').addEventListener('submit',async event=>{
     event.preventDefault();const button=$('#recoveryForm button');$('#recoveryError').textContent='';
@@ -396,7 +499,13 @@
       const commands=Array.isArray(parsed)?parsed:parsed?.commands;
       if(!Array.isArray(commands) || commands.length<1 || commands.length>1000)throw new Error('القائمة يجب أن تحتوي من أمر واحد إلى 1000 أمر.');
       if(!$('#recoveryOld').value || !$('#recoveryNew').value)throw new Error('اختر الهاتف السابق والهاتف المعتمد.');
-      if(!confirm(`اعتماد استرداد ${commands.length} أمرًا من الهاتف السابق؟ الموافقة تشمل هذه الأوامر الأصلية فقط.`))return;
+      // Same pre-flight the preview panel runs; the server only reports its first problem.
+      const preflight=inspectRecoveryManifest(raw,currentInstallations.find(phone=>phone.installationId===$('#recoveryOld').value));
+      const blocking=(preflight.problems||[]).filter(item=>item.level==='block');
+      if(blocking.length)throw new Error(`لا يمكن الاعتماد: ${blocking[0].message}`);
+      const pstats=preflight.stats||{byType:{},debtCents:0,paymentCents:0};
+      const psummary=['أشخاص: '+fmt(pstats.byType['contact.create']||0),'ديون: '+recoveryMoney(pstats.debtCents),'دفعات: '+recoveryMoney(pstats.paymentCents)].join(' · ');
+      if(!confirm(`اعتماد استرداد ${fmt(commands.length)} إدخالًا (${psummary}) من الهاتف السابق؟\nالموافقة تشمل هذه الأوامر الأصلية فقط ولا يمكن التراجع عنها.`))return;
       button.disabled=true;
       const r=await ledgerApi('/recovery/approve',{oldInstallationId:$('#recoveryOld').value,newInstallationId:$('#recoveryNew').value,commands,reason:$('#recoveryReason').value.trim()});
       await openStore(storeId);
