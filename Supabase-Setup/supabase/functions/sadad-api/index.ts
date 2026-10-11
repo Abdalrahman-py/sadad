@@ -2,6 +2,16 @@ import { createClient } from "supabase";
 import { randomBytes, scrypt, timingSafeEqual, createHash, createCipheriv, createDecipheriv } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { adminLedgerSnapshot, ledgerAuditEvents } from "./admin-ledger.ts";
+import {
+  batchSize,
+  DELTA_BATCH_LIMIT,
+  deletedIds,
+  LEDGER_TABLES,
+  ledgerRowToWire,
+  mergeDeltaIntoSnapshot,
+  SNAPSHOT_PAGE_LIMIT,
+  type WireSnapshot,
+} from "./ledger-sync.ts";
 
 type Json = Record<string, any>;
 type Principal = { kind: "admin" | "store"; token: string; session: Json; user: Json; device: Json | null };
@@ -263,7 +273,7 @@ function assertIds(rows: Json[], label: string): Set<number> {
 }
 function paymentKey(contactId: number, createdAt: number, method: string): string { return `${contactId}|${createdAt}|${method}`; }
 
-async function syncSnapshot(store: Json, input: Json, baseRevision: unknown, device: Json): Promise<Json> {
+async function syncSnapshot(store: Json, input: Json, baseRevision: unknown, device: Json, includeSnapshot = true): Promise<Json> {
   if (!input || !Array.isArray(input.contacts) || !Array.isArray(input.debts) || !Array.isArray(input.payments)) throw new HttpError(400, "بيانات المزامنة غير مكتملة. لم يتم تغيير السجل.");
   const contacts: Json[] = input.contacts, debts: Json[] = input.debts, payments: Json[] = input.payments;
   if (contacts.length > 50_000 || debts.length > 100_000 || payments.length > 500_000) throw new HttpError(413, "عدد السجلات أكبر من الحد.");
@@ -405,7 +415,69 @@ async function syncSnapshot(store: Json, input: Json, baseRevision: unknown, dev
     throw commit.error;
   }
   const latest = dataOrThrow(await db.from("stores").select("*").eq("id", store.id).single());
-  return { revision: Number(commit.data), snapshot: await makeSnapshot(latest) };
+  return { revision: Number(commit.data), snapshot: includeSnapshot ? await makeSnapshot(latest) : null };
+}
+
+/**
+ * Apply one bounded offline delta batch, the path the 2.5.10 Android app uses for routine sync.
+ *
+ * Mirrors the legacy Node server's syncDelta: merge the batch into the ledger as it exists on the
+ * server, then commit through the same validated full-snapshot path as /mobile/sync. Rows the
+ * batch does not mention are preserved, so the commit sees only genuinely deleted rows as removals.
+ */
+async function syncDelta(store: Json, body: Json, device: Json): Promise<Json> {
+  const delta = body.delta;
+  if (!delta || typeof delta !== "object" || Array.isArray(delta)) throw new HttpError(400, "دفعة مزامنة غير مكتملة.");
+  for (const table of LEDGER_TABLES) if (!Array.isArray((delta as Json)[table])) throw new HttpError(400, "دفعة مزامنة غير مكتملة.");
+
+  let count = 0;
+  const deleted: Record<string, number[]> = { contacts: [], debts: [], payments: [] };
+  try {
+    count = batchSize(delta as never);
+    for (const table of LEDGER_TABLES) deleted[table] = deletedIds((delta as Json).deleted, table);
+  } catch {
+    throw new HttpError(400, "دفعة مزامنة غير صالحة.");
+  }
+  if (count > DELTA_BATCH_LIMIT) throw new HttpError(413, `دفعة المزامنة تتجاوز ${DELTA_BATCH_LIMIT} سجل.`);
+  // The device must still be working from the current revision, exactly like the full sync path.
+  if (Number(body.baseRevision) !== Number(store.revision)) {
+    throw new HttpError(409, "تغيّرت بيانات المتجر على جهاز آخر.", { revision: Number(store.revision), reloadRequired: true });
+  }
+  if (!count) return { revision: Number(store.revision) };
+
+  const current = await makeSnapshot(store);
+  const merged = mergeDeltaIntoSnapshot(current as WireSnapshot, delta as never, deleted);
+  return syncSnapshot(store, merged, body.baseRevision, device, false);
+}
+
+/**
+ * Idempotency receipt for a retried batch (see migrations/*_sadad_sync_receipts.sql).
+ *
+ * Best-effort on purpose: if the table is not deployed yet the batch still syncs, it just loses
+ * replay protection. A missing receipt must never break a store's sync.
+ */
+async function findSyncReceipt(storeId: number, deviceId: string, batchId: string): Promise<number | null> {
+  if (!deviceId || !batchId) return null;
+  try {
+    const row = dataOrThrow(await db.from("sync_receipts").select("revision").eq("store_id", storeId).eq("device_id", deviceId).eq("batch_id", batchId).maybeSingle()) as Json | null;
+    return row ? Number(row.revision) : null;
+  } catch (error) {
+    console.error("sync receipt lookup skipped", error);
+    return null;
+  }
+}
+
+/** Record a committed batch, keeping only the newest 100 receipts per device. Best-effort. */
+async function recordSyncReceipt(storeId: number, deviceId: string, batchId: string, revision: number): Promise<void> {
+  if (!deviceId || !batchId) return;
+  try {
+    dataOrThrow(await db.from("sync_receipts").insert({ store_id: storeId, device_id: deviceId, batch_id: batchId, revision, created_at: Date.now() }));
+    const keep = dataOrThrow(await db.from("sync_receipts").select("created_at").eq("store_id", storeId).eq("device_id", deviceId).order("created_at", { ascending: false }).limit(100)) as Json[];
+    const oldest = keep[keep.length - 1];
+    if (oldest) dataOrThrow(await db.from("sync_receipts").delete().eq("store_id", storeId).eq("device_id", deviceId).lt("created_at", Number(oldest.created_at)));
+  } catch (error) {
+    console.error("sync receipt write skipped", error);
+  }
 }
 
 async function adminStoreList(auth: Principal, includeArchived = false): Promise<Json[]> {
@@ -580,7 +652,9 @@ async function route(request: Request): Promise<Response> {
     if (!store) throw new HttpError(401, "جلسة المتجر غير صالحة.");
     const snapshot = await makeSnapshot(store);
     const deviceInfo = { staffName: deviceRecord.staff_name || "صاحب المتجر", permissions: { registerPayments: true, deleteRecords: true, deleteContacts: true, ...parseJsonObject(deviceRecord.permissions) } };
-    return ok({ ...session, forcePasswordChange: !!store.force_password_change, snapshot, account: snapshot.account, device: deviceInfo, deviceStaffName: deviceInfo.staffName });
+    // pagedSnapshot tells the app to pull the ledger in pages (GET /mobile/snapshot-page) rather
+    // than import this response. The inline snapshot stays in the body so older builds keep working.
+    return ok({ ...session, forcePasswordChange: !!store.force_password_change, snapshotDeferred: body.pagedSnapshot === true, snapshot, account: snapshot.account, device: deviceInfo, deviceStaffName: deviceInfo.staffName });
   }
 
   if (request.method === "POST" && pathname === "/admin/logout") {
@@ -854,6 +928,41 @@ async function route(request: Request): Promise<Response> {
     if (request.method === "GET" && pathname === "/mobile/activity") {
       const events = dataOrThrow(await db.from("audit_events").select("actor,action,description,created_at").eq("store_id", store.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(300));
       return ok({ events: events.map((item: Json) => ({ actor: item.actor, action: item.action, description: item.description, createdAt: item.created_at })) });
+    }
+    if (request.method === "GET" && pathname === "/mobile/snapshot-page") {
+      // Paged ledger download. The app stages every page locally and commits it only if the
+      // revision still matches the one it asked for (see PagedSnapshotTransfer.java).
+      const table = url.searchParams.get("table") || "";
+      if (!(LEDGER_TABLES as readonly string[]).includes(table)) throw new HttpError(400, "جدول غير صالح.");
+      const revision = Number(url.searchParams.get("revision"));
+      if (!Number.isSafeInteger(revision) || revision !== Number(store.revision)) {
+        throw new HttpError(409, "تغيّر السجل أثناء التحميل. أعد المحاولة.", { revision: Number(store.revision), reloadRequired: true });
+      }
+      const after = Number(url.searchParams.get("after") || 0);
+      if (!Number.isSafeInteger(after) || after < 0) throw new HttpError(400, "مؤشر غير صالح.");
+      const rows = dataOrThrow(await db.from(table).select("*").eq("store_id", store.id).gt("id", after).order("id", { ascending: true }).limit(SNAPSHOT_PAGE_LIMIT)) as Json[];
+      return ok({
+        rows: rows.map(ledgerRowToWire),
+        revision: Number(store.revision),
+        nextAfter: rows.length ? Number(rows[rows.length - 1].id) : after,
+        done: rows.length < SNAPSHOT_PAGE_LIMIT,
+        account: await accountForStore(store),
+      });
+    }
+    if (request.method === "POST" && pathname === "/mobile/sync-delta") {
+      requirePermission(store, "contacts");
+      requirePermission(store, "debts");
+      if (!auth.device) throw new HttpError(401, "الجهاز غير معتمد.");
+      const body = await bodyJson(request);
+      const deviceId = text(auth.device.device_id, 120), batchId = text(body.batchId, 100);
+      // A retried batch answers with the revision it already committed instead of a false conflict.
+      const replayed = await findSyncReceipt(store.id, deviceId, batchId);
+      if (replayed !== null) return ok({ revision: replayed, acknowledged: true, replayed: true });
+      const changed = await syncDelta(store, body, auth.device);
+      const revision = Number(changed.revision);
+      await recordSyncReceipt(store.id, deviceId, batchId, revision);
+      const latest = dataOrThrow(await db.from("stores").select("*").eq("id", store.id).single());
+      return ok({ revision, account: await accountForStore(latest), acknowledged: true });
     }
     if (request.method === "GET" && pathname === "/mobile/snapshot") return ok({ snapshot: await makeSnapshot(store) });
     if (request.method === "POST" && pathname === "/mobile/sync") {
