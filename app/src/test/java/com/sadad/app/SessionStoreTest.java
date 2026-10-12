@@ -30,4 +30,13 @@ public final class SessionStoreTest {
                 .put("account", new JSONObject().put("id", "4"))));
         assertEquals("1", session.account().getString("id"));
     }
+
+    @Test public void anIncompleteLoginCannotReplaceTheCurrentAccount() throws Exception {
+        TestPreferences storage = new TestPreferences();
+        storage.values.put("account", "{\"id\":\"1\"}");
+        SessionStore session = new SessionStore(storage.open());
+        assertThrows(IllegalArgumentException.class, () -> session.save(new JSONObject().put("token", "")
+                .put("account", new JSONObject())));
+        assertEquals("1", session.account().getString("id"));
+    }
 }

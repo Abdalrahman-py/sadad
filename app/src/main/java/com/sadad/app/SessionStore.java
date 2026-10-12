@@ -35,8 +35,10 @@ final class SessionStore implements LedgerSession {
     synchronized void save(JSONObject response) throws Exception {
         JSONObject account = response.optJSONObject("account");
         String accountId = account == null ? "" : account.optString("id", "");
-        if (!accountId.isEmpty() && !canSaveAccount(accountId)) throw new IllegalStateException("يمكن حفظ ثلاثة حسابات متاجر كحد أقصى على هذا الجهاز.");
-        String encryptedToken = encryptToken(response.getString("token"));
+        String token = response.optString("token", "");
+        if (accountId.isEmpty() || token.isEmpty()) throw new IllegalArgumentException("استجابة الدخول غير مكتملة.");
+        if (!canSaveAccount(accountId)) throw new IllegalStateException("يمكن حفظ ثلاثة حسابات متاجر كحد أقصى على هذا الجهاز.");
+        String encryptedToken = encryptToken(token);
         JSONObject auth = response.optJSONObject("auth");
         String encryptedAuth = auth == null ? "" : encryptToken(auth.toString());
         JSONObject device = response.optJSONObject("device");
