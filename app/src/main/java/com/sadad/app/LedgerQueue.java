@@ -38,7 +38,8 @@ final class LedgerQueue {
             String legacyId = context.getSharedPreferences("sadid.installation", 0).getString("id", "");
             JSONObject envelope = journal.metadata("lease").optJSONObject("envelope");
             boolean adoptLegacy = false;
-            if (!legacyId.isEmpty() && envelope != null) {
+            if (!legacyId.isEmpty() && envelope != null && legacyId.equals(new JSONObject(new String(
+                    Base64Url.decode(envelope.getString("payload")), StandardCharsets.UTF_8)).optString("installationId"))) {
                 SignedLedgerSync.verifyLease(envelope, legacyId, storeId, userId);
                 adoptLegacy = true;
             }
@@ -83,6 +84,16 @@ final class LedgerQueue {
         catch (Exception unreadable) { return false; }
     }
 
+    boolean hasPendingWork() throws Exception {
+        if (journal.metadata("sync").optBoolean("recoveryRequired")) return true;
+        JSONArray entries = journal.entries();
+        for (int i = 0; i < entries.length(); i++) {
+            if (!java.util.Arrays.asList("confirmed", "rejected", "cancelled", "reviewed")
+                    .contains(entries.getJSONObject(i).optString("state"))) return true;
+        }
+        return false;
+    }
+
     /**
      * Queues one edit. The command is built from the epoch the last snapshot declared and depends on
      * the operations that introduce the rows it references, so the ledger can accept them in order
@@ -109,7 +120,9 @@ final class LedgerQueue {
     }
 
     String createContact(JSONObject payload, String initialAmount, String dueDate, String debtNote) throws Exception {
-        long cents = SadadDatabase.centsOf(initialAmount);
+        String amount = initialAmount == null ? "" : initialAmount.trim();
+        long cents = amount.isEmpty() ? 0L : SadadDatabase.centsOf(amount);
+        if (!amount.isEmpty() && cents <= 0L) throw new IllegalArgumentException("يجب أن يكون مبلغ الدين أكبر من صفر.");
         String contactId = LedgerCommand.newEntityId();
         JSONObject contact = command(LedgerCommand.CONTACT_CREATE, "", payload, contactId);
         JSONArray commands = new JSONArray().put(contact);

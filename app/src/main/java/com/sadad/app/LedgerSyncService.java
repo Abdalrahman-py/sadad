@@ -14,7 +14,7 @@ public final class LedgerSyncService extends JobService {
             synchronized(SyncScheduler.LOCK){
                 SessionStore session=new SessionStore(this);SadadDatabase db=null;
                 try{
-                    if(!session.isActive()||session.forcePasswordChange()||session.syncBlocked())return;
+                    if(!session.isActive()||session.forcePasswordChange())return;
                     String account=session.syncAccountId();if(session.token().isEmpty())return;
                     db=new SadadDatabase(this,session.databaseNameForAccount(account));
                     // The signed ledger is the only protocol: the queue is the outbox, and the
@@ -25,6 +25,8 @@ public final class LedgerSyncService extends JobService {
                     try{
                         SignedLedgerSync.Result result=queue.sync();
                         try{db.importLedgerView(queue.view());}catch(Exception skipped){}
+                        session.setUnsyncedChanges(queue.hasPendingWork());
+                        session.setSyncBlocked(false);
                         retry=result.retryable();
                     }finally{queue.close();}
                     DueReminderManager.checkDueDates(this);

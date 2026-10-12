@@ -33,37 +33,35 @@ final class SessionStore implements SyncSession, LedgerSession {
     SessionStore(SharedPreferences preferences) { this.preferences = preferences; }
 
     synchronized void save(JSONObject response) throws Exception {
-        String token = response.getString("token");
-        String encryptedToken = encryptToken(token);
-        // Only the sadad-auth gateway returns an Auth envelope; a login through sadad-api leaves
-        // any previously stored one untouched.
-        JSONObject auth = response.optJSONObject("auth");
-        if (auth != null) preferences.edit().putString(AUTH_KEY, encryptToken(auth.toString())).apply();
         JSONObject account = response.optJSONObject("account");
         String accountId = account == null ? "" : account.optString("id", "");
         if (!accountId.isEmpty() && !canSaveAccount(accountId)) throw new IllegalStateException("يمكن حفظ ثلاثة حسابات متاجر كحد أقصى على هذا الجهاز.");
+        String encryptedToken = encryptToken(response.getString("token"));
+        JSONObject auth = response.optJSONObject("auth");
+        String encryptedAuth = auth == null ? "" : encryptToken(auth.toString());
         JSONObject device = response.optJSONObject("device");
         String staffName = response.optString("deviceStaffName", device == null ? "" : device.optString("staffName", ""));
         JSONObject devicePermissions = device == null ? new JSONObject() : device.optJSONObject("permissions");
-        preferences.edit()
+        SharedPreferences.Editor editor = preferences.edit()
+                .putString(AUTH_KEY, encryptedAuth)
                 .putString("token", encryptedToken)
                 .putLong("expires_at", response.optLong("expiresAt", 0L))
                 .putString("account", account == null ? "{}" : account.toString())
                 .putLong("revision", response.optJSONObject("snapshot") == null ? 0L : response.optJSONObject("snapshot").optLong("revision", 0L))
                 .putBoolean("force_password_change", response.optBoolean("forcePasswordChange", false))
                 .putString("device_staff_name", staffName)
-                .putString("device_permissions", devicePermissions == null ? "{}" : devicePermissions.toString())
-                .apply();
-        if (account != null && account.has("username")) preferences.edit().putString("sync_owner", account.optString("username", "")).putString("sync_account_id", account.optString("id", "")).apply();
+                .putString("device_permissions", devicePermissions == null ? "{}" : devicePermissions.toString());
+        if (account != null) editor.putString("sync_owner", account.optString("username", "")).putString("sync_account_id", accountId);
         if (account != null && !accountId.isEmpty()) {
             JSONObject saved = new JSONObject().put("id", accountId).put("username", account.optString("username", ""))
                     .put("name", account.optString("name", "")).put("account", account.toString()).put("encryptedToken", encryptedToken)
                     .put("expiresAt", response.optLong("expiresAt", 0L)).put("revision", response.optJSONObject("snapshot") == null ? 0L : response.optJSONObject("snapshot").optLong("revision", 0L))
                     .put("staffName", staffName).put("devicePermissions", devicePermissions == null ? "{}" : devicePermissions.toString())
                     .put("forcePasswordChange", response.optBoolean("forcePasswordChange", false))
-                    .put("encryptedAuth", preferences.getString(AUTH_KEY, ""));
-            upsertSavedAccount(saved);
+                    .put("encryptedAuth", encryptedAuth);
+            editor.putString("saved_accounts", mergedSavedAccounts(saved).toString());
         }
+        if (!editor.commit()) throw new IllegalStateException("تعذر حفظ الجلسة.");
     }
 
     public synchronized String token() {
@@ -153,7 +151,7 @@ final class SessionStore implements SyncSession, LedgerSession {
         catch (JSONException e) { return new JSONObject(); }
     }
 
-    private synchronized void upsertSavedAccount(JSONObject account) throws JSONException {
+    private synchronized JSONArray mergedSavedAccounts(JSONObject account) throws JSONException {
         JSONArray saved = savedAccounts(), updated = new JSONArray(); boolean found = false;
         for (int i = 0; i < saved.length(); i++) {
             JSONObject item = saved.optJSONObject(i); if (item == null) continue;
@@ -161,7 +159,11 @@ final class SessionStore implements SyncSession, LedgerSession {
             else updated.put(item);
         }
         if (!found) updated.put(account);
-        preferences.edit().putString("saved_accounts", updated.toString()).apply();
+        return updated;
+    }
+
+    private synchronized void upsertSavedAccount(JSONObject account) throws JSONException {
+        preferences.edit().putString("saved_accounts", mergedSavedAccounts(account).toString()).apply();
     }
 
     private String encryptToken(String token) throws Exception {
@@ -227,7 +229,14 @@ final class SessionStore implements SyncSession, LedgerSession {
 
     public synchronized void updateAuth(JSONObject auth) throws Exception {
         if (auth == null) return;
-        preferences.edit().putString(AUTH_KEY, encryptToken(auth.toString())).apply();
+        String encrypted = encryptToken(auth.toString());
+        JSONArray saved = savedAccounts();
+        for (int i = 0; i < saved.length(); i++) {
+            JSONObject account = saved.optJSONObject(i);
+            if (account != null && syncAccountId().equals(account.optString("id"))) account.put("encryptedAuth", encrypted);
+        }
+        if (!preferences.edit().putString(AUTH_KEY, encrypted).putString("saved_accounts", saved.toString()).commit())
+            throw new IllegalStateException("تعذر حفظ الجلسة المجددة.");
     }
 
     /** The ledger is always the signed one for a connected build; nothing negotiates a mode. */

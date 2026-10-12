@@ -63,9 +63,18 @@ public final class MainActivity extends Activity {
     private static final String PREF_FORCED_PASSWORD_LOGIN = "forced_password_login_required";
     private static final String PREF_FORCED_PASSWORD_WELCOME = "forced_password_welcome_shown";
     private final ExecutorService network = Executors.newSingleThreadExecutor();
+    private volatile boolean changingAccount;
+    private void executeNetwork(Runnable action) {
+        network.execute(() -> { synchronized (SyncScheduler.LOCK) { action.run(); } });
+    }
+    private String accountScope() { return sessions.syncAccountId() + "|" + LedgerQueue.subjectOf(sessions.auth().optString("accessToken")) + "|" + sessions.token(); }
+    private void postForAccount(String scope, Runnable action) {
+        runOnUiThread(() -> { if (!changingAccount && scope.equals(accountScope())) action.run(); });
+    }
+
     static final java.lang.ref.WeakReference<MainActivity> EMPTY_INSTANCE = new java.lang.ref.WeakReference<>(null);
     static volatile java.lang.ref.WeakReference<MainActivity> activeInstance = EMPTY_INSTANCE;
-    void syncTick() { if (sessions == null || !sessions.isActive()) return; if(database!=null && database.hasPendingSync())sessions.setUnsyncedChanges(true); syncNow(); }
+    void syncTick() { if (sessions == null || !sessions.isActive()) return; syncNow(); }
     private final AtomicBoolean syncing = new AtomicBoolean(false);
     private volatile boolean syncAgain;
     private final Handler statusHandler = new Handler(Looper.getMainLooper());
@@ -136,7 +145,7 @@ public final class MainActivity extends Activity {
         localSecurity = new LocalSecurity(this);
         DueReminderManager.ensureChannel(this);
         DueReminderManager.scheduleDaily(this);
-        network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+        executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         if (getPreferences(0).getBoolean("demo_data_seeded", false)) {
             database.removeLegacySampleRecords();
@@ -236,7 +245,7 @@ public final class MainActivity extends Activity {
     void changeServerPassword(String previous, String next, ActionCallback callback) {
         if (next == null || next.length() < PASSWORD_MIN || next.length() > PASSWORD_MAX) { callback.complete(false, "كلمة المرور الجديدة يجب أن تكون بين " + PASSWORD_MIN + " و" + PASSWORD_MAX + " خانة."); return; }
         if (BuildConfig.STANDALONE_MODE) {
-            network.execute(() -> {
+            executeNetwork(() -> {
                 if (!localSecurity.verifyLoginPassword(username(), previous, "123")) {
                     runOnUiThread(() -> callback.complete(false, "كلمة المرور السابقة غير صحيحة."));
                     return;
@@ -253,7 +262,7 @@ public final class MainActivity extends Activity {
         JSONObject body = new JSONObject();
         try { body.put("currentPassword", previous == null ? "" : previous).put("password", next); }
         catch (JSONException e) { callback.complete(false, "تعذر تجهيز الطلب."); return; }
-        network.execute(() -> {
+        executeNetwork(() -> {
             try {
                 apiRequest("POST", "/mobile/change-password", body, sessions.token());
                 sessions.setForcePasswordChange(false);
@@ -349,7 +358,7 @@ public final class MainActivity extends Activity {
         }
         showBrandedMessage("جارٍ الاتصال بالخادم والتحقق من الاشتراك والجهاز…");
         final SadadDatabase loginDatabase=database;
-        network.execute(() -> {
+        executeNetwork(() -> {
             JSONObject legacySnapshot;
             try { legacySnapshot = sessions.syncOwner().isEmpty() ? loginDatabase.getSnapshot() : new JSONObject(); }
             catch(Exception error){runOnUiThread(()->showBrandedMessage("تعذر قراءة البيانات المحلية. لم تُغيّر السجلات."));return;}
@@ -371,6 +380,7 @@ public final class MainActivity extends Activity {
                         ? oldSyncOwner.equalsIgnoreCase(normalizedUsername)
                         : account != null && oldSyncAccountId.equals(accountId));
                 if (existingPending && !pending) throw new IllegalStateException("توجد بيانات غير متزامنة تخص حساب متجر مختلف. سجّل الدخول بحسابه أو صدّرها قبل المتابعة.");
+                closeLedger();
                 sessions.save(response);
                 if (!accountId.isEmpty()) switchDatabaseForAccount(accountId);
                 if (account != null) sessions.setAccount(account);
@@ -422,7 +432,7 @@ public final class MainActivity extends Activity {
 
     private void loginStandalone(String username, String password, String staffName) {
         showBrandedMessage("جارٍ التحقق من الحساب المحلي…");
-        network.execute(() -> {
+        executeNetwork(() -> {
             boolean valid;
             try { valid = "123".equals(username) && localSecurity.verifyLoginPassword(username, password, "123"); }
             catch (Exception e) {
@@ -542,7 +552,7 @@ public final class MainActivity extends Activity {
     }
 
     void markLedgerChanged() {
-        network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+        executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
         if (BuildConfig.STANDALONE_MODE) return;
         sessions.setUnsyncedChanges(true);
         SyncScheduler.schedule(this, true);
@@ -561,6 +571,7 @@ public final class MainActivity extends Activity {
 
     /** The queue for the signed-in store, opened once per session. */
     private LedgerQueue ledgerQueue() throws Exception {
+        if (changingAccount && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
         if (ledger == null) ledger = LedgerQueue.open(this, sessions);
         return ledger;
     }
@@ -577,8 +588,11 @@ public final class MainActivity extends Activity {
      */
     private SignedLedgerSync.Result signedSync() {
         try {
-            SignedLedgerSync.Result result = ledgerQueue().sync();
+            LedgerQueue queue = ledgerQueue();
+            SignedLedgerSync.Result result = queue.sync();
             materializeLedger();
+            sessions.setUnsyncedChanges(queue.hasPendingWork());
+            sessions.setSyncBlocked(false);
             return result;
         } catch (Exception error) {
             return SignedLedgerSync.Result.of(SignedLedgerSync.Outcome.RETRY_LATER,
@@ -588,10 +602,11 @@ public final class MainActivity extends Activity {
 
     /** The signed pass's outcome as the screen sees it. Repeated notices are said once. */
     private void applySignedResult(SignedLedgerSync.Result result) {
+        String scope = accountScope();
         if (result.outcome == SignedLedgerSync.Outcome.SYNCED) {
             lastLedgerNotice = "";
-            runOnUiThread(this::refreshCurrentScreen);
-            network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+            postForAccount(scope, this::refreshCurrentScreen);
+            executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
             return;
         }
         if (result.outcome == SignedLedgerSync.Outcome.IDLE) return;
@@ -599,7 +614,7 @@ public final class MainActivity extends Activity {
         String message = result.message == null ? "" : result.message;
         if (message.isEmpty() || message.equals(lastLedgerNotice)) return;
         lastLedgerNotice = message;
-        runOnUiThread(() -> showBrandedMessage(message));
+        postForAccount(scope, () -> showBrandedMessage(message));
     }
 
     /**
@@ -686,7 +701,7 @@ public final class MainActivity extends Activity {
      */
     void archiveContactAsync(long contactLocalId, String reason, LedgerAction callback) {
         if (!signedLedger()) { callback.complete(true, ""); return; }
-        network.execute(() -> {
+        executeNetwork(() -> {
             try { archiveContact(contactLocalId, reason); runOnUiThread(() -> callback.complete(true, "")); }
             catch (Exception error) { reportLedgerFailure(error, callback); }
         });
@@ -702,7 +717,7 @@ public final class MainActivity extends Activity {
             }
             return;
         }
-        network.execute(() -> {
+        executeNetwork(() -> {
             try {
                 String contactId = database.remoteUuidFor("contacts", localId);
                 if (contactId.isEmpty()) throw new IllegalStateException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
@@ -728,7 +743,7 @@ public final class MainActivity extends Activity {
 
     void restoreTrashedContactAsync(long trashItemId, LedgerAction callback) {
         if (!signedLedger()) { callback.complete(false, ""); return; }
-        network.execute(() -> {
+        executeNetwork(() -> {
             try {
                 if (restoreTrashedContact(trashItemId)) runOnUiThread(() -> callback.complete(true, ""));
                 else runOnUiThread(() -> callback.complete(false, ""));
@@ -782,7 +797,7 @@ public final class MainActivity extends Activity {
     void syncNow() {
         if (BuildConfig.STANDALONE_MODE || !sessions.isActive() || sessions.forcePasswordChange()) return;
         if (!syncing.compareAndSet(false, true)) { syncAgain = true; return; }
-        network.execute(() -> {
+        executeNetwork(() -> {
             synchronized (SyncScheduler.LOCK) {
                 try {
                     if (signedLedger()) applySignedResult(signedSync());
@@ -820,7 +835,7 @@ public final class MainActivity extends Activity {
                 if (result.message != null) runOnUiThread(() -> showBrandedMessage(result.message));
                 break;
         }
-        if (result.movedData()) network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+        if (result.movedData()) executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
     }
 
     private void handleServerSnapshot(JSONObject snapshot, String message) {
@@ -837,7 +852,7 @@ public final class MainActivity extends Activity {
     private void applyServerSnapshot(JSONObject snapshot, boolean announce) {
         try {
             database.importSnapshot(snapshot);
-            network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+            executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
             sessions.setRevision(snapshot.optLong("revision", sessions.revision()));
             JSONObject account = snapshot.optJSONObject("account"); if (account != null) sessions.setAccount(account);
             sessions.setUnsyncedChanges(false); sessions.setSyncBlocked(false);
@@ -854,7 +869,7 @@ public final class MainActivity extends Activity {
 
     private void requestServerSnapshot() {
         if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("هذه النسخة مستقلة ولا تتصل بخادم."); return; }
-        network.execute(() -> {
+        executeNetwork(() -> {
             if (signedLedger()) {
                 SignedLedgerSync.Result result = signedSync();
                 runOnUiThread(() -> {
@@ -867,7 +882,7 @@ public final class MainActivity extends Activity {
             }
             LedgerSync.Result result = LedgerSync.pull(sessions, database, new HttpSyncTransport(sessions));
             if (result.movedData() || result.outcome == LedgerSync.Outcome.UP_TO_DATE) {
-                network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+                executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
                 runOnUiThread(() -> { refreshCurrentScreen(); showBrandedMessage("تم تحميل أحدث السجلات من الخادم."); });
             } else if (result.outcome == LedgerSync.Outcome.UNAUTHORIZED) {
                 runOnUiThread(() -> { sessions.clear(); show("login"); showBrandedMessage(result.message); });
@@ -1071,26 +1086,28 @@ public final class MainActivity extends Activity {
     }
 
     void logout() {
-        String token = sessions.token();
-        String accountId = sessions.syncAccountId();
-        // The gateway is the only place that can revoke the Auth binding behind a signed-ledger
-        // session, so a v3 store logs out through it; a legacy store keeps its own route.
-        if (!BuildConfig.STANDALONE_MODE && !token.isEmpty()) {
-            boolean v3 = signedLedger();
+        if (changingAccount) return;
+        changingAccount = true;
+        executeNetwork(() -> {
+            String token = sessions.token();
+            String accountId = sessions.syncAccountId();
             String access = sessions.auth().optString("accessToken", "");
-            network.execute(() -> {
-                try {
-                    if (v3 && !access.isEmpty()) request(BuildConfig.AUTH_BASE_URL, "POST", "/mobile/logout", new JSONObject(), access, token);
+            try {
+                if (!BuildConfig.STANDALONE_MODE && !token.isEmpty()) {
+                    if (!access.isEmpty()) request(BuildConfig.AUTH_BASE_URL, "POST", "/mobile/logout", new JSONObject(), access, token);
                     else apiRequest("POST", "/mobile/logout", new JSONObject(), token);
-                } catch (Exception ignored) { }
+                }
+            } catch (Exception ignored) { }
+            closeLedger();
+            if (!accountId.isEmpty()) sessions.removeSavedAccount(accountId);
+            sessions.clear();
+            runOnUiThread(() -> {
+                changingAccount = false;
+                localSecurity.clearPin();
+                getPreferences(0).edit().remove("biometric_enabled").remove("lock_enabled").putBoolean(PREF_FORCED_PASSWORD_LOGIN, false).apply();
+                show("login");
             });
-        }
-        closeLedger();
-        if (!accountId.isEmpty()) sessions.removeSavedAccount(accountId);
-        sessions.clear();
-        localSecurity.clearPin();
-        getPreferences(0).edit().remove("biometric_enabled").remove("lock_enabled").putBoolean(PREF_FORCED_PASSWORD_LOGIN, false).apply();
-        show("login");
+        });
     }
 
     private String savedOfflineOperator(String requested) {
@@ -1129,7 +1146,7 @@ public final class MainActivity extends Activity {
 
     void showStoreActivityLog() {
         if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("سجل المستخدمين متاح في النسخة المتصلة فقط."); return; }
-        network.execute(() -> {
+        executeNetwork(() -> {
             try {
                 JSONArray events = apiRequest("GET", "/mobile/activity", null, sessions.token()).optJSONArray("events");
                 JSONArray rows = events == null ? new JSONArray() : events;
@@ -1153,45 +1170,64 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private boolean accountHasPendingWork() throws Exception {
+        if (BuildConfig.STANDALONE_MODE) return false;
+        if (database.unmappedRowCount() > 0) return true;
+        if (sessions.auth().optString("accessToken", "").isEmpty()) return sessions.hasUnsyncedChanges();
+        return ledgerQueue().hasPendingWork();
+    }
+
     void addStoreAccount() {
+        if (changingAccount) return;
         if (sessions.savedAccounts().length() >= 3) { showBrandedMessage("وصلت إلى الحد الأقصى: ثلاثة حسابات متاجر محفوظة."); return; }
-        if (sessions.hasUnsyncedChanges() || sessions.syncBlocked()) { showBrandedMessage("زامن سجلات الحساب الحالي قبل إضافة حساب آخر."); return; }
-        show("login");
+        executeNetwork(() -> {
+            try {
+                if (accountHasPendingWork()) { runOnUiThread(() -> showBrandedMessage("زامن سجلات الحساب الحالي قبل إضافة حساب آخر.")); return; }
+                runOnUiThread(() -> show("login"));
+            } catch (Exception error) { runOnUiThread(() -> showBrandedMessage("تعذر التحقق من الإدخالات المعلقة؛ بقي الحساب محفوظًا.")); }
+        });
     }
 
     void switchStoreAccount(String accountId) {
-        if (accountId == null || accountId.isEmpty() || accountId.equals(sessions.syncAccountId())) return;
-        if (sessions.hasUnsyncedChanges() || sessions.syncBlocked()) { showBrandedMessage("زامن سجلات الحساب الحالي قبل التبديل."); return; }
-        String previousId = sessions.syncAccountId();
-        if (!sessions.activateSavedAccount(accountId)) { showBrandedMessage("تعذر فتح الحساب المحفوظ. سجّل الدخول إليه من جديد."); return; }
-        switchDatabaseForAccount(accountId);
+        if (changingAccount || accountId == null || accountId.isEmpty() || accountId.equals(sessions.syncAccountId())) return;
+        changingAccount = true;
         showBrandedMessage("جارٍ تحميل سجلات المتجر…");
-        network.execute(() -> {
+        executeNetwork(() -> {
+            String previousId = sessions.syncAccountId();
+            boolean activated = false;
             try {
-                JSONObject result = apiRequest("GET", "/mobile/snapshot", null, sessions.token());
-                JSONObject snapshot = result.optJSONObject("snapshot");
-                if (snapshot == null) throw new IllegalStateException("لم تصل سجلات الحساب من الخادم.");
-                database.importSnapshot(snapshot); sessions.setRevision(snapshot.optLong("revision", sessions.revision()));
-                JSONObject nextAccount=snapshot.optJSONObject("account"); sessions.setAccount(nextAccount);
-                if(nextAccount!=null){String key=profileKey("store_name",accountId);if(getPreferences(0).getString(key,"").trim().isEmpty())getPreferences(0).edit().putString(key,nextAccount.optString("name","")).apply();}
+                if (accountHasPendingWork()) throw new IllegalStateException("زامن سجلات الحساب الحالي قبل التبديل.");
+                if (!sessions.activateSavedAccount(accountId)) throw new IllegalStateException("تعذر فتح الحساب المحفوظ. سجّل الدخول إليه من جديد.");
+                activated = true;
+                switchDatabaseForAccount(accountId);
+                if (sessions.auth().optString("accessToken", "").isEmpty()) throw new IllegalStateException("هذا الحساب يحتاج تسجيل الدخول من جديد عبر البوابة.");
+                SignedLedgerSync.Result result = signedSync();
+                if (result.outcome != SignedLedgerSync.Outcome.SYNCED && result.outcome != SignedLedgerSync.Outcome.WAITING_APPROVAL)
+                    throw new IllegalStateException(result.message == null ? "تعذر تحميل سجلات الحساب؛ أعد المحاولة عند الاتصال." : result.message);
+                JSONObject identity = apiRequest("GET", "/mobile/session", null, sessions.token());
+                sessions.setAccount(identity.getJSONObject("account"));
+                sessions.setForcePasswordChange(identity.optBoolean("forcePasswordChange"));
+                String scope = accountScope();
                 runOnUiThread(() -> {
+                    changingAccount = false;
+                    if (!scope.equals(accountScope())) return;
                     if (sessions.forcePasswordChange()) show("force_password");
                     else if (localSecurity.hasPin() && getPreferences(0).getBoolean("lock_enabled", true)) show("unlock");
                     else show("home");
-                    showBrandedMessage("تم التبديل إلى " + sessions.account().optString("name", "المتجر") + ".");
+                    showBrandedMessage(result.outcome == SignedLedgerSync.Outcome.WAITING_APPROVAL ? result.message : "تم التبديل إلى " + sessions.account().optString("name", "المتجر") + ".");
                 });
-            } catch (Exception e) {
-                sessions.activateSavedAccount(previousId); switchDatabaseForAccount(previousId);
-                String message = e.getMessage() == null ? "تعذر التبديل إلى الحساب." : e.getMessage();
-                runOnUiThread(() -> showBrandedMessage(message));
+            } catch (Exception error) {
+                if (activated) { sessions.activateSavedAccount(previousId); switchDatabaseForAccount(previousId); }
+                String message = error.getMessage() == null ? "تعذر التبديل إلى الحساب." : error.getMessage();
+                runOnUiThread(() -> { changingAccount = false; refreshCurrentScreen(); showBrandedMessage(message); });
             }
         });
     }
 
     private void switchDatabaseForAccount(String accountId) {
+        closeLedger();
         String name = sessions.databaseNameForAccount(accountId);
         if (database != null && name.equals(database.getDatabaseName())) return;
-        closeLedger();
         if (database != null) database.close();
         database = new SadadDatabase(this, name);
     }

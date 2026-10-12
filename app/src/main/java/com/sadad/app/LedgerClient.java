@@ -28,6 +28,7 @@ final class LedgerClient implements LedgerApi {
     private final LedgerSession session;
     private final InstallationSigner installation;
     private final String base;
+    private final String deviceToken;
 
     LedgerClient(LedgerSession session, InstallationSigner installation) {
         this(session, installation, BASE);
@@ -38,6 +39,7 @@ final class LedgerClient implements LedgerApi {
         this.session = session;
         this.installation = installation;
         this.base = base;
+        this.deviceToken = session.token();
     }
 
     @Override public JSONObject enroll(JSONObject publicKey) throws Exception {
@@ -74,6 +76,7 @@ final class LedgerClient implements LedgerApi {
     }
 
     private JSONObject request(String method, String route, JSONObject body, String recovery) throws Exception {
+        requireSameAccount();
         refresh();
         String raw = body == null ? "" : body.toString();
         String time = String.valueOf(System.currentTimeMillis());
@@ -89,7 +92,7 @@ final class LedgerClient implements LedgerApi {
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             // Two headers on purpose: the bearer proves the user, X-Sadad-Session proves the device.
             connection.setRequestProperty("Authorization", "Bearer " + session.auth().optString("accessToken"));
-            connection.setRequestProperty("X-Sadad-Session", session.token());
+            connection.setRequestProperty("X-Sadad-Session", deviceToken);
             connection.setRequestProperty("X-Sadad-Installation", installation.id());
             connection.setRequestProperty("X-Sadad-Time", time);
             connection.setRequestProperty("X-Sadad-Nonce", nonce);
@@ -101,6 +104,7 @@ final class LedgerClient implements LedgerApi {
             }
             int status = connection.getResponseCode();
             JSONObject payload = read(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
+            requireSameAccount();
             if (status < 200 || status >= 300) {
                 throw new SyncFailure(status, payload, payload.optString("message", "تعذر إتمام الطلب."), payload.optString("code", ""));
             }
@@ -114,6 +118,7 @@ final class LedgerClient implements LedgerApi {
 
     /** The envelope is short-lived; renew it before it lapses so a signed request never 401s. */
     private synchronized void refresh() throws Exception {
+        requireSameAccount();
         JSONObject auth = session.auth();
         if (auth.optLong("expiresAt") > System.currentTimeMillis() + 60000) return;
         String refreshToken = auth.optString("refreshToken");
@@ -127,14 +132,22 @@ final class LedgerClient implements LedgerApi {
             connection.setReadTimeout(20000);
             connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            connection.setRequestProperty("X-Sadad-Session", session.token());
+            connection.setRequestProperty("X-Sadad-Session", deviceToken);
             connection.setDoOutput(true);
             try (OutputStream out = connection.getOutputStream()) { out.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
             int status = connection.getResponseCode();
             JSONObject payload = read(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
             if (status < 200 || status >= 300) throw new SyncFailure(status, payload, payload.optString("message", "تعذر تجديد الجلسة."), payload.optString("code", ""));
-            session.updateAuth(payload.getJSONObject("auth"));
+            synchronized (session) {
+                requireSameAccount();
+                session.updateAuth(payload.getJSONObject("auth"));
+            }
         } finally { connection.disconnect(); }
+    }
+
+    private void requireSameAccount() throws SyncFailure {
+        if (!deviceToken.equals(session.token())) throw new SyncFailure(409, new JSONObject(),
+                "تغيّر الحساب؛ أعد الإجراء في الحساب الحالي.", "account_changed");
     }
 
     private static JSONObject read(InputStream stream) throws Exception {

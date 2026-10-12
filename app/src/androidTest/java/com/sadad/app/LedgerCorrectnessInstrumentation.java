@@ -13,11 +13,31 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         try {
             if (!getTargetContext().getPackageName().startsWith("com.sadad.qa.")) throw new AssertionError("Use an isolated QA applicationId");
             compoundWriteRollsBack();
-            result.putString("stream", "PASS: compound journal rollback\n");
+            refreshedAuthSurvivesAccountSwitch();
+            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation\n");
             finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
         }
+    }
+
+    private void refreshedAuthSurvivesAccountSwitch() throws Exception {
+        SessionStore session = new SessionStore(getTargetContext());
+        session.clear();
+        session.save(login("qa-a", "refresh-a1"));
+        session.updateAuth(new JSONObject().put("accessToken", "access-a2").put("refreshToken", "refresh-a2"));
+        session.save(login("qa-b", "refresh-b1"));
+        if (!session.activateSavedAccount("qa-a")) throw new AssertionError("Cannot restore account A");
+        if (!"refresh-a2".equals(session.auth().optString("refreshToken"))) throw new AssertionError("Restored a stale rotated token");
+        session.save(new JSONObject().put("token", "legacy-token").put("account", new JSONObject().put("id", "qa-a")));
+        if (session.auth().length() != 0) throw new AssertionError("A login without Auth retained another login's credentials");
+        session.clear(); session.removeSavedAccount("qa-a"); session.removeSavedAccount("qa-b");
+    }
+
+    private JSONObject login(String id, String refresh) throws Exception {
+        return new JSONObject().put("token", "token-" + id).put("expiresAt", Long.MAX_VALUE)
+                .put("account", new JSONObject().put("id", id).put("username", id).put("name", id))
+                .put("auth", new JSONObject().put("accessToken", "access-" + id).put("refreshToken", refresh));
     }
 
     private void compoundWriteRollsBack() throws Exception {

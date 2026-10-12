@@ -240,6 +240,14 @@ public final class LedgerClientTest {
 
     private LedgerClient client() { return new LedgerClient(session, signer, base); }
 
+    @Test public void anOldClientCannotSendTheNextAccountsCredentials() throws Exception {
+        LedgerClient oldClient = client();
+        session.device = "next-account-token";
+        try { oldClient.snapshot(); fail("An old queue must refuse a new account's session"); }
+        catch (SyncFailure failure) { assertEquals("account_changed", failure.code); }
+        assertEquals("", lastRoute);
+    }
+
     // ------------------------------------------------------------------ the contract
 
     @Test public void enrolmentIsSignedWithTheKeyBeingEnrolled() throws Exception {

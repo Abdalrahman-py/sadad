@@ -36,6 +36,28 @@ public final class LedgerQueueTest {
         assertEquals(2000, payments.getJSONObject(1).getLong("amountCents"));
     }
 
+    @Test public void aNonPositiveFirstDebtDoesNotCreateTheContact() throws Exception {
+        LedgerQueue queue = queue(new MemoryJournal());
+        assertThrows(IllegalArgumentException.class, () -> queue.createContact(
+                LedgerCommand.contactPayload("جديد", "", "عميل", ""), "0", "", ""));
+        assertEquals(1, queue.view().getJSONArray("contacts").length());
+    }
+
+    @Test public void switchingIsBlockedUntilEveryWriteIsSettled() throws Exception {
+        MemoryJournal journal = new MemoryJournal();
+        LedgerQueue queue = queue(journal);
+        assertFalse(queue.hasPendingWork());
+        queue.payContact("contact-1", 1000, "cash", "");
+        assertTrue(queue.hasPendingWork());
+        JSONObject entry = journal.entries.getJSONObject(0);
+        journal.state(entry, "acknowledged", "");
+        assertTrue(queue.hasPendingWork());
+        journal.state(entry, "confirmed", "");
+        assertFalse(queue.hasPendingWork());
+        journal.metadata("sync", new JSONObject().put("recoveryRequired", true));
+        assertTrue(queue.hasPendingWork());
+    }
+
     static LedgerQueue queue(MemoryJournal journal) throws Exception {
         journal.metadata("cache", new JSONObject().put("epoch", "epoch-1").put("cursor", 1)
                 .put("contacts", new JSONArray().put(new JSONObject().put("id", "contact-1").put("name", "عميل")))
