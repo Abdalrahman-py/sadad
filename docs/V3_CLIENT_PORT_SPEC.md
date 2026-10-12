@@ -1,9 +1,5 @@
 # Spec: port the signed v3 ledger client into the product app
 
-> NOTE ON PATH: the task asked for this file at `.hermes/v3-client-port-spec.md` (moved to `docs/` during the consolidation), but writes
-> under `.hermes/` are blocked by the environment's protected-path guard. The file is placed at
-> the repository root instead. Move it to `.hermes/` manually if that location is required.
-
 Target: move the signed v3 ledger client that lives only in the parked second Android
 project into the product module `app/`.
 
@@ -370,14 +366,16 @@ the central design decision and is **not** solved by copying code. Options:
 3. A dedicated v3 SQLite DB (the `EncryptedJournal` cache) plus a thin adapter that materialises
    `view()` into `SadadDatabase` under stable integer ids assigned per UUID. Middle ground.
 
-This spec does not pick one; it flags it as the decision the implementer must make first.
+The decision was taken on 12 October 2026 and is implemented: option 1. The options below are kept
+as the record of what was weighed.
 
 ### 4.4 Keep both paths, or replace legacy?
 
 - **Keep both** (recommended, gated by `ledger_mode`): safety net for any non-v3 store; the
   gateway still serves legacy routes. Cost: two sync stacks, two storage shapes, a larger test
   matrix, and the UI adapter must serve both shapes. Because the only live stores are v3
-  (`sadid_is_v3_store(2)`/`(3)` true; `public.contacts/debts/payments` empty) the legacy path is
+  (`sadid_is_v3_store(2)`/`(3)`/`(7)` true; store 6 is the one store still on the legacy protocol,
+  and only it keeps the legacy path alive) the legacy path is
   already dead in production — you are paying maintenance for no live traffic.
 - **Replace legacy:** one code path, matches production reality, smallest surface. Risk: if any
   legacy store still exists, it stops syncing; and the v3 path's first-run needs admin approval
@@ -434,8 +432,10 @@ flag, defaulting to v3. That preserves the fallback without a second live code p
 
 ## 6. Blockers and unknowns
 
-1. **UUID-vs-INTEGER id model** (§4.3). Unresolved from the source; it is a repository-wide
-   decision, not a porting detail.
+1. **UUID-vs-INTEGER id model** (§4.3) — **settled on 12 October 2026**, no longer a blocker:
+   option 1, the `remote_uuid`/`remote_version` columns, implemented in
+   `SadadDatabase.importLedgerView`. The original note, kept for the record: it was a
+   repository-wide decision, not a porting detail.
 2. **Login must go through the sadad-auth gateway.** The root build targets `sadad-api`
    (`app/build.gradle.kts:17`), whose `/mobile/login` returns **no** `auth` envelope
    (`EDGE/sadad-api/index.ts:657`). Without the Auth JWT the signed endpoints all fail `401`

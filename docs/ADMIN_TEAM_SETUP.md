@@ -1,6 +1,6 @@
 # Team admin dashboard
 
-Use one dashboard at `http://localhost:8081/`. Store accounts, financial balances, phone approval, recovery permits, and admin activity are integrated in this screen. Old `/v3-admin` links redirect to it.
+Use one dashboard at `http://localhost:8081/`. Store accounts, financial balances, phone approval, recovery permits, and admin activity are integrated in this screen.
 
 The shared test username is `admin_sadid`, provisioned in the live `sadid` Supabase project (`vhftjmiltqfwmrszdtgf`). Get its password from the team lead. Starting the dashboard does not create or reset an admin account.
 
@@ -12,7 +12,7 @@ Install Node.js 24 or newer and run from the repository root:
 node tools/admin-preview.cjs
 ```
 
-Alternatively run `npm start` inside `server/` or `Supabase-Setup/admin/Sadad-Admin-Server/`. Windows users can use `server/Start-Sadad.cmd`. No package installation, `.env`, SQLite database, local account setup, or Supabase CLI login is needed. Keep the process running and open `http://localhost:8081/`.
+Keep the process running and open `http://localhost:8081/`. The legacy Node/SQLite alternatives (`npm start` inside `server/`, `server/Start-Sadad.cmd`) were removed in October 2026 together with that server. No package installation, `.env`, SQLite database, local account setup, or Supabase CLI login is needed.
 
 Each teammate starts their own preview; all authenticate against the same hosted database. Internet access to Supabase is required. To choose another port:
 
@@ -57,10 +57,11 @@ Admins inspect the ledger and authorize recovery; financial corrections remain o
 
 The `admin_dashboard_integration` migration and updated `sadad-api` function are deployed to the hosted project. The dashboard requires those backend changes. Migration source is in `Supabase-Setup/supabase/migrations/`; the edge function and its normalization tests are in `Supabase-Setup/supabase/functions/sadad-api/`.
 
-For local database tests, install the pinned test runtime at the repository root:
+For local database tests, install the pinned test runtime exactly as `README.md` documents it in
+"الاختبارات" (one pinned pglite version, one place to change it):
 
 ```sh
-npm install --prefix .local-tools --no-save @electric-sql/pglite@0.3.14
+npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
 node Supabase-Setup/scripts/test-admin-dashboard.mjs
 node Supabase-Setup/scripts/test-v3-ledger.mjs
 ```
@@ -74,8 +75,8 @@ deno check --config deno.json index.ts
 
 ## GitHub Pages
 
-No dashboard has been published on a fork. The workflow is prepared for the original `ibrahem57/sadad` owner to enable GitHub Pages with GitHub Actions and merge these changes. `node tools/build-admin-pages.cjs` builds `_site/` using an explicit dashboard asset list. The old `/v3-admin/` path redirects to the unified dashboard.
+The dashboard is published at <https://abdalrahman-py.github.io/sadad/> from the owner's mirror. The workflow is prepared for the original `ibrahem57/sadad` owner to enable GitHub Pages with GitHub Actions as well. `node tools/build-admin-pages.cjs` builds `_site/` using an explicit dashboard asset list.
 
 Pages serves static UI; login and administration still go directly to live Supabase. Only the existing public project key is in frontend assets. Admin passwords, service credentials, databases and other delivery files are excluded.
 
-The preview binds to `127.0.0.1` and serves static assets only. The legacy Node/SQLite server is available explicitly via `npm run start:legacy` and does not control hosted authentication.
+The preview binds to `127.0.0.1` and serves static assets only; it does not control hosted authentication.

@@ -41,10 +41,12 @@
 
 ## الاختبارات
 
-- Instrumentation في `app/src/androidTest` تُشغَّل بمعرّف QA منفصل (`com.sadad.qa`).
+- Instrumentation في `app/src/androidTest` تُشغَّل بمعرّف QA منفصل (`com.sadad.qa`) وتحتاج جهازًا.
 - اختبارات قاعدة البيانات: `Supabase-Setup/scripts/*.mjs` عبر pglite.
 - وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/`.
-- لا توجد اليوم مهمة CI تبني Android أو تشغّل هذه الاختبارات؛ التشغيل يدوي.
+- CI: `.github/workflows/android-ci.yml` يشغّل اختبارات الـJVM وبناء النسختين واختبارات Edge
+  على كل دفع/طلب سحب يمسّ `app/` أو `gradle/` أو `Supabase-Setup/supabase/functions/`.
+  اختبارات الجهاز تبقى يدوية، فالمشغّل لا يوفّر هاتفًا.
 
 ## الكتابة والتوثيق
 
