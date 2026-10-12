@@ -21,7 +21,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 /** Keeps the server bearer token encrypted with an Android Keystore key. */
-final class SessionStore implements SyncSession, LedgerSession {
+final class SessionStore implements LedgerSession {
     private static final String PREFS = "sadad.session";
     private static final String KEY_ALIAS = "sadad.session.aes";
     /** Separate pref keys so existing installs keep working unchanged: the device token and the

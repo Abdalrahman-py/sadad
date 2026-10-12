@@ -50,9 +50,8 @@ public final class Ui254Instrumentation extends Instrumentation {
    long customer=queue.saveContact(new JSONObject().put("name","اختبار الحذف الكبير")).getLong("id");SQLiteDatabase ledger=queue.getWritableDatabase();ledger.beginTransaction();try{
     for(int n=1;n<=600;n++){ledger.execSQL("INSERT INTO debts(id,contact_id,direction,amount_cents,created_at) VALUES(?,?,'receivable',100,1)",new Object[]{n,customer});ledger.execSQL("INSERT INTO payments(debt_id,amount_cents,method,created_at) VALUES(?,100,'cash',1)",new Object[]{n});}ledger.setTransactionSuccessful();
    }finally{ledger.endTransaction();}
-   queue.acknowledgeDelta(queue.outboxWatermark());queue.saveContact(new JSONObject().put("name","تعديل يجب أن يبقى"));queue.deleteContactToTrash(customer);
-   JSONObject packet=queue.pendingDelta();check(packet.getJSONObject("delta").getJSONObject("deleted").getJSONArray("contacts").length()==1,"Deleted parent not prioritized");queue.acknowledgeDelta(packet);
-   try(android.database.Cursor c=ledger.rawQuery("SELECT COUNT(*) FROM sync_outbox q JOIN contacts r ON r.id=q.row_id WHERE q.entity='contacts'",null)){c.moveToFirst();check(c.getInt(0)==1,"Priority acknowledgment lost unrelated write");}
+   queue.saveContact(new JSONObject().put("name","تعديل يجب أن يبقى"));queue.deleteContactToTrash(customer);
+   check(queue.getSnapshot().getJSONArray("contacts").length()==1,"Deleting one contact lost an unrelated contact");
   }
 
   check(WhatsAppPhone.normalize("٠٥٩٩١٢٣٤٥٦","970").equals("+970599123456"),"Palestinian normalization");check(WhatsAppPhone.normalize("0541234567","972").equals("+972541234567"),"Israeli normalization");

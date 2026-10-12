@@ -22,7 +22,7 @@ import java.util.Map;
 import java.util.Set;
 
 /** Offline ledger. Contact balances are derived from debts minus recorded payments. */
-public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger {
+public final class SadadDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "sadad.db";
     /** 8 adds the signed-ledger mapping: every row can carry the UUID the ledger knows it by. */
     private static final int DB_VERSION = 8;
@@ -63,79 +63,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
     }
 
     public synchronized boolean deltaReady() { return scalarLong(getReadableDatabase(), "SELECT ready FROM sync_control WHERE id=1", null) == 1; }
-    public synchronized boolean hasPendingSync() { return scalarLong(getReadableDatabase(), "SELECT EXISTS(SELECT 1 FROM sync_outbox)", null) == 1; }
-    public synchronized void acknowledgeDelta(long watermark) { getWritableDatabase().delete("sync_outbox", "seq<=?", new String[]{String.valueOf(watermark)}); }
-    public synchronized void acknowledgeDelta(JSONObject packet) throws JSONException {
-        JSONArray sequences=packet.getJSONArray("sequences");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {
-            for(int n=0;n<sequences.length();n++)db.delete("sync_outbox","seq=?",new String[]{String.valueOf(sequences.getLong(n))});
-            db.setTransactionSuccessful();
-        }finally{db.endTransaction();}
-    }
-    /** Only queued rows are read, capped at 500 changes, including deletions and cascades. */
-    public synchronized JSONObject pendingDelta() throws JSONException {
-        SQLiteDatabase db = getReadableDatabase();
-        java.util.LinkedHashMap<String, Long> changes = new java.util.LinkedHashMap<>(); long watermark = 0; JSONArray sequences=new JSONArray();
-        String parents="SELECT q.seq,q.entity,q.row_id FROM sync_outbox q WHERE (q.entity='contacts' AND NOT EXISTS(SELECT 1 FROM contacts r WHERE r.id=q.row_id)) OR (q.entity='debts' AND NOT EXISTS(SELECT 1 FROM debts r WHERE r.id=q.row_id)) ORDER BY CASE q.entity WHEN 'contacts' THEN 0 ELSE 1 END,q.seq LIMIT 500";
-        String query=scalarLong(db,"SELECT EXISTS("+parents+")",null)==1?parents:"SELECT seq,entity,row_id FROM sync_outbox ORDER BY seq LIMIT 500";
-        try (Cursor cursor = db.rawQuery(query, null)) {
-            while (cursor.moveToNext()) { watermark = Math.max(watermark,cursor.getLong(0)); sequences.put(cursor.getLong(0)); changes.put(cursor.getString(1) + ":" + cursor.getLong(2), cursor.getLong(2)); }
-        }
-        JSONObject delta = new JSONObject(), deleted = new JSONObject();
-        for (String table : new String[]{"contacts", "debts", "payments"}) { delta.put(table, new JSONArray()); deleted.put(table, new JSONArray()); }
-        for (Map.Entry<String, Long> entry : changes.entrySet()) {
-            String table = entry.getKey().split(":")[0];
-            try (Cursor cursor = db.rawQuery("SELECT * FROM " + table + " WHERE id=?", new String[]{String.valueOf(entry.getValue())})) {
-                if (!cursor.moveToFirst()) { deleted.getJSONArray(table).put(entry.getValue()); continue; }
-                JSONObject row = new JSONObject();
-                for (int i = 0; i < cursor.getColumnCount(); i++) {
-                    String column = cursor.getColumnName(i), key = column;
-                    if (column.equals("amount_cents")) { row.put("amount", fromCents(cursor.getLong(i))); continue; }
-                    if (column.equals("credit_limit_cents")) { row.put("creditLimit", fromCents(cursor.getLong(i))); continue; }
-                    if (column.equals("whatsapp_opt_in")) { row.put("whatsappOptIn", cursor.getInt(i) != 0); continue; }
-                    String[] parts = column.split("_"); for (int n=1;n<parts.length;n++) parts[n] = Character.toUpperCase(parts[n].charAt(0)) + parts[n].substring(1);
-                    key = String.join("", parts);
-                    row.put(key, cursor.getType(i)==Cursor.FIELD_TYPE_INTEGER ? cursor.getLong(i) : cursor.getString(i));
-                }
-                delta.getJSONArray(table).put(row);
-            }
-        }
-        delta.put("deleted", deleted); return new JSONObject().put("delta", delta).put("watermark", watermark).put("sequences",sequences);
-    }
-
-    public synchronized long outboxWatermark() { return scalarLong(getReadableDatabase(), "SELECT COALESCE(MAX(seq),0) FROM sync_outbox", null); }
-    public synchronized void beginSnapshotStage() {
-        for(String table : new String[]{"contacts","debts","payments"}) { getWritableDatabase().execSQL("DROP TABLE IF EXISTS stage_"+table); getWritableDatabase().execSQL("CREATE TABLE stage_"+table+" AS SELECT * FROM "+table+" WHERE 0"); }
-    }
-    public synchronized void stageSnapshotPage(String table, JSONArray rows) throws JSONException {
-        if(!table.equals("contacts")&&!table.equals("debts")&&!table.equals("payments"))throw new IllegalArgumentException();
-        SQLiteDatabase db=getWritableDatabase(); java.util.LinkedHashMap<String,String> columns=new java.util.LinkedHashMap<>();
-        try(Cursor schema=db.rawQuery("PRAGMA table_info("+table+")",null)){while(schema.moveToNext())columns.put(schema.getString(1),schema.getString(2));}
-        db.beginTransaction();try {
-            for(int n=0;n<rows.length();n++) {
-                JSONObject row=rows.getJSONObject(n);ContentValues values=new ContentValues();
-                for(Map.Entry<String,String> schema:columns.entrySet()) {
-                    String column=schema.getKey();String key=column;String[] parts=column.split("_");for(int k=1;k<parts.length;k++)parts[k]=Character.toUpperCase(parts[k].charAt(0))+parts[k].substring(1);key=String.join("",parts);
-                    if(column.equals("amount_cents"))values.put(column,toCents(row.optString("amount","0")));
-                    else if(column.equals("credit_limit_cents"))values.put(column,toCents(row.optString("creditLimit","0")));
-                    else if(column.equals("whatsapp_opt_in"))values.put(column,row.optBoolean("whatsappOptIn")?1:0);
-                    else if(schema.getValue().equals("INTEGER"))values.put(column,row.optLong(key));
-                    else values.put(column,row.optString(key,""));
-                }
-                db.insertOrThrow("stage_"+table,null,values);
-            }db.setTransactionSuccessful();
-        } finally {db.endTransaction();}
-    }
-    public synchronized void commitSnapshotStage(long expectedWatermark) {
-        if(outboxWatermark()!=expectedWatermark)throw new IllegalStateException("حُفظت تعديلات جديدة أثناء التحميل. بقيت سجلاتك المحلية محفوظة؛ أعد المزامنة.");
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try {
-            db.execSQL("UPDATE sync_control SET suppress=1 WHERE id=1");
-            for(String table:new String[]{"payments","debts","contacts"})db.execSQL("DELETE FROM "+table);
-            for(String table:new String[]{"contacts","debts","payments"})db.execSQL("INSERT INTO "+table+" SELECT * FROM stage_"+table);
-            db.execSQL("DELETE FROM sync_outbox");db.execSQL("UPDATE sync_control SET suppress=0,ready=1 WHERE id=1");db.setTransactionSuccessful();
-        }finally{db.endTransaction();dropSnapshotStage();}
-    }
-    public synchronized void dropSnapshotStage() {for(String table:new String[]{"contacts","debts","payments"})getWritableDatabase().execSQL("DROP TABLE IF EXISTS stage_"+table);}
-
     synchronized JSONObject dueReminderSnapshot(String today,String tomorrow) throws JSONException {
         JSONArray people=new JSONArray(),debts=new JSONArray();SQLiteDatabase db=getReadableDatabase();
         try(Cursor c=db.rawQuery("SELECT d.id,d.contact_id,c.name,d.due_date,d.amount_cents-COALESCE((SELECT SUM(amount_cents) FROM payments WHERE debt_id=d.id),0) remaining FROM debts d JOIN contacts c ON c.id=d.contact_id WHERE d.direction='receivable' AND d.due_date IN (?,?)",new String[]{today,tomorrow})) {while(c.moveToNext()){if(c.getLong(4)<=0)continue;people.put(new JSONObject().put("id",c.getLong(1)).put("name",c.getString(2)));debts.put(new JSONObject().put("id",c.getLong(0)).put("contactId",c.getLong(1)).put("dueDate",c.getString(3)).put("direction","receivable").put("remaining",fromCents(c.getLong(4))));}}
