@@ -13,7 +13,6 @@
   <meta name="sadad-publishable-key" content="sb_publishable_dK7HuYY8TbO8ZiBPbOZ2cw_1ZRL_chh">
   <title>إدارة سدد</title>
   <link rel="stylesheet" href="admin.css">
-  <script src="config.js"></script>
   <script defer src="admin.js"></script>
 </head>
 <body>
@@ -30,13 +29,6 @@
           <label>كلمة المرور<input id="authPassword" type="password" autocomplete="current-password" required></label>
           <button class="button primary" id="authSubmit">دخول آمن</button>
           <p class="form-error" id="authError" role="alert"></p>
-        </form>
-        <form id="adminPasswordChangeForm" class="stack hidden">
-          <label>كلمة المرور الحالية<input id="adminCurrentPassword" type="password" autocomplete="current-password" required></label>
-          <label>كلمة المرور الجديدة<input id="adminNewPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
-          <button class="button primary">حفظ كلمة المرور الجديدة</button>
-          <p class="form-error" id="adminPasswordError" role="alert"></p>
-          <p class="small muted">استخدم عبارة مرور لا تقل عن 12 خانة.</p>
         </form>
         <p class="small muted">لا يوجد تسجيل عام. ينشأ حساب مالك المتجر حصراً من الأدمن.</p>
       </div>

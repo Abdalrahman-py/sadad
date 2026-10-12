@@ -11,10 +11,10 @@ const plain = ['admin.html', 'admin-tajawal.woff2', 'logo-light.jpeg', 'logo-dar
 // These change on every deploy, and GitHub Pages caches by filename. Stamp the content hash
 // into the name and rewrite the references, so a teammate never runs a stale dashboard after a
 // deploy. The local preview serves Cache-Control: no-store, so it does not need this.
-const hashed = ['admin.css', 'config.js', 'admin.js'];
+const hashed = ['admin.css', 'admin.js'];
 
 fs.rmSync(output, { recursive: true, force: true });
-fs.mkdirSync(path.join(output, 'v3-admin'), { recursive: true });
+fs.mkdirSync(output, { recursive: true });
 
 const digest = (file) => crypto.createHash('sha256').update(fs.readFileSync(path.join(source, file))).digest('hex').slice(0, 10);
 const names = {};
@@ -32,7 +32,6 @@ if (missed.length) throw new Error(`a hashed asset reference was not rewritten i
 for (const asset of plain) fs.copyFileSync(path.join(source, asset), path.join(output, asset));
 fs.writeFileSync(path.join(output, 'admin.html'), html);
 fs.writeFileSync(path.join(output, 'index.html'), html);
-fs.writeFileSync(path.join(output, 'v3-admin/index.html'), '<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=../"><title>إدارة سدد</title><a href="../">افتح لوحة إدارة سدد</a></html>');
 fs.writeFileSync(path.join(output, '.nojekyll'), '');
 
 console.log('Built the unified admin dashboard in _site/:');

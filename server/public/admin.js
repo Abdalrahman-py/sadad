@@ -2,8 +2,10 @@
   'use strict';
   const $ = selector => document.querySelector(selector);
   const tokenKey = 'sadad-admin-session';
-  const apiBase = String(window.SADAD_API_BASE_URL || '').replace(/\/+$/, '');
-  const publishableKey = String(window.SADAD_SUPABASE_PUBLISHABLE_KEY || '').trim();
+  // Read straight from the document's meta tags: admin.js is already an external script, so no
+  // separate config.js is needed to keep the page's CSP free of 'unsafe-inline'.
+  const apiBase = String($('meta[name="sadad-api-base-url"]')?.content || '').replace(/\/+$/, '');
+  const publishableKey = String($('meta[name="sadad-publishable-key"]')?.content || '').trim();
   let token = sessionStorage.getItem(tokenKey) || '';
   let stores = [];
   let current = null;
@@ -27,7 +29,13 @@
     if (!Number.isSafeInteger(value) || value < min || value > max) throw new Error(`أدخل عددًا صحيحًا من ${min} إلى ${max}.`);
     return value;
   }
-  const dateFmt = value => value ? new Date(Number(value)).toLocaleString('ar-PS') : '—';
+  // One formatter for both shapes the API answers with: epoch milliseconds (legacy columns) and
+  // ISO-8601 strings (Postgres timestamptz). An unparsable value shows a dash, never 'Invalid Date'.
+  const dateFmt = value => {
+    if (!value) return '—';
+    const parsed = /^\d+$/.test(String(value)) ? new Date(Number(value)) : new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString('ar-PS');
+  };
   const modeName = mode => ({ permanent: 'فعال دائمًا', timed: 'مدة محددة', paused: 'موقوف' }[mode] || 'غير محدد');
   function duration(value) {
     if (value == null) return 'دائم';
@@ -101,16 +109,16 @@
   }
   const api = (path, options = {}) => request('sadad', path, options);
   const ledgerApi = (path, body) => request('ledger', path, { body });
-  function showAuth(setup, passwordChange = false) {
+  function showAuth(setup) {
     ++storeRequest; current=null; currentSnapshot=null; $('#authPassword').value=''; $('#storePanel').classList.add('hidden'); $('#ledgerPanel').classList.add('hidden'); $('#tempPasswordResult').textContent='';
     bootstrap = setup; $('#authView').classList.remove('hidden'); $('#appView').classList.add('hidden');
-    $('#authForm').classList.toggle('hidden', passwordChange); $('#adminPasswordChangeForm').classList.toggle('hidden', !passwordChange);
-    $('#setupKeyWrap').classList.toggle('hidden', !setup); $('#authTitle').textContent = passwordChange ? 'غيّر كلمة مرور الأدمن' : setup ? 'إنشاء مدير النظام' : 'دخول الأدمن';
-    $('#authHint').textContent = passwordChange ? 'عيّن كلمة مرور جديدة من 12 خانة أو أكثر للمتابعة.' : setup ? 'أنشئ حساب الأدمن الأول. مفتاح التأسيس موجود في ملف البيئة على الخادم.' : 'هذه اللوحة خاصة بمدير النظام.';
+    $('#authForm').classList.remove('hidden');
+    $('#setupKeyWrap').classList.toggle('hidden', !setup); $('#authTitle').textContent = setup ? 'إنشاء مدير النظام' : 'دخول الأدمن';
+    $('#authHint').textContent = setup ? 'أنشئ حساب الأدمن الأول. مفتاح التأسيس موجود في ملف البيئة على الخادم.' : 'هذه اللوحة خاصة بمدير النظام.';
     $('#authSubmit').textContent = setup ? 'تأسيس لوحة الإدارة' : 'دخول آمن'; $('#authPassword').autocomplete = setup ? 'new-password' : 'current-password';
   }
   function showApp(username, forcePasswordChange = false) {
-    if (forcePasswordChange) { $('#authUsername').value = username || ''; showAuth(false, true); return; }
+    if (forcePasswordChange) { $('#authUsername').value = username || ''; showAuth(false); openAdminPasswordDialog(); return; }
     $('#authView').classList.add('hidden'); $('#appView').classList.remove('hidden'); $('#adminName').textContent = username || 'أدمن';
     loadDashboard().catch(error => notice(error.message, true));
   }
@@ -129,15 +137,11 @@
       token = result.token; sessionStorage.setItem(tokenKey, token); showApp(result.admin.username, !!result.forcePasswordChange);
     } catch (error) { $('#authError').textContent = error.message; }
   });
-  $('#adminPasswordChangeForm').addEventListener('submit', async event => {
-    event.preventDefault(); $('#adminPasswordError').textContent = '';
-    try { await api('/api/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: $('#adminCurrentPassword').value, password: $('#adminNewPassword').value }) }); $('#adminPasswordChangeForm').reset(); showApp($('#authUsername').value.trim()); }
-    catch (error) { $('#adminPasswordError').textContent = error.message; }
-  });
   const adminPasswordDialog = $('#adminPasswordDialog');
-  $('#changeAdminPasswordBtn').addEventListener('click', () => {
+  function openAdminPasswordDialog() {
     $('#adminPasswordDialogForm').reset(); $('#dialogPasswordError').textContent = ''; adminPasswordDialog.showModal();
-  });
+  }
+  $('#changeAdminPasswordBtn').addEventListener('click', openAdminPasswordDialog);
   $('#cancelAdminPassword').addEventListener('click', () => adminPasswordDialog.close());
   $('#adminPasswordDialogForm').addEventListener('submit', async event => {
     event.preventDefault(); $('#dialogPasswordError').textContent = '';
@@ -146,6 +150,8 @@
     try {
       await api('/api/admin/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: $('#dialogCurrentPassword').value, password }) });
       adminPasswordDialog.close(); notice('تم تغيير كلمة مرور الأدمن.');
+      // A forced change is the only way into the app for this session, so continue on the same path.
+      if (!$('#authView').classList.contains('hidden')) showApp($('#authUsername').value.trim());
     } catch (error) { $('#dialogPasswordError').textContent = error.message; }
   });
   $('#logoutBtn').addEventListener('click', async () => { try { await api('/api/admin/logout', { method: 'POST' }); } catch (_) {} token = ''; sessionStorage.removeItem(tokenKey); showAuth(false); });
@@ -257,10 +263,6 @@
       catch(error){notice(error.message,true);}
     }));
   }
-  function renderAuditEvents(events) {
-    const box=$('#deviceAuditList');
-    box.innerHTML=events.length?events.map(item=>`<div class="record-row"><div><b>${esc(item.action)} · ${esc(item.actor||'صاحب المتجر')}</b><small>${esc(item.description)} · ${esc(dateFmt(item.createdAt))}</small></div></div>`).join(''):'<p class="muted">لا توجد حركات مسجلة بعد.</p>';
-  }
   function renderBackups(backups) {
     const select = $('#backupSelect'); select.innerHTML = backups.length ? backups.map(item => `<option value="${item.id}">${esc(dateFmt(item.createdAt))} · ${esc(item.reason)} · ${fmt(item.contactCount)} أشخاص / ${fmt(item.debtCount)} ديون / ${fmt(item.paymentCount)} دفعات</option>`).join('') : '<option value="">لا توجد نسخ محفوظة</option>';
     $('#restoreContact').innerHTML = '<option value="">اختر النسخة أولًا</option>'; $('#restoreInfo').textContent = backups.length ? `عدد النسخ المحفوظة: ${backups.length} (آخر 7 نسخ قبل الحذف).` : 'تُحفظ نسخة قبل حذف البيانات، ونسخة كاملة لقاعدة البيانات يوميًا على الخادم.';
@@ -369,9 +371,8 @@
   const transactionName = kind => ({debt:'دين',payment:'دفعة',correction:'تصحيح دين',reversal:'عكس دفعة'}[kind] || kind);
   const directionName = direction => direction==='receivable' ? 'للـمتجر' : direction==='payable' ? 'على المتجر' : '—';
   const actionName = action => ({'contact.create':'إضافة شخص','contact.archive':'أرشفة شخص','contact.unarchive':'إعادة شخص','debt.create':'إضافة دين','debt.correct':'تصحيح دين','payment.create':'تسجيل دفعة','payment.reverse':'عكس دفعة','operation.rejected':'عملية مرفوضة','installation.approved':'اعتماد هاتف','installation.revoked':'إلغاء اعتماد هاتف','recovery.approved':'اعتماد استرداد','account.archive':'أرشفة حساب','account.unarchive':'إعادة حساب من الأرشيف','account.end-sessions':'إنهاء الجلسات','account.revoke-all':'إلغاء جميع الأجهزة'}[action] || action);
-  const isoDate = value => value ? new Date(value).toLocaleString('ar-PS') : '—';
   function renderInstallations() {
-    $('#installationList').innerHTML=currentInstallations.length ? currentInstallations.map(phone=>`<article class="device-card"><div class="record-row"><div><b class="installation-state ${esc(phone.status)}">${esc({pending:'بانتظار اعتمادك',active:'هاتف معتمد',revoked:'أُلغي الاعتماد'}[phone.status])} · ${fmt(phone.generation)}</b><code dir="ltr">${esc(phone.installationId)}</code><small>سُجل ${esc(isoDate(phone.createdAt))}${phone.approvedBy?` · اعتمده ${esc(phone.approvedBy)}`:''}</small>${phone.reason?`<small>${esc(phone.reason)}</small>`:''}</div><div class="button-row">${phone.status==='pending'?`<button class="button primary" data-installation-approve="${esc(phone.installationId)}" ${current.archived?'disabled':''}>اعتماد الهاتف</button>`:''}${phone.status!=='revoked'?`<button class="button danger" data-installation-revoke="${esc(phone.installationId)}" ${current.archived?'disabled':''}>إلغاء الاعتماد</button>`:''}</div></div>${phone.status==='revoked'?'<p class="small muted">لإعادة هذا الهاتف، سجله كجهاز جديد من التطبيق ثم اعتمد طلبه الجديد.</p>':''}</article>`).join('') : '<p class="muted">لا توجد طلبات هواتف. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور المؤقتة ثم يظهر طلب هاتفه هنا.</p>';
+    $('#installationList').innerHTML=currentInstallations.length ? currentInstallations.map(phone=>`<article class="device-card"><div class="record-row"><div><b class="installation-state ${esc(phone.status)}">${esc({pending:'بانتظار اعتمادك',active:'هاتف معتمد',revoked:'أُلغي الاعتماد'}[phone.status])} · ${fmt(phone.generation)}</b><code dir="ltr">${esc(phone.installationId)}</code><small>سُجل ${esc(dateFmt(phone.createdAt))}${phone.approvedBy?` · اعتمده ${esc(phone.approvedBy)}`:''}</small>${phone.reason?`<small>${esc(phone.reason)}</small>`:''}</div><div class="button-row">${phone.status==='pending'?`<button class="button primary" data-installation-approve="${esc(phone.installationId)}" ${current.archived?'disabled':''}>اعتماد الهاتف</button>`:''}${phone.status!=='revoked'?`<button class="button danger" data-installation-revoke="${esc(phone.installationId)}" ${current.archived?'disabled':''}>إلغاء الاعتماد</button>`:''}</div></div>${phone.status==='revoked'?'<p class="small muted">لإعادة هذا الهاتف، سجله كجهاز جديد من التطبيق ثم اعتمد طلبه الجديد.</p>':''}</article>`).join('') : '<p class="muted">لا توجد طلبات هواتف. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور المؤقتة ثم يظهر طلب هاتفه هنا.</p>';
     $('#installationList').querySelectorAll('[data-installation-approve]').forEach(button=>button.addEventListener('click',()=>installationAction(button.dataset.installationApprove,'approve')));
     $('#installationList').querySelectorAll('[data-installation-revoke]').forEach(button=>button.addEventListener('click',()=>installationAction(button.dataset.installationRevoke,'revoke')));
   }
@@ -409,7 +410,7 @@
     $('#recoveryNew').innerHTML=active?`<option value="${esc(active.installationId)}">${fmt(active.generation)} · ${esc(active.installationId)}</option>`:'<option value="">اعتمد الهاتف الجديد أولًا</option>';
     $('#recoveryForm button').disabled=!active || !old.length || current.archived;
     renderRecoverySummary();
-    $('#recoveryHistory').innerHTML=permits.length?'<h4>تصاريح الاسترداد السابقة</h4>'+permits.map(permit=>`<div class="record-row"><div><b>${esc(permit.approved_by)} · ${new Date(permit.expires_at)>new Date()?'صالح':'منتهي'}</b><code dir="ltr">${esc(permit.id)}</code><small>${esc(permit.reason)} · ينتهي ${esc(isoDate(permit.expires_at))}</small></div></div>`).join(''):'';
+    $('#recoveryHistory').innerHTML=permits.length?'<h4>تصاريح الاسترداد السابقة</h4>'+permits.map(permit=>`<div class="record-row"><div><b>${esc(permit.approved_by)} · ${new Date(permit.expires_at)>new Date()?'صالح':'منتهي'}</b><code dir="ltr">${esc(permit.id)}</code><small>${esc(permit.reason)} · ينتهي ${esc(dateFmt(permit.expires_at))}</small></div></div>`).join(''):'';
   }
   // --- Recovery manifest pre-flight ---------------------------------------------------
   // Approving a recovery is irreversible, and the server only reports the first problem it
@@ -419,7 +420,14 @@
   // here so the admin sees what they are authorising before they authorise it.
   const recoveryTypes = { 'contact.create': 'إضافة شخص', 'debt.create': 'إضافة دين', 'payment.create': 'تسجيل دفعة' };
   const recoveryMethods = { cash: 'نقدي', bank: 'بنكي', wallet: 'محفظة' };
-  const latinDigits = value => String(value ?? '').replace(/[٠-٩]/g, digit => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
+  /** The one rule that decides whether approving a recovery is allowed: an active replacement
+   *  phone, an old phone revoked before it, and a store that is not archived. The preview and the
+   *  submit button both read it, so they cannot disagree. */
+  function recoveryPermitted() {
+    const active = currentInstallations.find(phone => phone.status === 'active');
+    const oldReady = currentInstallations.some(phone => phone.status === 'revoked' && active && phone.generation < active.generation);
+    return !!active && oldReady && !current?.archived;
+  }
   const recoveryMoney = cents => `${fmt(Number(cents || 0) / 100)} ₪`;
 
   function readRecoveryCommands(text) {
@@ -455,20 +463,20 @@
       if (!payload) problems.push({ level: 'block', message: `${at}: بلا payload.` });
       const created = Date.parse(cmd.createdAt);
       if (Number.isFinite(created)) { if (first === null || created < first) first = created; if (last === null || created > last) last = created; }
-      if (type0(cmd) && payload) {
+      if (recoveryTypes[cmd.type] && payload) {
         if (cmd.type === 'contact.create') {
           const name = String(payload.name || '').trim();
           if (!name) problems.push({ level: 'block', message: `${at}: شخص بلا اسم.` });
-          const phone = latinDigits(payload.phone).replace(/[\s()\-]/g, '');
+          const phone = englishDigits(payload.phone).replace(/[\s()\-]/g, '');
           if (phone && !/^\+[1-9][0-9]{7,14}$/.test(phone)) problems.push({ level: 'warn', message: `${at}: رقم الهاتف ليس بصيغة دولية (${phone}).` });
           details.push({ at, text: `شخص: ${name || '—'}`, sub: phone || 'بلا رقم' });
         } else if (cmd.type === 'debt.create') {
-          const cents = Number(latinDigits(payload.amountCents));
+          const cents = Number(englishDigits(payload.amountCents));
           if (!Number.isFinite(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدين غير صالح.` }); else debtCents += cents;
           if (!['receivable', 'payable'].includes(payload.direction)) problems.push({ level: 'block', message: `${at}: اتجاه الدين غير صالح.` });
           details.push({ at, text: `دين: ${recoveryMoney(cents)}`, sub: payload.direction === 'payable' ? 'مستحق على المتجر' : 'مستحق للمتجر' });
         } else if (cmd.type === 'payment.create') {
-          const cents = Number(latinDigits(payload.amountCents));
+          const cents = Number(englishDigits(payload.amountCents));
           if (!Number.isFinite(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدفعة غير صالح.` }); else paymentCents += cents;
           if (!['cash', 'bank', 'wallet'].includes(payload.method)) problems.push({ level: 'block', message: `${at}: طريقة الدفع غير صالحة.` });
           details.push({ at, text: `دفعة: ${recoveryMoney(cents)}`, sub: recoveryMethods[payload.method] || payload.method || '—' });
@@ -479,15 +487,11 @@
     if (commands.length > 1000) problems.push({ level: 'block', message: `${fmt(commands.length)} أمرًا يتجاوز الحد الأقصى 1000.` });
     return { stats: { total: commands.length, byType, debtCents, paymentCents, first, last }, problems, details };
   }
-  function type0(cmd) { return !!recoveryTypes[cmd.type]; }
-
   function renderRecoverySummary() {
     const box = $('#recoverySummary'), button = $('#recoveryForm button');
     if (!box || !button) return;
     const text = $('#recoveryManifest').value.trim();
-    const active = currentInstallations.find(phone => phone.status === 'active');
-    const oldReady = currentInstallations.some(phone => phone.status === 'revoked' && active && phone.generation < active.generation);
-    const permitted = !!active && oldReady && !current.archived;
+    const permitted = recoveryPermitted();
     if (!text) { box.hidden = true; button.disabled = !permitted; return; }
     box.hidden = false;
     const oldPhone = currentInstallations.find(phone => phone.installationId === $('#recoveryOld').value);
@@ -500,7 +504,7 @@
       ['ديون', fmt(stats.byType['debt.create'] || 0)], ['دفعات', fmt(stats.byType['payment.create'] || 0)],
       ['إجمالي الديون', recoveryMoney(stats.debtCents)], ['إجمالي الدفعات', recoveryMoney(stats.paymentCents)],
     ].map(([label, value]) => `<div class="mini-metric"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('') : '';
-    $('#recoverySummaryRange').textContent = stats && stats.first ? `أقدم إدخال ${isoDate(new Date(stats.first).toISOString())} · أحدث إدخال ${isoDate(new Date(stats.last).toISOString())}` : '';
+    $('#recoverySummaryRange').textContent = stats && stats.first ? `أقدم إدخال ${dateFmt(new Date(stats.first).toISOString())} · أحدث إدخال ${dateFmt(new Date(stats.last).toISOString())}` : '';
     $('#recoverySummaryProblems').innerHTML = [
       ...blocking.map(item => `<div class="record-row"><div><b class="form-error">يمنع الاعتماد</b><small>${esc(item.message)}</small></div></div>`),
       ...warnings.map(item => `<div class="record-row"><div><b>تنبيه</b><small>${esc(item.message)}</small></div></div>`),
@@ -524,9 +528,10 @@
     try{
       const raw=$('#recoveryManifest').value;
       if(new TextEncoder().encode(raw).length>4000000)throw new Error('قائمة الاسترداد أكبر من الحد المسموح.');
-      let parsed;try{parsed=JSON.parse(raw);}catch{throw new Error('أدخل قائمة أوامر JSON صالحة من شاشة الاسترداد في الهاتف.');}
-      const commands=Array.isArray(parsed)?parsed:parsed?.commands;
-      if(!Array.isArray(commands) || commands.length<1 || commands.length>1000)throw new Error('القائمة يجب أن تحتوي من أمر واحد إلى 1000 أمر.');
+      const read=readRecoveryCommands(raw);
+      if(read.error)throw new Error(read.error);
+      const commands=read.commands;
+      if(commands.length<1 || commands.length>1000)throw new Error('القائمة يجب أن تحتوي من أمر واحد إلى 1000 أمر.');
       if(!$('#recoveryOld').value || !$('#recoveryNew').value)throw new Error('اختر الهاتف السابق والهاتف المعتمد.');
       // Same pre-flight the preview panel runs; the server only reports its first problem.
       const preflight=inspectRecoveryManifest(raw,currentInstallations.find(phone=>phone.installationId===$('#recoveryOld').value));
@@ -538,15 +543,16 @@
       button.disabled=true;
       const r=await ledgerApi('/recovery/approve',{oldInstallationId:$('#recoveryOld').value,newInstallationId:$('#recoveryNew').value,commands,reason:$('#recoveryReason').value.trim()});
       await openStore(storeId);
-      $('#recoveryResult').innerHTML=`<b>تم اعتماد الاسترداد</b><span class="permit-id">${esc(r.result.permitId)}</span><p>ينتهي ${esc(isoDate(r.result.expiresAt))}. انسخ رقم التصريح وضعه في شاشة استرداد الهاتف الجديد.</p>`;
+      $('#recoveryResult').innerHTML=`<b>تم اعتماد الاسترداد</b><span class="permit-id">${esc(r.result.permitId)}</span><p>ينتهي ${esc(dateFmt(r.result.expiresAt))}. انسخ رقم التصريح وضعه في شاشة استرداد الهاتف الجديد.</p>`;
       $('#recoveryResult').classList.remove('hidden');notice('سُجلت موافقة الاسترداد.');
     }catch(error){$('#recoveryError').textContent=error.message;}
-    finally{if(current?.id===storeId)button.disabled=current.archived || !currentInstallations.some(phone=>phone.status==='active') || !currentInstallations.some(phone=>phone.status==='revoked');}
+    finally{if(current?.id===storeId)button.disabled=!recoveryPermitted();}
   });
   function renderControlHistory(result) {
     const events=[...(result.auditEvents || []),...(result.controlEvents || []).map(item=>({action:item.kind,actor:item.actor,description:item.reason,createdAt:Date.parse(item.created_at)}))].sort((a,b)=>b.createdAt-a.createdAt).slice(0,200);
-    renderAuditEvents(events.map(item=>({...item,action:actionName(item.action),actor:item.deviceId?`هاتف ${String(item.deviceId).slice(0,8)}`:item.actor})));
-    if(result.accessEvents?.length)$('#deviceAuditList').insertAdjacentHTML('beforeend',`<details><summary>قراءات الإدارة المسجلة</summary>${result.accessEvents.map(item=>`<div class="record-row"><div><b>${esc(item.actor)}</b><small>${esc(item.reason)} · ${esc(isoDate(item.created_at))}</small><code dir="ltr">${esc(item.id)}</code></div></div>`).join('')}</details>`);
+    const mapped=events.map(item=>({...item,action:actionName(item.action),actor:item.deviceId?`هاتف ${String(item.deviceId).slice(0,8)}`:item.actor}));
+    $('#deviceAuditList').innerHTML=mapped.length?mapped.map(item=>`<div class="record-row"><div><b>${esc(item.action)} · ${esc(item.actor||'صاحب المتجر')}</b><small>${esc(item.description)} · ${esc(dateFmt(item.createdAt))}</small></div></div>`).join(''):'<p class="muted">لا توجد حركات مسجلة بعد.</p>';
+    if(result.accessEvents?.length)$('#deviceAuditList').insertAdjacentHTML('beforeend',`<details><summary>قراءات الإدارة المسجلة</summary>${result.accessEvents.map(item=>`<div class="record-row"><div><b>${esc(item.actor)}</b><small>${esc(item.reason)} · ${esc(dateFmt(item.created_at))}</small><code dir="ltr">${esc(item.id)}</code></div></div>`).join('')}</details>`);
   }
   function renderLedger() {
     if(!currentSnapshot || !current)return;
