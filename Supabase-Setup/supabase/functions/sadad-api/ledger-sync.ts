@@ -3,11 +3,11 @@
  *   - the batched delta upload   (POST /mobile/sync-delta)
  *   - the paged ledger download  (GET  /mobile/snapshot-page)
  *
- * Kept out of index.ts so they can be unit-tested with `deno test`, the same pattern as
+ * Kept out of handler.ts so they can be unit-tested with `deno test`, the same pattern as
  * admin-ledger.ts. Wire shape: camelCase keys, money in shekels — exactly what the app reads.
  *
- * Semantics mirror the legacy Node server (server/server.js: function syncDelta), which is the
- * implementation the 2.5.10 app was built and tested against.
+ * The legacy Node server these semantics were taken from (server/server.js: function syncDelta)
+ * was retired in October 2026; its assertions live in ledger-sync_test.ts.
  */
 
 export type WireRow = Record<string, any>;
@@ -26,16 +26,6 @@ export type LedgerTable = (typeof LEDGER_TABLES)[number];
 export const DELTA_BATCH_LIMIT = 500;
 /** Page size of the paged ledger download. */
 export const SNAPSHOT_PAGE_LIMIT = 500;
-
-/** Row ids in one delta table, validated as positive safe integers. */
-export function rowIds(rows: unknown, label: string): number[] {
-  if (!Array.isArray(rows)) throw new Error(`invalid_rows:${label}`);
-  return rows.map((row) => {
-    const id = Number((row as WireRow)?.id);
-    if (!Number.isSafeInteger(id) || id < 1) throw new Error(`invalid_id:${label}`);
-    return id;
-  });
-}
 
 /** Deletion lists of a batch, validated. A missing `deleted` object means no deletions. */
 export function deletedIds(deleted: unknown, table: LedgerTable): number[] {

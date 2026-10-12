@@ -4,7 +4,6 @@ import {
   deletedIds,
   ledgerRowToWire,
   mergeDeltaIntoSnapshot,
-  rowIds,
   type WireSnapshot,
 } from "./ledger-sync.ts";
 
@@ -104,9 +103,6 @@ Deno.test("malformed batches are rejected instead of silently applied", () => {
   assertThrows(() => deletedIds({ contacts: "nope" }, "contacts"), Error, "invalid_deleted:contacts");
   assertThrows(() => deletedIds("nope", "contacts"), Error, "invalid_deleted");
   assertThrows(() => deletedIds([1, 2], "contacts"), Error, "invalid_deleted");
-  assertThrows(() => rowIds([{ id: 0 }], "contact"), Error, "invalid_id");
-  assertThrows(() => rowIds([{ id: 1.5 }], "contact"), Error, "invalid_id");
-  assertThrows(() => rowIds("nope", "contact"), Error, "invalid_rows");
 });
 
 Deno.test("a missing deleted list is treated as empty", () => {

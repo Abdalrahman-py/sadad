@@ -173,7 +173,6 @@ Deno.test("GET /health returns the service envelope", async () => {
   assertEquals(await response.json(), {
     ok: true,
     service: "sadad",
-    version: "2.0.0",
     storage: "supabase-postgres",
   });
 });

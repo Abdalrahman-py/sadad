@@ -618,7 +618,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
     if (pathname.startsWith("/api/")) pathname = pathname.slice(4);
     if (pathname === "/api") pathname = "/";
 
-    if (request.method === "GET" && pathname === "/health") return ok({ service: "sadad", version: "2.0.0", storage: "supabase-postgres" });
+    if (request.method === "GET" && pathname === "/health") return ok({ service: "sadad", storage: "supabase-postgres" });
     if (request.method === "GET" && pathname === "/setup/status") return ok({ bootstrapRequired: (await countAdmins()) === 0 });
     if (request.method === "POST" && pathname === "/setup/admin") {
       await checkLoginLimit(request, "admin-setup");
@@ -729,11 +729,6 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
           trusted: available.filter(store => store.verified).length, debts: available.reduce((sum,store) => sum + Number(store.debtTotal), 0),
           pendingDevices: available.reduce((sum,store) => sum + Number(store.pendingDevices), 0) };
         return ok({ overview, stores, meta: { username: auth.user.username, backend: "supabase" } });
-      }
-      if (request.method === "GET" && pathname === "/admin/overview") {
-        const stores = await adminStoreList(auth);
-        return ok({ overview: { stores: stores.length, active: stores.filter(store => store.status === "active").length,
-          trusted: stores.filter(store => store.verified).length, debts: stores.reduce((sum,store) => sum + Number(store.debtTotal),0) }, meta: { username: auth.user.username } });
       }
       if (request.method === "GET" && pathname === "/admin/stores") return ok({ stores: await adminStoreList(auth, url.searchParams.get("includeArchived") === "true") });
       if (request.method === "POST" && pathname === "/admin/stores") {
@@ -1037,7 +1032,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
           const parameters = [contact.name, `${Number(person?.receivable || 0).toFixed(2)} ₪`, `${Number(person?.payable || 0).toFixed(2)} ₪`, `${transactions.length} حركة`].map(value => ({ type: "text", text: String(value).slice(0, 900) }));
           message = { messaging_product: "whatsapp", to: destination, type: "template", template: { name: store.whatsapp_template_name, language: { code: store.whatsapp_template_language || "ar" }, components: [{ type: "body", parameters }] } };
         } else message = { messaging_product: "whatsapp", to: destination, type: "text", text: { preview_url: false, body: summary } };
-        const response = await fetch(`https://graph.facebook.com/${metaVersion}/${store.whatsapp_number_id}/messages`, {
+        const response = await fetcher(`https://graph.facebook.com/${metaVersion}/${store.whatsapp_number_id}/messages`, {
           method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(message),
         });
         const result = await response.json().catch(() => ({}));
