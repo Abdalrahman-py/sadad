@@ -199,16 +199,8 @@ final class NativeScreens {
         EditText password = input("كلمة المرور", true); body.addView(password, matchWithBottom(16));
         EditText staffName = input("اسم الشخص على هذا الجهاز", false); staffName.setSingleLine(true);
         body.addView(staffName, matchWithBottom(12));
-        if (BuildConfig.STANDALONE_MODE) {
-            body.addView(button("دخول آمن", primary, Color.WHITE, () -> host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString())), match());
-        } else {
-            EditText serverUrl = input(BuildConfig.DEBUG ? "رابط الخادم" : "رابط الخادم (ثابت في هذه النسخة)", false); serverUrl.setSingleLine(true); serverUrl.setText(host.sessions.apiBaseUrl());
-            serverUrl.setEnabled(BuildConfig.DEBUG); serverUrl.setFocusable(BuildConfig.DEBUG);
-            body.addView(serverUrl, matchWithBottom(16));
-            body.addView(button("دخول آمن", primary, Color.WHITE, () -> {
-                if (host.configureApiBaseUrl(serverUrl.getText().toString())) host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString());
-            }), match());
-        }
+        body.addView(button("دخول آمن", primary, Color.WHITE,
+                () -> host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString())), match());
 
         TextView support = label("تواصل معنا لتفعيل حسابك", 14, primary, true);
         support.setGravity(Gravity.CENTER); support.setPadding(0, dp(15), 0, dp(4));
@@ -229,12 +221,13 @@ final class NativeScreens {
         TextView title = label("غيّر كلمة المرور المؤقتة", 23, text, true); title.setGravity(Gravity.CENTER); title.setPadding(0, dp(16), 0, dp(6)); card.addView(title);
         TextView hint = label("يجب تعيين كلمة مرور جديدة للمتابعة إلى التطبيق.", 14, muted, false); hint.setGravity(Gravity.CENTER); hint.setPadding(0, 0, 0, dp(18)); card.addView(hint);
         EditText previous = input("كلمة المرور المؤقتة", true); card.addView(previous, matchWithBottom(10));
-        EditText next = input("كلمة المرور الجديدة (4 خانات على الأقل)", true); card.addView(next, matchWithBottom(10));
+        EditText next = input("كلمة المرور الجديدة (" + MainActivity.PASSWORD_MIN + " خانة على الأقل)", true); card.addView(next, matchWithBottom(10));
         EditText confirm = input("تأكيد كلمة المرور الجديدة", true); card.addView(confirm, matchWithBottom(16));
         card.addView(button("حفظ ومتابعة", primary, Color.WHITE, () -> {
             String newPassword = next.getText().toString();
             if (!newPassword.equals(confirm.getText().toString())) { confirm.setError("كلمتا المرور غير متطابقتين."); return; }
-            if (newPassword.length() < 4) { next.setError("استخدم 4 خانات على الأقل."); return; }
+            if (newPassword.length() < MainActivity.PASSWORD_MIN) { next.setError("استخدم " + MainActivity.PASSWORD_MIN + " خانة على الأقل."); return; }
+            if (newPassword.length() > MainActivity.PASSWORD_MAX) { next.setError("لا تزيد كلمة المرور عن " + MainActivity.PASSWORD_MAX + " خانة."); return; }
             host.changeServerPassword(previous.getText().toString(), newPassword, (success, message) -> {
                 if (!success) { previous.setError(message); host.showBrandedMessage(message); }
             });
@@ -1317,12 +1310,13 @@ final class NativeScreens {
     private void promptChangeServerPassword() {
         LinearLayout box = new LinearLayout(host); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(18), dp(6), dp(18), 0);
         EditText previous = input("كلمة المرور السابقة", true); box.addView(previous, bottomMargin(9));
-        EditText next = input("كلمة المرور الجديدة (4 خانات على الأقل)", true); box.addView(next, bottomMargin(9));
+        EditText next = input("كلمة المرور الجديدة (" + MainActivity.PASSWORD_MIN + " خانة على الأقل)", true); box.addView(next, bottomMargin(9));
         EditText confirm = input("تأكيد كلمة المرور الجديدة", true); box.addView(confirm);
         AlertDialog dialog = new SadadDialog.Builder(host).setTitle("تغيير كلمة المرور").setView(box).setNegativeButton("إلغاء", null).setPositiveButton("تغيير", null).create();
         dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             if (!next.getText().toString().equals(confirm.getText().toString())) { confirm.setError("كلمتا المرور غير متطابقتين"); return; }
-            if (next.getText().toString().length() < 4) { next.setError("استخدم 4 خانات على الأقل."); return; }
+            if (next.getText().toString().length() < MainActivity.PASSWORD_MIN) { next.setError("استخدم " + MainActivity.PASSWORD_MIN + " خانة على الأقل."); return; }
+            if (next.getText().toString().length() > MainActivity.PASSWORD_MAX) { next.setError("لا تزيد كلمة المرور عن " + MainActivity.PASSWORD_MAX + " خانة."); return; }
             host.changeServerPassword(previous.getText().toString(), next.getText().toString(), (success, message) -> {
                 if (success) dialog.dismiss(); else previous.setError(message);
             });

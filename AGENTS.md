@@ -16,6 +16,37 @@
 قاعدة صريحة: **إن احتجت تغيير سلوك مكوّن، عدّل المكوّن المعتمد. لا تُنشئ نسخة ثانية منه.**
 كل التكرار في هذا المستودع جاء من مخالفة هذا السطر.
 
+## خريطة الكود: أين تعيش كل ميزة
+
+مصدر واحد لكل ميزة. ابدأ من السطر المذكور هنا بدل البحث في الشجرة. الأرقام مقيسة على شجرة
+`main` في 12 أكتوبر 2026 (إجمالي كود التطبيق 7,067 سطرًا في 24 ملفًا؛ ثلاثة ملفات تحمل 59% منه).
+
+| الميزة | الملف | نقطة البداية |
+| --- | --- | --- |
+| التنقّل وحالة المسار | `MainActivity.java` | `show(String route)`، `currentRoute()`، `refreshCurrentScreen()` |
+| بناء الشاشات (لا XML؛ كل العرض برمجي) | `NativeScreens.java` | `show(String page)`، ثم `buildWelcome/buildLogin/buildHome/buildHistory/buildSettings` |
+| جدول المسار ← الشاشة | `NativeScreens.java` | `addPage(String page)` (سلسلة `case`) |
+| قاعدة البيانات المحلية | `SadadDatabase.java` | `saveContact`، `saveDebt`، `savePayment`، `historyActivities` |
+| الجلسة والدخول | `MainActivity` + `SessionStore.java` | |
+| مزامنة السجل الموقّع (v3) | `SignedLedgerSync.java` → `LedgerClient.java` → `HttpSyncTransport.java` | |
+| السجل القديم `/mobile/*` | `LedgerSync.java` | ما زال يخدم المتجر 900001 وحده |
+| طابور العمليات وبناء الأمر | `LedgerQueue.java` + `LedgerCommand.java` | `LedgerCommand.now()` يبني الطابع الزمني المرسل |
+| الإسقاط المحلي للسجل | `LedgerProjection.java` | |
+| تصدير الكشوفات | `LedgerTablePdf.java` / `LedgerTableExcel.java` | |
+| مشاركة الملفات | `PdfShareProvider.java` | |
+| تذكيرات الاستحقاق | `DueReminderManager.java` | |
+| بوابة الهوية (Auth envelope) | `sadad-auth/handler.ts` | `/mobile/login`، `/mobile/auth/refresh` |
+| بوابة التوافق والإدارة | `sadad-api/handler.ts` | `route()` — سلسلة `if` على المسار (21 مسارًا) |
+| السجل الموقّع على الخادم | `sadid-ledger/index.ts` | `/mobile/v3/enroll` ثم `verifyProof` |
+| إدارة التركيبات والاستعادة | `sadid-ledger/admin.ts` | `/admin/*` |
+| لوحة الإدارة | `server/public/admin.js` | |
+| بناء اللوحة للنشر | `tools/build-admin-pages.cjs` | يكتب `_site/` |
+| الترحيلات | `Supabase-Setup/supabase/migrations/` | |
+| اختبارات الوحدة (JVM) | `app/src/test/java/com/sadad/app/` | `./gradlew testServerDebugUnitTest` |
+| اختبارات الجهاز | `app/src/androidTest/java/com/sadad/app/QaInstrumentation.java` | معرّف QA (`com.sadad.qa`) + جهاز |
+| اختبارات Edge | `Supabase-Setup/supabase/functions/<name>/*_test.ts` | `deno test -A` داخل المجلد |
+| اختبارات قاعدة البيانات | `Supabase-Setup/scripts/*.mjs` | pglite |
+
 ## البناء
 
 ```sh

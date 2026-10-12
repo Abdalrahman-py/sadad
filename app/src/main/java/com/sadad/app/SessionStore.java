@@ -27,7 +27,6 @@ final class SessionStore implements SyncSession, LedgerSession {
     /** Separate pref keys so existing installs keep working unchanged: the device token and the
      *  Auth envelope (issued only by the sadad-auth gateway) are stored independently. */
     private static final String AUTH_KEY = "auth_envelope";
-    private static final String LEDGER_MODE_KEY = "ledger_mode";
     private final SharedPreferences preferences;
 
     SessionStore(Context context) { preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
@@ -217,7 +216,6 @@ final class SessionStore implements SyncSession, LedgerSession {
     /** The gateway that issues the Auth envelope. Fixed at build time, like the ledger's own origin:
      *  a device session must not be renewable against a host the user can type into. */
     public String authBaseUrl() { return BuildConfig.AUTH_BASE_URL; }
-    void setApiBaseUrl(String value) { preferences.edit().putString("api_base_url", value).apply(); updateCurrentSavedBundle(); }
 
     /** Auth envelope (accessToken/refreshToken/expiresAt) issued by the sadad-auth gateway.
      *  Empty when the account has never logged in through the gateway. */
@@ -231,12 +229,9 @@ final class SessionStore implements SyncSession, LedgerSession {
         preferences.edit().putString(AUTH_KEY, encryptToken(auth.toString())).apply();
     }
 
-    /** "v3" for a store on the signed ledger, "legacy" for the older protocol, "" before the
-     *  first probe. Set once per login from the server's answer, never guessed mid-sync. */
-    String ledgerMode() { return preferences.getString(LEDGER_MODE_KEY, ""); }
-    void setLedgerMode(String mode) { preferences.edit().putString(LEDGER_MODE_KEY, mode == null ? "" : mode).apply(); }
+    /** The ledger is always the signed one for a connected build; nothing negotiates a mode. */
 
-    void clear() { preferences.edit().remove("token").remove("expires_at").remove("account").remove("force_password_change").remove(AUTH_KEY).remove(LEDGER_MODE_KEY).apply(); }
+    void clear() { preferences.edit().remove("token").remove("expires_at").remove("account").remove("force_password_change").remove(AUTH_KEY).apply(); }
 
     synchronized boolean devicePermissionAllowed(String key) { return devicePermissions().optBoolean(key, true); }
 

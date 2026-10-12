@@ -8,6 +8,7 @@ import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import org.json.JSONArray;
@@ -40,9 +41,11 @@ public final class QaInstrumentation extends Instrumentation {
             if (findDescription(host.getWindow().getDecorView(), "إملاء صوتي كمسودة") == null) throw new AssertionError("Missing microphone");
             show("notifications"); screenshot("notifications"); assertAbsent("إعدادات إشعارات الهاتف");
             show("history"); screenshot("history"); assertAbsent("السجل فارغ"); assertAbsent("المتبقي الإجمالي");
-            runOnMainSync(() -> findText(host.getWindow().getDecorView(), "يومي").performClick()); waitForIdleSync();
+            // The daily/monthly choice lives behind the filter dialog (NativeScreens.addDateFilterControls),
+            // not in inline chips, so it is driven through the real control instead of a text lookup.
+            openHistoryFilter(); clickInActiveWindow("يومي"); waitForIdleSync(); Thread.sleep(350);
             if (!"history_results".equals(host.currentRoute())) throw new AssertionError("History didn't open"); screenshot("history-results");
-            runOnMainSync(() -> findText(host.getWindow().getDecorView(), "شهري").performClick()); waitForIdleSync(); assertPresent("هذا الشهر");
+            openHistoryFilter(); clickInActiveWindow("شهري"); waitForIdleSync(); Thread.sleep(350); assertPresent("هذا الشهر");
             show("settings"); screenshot("settings-top"); assertPresent("حفظ كشف السجلات"); assertPresent("مشاركة كشف السجلات");
             runOnMainSync(() -> findScroll(host.getWindow().getDecorView()).fullScroll(View.FOCUS_DOWN)); waitForIdleSync(); Thread.sleep(350); screenshot("settings-bottom");
             runOnMainSync(() -> host.setTheme(true)); waitForIdleSync(); screenshot("settings-dark"); runOnMainSync(() -> host.setTheme(false));
@@ -80,6 +83,23 @@ public final class QaInstrumentation extends Instrumentation {
     private TextView findText(View view, String text) { if (view instanceof TextView && ((TextView) view).getText().toString().contains(text)) return (TextView) view; if (view instanceof ViewGroup) { ViewGroup group = (ViewGroup) view; for (int i = 0; i < group.getChildCount(); i++) { TextView result = findText(group.getChildAt(i), text); if (result != null) return result; } } return null; }
     private View findDescription(View view, String description) { if (description.contentEquals(view.getContentDescription() == null ? "" : view.getContentDescription())) return view; if (view instanceof ViewGroup) { ViewGroup group = (ViewGroup) view; for (int i = 0; i < group.getChildCount(); i++) { View result = findDescription(group.getChildAt(i), description); if (result != null) return result; } } return null; }
     private ScrollView findScroll(View view) { if (view instanceof ScrollView) return (ScrollView) view; if (view instanceof ViewGroup) { ViewGroup group = (ViewGroup) view; for (int i = 0; i < group.getChildCount(); i++) { ScrollView result = findScroll(group.getChildAt(i)); if (result != null) return result; } } return null; }
+    private void openHistoryFilter() throws Exception {
+        TextView filter = findText(host.getWindow().getDecorView(), "فلتر السجل");
+        if (filter == null) throw new AssertionError("Missing the history filter control");
+        runOnMainSync(filter::performClick); waitForIdleSync(); Thread.sleep(250);
+    }
+    /** Dialog items live in their own window, so they are reached through the accessibility tree. */
+    private void clickInActiveWindow(String text) {
+        AccessibilityNodeInfo root = getUiAutomation().getRootInActiveWindow();
+        if (root == null) throw new AssertionError("No active window while looking for " + text);
+        for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(text)) {
+            CharSequence label = node.getText();
+            if (label == null || !label.toString().contains(text)) continue;
+            AccessibilityNodeInfo target = node.isClickable() ? node : node.getParent();
+            if (target != null && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return;
+        }
+        throw new AssertionError("Cannot click " + text + " in the active window");
+    }
     private void assertPresent(String text) { if (findText(host.getWindow().getDecorView(), text) == null) throw new AssertionError("Missing: " + text); }
     private void assertAbsent(String text) { if (findText(host.getWindow().getDecorView(), text) != null) throw new AssertionError("Unexpected: " + text); }
     private JSONObject statementSample() throws Exception {

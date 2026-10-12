@@ -215,39 +215,7 @@ public final class MainActivity extends Activity {
         catch(Exception e){return prefix+"_"+Integer.toHexString(accountId.hashCode());}
     }
     String username() { return sessions == null ? "" : sessions.account().optString("username", "").trim(); }
-    boolean configureApiBaseUrl(String value) {
-        try {
-            String normalized = value == null ? "" : value.trim();
-            while (normalized.endsWith("/")) normalized = normalized.substring(0, normalized.length() - 1);
-            URI uri = new URI(normalized);
-            String scheme = uri.getScheme();
-            if (uri.getHost() == null || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
-                    || !("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)))
-                throw new IllegalArgumentException("أدخل رابط الخادم كاملًا.");
-            // The built-in endpoint is the Supabase sadad-api function (.../functions/v1/sadad-api).
-            // A self-hosted legacy server still ends in /api. Anything else is rejected.
-            URI builtIn = new URI(BuildConfig.API_BASE_URL);
-            boolean matchesBuiltIn = uri.getHost().equalsIgnoreCase(builtIn.getHost()) && effectivePort(uri) == effectivePort(builtIn);
-            boolean legacyPath = uri.getPath() != null && uri.getPath().endsWith("/api");
-            if (!matchesBuiltIn && !legacyPath)
-                throw new IllegalArgumentException("رابط الخادم غير معروف. استخدم الخادم الرسمي للتطبيق.");
-            // A release build only ever talks to the built-in origin: the session token must not be
-            // redirectable to a host the user types in.
-            if (!BuildConfig.DEBUG && !matchesBuiltIn)
-                throw new IllegalArgumentException("عنوان الخادم محدد في نسخة التطبيق.");
-            if (!BuildConfig.DEBUG && !"https".equalsIgnoreCase(scheme)) throw new IllegalArgumentException("يتطلب إصدار التطبيق اتصال HTTPS آمنًا.");
-            sessions.setApiBaseUrl(normalized);
-            return true;
-        } catch (Exception e) {
-            showBrandedMessage(e.getMessage() == null ? "رابط الخادم غير صالح." : e.getMessage());
-            return false;
-        }
-    }
 
-    private static int effectivePort(URI uri) {
-        if (uri.getPort() != -1) return uri.getPort();
-        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
-    }
     void saveStoreProfile(String store, String owner) {
         String id=sessions==null?"":sessions.syncAccountId();
         android.content.SharedPreferences.Editor edit=getPreferences(0).edit().putString("store_name", store == null ? "" : store.trim())
@@ -261,8 +229,12 @@ public final class MainActivity extends Activity {
 
     interface ActionCallback { void complete(boolean success, String message); }
 
+    /** The server's rule, mirrored so the form cannot accept what the server rejects
+     *  (sadad-api/handler.ts: ADMIN_PASSWORD_MIN..PASSWORD_MAX). */
+    static final int PASSWORD_MIN = 12, PASSWORD_MAX = 128;
+
     void changeServerPassword(String previous, String next, ActionCallback callback) {
-        if (next == null || next.length() < 4) { callback.complete(false, "كلمة المرور الجديدة يجب ألا تقل عن 4 خانات."); return; }
+        if (next == null || next.length() < PASSWORD_MIN || next.length() > PASSWORD_MAX) { callback.complete(false, "كلمة المرور الجديدة يجب أن تكون بين " + PASSWORD_MIN + " و" + PASSWORD_MAX + " خانة."); return; }
         if (BuildConfig.STANDALONE_MODE) {
             network.execute(() -> {
                 if (!localSecurity.verifyLoginPassword(username(), previous, "123")) {
@@ -400,7 +372,6 @@ public final class MainActivity extends Activity {
                         : account != null && oldSyncAccountId.equals(accountId));
                 if (existingPending && !pending) throw new IllegalStateException("توجد بيانات غير متزامنة تخص حساب متجر مختلف. سجّل الدخول بحسابه أو صدّرها قبل المتابعة.");
                 sessions.save(response);
-                sessions.setLedgerMode(response.optString("ledger", ""));
                 if (!accountId.isEmpty()) switchDatabaseForAccount(accountId);
                 if (account != null) sessions.setAccount(account);
                 DueReminderManager.setStoreName(this, storeName());
@@ -442,7 +413,7 @@ public final class MainActivity extends Activity {
                         || e instanceof java.net.ConnectException
                         || e instanceof java.net.UnknownHostException;
                 String message = networkFailure
-                        ? "تعذر الوصول إلى الخادم. تحقق من رابط الخادم واتصال الهاتف بالشبكة نفسها."
+                        ? "تعذر الوصول إلى الخادم. تحقق من اتصال الهاتف بالإنترنت ثم أعد المحاولة."
                         : e.getMessage() == null ? "تعذر الاتصال بالخادم." : e.getMessage();
                 runOnUiThread(() -> showBrandedMessage(message));
             }
@@ -579,7 +550,13 @@ public final class MainActivity extends Activity {
     private final Runnable uploadDebounce = this::syncNow;
 
     /** True when this store reads and writes through the signed ledger rather than the old protocol. */
-    boolean signedLedger() { return "v3".equals(sessions.ledgerMode()); }
+    /**
+     * The signed ledger is the only protocol for a connected build. This must not depend on a
+     * marker in the login response: the deployed backend omits it, and the app then silently fell
+     * back to the legacy sync, which a v3 store refuses with 409 — so every screen showed zeros
+     * while the ledger held the data. The offline edition never syncs at all.
+     */
+    boolean signedLedger() { return !BuildConfig.STANDALONE_MODE; }
 
     /** The queue for the signed-in store, opened once per session. */
     private LedgerQueue ledgerQueue() throws Exception {
