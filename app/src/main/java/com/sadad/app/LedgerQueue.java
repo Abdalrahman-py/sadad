@@ -13,8 +13,8 @@ import java.nio.charset.StandardCharsets;
  * looks like now, how to queue an edit, and one sync pass.
  *
  * <p>The scope is what keeps two stores on one phone apart: it names the project, the store and the
- * signed-in Auth user, and every journal file and key is derived from it. Nothing here reads
- * Android state other than through {@link AndroidEnvironment}, so the protocol above this class is
+ * signed-in Auth user. The journal file and encryption key use that scope; the installation key
+ * belongs to the store. Android state is read through {@link AndroidEnvironment}, so the protocol above this class is
  * testable without a device.
  */
 final class LedgerQueue {
@@ -80,7 +80,13 @@ final class LedgerQueue {
 
     /** Whether the store may add an entry right now: an unexpired lease on this boot, nothing blocking. */
     boolean canAdd() {
-        try { return SignedLedgerSync.canAddOffline(journal, device); }
+        try {
+            JSONObject payload = journal.metadata("lease").optJSONObject("payload");
+            return payload != null && LedgerClient.PROJECT.equals(payload.optString("projectRef"))
+                    && installation.id().equals(payload.optString("installationId"))
+                    && storeId.equals(payload.optString("storeId")) && userId.equals(payload.optString("userId"))
+                    && SignedLedgerSync.canAddOffline(journal, device);
+        }
         catch (Exception unreadable) { return false; }
     }
 
@@ -240,10 +246,4 @@ final class LedgerQueue {
         try { journal.close(); } catch (Exception ignored) { }
     }
 
-    /** Kept for the JVM harness, which drives the same protocol over the same classes. */
-    LedgerApi api() { return client; }
-
-    InstallationSigner signer() { return installation; }
-
-    LedgerJournal journal() { return journal; }
 }

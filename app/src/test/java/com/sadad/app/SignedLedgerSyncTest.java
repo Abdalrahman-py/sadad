@@ -77,12 +77,13 @@ public final class SignedLedgerSyncTest {
     private static final class FakeLedger implements LedgerApi {
         JSONObject enrolAnswer = json("{\"status\":\"active\",\"installationId\":\"" + INSTALLATION + "\",\"generation\":1}");
         JSONObject leaseAnswer;
+        SyncFailure enrollmentFailure;
         JSONObject snapshotAnswer = json("{\"epoch\":\"epoch-1\",\"cursor\":1}");
         final Map<String, JSONObject> receipts = new HashMap<>();
         final Map<String, SyncFailure> refusals = new HashMap<>();
         final List<String> calls = new ArrayList<>();
 
-        public JSONObject enroll(JSONObject publicKey) { calls.add("enroll"); return enrolAnswer; }
+        public JSONObject enroll(JSONObject publicKey) throws Exception { calls.add("enroll"); if (enrollmentFailure != null) throw enrollmentFailure; return enrolAnswer; }
         public JSONObject snapshot() { calls.add("snapshot"); return snapshotAnswer; }
         public JSONObject lease() { calls.add("lease"); return leaseAnswer; }
         public JSONObject apply(JSONObject command, String permit) throws Exception {
@@ -206,6 +207,28 @@ public final class SignedLedgerSyncTest {
         ledger.enrolAnswer.put("status", "pending");
         assertEquals(SignedLedgerSync.Outcome.WAITING_APPROVAL, run(ledger, journal, device).outcome);
         assertFalse(new LedgerQueue(journal, new FakeSigner(), ledger, device, STORE, USER, "موظف").canAdd());
+    }
+
+    @Test public void aFailedRetryKeepsTheRecoveryDecisionBlocked() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.leaseAnswer = lease(INSTALLATION, 7, USER, 1_700_000_000_000L, 1_700_000_000_000L + 7L * 86400000, keyPair());
+        FakeJournal journal = new FakeJournal();
+        FakeDevice device = new FakeDevice();
+        run(ledger, journal, device);
+        journal.metadata("sync", new JSONObject().put("recoveryRequired", true));
+        ledger.leaseAnswer = null;
+        assertEquals(SignedLedgerSync.Outcome.RETRY_LATER, run(ledger, journal, device).outcome);
+        assertFalse(new LedgerQueue(journal, new FakeSigner(), ledger, device, STORE, USER, "موظف").canAdd());
+    }
+
+    @Test public void anOldSessionBindingRequestsSignInRatherThanAnEndlessRetry() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.enrollmentFailure = new SyncFailure(409, new JSONObject(), "الجلسة مرتبطة بتركيب مختلف.", "session_installation_conflict");
+        FakeJournal journal = new FakeJournal();
+        SignedLedgerSync.Result result = run(ledger, journal, new FakeDevice());
+        assertEquals(SignedLedgerSync.Outcome.SIGN_IN_REQUIRED, result.outcome);
+        assertFalse(result.retryable());
+        assertFalse(journal.locked);
     }
 
     @Test public void aPassRenewsTheLeaseAndKeepsItWhereTheOfflineRulesRead() throws Exception {

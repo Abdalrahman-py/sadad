@@ -41,6 +41,8 @@ final class SignedLedgerSync {
         WAITING_APPROVAL,
         /** The server's recovery generation moved; a person must review the receipts. */
         RECOVERY_REQUIRED,
+        /** The saved session cannot bind this installation; keep the journal and sign in again. */
+        SIGN_IN_REQUIRED,
         /** The queue was pushed and the snapshot is current. */
         SYNCED,
         /** Transient: run again. */
@@ -123,7 +125,12 @@ final class SignedLedgerSync {
             journal.merge(ledger.snapshot());
             return new Result(Outcome.SYNCED, null, accepted, rejected);
         } catch (SyncFailure refusal) {
-            return fail(journal, refusal.code, refusal.getMessage());
+            Result failure = fail(journal, refusal.code, refusal.getMessage());
+            if (refusal.status == 401 || "session_installation_conflict".equals(refusal.code)
+                    || "installation_key_changed".equals(refusal.code)) {
+                return Result.of(Outcome.SIGN_IN_REQUIRED, "سجّل الدخول من جديد لربط الجلسة بهذا الجهاز. بقيت الإدخالات محفوظة.");
+            }
+            return failure;
         } catch (Exception error) {
             return fail(journal, "", text(error));
         } finally {
@@ -178,6 +185,7 @@ final class SignedLedgerSync {
      * to the current boot (no lease survives a restart), and nothing must have blocked the device.
      */
     static boolean canAddOffline(LedgerJournal journal, DeviceEnvironment device) throws Exception {
+        if (journal.metadata("sync").optBoolean("recoveryRequired")) return false;
         JSONObject installation = journal.metadata("installation");
         if (!"active".equals(installation.optString("status")) || installation.optInt("generation") <= 0) return false;
         if (BLOCKING.contains(journal.metadata("sync").optString("blockedCode", ""))) return false;
@@ -193,8 +201,12 @@ final class SignedLedgerSync {
 
     private static Result fail(LedgerJournal journal, String code, String message) {
         try {
-            journal.metadata("sync", new JSONObject().put("error", message == null ? "" : message)
-                    .put("blockedCode", code == null ? "" : code).put("at", System.currentTimeMillis()));
+            JSONObject state = journal.metadata("sync");
+            String prior = state.optString("blockedCode", "");
+            String blocked = code == null ? "" : code;
+            if (BLOCKING.contains(prior) && !BLOCKING.contains(blocked)) blocked = prior;
+            journal.metadata("sync", state.put("error", message == null ? "" : message)
+                    .put("blockedCode", blocked).put("at", System.currentTimeMillis()));
         } catch (Exception ignored) {
             // Reporting the failure must never replace it.
         }

@@ -241,18 +241,21 @@ public final class MainActivity extends Activity {
     static final int PASSWORD_MIN = 12, PASSWORD_MAX = 128;
 
     void changeServerPassword(String previous, String next, ActionCallback callback) {
+        if (changingAccount) { callback.complete(false, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
         if (next == null || next.length() < PASSWORD_MIN || next.length() > PASSWORD_MAX) { callback.complete(false, "كلمة المرور الجديدة يجب أن تكون بين " + PASSWORD_MIN + " و" + PASSWORD_MAX + " خانة."); return; }
         if (BuildConfig.STANDALONE_MODE) {
             executeNetwork(() -> {
+                if (changingAccount || !scope.equals(accountScope())) return;
                 if (!localSecurity.verifyLoginPassword(username(), previous, "123")) {
-                    runOnUiThread(() -> callback.complete(false, "كلمة المرور السابقة غير صحيحة."));
+                    postForAccount(scope, () -> callback.complete(false, "كلمة المرور السابقة غير صحيحة."));
                     return;
                 }
                 try {
                     localSecurity.setLoginPassword(username(), next);
-                    runOnUiThread(() -> { showBrandedMessage("تم تغيير كلمة مرور هذا الجهاز."); callback.complete(true, ""); });
+                    postForAccount(scope, () -> { showBrandedMessage("تم تغيير كلمة مرور هذا الجهاز."); callback.complete(true, ""); });
                 } catch (Exception e) {
-                    runOnUiThread(() -> callback.complete(false, e.getMessage() == null ? "تعذر تغيير كلمة المرور." : e.getMessage()));
+                    postForAccount(scope, () -> callback.complete(false, e.getMessage() == null ? "تعذر تغيير كلمة المرور." : e.getMessage()));
                 }
             });
             return;
@@ -261,11 +264,12 @@ public final class MainActivity extends Activity {
         try { body.put("currentPassword", previous == null ? "" : previous).put("password", next); }
         catch (JSONException e) { callback.complete(false, "تعذر تجهيز الطلب."); return; }
         executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
             try {
                 apiRequest("POST", "/mobile/change-password", body, sessions.token());
                 sessions.setForcePasswordChange(false);
                 getPreferences(0).edit().putBoolean(PREF_FORCED_PASSWORD_LOGIN, false).apply();
-                runOnUiThread(() -> {
+                postForAccount(scope, () -> {
                     showBrandedMessage("تم تغيير كلمة مرور الحساب."); callback.complete(true, "");
                     if ("force_password".equals(currentRoute)) {
                         showAfterAuthentication();
@@ -274,7 +278,7 @@ public final class MainActivity extends Activity {
                 });
             } catch (Exception e) {
                 String message = e.getMessage() == null ? "تعذر تغيير كلمة المرور." : e.getMessage();
-                runOnUiThread(() -> callback.complete(false, message));
+                postForAccount(scope, () -> callback.complete(false, message));
             }
         });
     }
@@ -404,16 +408,18 @@ public final class MainActivity extends Activity {
     }
 
     private void loginStandalone(String username, String password, String staffName) {
+        if (changingAccount) return;
+        changingAccount = true;
         showBrandedMessage("جارٍ التحقق من الحساب المحلي…");
         executeNetwork(() -> {
             boolean valid;
             try { valid = "123".equals(username) && localSecurity.verifyLoginPassword(username, password, "123"); }
             catch (Exception e) {
-                runOnUiThread(() -> showBrandedMessage("تعذر التحقق من الحساب المحلي. حاول مرة أخرى."));
+                runOnUiThread(() -> { changingAccount = false; showBrandedMessage("تعذر التحقق من الحساب المحلي. حاول مرة أخرى."); });
                 return;
             }
             if (!valid) {
-                runOnUiThread(() -> showBrandedMessage("اسم المستخدم أو كلمة المرور غير صحيحة."));
+                runOnUiThread(() -> { changingAccount = false; showBrandedMessage("اسم المستخدم أو كلمة المرور غير صحيحة."); });
                 return;
             }
             try {
@@ -435,9 +441,9 @@ public final class MainActivity extends Activity {
                 sessions.setUnsyncedChanges(false);
                 sessions.setSyncBlocked(false);
                 getPreferences(0).edit().putString("store_name", account.optString("name", "متجري")).apply();
-                runOnUiThread(this::showAfterAuthentication);
+                runOnUiThread(() -> { changingAccount = false; showAfterAuthentication(); });
             } catch (Exception e) {
-                runOnUiThread(() -> showBrandedMessage("تعذر فتح الحساب المحلي."));
+                runOnUiThread(() -> { changingAccount = false; showBrandedMessage("تعذر فتح الحساب المحلي."); });
             }
         });
     }
@@ -529,7 +535,7 @@ public final class MainActivity extends Activity {
         return ledger;
     }
 
-    private void closeLedger() { if (ledger != null) { ledger.close(); ledger = null; } }
+    private void closeLedger() { if (ledger != null) { ledger.close(); ledger = null; } lastLedgerNotice = ""; }
 
     /** Folds the signed ledger into the local tables the screens, the exports and the reminders read. */
     void materializeLedger() throws Exception { database.importLedgerView(ledgerQueue().view()); }
@@ -556,6 +562,10 @@ public final class MainActivity extends Activity {
     /** The signed pass's outcome as the screen sees it. Repeated notices are said once. */
     private void applySignedResult(SignedLedgerSync.Result result) {
         String scope = accountScope();
+        if (result.outcome == SignedLedgerSync.Outcome.SIGN_IN_REQUIRED) {
+            postForAccount(scope, () -> { show("login"); showBrandedMessage(result.message); });
+            return;
+        }
         if (result.outcome == SignedLedgerSync.Outcome.SYNCED) {
             lastLedgerNotice = "";
             postForAccount(scope, this::refreshCurrentScreen);
@@ -576,6 +586,7 @@ public final class MainActivity extends Activity {
      * server accepts it.
      */
     long addContact(JSONObject input, String initialAmount, String dueDate, String debtNote) throws Exception {
+        if (changingAccount) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
         if (!signedLedger()) return database.saveContactWithInitialDebt(input, initialAmount == null ? "" : initialAmount, dueDate, debtNote).optLong("id");
         LedgerQueue queue = ledgerQueue();
         String name = input.optString("name");
@@ -597,6 +608,7 @@ public final class MainActivity extends Activity {
 
     /** A debt against one contact, on whichever protocol this store is on. */
     void addDebt(JSONObject input) throws Exception {
+        if (changingAccount) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
         if (!signedLedger()) { database.saveDebt(input); return; }
         long contactLocalId = input.optLong("contactId", -1L);
         String contactId = database.remoteUuidFor("contacts", contactLocalId);
@@ -614,6 +626,7 @@ public final class MainActivity extends Activity {
      * always used — and each slice becomes its own operation.
      */
     JSONObject addPayment(JSONObject input) throws Exception {
+        if (changingAccount) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
         if (!signedLedger()) return database.savePayment(input);
         long contactLocalId = input.optLong("contactId", -1L);
         String contactId = database.remoteUuidFor("contacts", contactLocalId);
@@ -653,15 +666,20 @@ public final class MainActivity extends Activity {
      * server has agreed.
      */
     void archiveContactAsync(long contactLocalId, String reason, LedgerAction callback) {
+        if (changingAccount) { callback.complete(false, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
         if (!signedLedger()) { callback.complete(true, ""); return; }
         executeNetwork(() -> {
-            try { archiveContact(contactLocalId, reason); runOnUiThread(() -> callback.complete(true, "")); }
-            catch (Exception error) { reportLedgerFailure(error, callback); }
+            if (changingAccount || !scope.equals(accountScope())) return;
+            try { archiveContact(contactLocalId, reason); postForAccount(scope, () -> callback.complete(true, "")); }
+            catch (Exception error) { reportLedgerFailure(error, callback, scope); }
         });
     }
 
     /** The same shape for an edit: the ledger has to accept it, so it runs off the UI thread. */
     void updateContactAsync(JSONObject input, LedgerAction callback) {
+        if (changingAccount) { callback.complete(false, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
         long localId = input.optLong("id", -1L);
         if (!signedLedger()) {
             try { database.updateContact(input); callback.complete(true, ""); }
@@ -671,6 +689,7 @@ public final class MainActivity extends Activity {
             return;
         }
         executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
             try {
                 String contactId = database.remoteUuidFor("contacts", localId);
                 if (contactId.isEmpty()) throw new IllegalStateException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
@@ -689,24 +708,27 @@ public final class MainActivity extends Activity {
                 } catch (IllegalArgumentException notAMoney) {
                     // The correction is already accepted; an unparsable ceiling must not undo it.
                 }
-                runOnUiThread(() -> callback.complete(true, ""));
-            } catch (Exception error) { reportLedgerFailure(error, callback); }
+                postForAccount(scope, () -> callback.complete(true, ""));
+            } catch (Exception error) { reportLedgerFailure(error, callback, scope); }
         });
     }
 
     void restoreTrashedContactAsync(long trashItemId, LedgerAction callback) {
+        if (changingAccount) { callback.complete(false, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
         if (!signedLedger()) { callback.complete(false, ""); return; }
         executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
             try {
-                if (restoreTrashedContact(trashItemId)) runOnUiThread(() -> callback.complete(true, ""));
-                else runOnUiThread(() -> callback.complete(false, ""));
-            } catch (Exception error) { reportLedgerFailure(error, callback); }
+                if (restoreTrashedContact(trashItemId)) postForAccount(scope, () -> callback.complete(true, ""));
+                else postForAccount(scope, () -> callback.complete(false, ""));
+            } catch (Exception error) { reportLedgerFailure(error, callback, scope); }
         });
     }
 
-    private void reportLedgerFailure(Exception error, LedgerAction callback) {
+    private void reportLedgerFailure(Exception error, LedgerAction callback, String scope) {
         String message = error.getMessage() == null || error.getMessage().isEmpty() ? "تعذر إتمام الإجراء." : error.getMessage();
-        runOnUiThread(() -> callback.complete(false, message));
+        postForAccount(scope, () -> callback.complete(false, message));
     }
 
     /**
@@ -760,11 +782,7 @@ public final class MainActivity extends Activity {
         });
     }
 
-    void retryLocalSync() {
-        if (!sessions.hasUnsyncedChanges()) { showBrandedMessage("لا توجد تغييرات محلية بانتظار المزامنة."); return; }
-        sessions.setSyncBlocked(false);
-        syncNow();
-    }
+    void retryLocalSync() { syncNow(); }
 
     private void requestServerSnapshot() {
         if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("هذه النسخة مستقلة ولا تتصل بخادم."); return; }

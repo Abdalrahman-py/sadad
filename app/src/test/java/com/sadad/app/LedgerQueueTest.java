@@ -58,6 +58,24 @@ public final class LedgerQueueTest {
         assertTrue(queue.hasPendingWork());
     }
 
+    @Test public void aRecoveryDecisionPreventsNewOfflineWrites() throws Exception {
+        MemoryJournal journal = new MemoryJournal();
+        LedgerQueue queue = queue(journal);
+        journal.metadata("sync", new JSONObject().put("recoveryRequired", true));
+        assertFalse(queue.canAdd());
+        assertThrows(IllegalArgumentException.class, () -> queue.payContact("contact-1", 1000, "cash", ""));
+        assertEquals("10000", queue.view().getString("receivableCents"));
+    }
+
+    @Test public void anOldInstallationsLeaseCannotAuthorizeNewWrites() throws Exception {
+        MemoryJournal journal = new MemoryJournal();
+        LedgerQueue queue = queue(journal);
+        journal.metadata("lease").getJSONObject("payload").put("installationId", "old-installation");
+        assertFalse(queue.canAdd());
+        assertThrows(IllegalArgumentException.class, () -> queue.payContact("contact-1", 1000, "cash", ""));
+        assertEquals(0, queue.view().getJSONArray("payments").length());
+    }
+
     static LedgerQueue queue(MemoryJournal journal) throws Exception {
         journal.metadata("cache", new JSONObject().put("epoch", "epoch-1").put("cursor", 1)
                 .put("contacts", new JSONArray().put(new JSONObject().put("id", "contact-1").put("name", "عميل")))
@@ -66,7 +84,8 @@ public final class LedgerQueueTest {
                 .put("payments", new JSONArray()));
         journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
         journal.metadata("lease", new JSONObject().put("boot", 1).put("elapsed", 1000).put("wall", 1000)
-                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000)));
+                .put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "installation-1")
+                        .put("storeId", 7).put("userId", "user-1").put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000)));
         InstallationSigner signer = new InstallationSigner() {
             public String id() { return "installation-1"; }
             public JSONObject publicKey() { return new JSONObject(); }

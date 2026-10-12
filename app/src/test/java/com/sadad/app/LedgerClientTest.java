@@ -54,6 +54,7 @@ public final class LedgerClientTest {
     private int status = 200;
     private String answer = "{}";
     private int refreshes;
+    private Runnable beforeRefreshResponse = () -> { };
 
     // ------------------------------------------------------------------ the client's peer
 
@@ -183,6 +184,7 @@ public final class LedgerClientTest {
             String raw = new String(new String(characters, 0, read).getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
             if (route.equals("/mobile/auth/refresh")) {
                 refreshes++;
+                beforeRefreshResponse.run();
                 respond(out, 200, new JSONObject().put("ok", true).put("auth",
                         new JSONObject().put("accessToken", "renewed-access").put("refreshToken", "r2")
                                 .put("expiresAt", System.currentTimeMillis() + 3_600_000)).toString());
@@ -241,10 +243,25 @@ public final class LedgerClientTest {
     private LedgerClient client() { return new LedgerClient(session, signer, base); }
 
     @Test public void anOldClientCannotSendTheNextAccountsCredentials() throws Exception {
+        answer = "{\"snapshot\":{}}";
         LedgerClient oldClient = client();
         session.device = "next-account-token";
         try { oldClient.snapshot(); fail("An old queue must refuse a new account's session"); }
         catch (SyncFailure failure) { assertEquals("account_changed", failure.code); }
+        assertEquals("", lastRoute);
+    }
+
+    @Test public void aDelayedRefreshCannotOverwriteTheNextAccountsAuth() throws Exception {
+        session.gateway = base;
+        session.envelope = new JSONObject().put("refreshToken", "old-refresh").put("expiresAt", 0);
+        JSONObject nextAuth = new JSONObject().put("refreshToken", "next-refresh");
+        beforeRefreshResponse = () -> {
+            session.device = "next-account-token";
+            session.envelope = nextAuth;
+        };
+        try { client().snapshot(); fail("A delayed refresh must be discarded"); }
+        catch (SyncFailure failure) { assertEquals("account_changed", failure.code); }
+        assertEquals("next-refresh", session.auth().getString("refreshToken"));
         assertEquals("", lastRoute);
     }
 

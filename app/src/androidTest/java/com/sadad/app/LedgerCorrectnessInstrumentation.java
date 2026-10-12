@@ -14,11 +14,22 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             if (!getTargetContext().getPackageName().startsWith("com.sadad.qa.")) throw new AssertionError("Use an isolated QA applicationId");
             compoundWriteRollsBack();
             refreshedAuthSurvivesAccountSwitch();
-            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation\n");
+            storeKeysSurviveReopening();
+            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation\n");
             finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
         }
+    }
+
+    private void storeKeysSurviveReopening() throws Exception {
+        InstallationKey first = new InstallationKey(getTargetContext(), "qa-store-a", false);
+        InstallationKey second = new InstallationKey(getTargetContext(), "qa-store-b", false);
+        if (first.id().equals(second.id()) || first.publicKey().toString().equals(second.publicKey().toString()))
+            throw new AssertionError("Stores share an installation identity or signing key");
+        InstallationKey reopened = new InstallationKey(getTargetContext(), "qa-store-a", false);
+        if (!first.id().equals(reopened.id()) || !first.publicKey().toString().equals(reopened.publicKey().toString()))
+            throw new AssertionError("Store identity changed after reopening");
     }
 
     private void refreshedAuthSurvivesAccountSwitch() throws Exception {
@@ -52,7 +63,8 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
                 .put("direction", "receivable").put("amount_cents", 10000).put("created_at", "2026-10-10T10:00:00Z"));
         journal.metadata("cache", cache.put("debts", debts));
         journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
-        journal.metadata("lease", new JSONObject().put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000))
+        journal.metadata("lease", new JSONObject().put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "qa-installation")
+                .put("storeId", "rollback-test").put("userId", "qa-user").put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000))
                 .put("boot", 1).put("elapsed", 1000).put("wall", 1000));
         InstallationSigner signer = new InstallationSigner() {
             public String id() { return "qa-installation"; }
