@@ -510,6 +510,7 @@ public final class MainActivity extends Activity {
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         HttpURLConnection connection = (HttpURLConnection) new URL(base + endpoint).openConnection();
         connection.setRequestMethod(method);
+        connection.setInstanceFollowRedirects(false);
         connection.setConnectTimeout(6000);
         connection.setReadTimeout(10000);
         connection.setRequestProperty("Accept", "application/json");

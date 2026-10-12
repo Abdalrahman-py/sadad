@@ -29,7 +29,8 @@ final class SessionStore implements SyncSession, LedgerSession {
     private static final String AUTH_KEY = "auth_envelope";
     private final SharedPreferences preferences;
 
-    SessionStore(Context context) { preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
+    SessionStore(Context context) { this(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)); }
+    SessionStore(SharedPreferences preferences) { this.preferences = preferences; }
 
     synchronized void save(JSONObject response) throws Exception {
         String token = response.getString("token");
@@ -58,7 +59,7 @@ final class SessionStore implements SyncSession, LedgerSession {
             JSONObject saved = new JSONObject().put("id", accountId).put("username", account.optString("username", ""))
                     .put("name", account.optString("name", "")).put("account", account.toString()).put("encryptedToken", encryptedToken)
                     .put("expiresAt", response.optLong("expiresAt", 0L)).put("revision", response.optJSONObject("snapshot") == null ? 0L : response.optJSONObject("snapshot").optLong("revision", 0L))
-                    .put("apiBaseUrl", apiBaseUrl()).put("staffName", staffName).put("devicePermissions", devicePermissions == null ? "{}" : devicePermissions.toString())
+                    .put("staffName", staffName).put("devicePermissions", devicePermissions == null ? "{}" : devicePermissions.toString())
                     .put("forcePasswordChange", response.optBoolean("forcePasswordChange", false))
                     .put("encryptedAuth", preferences.getString(AUTH_KEY, ""));
             upsertSavedAccount(saved);
@@ -108,7 +109,6 @@ final class SessionStore implements SyncSession, LedgerSession {
                         .putString("account", account.toString()).putLong("revision", item.optLong("revision", 0L))
                         .putBoolean("force_password_change", item.optBoolean("forcePasswordChange", false)).putString("sync_owner", item.optString("username", ""))
                         .putString("sync_account_id", accountId).putBoolean("sync_dirty", false).putBoolean("sync_blocked", false)
-                        .putString("api_base_url", item.optString("apiBaseUrl", BuildConfig.API_BASE_URL))
                         .putString("device_staff_name", item.optString("staffName", ""))
                         .putString("device_permissions", item.optString("devicePermissions", "{}"))
                         .putString(AUTH_KEY, item.optString("encryptedAuth", ""))
@@ -211,7 +211,8 @@ final class SessionStore implements SyncSession, LedgerSession {
         catch (JSONException e) { return new JSONObject(); }
     }
     public void setAccount(JSONObject account) { preferences.edit().putString("account", account == null ? "{}" : account.toString()).apply(); updateCurrentSavedBundle(); }
-    public String apiBaseUrl() { return preferences.getString("api_base_url", BuildConfig.API_BASE_URL); }
+    // Upgraded devices may still contain an editable origin; never send their token there.
+    public String apiBaseUrl() { return BuildConfig.API_BASE_URL; }
 
     /** The gateway that issues the Auth envelope. Fixed at build time, like the ledger's own origin:
      *  a device session must not be renewable against a host the user can type into. */
@@ -243,7 +244,7 @@ final class SessionStore implements SyncSession, LedgerSession {
             JSONObject saved = new JSONObject().put("id", id).put("username", account.optString("username", syncOwner()))
                     .put("name", account.optString("name", "")).put("account", account.toString())
                     .put("encryptedToken", preferences.getString("token", "")).put("expiresAt", expiresAt())
-                    .put("revision", revision()).put("apiBaseUrl", apiBaseUrl()).put("staffName", deviceStaffName())
+                    .put("revision", revision()).put("staffName", deviceStaffName())
                     .put("devicePermissions", devicePermissions().toString()).put("forcePasswordChange", forcePasswordChange())
                     .put("encryptedAuth", preferences.getString(AUTH_KEY, ""));
             upsertSavedAccount(saved);

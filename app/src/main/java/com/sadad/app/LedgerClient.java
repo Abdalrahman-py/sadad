@@ -122,6 +122,7 @@ final class LedgerClient implements LedgerApi {
         HttpURLConnection connection = (HttpURLConnection) new URL(session.authBaseUrl().replaceAll("/+$", "") + "/mobile/auth/refresh").openConnection();
         try {
             connection.setRequestMethod("POST");
+            connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(20000);
             connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
