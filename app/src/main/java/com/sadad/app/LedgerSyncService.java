@@ -26,7 +26,6 @@ public final class LedgerSyncService extends JobService {
                         SignedLedgerSync.Result result=queue.sync();
                         try{db.importLedgerView(queue.view());}catch(Exception skipped){}
                         session.setUnsyncedChanges(queue.hasPendingWork());
-                        session.setSyncBlocked(false);
                         retry=result.retryable();
                     }finally{queue.close();}
                     DueReminderManager.checkDueDates(this);

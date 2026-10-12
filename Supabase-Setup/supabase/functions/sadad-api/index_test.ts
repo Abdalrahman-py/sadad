@@ -57,8 +57,6 @@ const DEVICE: Json = {
   permissions: {},
 };
 
-const LEGACY_MESSAGE =
-  "هذا المتجر يستخدم السجل المعتمد. حدّث التطبيق إلى الإصدار الثالث؛ احتفظ بأي إدخالات قديمة دون حذفها.";
 const DEVICE_LIMIT_MESSAGE =
   "وصل الحساب إلى حد الأجهزة المسموح (2). اطلب من الأدمن زيادة العدد أو السماح بهذا الجهاز.";
 const NOT_FOUND_MESSAGE = "المسار غير موجود.";
@@ -103,20 +101,29 @@ function query(cfg: { row?: Json | null; count?: number; list?: Json[] }): any {
   return q;
 }
 
-function fixture(options: { v3?: boolean; admins?: number; sessionOk?: boolean } = {}) {
+function fixture(options: { v3?: boolean; admins?: number; sessionOk?: boolean; admin?: boolean; rejectLegacy?: boolean; deviceCount?: number; revokedDevice?: boolean } = {}) {
   const tables: Record<
     string,
     { row?: Json | null; count?: number; list?: Json[] }
   > = {
-    admins: { count: options.admins ?? 0, list: [] },
+    admins: { row: options.admin ? { ...STORE, force_password_change: false } : null, count: options.admins ?? 0, list: [] },
     stores: { row: STORE, list: [STORE] },
-    sessions: { row: SESSION, list: [SESSION] },
-    store_devices: { row: DEVICE, count: 0, list: [] },
+    sessions: { row: { ...SESSION, kind: options.admin ? "admin" : "store" }, list: [SESSION] },
+    store_devices: { row: { ...DEVICE, revoked_at: options.revokedDevice ? CLOCK : null }, count: options.deviceCount ?? 0, list: [] },
     login_rate_limits: { list: [] },
   };
   const db: any = {
-    from: (table: string) => query(tables[table] ?? { list: [] }),
+    from: (table: string) => {
+      if (options.rejectLegacy && ["contacts", "debts", "payments", "store_backups", "contact_archives"].includes(table))
+        throw new Error("Unexpected legacy financial read");
+      return query(tables[table] ?? { list: [] });
+    },
     rpc: (name: string) => {
+      if (name === "sadad_admin_store_list" && options.rejectLegacy) throw new Error("Unexpected legacy financial summary");
+      if (name === "sadid_admin_summaries") return Promise.resolve({ data: [{ storeId: 7, initialized: !!options.v3, contacts: 1, debts: 1, debtTotal: 120 }], error: null });
+      if (name === "sadid_pending_installations") return Promise.resolve({ data: [], error: null });
+      if (name === "sadid_admin_controls") return Promise.resolve({ data: { hasDeviceHistory: false }, error: null });
+      if (name === "sadid_support_snapshot") return Promise.resolve({ data: { epoch: "epoch", cursor: 1, contacts: [{ id: "person", name: "Signed contact" }], debts: [], payments: [], events: [] }, error: null });
       if (name === "sadid_is_v3_store") {
         return Promise.resolve({ data: !!options.v3, error: null });
       }
@@ -133,9 +140,6 @@ function fixture(options: { v3?: boolean; admins?: number; sessionOk?: boolean }
   const api = makeApi({
     db,
     now: () => CLOCK,
-    fetcher: (() => {
-      throw new Error("unexpected network call");
-    }) as unknown as typeof fetch,
   });
   const send = (
     path: string,
@@ -191,16 +195,14 @@ Deno.test("an unknown route answers the existing 404 message", async () => {
   assertEquals((await response.json()).message, NOT_FOUND_MESSAGE);
 });
 
-Deno.test("a version-3 store is read-only on a non-exempt mobile route", async () => {
-  const { api, send } = fixture({ v3: true });
-  const response = await dispatch(
-    api,
-    send("/mobile/snapshot", "GET", undefined, true),
-  );
-  const body = await response.json();
-  assertEquals(response.status, 409);
-  assertEquals(body.code, "legacy_ledger_read_only");
-  assertEquals(body.message, LEGACY_MESSAGE);
+Deno.test("retired financial routes are unavailable even to an authenticated uninitialized store", async () => {
+  const { api, send } = fixture({ v3: false });
+  for (const [path, method] of [["/mobile/snapshot", "GET"], ["/mobile/snapshot-page", "GET"],
+    ["/mobile/activity", "GET"], ["/mobile/sync", "POST"], ["/mobile/sync-delta", "POST"],
+    ["/mobile/whatsapp", "GET"], ["/mobile/whatsapp", "PUT"], ["/mobile/whatsapp/send-report", "POST"]]) {
+    const response = await dispatch(api, send(path, method, method === "GET" ? undefined : {}, true));
+    assertEquals(response.status, 404, path);
+  }
 });
 
 Deno.test("mobile session stays reachable on a version-3 store", async () => {
@@ -231,7 +233,7 @@ Deno.test("login states the protocol: a signed-ledger store", async () => {
   assertEquals(body.ledger, "v3");
 });
 
-Deno.test("login states the protocol: a store on the older protocol", async () => {
+Deno.test("an uninitialized test store logs into the signed protocol without a legacy snapshot", async () => {
   const { api, send } = fixture({ v3: false, sessionOk: true });
   const response = await dispatch(
     api,
@@ -245,7 +247,8 @@ Deno.test("login states the protocol: a store on the older protocol", async () =
   );
   const body = await response.json();
   assertEquals(response.status, 200);
-  assertEquals(body.ledger, "legacy");
+  assertEquals(body.ledger, "v3");
+  assertEquals(Object.hasOwn(body, "snapshot"), false);
 });
 
 Deno.test("a P0001 sentinel maps through the table to its exact status and message", async () => {
@@ -263,4 +266,32 @@ Deno.test("a P0001 sentinel maps through the table to its exact status and messa
   const body = await response.json();
   assertEquals(response.status, 403);
   assertEquals(body.message, DEVICE_LIMIT_MESSAGE);
+});
+
+Deno.test("dashboard reads signed finances and empty uninitialized stores without legacy tables", async () => {
+  for (const initialized of [false, true]) {
+    const { api, send } = fixture({ admin: true, rejectLegacy: true, v3: initialized });
+    const list = await dispatch(api, send("/admin/stores", "GET", undefined, true));
+    assertEquals(list.status, 200);
+    assertEquals((await list.json()).stores[0].name, "Sadad Store");
+    const detail = await dispatch(api, send("/admin/stores/7", "GET", undefined, true));
+    assertEquals(detail.status, 200);
+    const body = await detail.json();
+    assertEquals(body.snapshot.contacts.map((row: Json) => row.name), initialized ? ["Signed contact"] : []);
+    assertEquals(body.snapshot.totals, { receivable: 0, payable: 0, net: 0 });
+    for (const [path, method] of [["backups/1", "GET"], ["backups/1/restore", "POST"],
+      ["archives", "GET"], ["archives/1/restore", "POST"], ["devices/device-id/permissions", "POST"]]) {
+      const retired = await dispatch(api, send("/admin/stores/7/" + path, method, method === "GET" ? undefined : {}, true));
+      assertEquals(retired.status, 404, path);
+    }
+  }
+});
+
+Deno.test("admin can restore login after revocation while respecting the device limit", async () => {
+  for (const [count, expected] of [[0, 200], [2, 409]]) {
+    const { api, send } = fixture({ admin: true, rejectLegacy: true, v3: true, revokedDevice: true, deviceCount: count });
+    const response = await dispatch(api, send("/admin/stores/7/devices/dev-1234567890abcd/allow", "POST", {}, true));
+    assertEquals(response.status, expected);
+    if (expected === 200) assertEquals((await response.json()).allowed, true);
+  }
 });

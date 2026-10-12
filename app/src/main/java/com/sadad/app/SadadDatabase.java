@@ -24,8 +24,8 @@ import java.util.Set;
 /** Offline ledger. Contact balances are derived from debts minus recorded payments. */
 public final class SadadDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "sadad.db";
-    /** 8 adds the signed-ledger mapping: every row can carry the UUID the ledger knows it by. */
-    private static final int DB_VERSION = 8;
+    /** 9 removes the retired sync outbox without changing financial tables. */
+    private static final int DB_VERSION = 9;
 
     /** Includes changes from this connection and other connections, without rebuilding the ledger. */
     public synchronized long changeToken() {
@@ -40,29 +40,13 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_debts_recent ON debts(created_at DESC,id DESC)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_payments_recent ON payments(created_at DESC,id DESC)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name COLLATE NOCASE,id)");
-        db.execSQL("CREATE TABLE IF NOT EXISTS sync_control (id INTEGER PRIMARY KEY, suppress INTEGER NOT NULL DEFAULT 0, ready INTEGER NOT NULL DEFAULT 0)");
-        db.execSQL("INSERT OR IGNORE INTO sync_control(id) VALUES(1)");
-        db.execSQL("CREATE TABLE IF NOT EXISTS sync_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, row_id INTEGER NOT NULL)");
         // The signed ledger keys its rows on UUIDs. Each local row keeps the UUID it came from (or
         // will be created under), which is what lets a snapshot be folded in without renumbering the
         // ids the screens, the exports and the reminders already hold.
         for (String table : new String[]{"contacts", "debts", "payments"}) db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_" + table + "_remote_uuid ON " + table + "(remote_uuid)");
         db.execSQL("CREATE TABLE IF NOT EXISTS ledger_meta (id INTEGER PRIMARY KEY, epoch TEXT NOT NULL DEFAULT '', cursor INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)");
-        for (String table : new String[]{"contacts", "debts", "payments"}) for (String action : new String[]{"INSERT", "UPDATE", "DELETE"}) {
-            String record = action.equals("DELETE") ? "OLD" : "NEW";
-            db.execSQL("CREATE TRIGGER IF NOT EXISTS queue_" + table + "_" + action + " AFTER " + action + " ON " + table
-                    + " WHEN (SELECT suppress FROM sync_control WHERE id=1)=0 BEGIN INSERT INTO sync_outbox(entity,row_id) VALUES('" + table + "'," + record + ".id); END");
-        }
-        if (scalarLong(db,"SELECT ready FROM sync_control WHERE id=1",null)==0) {
-            db.beginTransaction();try {
-                db.execSQL("DELETE FROM sync_outbox");
-                for(String table:new String[]{"contacts","debts","payments"})db.execSQL("INSERT INTO sync_outbox(entity,row_id) SELECT '"+table+"',id FROM "+table+" ORDER BY id");
-                db.execSQL("UPDATE sync_control SET ready=1 WHERE id=1");db.setTransactionSuccessful();
-            }finally{db.endTransaction();}
-        }
     }
 
-    public synchronized boolean deltaReady() { return scalarLong(getReadableDatabase(), "SELECT ready FROM sync_control WHERE id=1", null) == 1; }
     synchronized JSONObject dueReminderSnapshot(String today,String tomorrow) throws JSONException {
         JSONArray people=new JSONArray(),debts=new JSONArray();SQLiteDatabase db=getReadableDatabase();
         try(Cursor c=db.rawQuery("SELECT d.id,d.contact_id,c.name,d.due_date,d.amount_cents-COALESCE((SELECT SUM(amount_cents) FROM payments WHERE debt_id=d.id),0) remaining FROM debts d JOIN contacts c ON c.id=d.contact_id WHERE d.direction='receivable' AND d.due_date IN (?,?)",new String[]{today,tomorrow})) {while(c.moveToNext()){if(c.getLong(4)<=0)continue;people.put(new JSONObject().put("id",c.getLong(1)).put("name",c.getString(2)));debts.put(new JSONObject().put("id",c.getLong(0)).put("contactId",c.getLong(1)).put("dueDate",c.getString(3)).put("direction","receivable").put("remaining",fromCents(c.getLong(4))));}}
@@ -162,6 +146,12 @@ public final class SadadDatabase extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE contacts ADD COLUMN remote_version INTEGER NOT NULL DEFAULT 0");
             db.execSQL("ALTER TABLE debts ADD COLUMN remote_version INTEGER NOT NULL DEFAULT 0");
             db.execSQL("CREATE TABLE IF NOT EXISTS ledger_meta (id INTEGER PRIMARY KEY, epoch TEXT NOT NULL DEFAULT '', cursor INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)");
+        }
+        if (oldVersion < 9) {
+            for (String table : new String[]{"contacts", "debts", "payments"}) for (String action : new String[]{"INSERT", "UPDATE", "DELETE"})
+                db.execSQL("DROP TRIGGER IF EXISTS queue_" + table + "_" + action);
+            db.execSQL("DROP TABLE IF EXISTS sync_outbox");
+            db.execSQL("DROP TABLE IF EXISTS sync_control");
         }
     }
 
@@ -742,7 +732,6 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         JSONArray payments = snapshot.optJSONArray("payments");
         db.beginTransaction();
         try {
-            db.execSQL("UPDATE sync_control SET suppress=1 WHERE id=1");
             db.delete("payments", null, null);
             db.delete("debts", null, null);
             db.delete("contacts", null, null);
@@ -772,7 +761,6 @@ public final class SadadDatabase extends SQLiteOpenHelper {
                 v.put("created_by", clean(row.optString("createdBy"), 120));
                 v.put("created_at", row.optLong("createdAt", System.currentTimeMillis())); db.insertOrThrow("payments", null, v);
             }
-            db.execSQL("DELETE FROM sync_outbox"); db.execSQL("UPDATE sync_control SET suppress=0,ready=1 WHERE id=1");
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -784,8 +772,7 @@ public final class SadadDatabase extends SQLiteOpenHelper {
      * that points at it keeps working; a row the ledger no longer has is dropped, because for a
      * store on the signed ledger the server is the truth.
      *
-     * <p>A local row with no UUID is left alone: those are entries typed before this device joined
-     * the signed ledger, and silently deleting them would delete a store's records.
+     * <p>The connected view replaces pre-signed test rows too; standalone data uses importSnapshot.
      */
     public synchronized void importLedgerView(JSONObject view) throws JSONException {
         SQLiteDatabase db = getWritableDatabase();
@@ -794,7 +781,6 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         JSONArray payments = view.optJSONArray("payments");
         db.beginTransaction();
         try {
-            db.execSQL("UPDATE sync_control SET suppress=1 WHERE id=1");
             Map<String, Long> contactIds = uuidIndex(db, "contacts"), debtIds = uuidIndex(db, "debts"), paymentIds = uuidIndex(db, "payments");
             Set<String> seenContacts = new HashSet<>(), seenDebts = new HashSet<>(), seenPayments = new HashSet<>();
 
@@ -881,8 +867,6 @@ public final class SadadDatabase extends SQLiteOpenHelper {
             meta.put("cursor", view.optLong("cursor"));
             meta.put("updated_at", System.currentTimeMillis());
             db.insertWithOnConflict("ledger_meta", null, meta, SQLiteDatabase.CONFLICT_REPLACE);
-            db.execSQL("DELETE FROM sync_outbox");
-            db.execSQL("UPDATE sync_control SET suppress=0,ready=1 WHERE id=1");
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -925,15 +909,6 @@ public final class SadadDatabase extends SQLiteOpenHelper {
         getWritableDatabase().update("contacts", values, "id=?", new String[]{String.valueOf(contactId)});
     }
 
-    /** Rows this device holds that the signed ledger has never seen — the pre-cutover leftovers. */
-    public synchronized int unmappedRowCount() {
-        int total = 0;
-        for (String table : new String[]{"contacts", "debts", "payments"}) {
-            total += (int) scalarLong(getReadableDatabase(), "SELECT COUNT(*) FROM " + table + " WHERE remote_uuid IS NULL OR remote_uuid=''", null);
-        }
-        return total;
-    }
-
     private static Map<String, Long> uuidIndex(SQLiteDatabase db, String table) {
         Map<String, Long> index = new HashMap<>();
         try (Cursor cursor = db.rawQuery("SELECT id,remote_uuid FROM " + table + " WHERE remote_uuid IS NOT NULL AND remote_uuid<>''", null)) {
@@ -943,9 +918,9 @@ public final class SadadDatabase extends SQLiteOpenHelper {
     }
 
     private static void removeUnseen(SQLiteDatabase db, String table, Set<String> seen) {
-        String where = "remote_uuid IS NOT NULL AND remote_uuid<>''";
-        if (seen.isEmpty()) { db.execSQL("DELETE FROM " + table + " WHERE " + where); return; }
-        StringBuilder sql = new StringBuilder("DELETE FROM " + table + " WHERE " + where + " AND remote_uuid NOT IN (");
+        String where = "COALESCE(remote_uuid,'')";
+        if (seen.isEmpty()) { db.execSQL("DELETE FROM " + table); return; }
+        StringBuilder sql = new StringBuilder("DELETE FROM " + table + " WHERE " + where + " NOT IN (");
         for (int i = 0; i < seen.size(); i++) sql.append(i == 0 ? "?" : ",?");
         db.execSQL(sql.append(")").toString(), seen.toArray());
     }

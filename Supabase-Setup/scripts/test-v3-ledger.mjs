@@ -29,6 +29,11 @@ try{
  for(const file of readdirSync(root).filter(file=>file.endsWith('.sql')).sort()) {
   await db.exec(readFileSync(new URL(file,root),'utf8'));
  }
+ await check('Retired financial RPC is unavailable even to the service role',async()=>{
+  await db.exec('set role service_role');
+  await assert.rejects(db.query('select public.sadad_admin_store_list()'),error=>error.code==='42883');
+  await db.exec('reset role');
+ });
  await db.query('insert into auth.users values($1)',[user]);
  await db.query('insert into auth.sessions values($1,$2,null)',[session,user]);
  await db.exec("insert into public.stores(id,name,username,salt,password_hash,force_password_change,created_at) values(1,'تجربة','test','none','none',false,0);insert into public.sadid_ledger_state(store_id) values(1)");

@@ -1,17 +1,6 @@
-import { randomBytes, scrypt, timingSafeEqual, createHash, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomBytes, scrypt, timingSafeEqual, createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { adminLedgerSnapshot, ledgerAuditEvents } from "./admin-ledger.ts";
-import {
-  batchSize,
-  DELTA_BATCH_LIMIT,
-  deletedIds,
-  LEDGER_TABLES,
-  ledgerRowToWire,
-  mergeDeltaIntoSnapshot,
-  SNAPSHOT_PAGE_LIMIT,
-  type WireSnapshot,
-} from "./ledger-sync.ts";
-
 type Json = Record<string, any>;
 type Principal = { kind: "admin" | "store"; token: string; session: Json; user: Json; device: Json | null };
 
@@ -34,12 +23,6 @@ class HttpError extends Error {
 }
 
 function text(value: unknown, max = 250): string { return String(value ?? "").trim().slice(0, max); }
-function cents(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0 || n > 1_000_000_000) throw new HttpError(400, "المبلغ المدخل غير صالح.");
-  return Math.round(n * 100);
-}
-function money(value: unknown): number { return Math.round(Number(value || 0)) / 100; }
 function parseJsonObject(value: unknown): Json {
   if (value && typeof value === "object" && !Array.isArray(value)) return value as Json;
   if (typeof value === "string") { try { return JSON.parse(value); } catch { return {}; } }
@@ -100,28 +83,6 @@ function loginBucketKeys(request: Request, identity: string): Array<{ key: strin
     { key: hashToken(`login-account:${normalized}`), limit: 10 },
   ];
 }
-function requirePermission(store: Json, permission: string): void {
-  if (store.force_password_change) throw new HttpError(403, "غيّر كلمة المرور المؤقتة أولاً.", { forcePasswordChange: true });
-  if (parseJsonObject(store.permissions)[permission] === false) throw new HttpError(403, "هذه الميزة غير مفعّلة لحسابك من الإدارة.");
-}
-
-
-function normalizedContactPhone(value: unknown): string {
-  let digits = String(value ?? "").replace(/[٠-٩]/g, char => String(char.charCodeAt(0) - 1632)).replace(/[۰-۹]/g, char => String(char.charCodeAt(0) - 1776)).replace(/\D/g, "");
-  if (digits.startsWith("00970")) digits = digits.slice(2);
-  else if (digits.startsWith("0")) digits = `970${digits.slice(1)}`;
-  return digits;
-}
-function assertIds(rows: Json[], label: string): Set<number> {
-  const seen = new Set<number>();
-  for (const row of rows) {
-    const id = Number(row?.id);
-    if (!Number.isSafeInteger(id) || id < 1 || seen.has(id)) throw new HttpError(400, `معرّف ${label} غير صالح أو مكرر.`);
-    seen.add(id);
-  }
-  return seen;
-}
-function paymentKey(contactId: number, createdAt: number, method: string): string { return `${contactId}|${createdAt}|${method}`; }
 function parseDeviceLimit(value: unknown, fallback = 1): number {
   if (value === undefined || value === null) return fallback;
   const digits = String(value).trim().replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
@@ -129,23 +90,6 @@ function parseDeviceLimit(value: unknown, fallback = 1): number {
   if (!digits || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new HttpError(400, "عدد الأجهزة المسموح بها يجب أن يكون من 1 إلى 50.");
   return limit;
 }
-function encryptionKey(): Buffer {
-  const raw = Deno.env.get("TOKEN_ENCRYPTION_KEY") || "";
-  if (/^[0-9a-f]{64}$/i.test(raw)) return Buffer.from(raw, "hex");
-  if (raw) { const key = Buffer.from(raw, "base64"); if (key.length === 32) return key; }
-  throw new HttpError(503, "لم يضبط الخادم مفتاح تشفير ربط واتساب.");
-}
-function encryptSecret(value: string): string {
-  const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const data = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), data]).toString("base64");
-}
-function decryptSecret(value: string): string {
-  const data = Buffer.from(value, "base64"), iv = data.subarray(0, 12), tag = data.subarray(12, 28), encrypted = data.subarray(28);
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), iv); decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
-}
-
 let dummyCredentialSalt = "";
 function dummySalt(): string { if (!dummyCredentialSalt) dummyCredentialSalt = passwordSalt().salt; return dummyCredentialSalt; }
 function safeUsername(value: string): boolean { return /^[\p{L}\p{N}._-]{3,80}$/u.test(value); }
@@ -153,51 +97,30 @@ function safeUsername(value: string): boolean { return /^[\p{L}\p{N}._-]{3,80}$/
 type Dependencies = {
   db: any;
   now?: () => number;
-  fetcher?: typeof fetch;
 };
 
-// The exact mobile requests that returned before the old inline guard: only these bypass the
-// version-3 read-only step, so every other /mobile/* request (any method) keeps answering 409.
-const MOBILE_V3_EXEMPT: ReadonlyArray<readonly [string, string]> = [["GET", "/mobile/session"], ["POST", "/mobile/change-password"], ["POST", "/mobile/logout"]];
-
-/** One source of truth for every Postgres P0001 sentinel the ledger RPCs raise: the HTTP status and
- * the exact Arabic message the Android app and the admin page already receive. A message may be a
- * function of the call context when the same sentinel carries a per-store or per-risk message. */
-/** Raised by the SQL guard and by the prefix check below. One string, one place: a store on the
- * signed ledger must read the same sentence whichever layer refuses it. */
-const LEGACY_LEDGER_READ_ONLY = "هذا المتجر يستخدم السجل المعتمد. حدّث التطبيق إلى الإصدار الثالث؛ احتفظ بأي إدخالات قديمة دون حذفها.";
-
 const SENTINEL_ERRORS: Record<string, { status: number; message: string | ((context: Json) => string) }> = {
-  revision_conflict: { status: 409, message: (context) => context.restore ? "تغيّرت البيانات على جهاز آخر. حدّث سجل المتجر ثم أعد الاستعادة." : "تغيّرت البيانات على جهاز آخر. حمّل النسخة الأحدث ثم أعد المحاولة." },
   store_not_found: { status: 404, message: "الحساب غير موجود." },
   device_limit: { status: 403, message: (context) => `وصل الحساب إلى حد الأجهزة المسموح (${context.allowedDevices}). اطلب من الأدمن زيادة العدد أو السماح بهذا الجهاز.` },
   device_revoked: { status: 403, message: "تم إلغاء هذا الجهاز من الأدمن. اطلب السماح به مجددًا." },
   device_staff_required: { status: 409, message: "أدخل اسم الشخص الذي سيستخدم هذا الجهاز ليظهر اسمه في السجلات." },
   store_inactive: { status: 423, message: "الحساب موقوف من الإدارة. تواصل مع الدعم." },
-  archive_not_found: { status: 404, message: "نسخة الزبون المحذوف غير موجودة." },
-  archive_already_restored: { status: 409, message: "تمت استعادة هذا السجل مسبقًا." },
-  archive_contact_exists: { status: 409, message: "يوجد سجل حالي بهذا المعرّف. حدّث سجلات المتجر قبل الاستعادة." },
-  backup_not_found: { status: 404, message: "النسخة الاحتياطية غير موجودة." },
-  backup_contact_not_found: { status: 404, message: "هذا الشخص غير موجود في النسخة الاحتياطية المختارة." },
-  legacy_ledger_read_only: { status: 409, message: LEGACY_LEDGER_READ_ONLY },
 };
 
 /** Return an RPC result's data, or map its P0001 sentinel through SENTINEL_ERRORS and throw. Anything
- * the table does not list falls through unchanged. `extras` attaches response fields (e.g. the latest
- * snapshot on a revision conflict) only when the matching sentinel actually fires. */
-async function rpcResult<T = any>(result: { data: T; error: any }, context: Json = {}, extras: Record<string, () => Json | Promise<Json>> = {}): Promise<T> {
+ * the table does not list falls through unchanged. */
+async function rpcResult<T = any>(result: { data: T; error: any }, context: Json = {}): Promise<T> {
   if (!result.error) return result.data;
   if (result.error.code === "P0001") {
     const mapped = SENTINEL_ERRORS[result.error.message];
     if (mapped) {
-      const extra = extras[result.error.message];
-      throw new HttpError(mapped.status, typeof mapped.message === "function" ? mapped.message(context) : mapped.message, extra ? await extra() : {});
+      throw new HttpError(mapped.status, typeof mapped.message === "function" ? mapped.message(context) : mapped.message);
     }
   }
   throw result.error;
 }
 
-export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
+export function makeApi({ db, now = Date.now }: Dependencies) {
   function nowOr(value: unknown): number { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : now(); }
   async function checkLoginLimit(request: Request, identity: string): Promise<void> {
     const keys = loginBucketKeys(request, identity).map(item => item.key);
@@ -275,291 +198,23 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
     const state = subscriptionState(store);
     return {
       id: store.id, name: store.name, username: store.username, verified: !!store.verified,
-      permissions: parseJsonObject(store.permissions), debtorLimit: Number(store.debtor_limit), whatsappEnabled: !!store.whatsapp_enabled,
+      permissions: parseJsonObject(store.permissions), debtorLimit: Number(store.debtor_limit),
       subscriptionMode: state.mode, subscriptionExpiresAt: state.expiresAt, subscriptionRemainingMs: state.remainingMs,
       maxDevices: Number(store.allowed_devices || 1), boundDevices: devicesResult.count || 0,
     };
   }
-  async function makeSnapshot(store: Json): Promise<Json> {
-    const [account, contactRows, debtRows, paymentRows] = await Promise.all([
-      accountForStore(store),
-      db.from("contacts").select("*").eq("store_id", store.id).order("name", { ascending: true }).order("id", { ascending: true }),
-      db.from("debts").select("*").eq("store_id", store.id).order("created_at", { ascending: false }).order("id", { ascending: false }),
-      db.from("payments").select("*").eq("store_id", store.id).order("created_at", { ascending: false }).order("id", { ascending: false }),
-    ]);
-    const contacts = dataOrThrow(contactRows) as Json[];
-    const debts = dataOrThrow(debtRows) as Json[];
-    const payments = dataOrThrow(paymentRows) as Json[];
-    const byContact = new Map<number, Json>();
-    const result: Json = { contacts: [], debts: [], payments: [], transactions: [], totals: { receivable: 0, payable: 0, net: 0 }, revision: Number(store.revision), account };
-    for (const c of contacts) {
-      const contact = { id: Number(c.id), name: c.name, phone: c.phone, category: c.category, note: c.note, whatsappOptIn: !!c.whatsapp_opt_in,
-        creditLimit: money(c.credit_limit_cents), createdAt: Number(c.created_at), createdBy: c.created_by || "", receivable: 0, payable: 0,
-        net: 0, transactionCount: 0, lastActivity: 0, latestDebtId: 0 };
-      result.contacts.push(contact); byContact.set(Number(c.id), contact);
-    }
-    const paidByDebt = new Map<number, number>();
-    for (const p of payments) paidByDebt.set(Number(p.debt_id), (paidByDebt.get(Number(p.debt_id)) || 0) + Number(p.amount_cents));
-    const debtById = new Map<number, Json>();
-    for (const d of debts) {
-      const paid = paidByDebt.get(Number(d.id)) || 0;
-      const remaining = Math.max(0, Number(d.amount_cents) - paid);
-      const contact = byContact.get(Number(d.contact_id));
-      const debt = { id: Number(d.id), contactId: Number(d.contact_id), direction: d.direction, amount: money(d.amount_cents), paid: money(paid), remaining: money(remaining), note: d.note, dueDate: d.due_date, createdAt: Number(d.created_at), createdBy: d.created_by || "" };
-      result.debts.push(debt); debtById.set(Number(d.id), d);
-      if (contact) {
-        contact[d.direction === "receivable" ? "receivable" : "payable"] += money(remaining);
-        contact.transactionCount++;
-        if (Number(d.created_at) > contact.lastActivity) { contact.lastActivity = Number(d.created_at); contact.latestDebtId = Number(d.id); }
-      }
-      result.transactions.push({ id: `d${d.id}`, debtId: Number(d.id), contactId: Number(d.contact_id), contactName: contact?.name || "", kind: "debt", direction: d.direction, amount: money(d.amount_cents), note: d.note, method: "", createdAt: Number(d.created_at), createdBy: d.created_by || "" });
-    }
-    const contactNames = new Map(contacts.map(c => [Number(c.id), String(c.name)]));
-    for (const p of payments) {
-      const debt = debtById.get(Number(p.debt_id));
-      if (!debt) continue;
-      const contactId = Number(debt.contact_id), name = contactNames.get(contactId) || "";
-      const payment = { id: Number(p.id), debtId: Number(p.debt_id), contactId, contactName: name, direction: debt.direction, amount: money(p.amount_cents), method: p.method, note: p.note, createdAt: Number(p.created_at), createdBy: p.created_by || "" };
-      result.payments.push(payment);
-      const contact = byContact.get(contactId);
-      if (contact && Number(p.created_at) > contact.lastActivity) contact.lastActivity = Number(p.created_at);
-      result.transactions.push({ id: `p${p.id}`, debtId: Number(p.debt_id), contactId, contactName: name, kind: "payment", direction: debt.direction, amount: money(p.amount_cents), note: p.note, method: p.method, createdAt: Number(p.created_at), createdBy: p.created_by || "" });
-    }
-    for (const contact of result.contacts) {
-      contact.net = contact.receivable - contact.payable;
-      result.totals.receivable += contact.receivable;
-      result.totals.payable += contact.payable;
-    }
-    result.totals.net = result.totals.receivable - result.totals.payable;
-    result.transactions.sort((a: Json, b: Json) => b.createdAt - a.createdAt);
-    return result;
-  }
-  function timestamp(value: unknown): number {
-    if (value === undefined || value === null || value === "") return now();
-    const n = Number(value);
-    if (!Number.isSafeInteger(n) || n < 1 || n > now() + 5 * 60_000) throw new HttpError(400, "يوجد تاريخ سجل غير صالح.");
-    return n;
-  }
-
-  async function syncSnapshot(store: Json, input: Json, baseRevision: unknown, device: Json, includeSnapshot = true): Promise<Json> {
-    if (!input || !Array.isArray(input.contacts) || !Array.isArray(input.debts) || !Array.isArray(input.payments)) throw new HttpError(400, "بيانات المزامنة غير مكتملة. لم يتم تغيير السجل.");
-    const contacts: Json[] = input.contacts, debts: Json[] = input.debts, payments: Json[] = input.payments;
-    if (contacts.length > 50_000 || debts.length > 100_000 || payments.length > 500_000) throw new HttpError(413, "عدد السجلات أكبر من الحد.");
-    if (Number(baseRevision) !== Number(store.revision)) throw new HttpError(409, "تغيّرت البيانات على جهاز آخر. حمّل النسخة الأحدث ثم أعد المحاولة.", { snapshot: await makeSnapshot(store) });
-
-    const contactIds = assertIds(contacts, "الشخص");
-    const debtIds = assertIds(debts, "الدين");
-    const paymentIds = assertIds(payments, "الدفعة");
-    const uniqueContacts = new Set<string>();
-    for (const contact of contacts) {
-      if (!text(contact.name, 120)) throw new HttpError(400, "يوجد شخص بلا اسم.");
-      timestamp(contact.createdAt); cents(contact.creditLimit || 0);
-      const key = `${text(contact.name, 120).normalize("NFKC").toLocaleLowerCase("ar")} | ${normalizedContactPhone(contact.phone)}`;
-      if (uniqueContacts.has(key)) throw new HttpError(400, "يوجد اسم ورقم هاتف مكرران في سجل المتجر. راجع قائمة الأشخاص قبل المزامنة.");
-      uniqueContacts.add(key);
-    }
-
-    const previous = await makeSnapshot(store);
-    const oldContacts = new Map<number, Json>(previous.contacts.map((row: Json) => [Number(row.id), row]));
-    const oldDebts = new Map<number, Json>(previous.debts.map((row: Json) => [Number(row.id), row]));
-    const oldPayments = new Map<number, Json>(previous.payments.map((row: Json) => [Number(row.id), row]));
-    const removedContacts = previous.contacts.filter((row: Json) => !contactIds.has(Number(row.id)));
-    const removedDebts = previous.debts.filter((row: Json) => !debtIds.has(Number(row.id)));
-    const removedPayments = previous.payments.filter((row: Json) => !paymentIds.has(Number(row.id)));
-    const addedContacts = contacts.filter(row => !oldContacts.has(Number(row.id)));
-    const addedDebts = debts.filter(row => !oldDebts.has(Number(row.id)));
-    const addedPayments = payments.filter(row => !oldPayments.has(Number(row.id)));
-    const devicePermissions = { registerPayments: true, deleteRecords: true, deleteContacts: true, ...parseJsonObject(device.permissions) };
-    if (removedContacts.length && !devicePermissions.deleteContacts) throw new HttpError(403, `الأدمن منع حذف الأشخاص لهذا الجهاز (${device.staff_name || "مستخدم الجهاز"}).`);
-    if ((removedDebts.length || removedPayments.length || (removedContacts.length && previous.debts.some((row: Json) => removedContacts.some((c: Json) => Number(c.id) === Number(row.contactId))))) && !devicePermissions.deleteRecords) throw new HttpError(403, `الأدمن منع حذف السجلات لهذا الجهاز (${device.staff_name || "مستخدم الجهاز"}).`);
-    if (addedPayments.length && !devicePermissions.registerPayments) throw new HttpError(403, `الأدمن منع تسجيل الدفعات لهذا الجهاز (${device.staff_name || "مستخدم الجهاز"}).`);
-    if (addedPayments.length || removedPayments.length) requirePermission(store, "payments");
-
-    for (const debt of debts) {
-      if (!contactIds.has(Number(debt.contactId))) throw new HttpError(400, "دين مرتبط بشخص غير موجود.");
-      if (!["receivable", "payable"].includes(debt.direction)) throw new HttpError(400, "اتجاه الدين غير صالح.");
-      const amount = cents(debt.amount);
-      if (amount < 1) throw new HttpError(400, "يجب أن يكون مبلغ الدين أكبر من صفر.");
-      const created = timestamp(debt.createdAt);
-      if (debt.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(text(debt.dueDate, 20))) throw new HttpError(400, "موعد الاستحقاق غير صالح.");
-      const old = oldDebts.get(Number(debt.id));
-      if (old && (Number(old.contactId) !== Number(debt.contactId) || old.direction !== debt.direction || cents(old.amount) !== amount || text(old.note, 500) !== text(debt.note, 500) || text(old.dueDate, 20) !== text(debt.dueDate, 20) || Number(old.createdAt) !== created)) throw new HttpError(403, "لا يمكن تعديل دين مسجل مباشرة. احذف السجل بصلاحية الإدارة ثم أضف سجلًا صحيحًا.");
-    }
-    for (const payment of payments) {
-      if (!debtIds.has(Number(payment.debtId))) throw new HttpError(400, "دفعة مرتبطة بدين غير موجود.");
-      const amount = cents(payment.amount), method = payment.method || "cash", created = timestamp(payment.createdAt);
-      if (amount < 1) throw new HttpError(400, "يجب أن يكون مبلغ الدفعة أكبر من صفر.");
-      if (!["cash", "bank", "wallet"].includes(method)) throw new HttpError(400, "طريقة الدفع غير صالحة.");
-      const old = oldPayments.get(Number(payment.id));
-      if (old && (Number(old.debtId) !== Number(payment.debtId) || cents(old.amount) !== amount || old.method !== method || text(old.note, 500) !== text(payment.note, 500) || Number(old.createdAt) !== created)) throw new HttpError(403, "لا يمكن تعديل دفعة مسجلة مباشرة. احذف السجل بصلاحية الإدارة ثم أضف سجلًا صحيحًا.");
-    }
-    for (const contact of removedContacts) {
-      const previousContact = oldContacts.get(Number(contact.id));
-      if (Number(previousContact?.receivable || 0) > 0 || Number(previousContact?.payable || 0) > 0) throw new HttpError(409, `لا يمكن حذف ${text(contact.name, 120)} لوجود دين متبقٍ. سجّل التسديد أولًا.`);
-      if (debts.some(row => Number(row.contactId) === Number(contact.id))) throw new HttpError(400, "يجب حذف سجل الشخص كاملًا قبل حذف الشخص.");
-    }
-    const removedDebtIds = new Set(removedDebts.map((row: Json) => Number(row.id)));
-    for (const debt of removedDebts) {
-      if (Number(debt.remaining) > 0) throw new HttpError(409, "لا يمكن حذف دين ما زال عليه مبلغ متبقٍ.");
-      if (!removedDebtIds.has(Number(debt.id))) throw new HttpError(400, "تعذر التحقق من حذف الدين.");
-    }
-
-    const paidByDebt = new Map<number, number>();
-    for (const payment of payments) paidByDebt.set(Number(payment.debtId), (paidByDebt.get(Number(payment.debtId)) || 0) + cents(payment.amount));
-    const activeDebtors = new Set<number>();
-    for (const debt of debts) {
-      const remaining = cents(debt.amount) - (paidByDebt.get(Number(debt.id)) || 0);
-      if (remaining < 0) throw new HttpError(400, "مجموع دفعات دين تجاوز أصل الدين.");
-      if (debt.direction === "receivable" && remaining > 0) activeDebtors.add(Number(debt.contactId));
-    }
-    if (activeDebtors.size > Number(store.debtor_limit)) throw new HttpError(403, `تجاوزت حد ${store.debtor_limit} مدينًا الذي حدده الأدمن.`);
-
-    const receivedAt = now();
-    const contactByDebt = new Map(debts.map(row => [Number(row.id), Number(row.contactId)]));
-    const newPaymentGroups = new Map<string, { contactId: number; createdAt: number; method: string; amountCents: number }>();
-    for (const payment of addedPayments) {
-      const createdAt = nowOr(payment.createdAt), method = payment.method || "cash", contactId = contactByDebt.get(Number(payment.debtId))!;
-      const key = paymentKey(contactId, createdAt, method), group = newPaymentGroups.get(key) || { contactId, createdAt, method, amountCents: 0 };
-      group.amountCents += cents(payment.amount); newPaymentGroups.set(key, group);
-    }
-    const recentCutoff = receivedAt - 60_000;
-    const recentRows = dataOrThrow(await db.from("payments").select("id,debt_id,amount_cents,method,created_at,server_received_at")
-      .eq("store_id", store.id).or(`server_received_at.gte.${recentCutoff},and(server_received_at.eq.0,created_at.gte.${recentCutoff})`));
-    const recentGroups = new Map<string, { contactId: number; createdAt: number; receivedAt: number; method: string; amountCents: number }>();
-    for (const row of recentRows as Json[]) {
-      const debt = oldDebts.get(Number(row.debt_id));
-      if (!debt) continue;
-      const contactId = Number(debt.contactId), method = row.method || "cash", createdAt = Number(row.created_at), key = paymentKey(contactId, createdAt, method);
-      const group = recentGroups.get(key) || { contactId, createdAt, receivedAt: Number(row.server_received_at || row.created_at), method, amountCents: 0 };
-      group.amountCents += Number(row.amount_cents); recentGroups.set(key, group);
-    }
-    const candidates = [...newPaymentGroups.values()];
-    for (let i = 0; i < candidates.length; i++) {
-      const candidate = candidates[i];
-      const prior = [...recentGroups.values()].some(row => row.contactId === candidate.contactId && row.method === candidate.method && row.amountCents === candidate.amountCents && row.receivedAt <= receivedAt && receivedAt - row.receivedAt <= 60_000);
-      const sameBatch = candidates.slice(i + 1).some(row => row.contactId === candidate.contactId && row.method === candidate.method && row.amountCents === candidate.amountCents && Math.abs(row.createdAt - candidate.createdAt) <= 60_000);
-      if (prior || sameBatch) throw new HttpError(400, "توجد دفعة مطابقة مسجلة لهذا الشخص خلال آخر دقيقة. انتظر دقيقة قبل إعادة المحاولة لتجنب التكرار.");
-    }
-
-    const actor = text(device.staff_name, 80) || "صاحب المتجر";
-    const contactName = new Map(contacts.map(row => [Number(row.id), text(row.name, 120)]));
-    const editedContacts = contacts.filter(row => {
-      const old = oldContacts.get(Number(row.id));
-      return old && (text(old.name, 120) !== text(row.name, 120) || text(old.phone, 40) !== text(row.phone, 40) || text(old.category, 40) !== text(row.category, 40) || text(old.note, 500) !== text(row.note, 500) || !!old.whatsappOptIn !== (row.whatsappOptIn === true) || cents(old.creditLimit || 0) !== cents(row.creditLimit || 0));
-    });
-    const removedArchiveRows = removedContacts.map((contact: Json) => {
-      const contactDebts = previous.debts.filter((row: Json) => Number(row.contactId) === Number(contact.id));
-      const ids = new Set(contactDebts.map((row: Json) => Number(row.id)));
-      const contactPayments = previous.payments.filter((row: Json) => ids.has(Number(row.debtId)));
-      return { contact, debts: contactDebts, payments: contactPayments };
-    });
-    const audit: Array<{ action: string; description: string }> = [];
-    for (const row of addedContacts) audit.push({ action: "إضافة شخص", description: `أضاف ${text(row.name, 120)} إلى الأشخاص.` });
-    for (const row of editedContacts) audit.push({ action: "تعديل شخص", description: `عدّل بيانات ${text(row.name, 120)}.` });
-    for (const row of addedDebts) audit.push({ action: "تسجيل دين", description: `سجّل دينًا بقيمة ${money(cents(row.amount))} ₪ على ${contactName.get(Number(row.contactId)) || "شخص"}.` });
-    for (const row of addedPayments) audit.push({ action: "تسجيل دفعة", description: `سجّل دفعة بقيمة ${money(cents(row.amount))} ₪ لـ ${contactName.get(contactByDebt.get(Number(row.debtId))!) || "شخص"}.` });
-    for (const row of removedContacts) audit.push({ action: "حذف زبون", description: `حذف ${text(row.name, 120)} وسجله.` });
-    for (const row of removedDebts) audit.push({ action: "حذف سجل", description: `حذف سجل دين لـ ${contactName.get(Number(row.contactId)) || "شخص"}.` });
-    for (const row of removedPayments) audit.push({ action: "حذف سجل", description: `حذف دفعة لـ ${text(row.contactName, 120) || "شخص"}.` });
-    if (audit.length > 300) audit.push({ action: "ملخص حركات", description: `تم تسجيل ${audit.length} حركة في مزامنة واحدة.` });
-
-    const commit = await db.rpc("sadad_commit_store_snapshot", {
-      p_store_id: store.id,
-      p_base_revision: Number(baseRevision),
-      p_snapshot: { contacts, debts, payments },
-      p_previous_snapshot: previous,
-      p_removed_contacts: removedArchiveRows,
-      p_audit_events: audit.slice(0, 300),
-      p_actor: actor,
-      p_device_id: device.device_id || "",
-      p_received_at: receivedAt,
-    });
-    if (commit.error) await rpcResult(commit, {}, {
-      revision_conflict: async () => {
-        const latest = dataOrThrow(await db.from("stores").select("*").eq("id", store.id).single());
-        return { snapshot: await makeSnapshot(latest) };
-      },
-    });
-    const latest = dataOrThrow(await db.from("stores").select("*").eq("id", store.id).single());
-    return { revision: Number(commit.data), snapshot: includeSnapshot ? await makeSnapshot(latest) : null };
-  }
-
-  /**
-   * Apply one bounded offline delta batch, the path the 2.5.10 Android app uses for routine sync.
-   *
-   * Mirrors the legacy Node server's syncDelta: merge the batch into the ledger as it exists on the
-   * server, then commit through the same validated full-snapshot path as /mobile/sync. Rows the
-   * batch does not mention are preserved, so the commit sees only genuinely deleted rows as removals.
-   */
-  async function syncDelta(store: Json, body: Json, device: Json): Promise<Json> {
-    const delta = body.delta;
-    if (!delta || typeof delta !== "object" || Array.isArray(delta)) throw new HttpError(400, "دفعة مزامنة غير مكتملة.");
-    for (const table of LEDGER_TABLES) if (!Array.isArray((delta as Json)[table])) throw new HttpError(400, "دفعة مزامنة غير مكتملة.");
-
-    let count = 0;
-    const deleted: Record<string, number[]> = { contacts: [], debts: [], payments: [] };
-    try {
-      count = batchSize(delta as never);
-      for (const table of LEDGER_TABLES) deleted[table] = deletedIds((delta as Json).deleted, table);
-    } catch {
-      throw new HttpError(400, "دفعة مزامنة غير صالحة.");
-    }
-    if (count > DELTA_BATCH_LIMIT) throw new HttpError(413, `دفعة المزامنة تتجاوز ${DELTA_BATCH_LIMIT} سجل.`);
-    // The device must still be working from the current revision, exactly like the full sync path.
-    if (Number(body.baseRevision) !== Number(store.revision)) {
-      throw new HttpError(409, "تغيّرت بيانات المتجر على جهاز آخر.", { revision: Number(store.revision), reloadRequired: true });
-    }
-    if (!count) return { revision: Number(store.revision) };
-
-    const current = await makeSnapshot(store);
-    const merged = mergeDeltaIntoSnapshot(current as WireSnapshot, delta as never, deleted);
-    return syncSnapshot(store, merged, body.baseRevision, device, false);
-  }
-
-  /**
-   * Idempotency receipt for a retried batch (see migrations/*_sadad_sync_receipts.sql).
-   *
-   * Best-effort on purpose: if the table is not deployed yet the batch still syncs, it just loses
-   * replay protection. A missing receipt must never break a store's sync.
-   */
-  async function findSyncReceipt(storeId: number, deviceId: string, batchId: string): Promise<number | null> {
-    if (!deviceId || !batchId) return null;
-    try {
-      const row = dataOrThrow(await db.from("sync_receipts").select("revision").eq("store_id", storeId).eq("device_id", deviceId).eq("batch_id", batchId).maybeSingle()) as Json | null;
-      return row ? Number(row.revision) : null;
-    } catch (error) {
-      console.error("sync receipt lookup skipped", error);
-      return null;
-    }
-  }
-
-  /** Record a committed batch, keeping only the newest 100 receipts per device. Best-effort. */
-  async function recordSyncReceipt(storeId: number, deviceId: string, batchId: string, revision: number): Promise<void> {
-    if (!deviceId || !batchId) return;
-    try {
-      dataOrThrow(await db.from("sync_receipts").insert({ store_id: storeId, device_id: deviceId, batch_id: batchId, revision, created_at: now() }));
-      const keep = dataOrThrow(await db.from("sync_receipts").select("created_at").eq("store_id", storeId).eq("device_id", deviceId).order("created_at", { ascending: false }).limit(100)) as Json[];
-      const oldest = keep[keep.length - 1];
-      if (oldest) dataOrThrow(await db.from("sync_receipts").delete().eq("store_id", storeId).eq("device_id", deviceId).lt("created_at", Number(oldest.created_at)));
-    } catch (error) {
-      console.error("sync receipt write skipped", error);
-    }
-  }
-
   async function adminStoreList(auth: Principal, includeArchived = false): Promise<Json[]> {
     const rows: Json[] = dataOrThrow(await db.from("stores").select("*").order("created_at", { ascending: false }));
     const visible = rows.filter(row => includeArchived || row.status !== "deleted");
     for (let index=0;index<visible.length;index++) if (visible[index].status !== "deleted") visible[index]=await refreshStoreStatus(visible[index]);
-    const legacy: Json[] = dataOrThrow(await db.rpc("sadad_admin_store_list"));
     const summaries: Json[] = dataOrThrow(await db.rpc("sadid_admin_summaries", { p_admin_hash: hashToken(auth.token), p_stores: visible.map(row => Number(row.id)) }));
     const installations: Json[] = dataOrThrow(await db.rpc("sadid_pending_installations", { p_admin_hash: hashToken(auth.token) }));
     return visible.map(row => {
-      const old = legacy.find(item => Number(item.id) === Number(row.id)) || {};
       const summary = summaries.find(item => Number(item.storeId) === Number(row.id)) || {};
       const phones = installations.filter(item => Number(item.storeId) === Number(row.id));
-      return { ...publicStore(row), contacts: Number(old.contacts || 0), debts: Number(old.debts || 0), debtTotal: Number(old.debt_total || 0),
-        ...summary, ledgerMode: summary.initialized ? "current" : "legacy", archived: row.status === "deleted",
-        loginDevices: Number(old.device_count || 0), boundDevices: phones.filter(item => item.status === "active").length,
+      return { ...publicStore(row), contacts: 0, debts: 0, debtTotal: 0,
+        ...summary, archived: row.status === "deleted",
+        boundDevices: phones.filter(item => item.status === "active").length,
         pendingDevices: phones.filter(item => item.status === "pending").length };
     });
   }
@@ -572,21 +227,13 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
     const state = subscriptionState(store);
     return { id: Number(store.id), name: store.name, username: store.username, status: store.status, suspendUntil: store.suspend_until,
       verified: !!store.verified, debtorLimit: Number(store.debtor_limit), permissions: parseJsonObject(store.permissions),
-      whatsappEnabled: !!store.whatsapp_enabled, revision: Number(store.revision), createdAt: Number(store.created_at),
+      revision: Number(store.revision), createdAt: Number(store.created_at),
       subscriptionMode: state.mode, subscriptionStartedAt: store.subscription_started_at || null,
       subscriptionExpiresAt: state.expiresAt, subscriptionRemainingMs: state.remainingMs, maxDevices: Number(store.allowed_devices || 1) };
   }
   async function listDevices(storeId: number): Promise<Json[]> {
     const rows = dataOrThrow(await db.from("store_devices").select("device_id,label,staff_name,permissions,first_seen_at,last_seen_at,revoked_at").eq("store_id", storeId).order("last_seen_at", { ascending: false }));
     return rows.map((row: Json) => ({ id: row.device_id, label: row.label, staffName: row.staff_name || "", permissions: { registerPayments: true, deleteRecords: true, deleteContacts: true, ...parseJsonObject(row.permissions) }, firstSeenAt: row.first_seen_at, lastSeenAt: row.last_seen_at, revokedAt: row.revoked_at }));
-  }
-  async function listBackups(storeId: number): Promise<Json[]> {
-    const rows = dataOrThrow(await db.from("store_backups").select("id,created_at,reason,contact_count,debt_count,payment_count").eq("store_id", storeId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(100));
-    return rows.map((row: Json) => ({ id: Number(row.id), createdAt: Number(row.created_at), reason: row.reason, contactCount: row.contact_count, debtCount: row.debt_count, paymentCount: row.payment_count }));
-  }
-  async function listContactArchives(storeId: number): Promise<Json[]> {
-    const rows = dataOrThrow(await db.from("contact_archives").select("id,contact_id,contact_name,archived_at,source_revision,debt_count,payment_count,restored_at").eq("store_id", storeId).order("archived_at", { ascending: false }).order("id", { ascending: false }));
-    return rows.map((row: Json) => ({ id: Number(row.id), contactId: Number(row.contact_id), contactName: row.contact_name, archivedAt: Number(row.archived_at), sourceRevision: Number(row.source_revision), debtCount: row.debt_count, paymentCount: row.payment_count, restoredAt: row.restored_at }));
   }
   async function enforceDeviceCap(storeId: number, limit: number): Promise<void> {
     const devices = dataOrThrow(await db.from("store_devices").select("device_id").eq("store_id", storeId).is("revoked_at", null).order("last_seen_at", { ascending: false }).order("first_seen_at", { ascending: false }).order("device_id", { ascending: true }));
@@ -605,7 +252,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
     if (result.error) throw result.error;
     return result.count || 0;
   }
-  async function isV3Store(storeId: number): Promise<boolean> {
+  async function isLedgerInitialized(storeId: number): Promise<boolean> {
     return !!dataOrThrow(await db.rpc("sadid_is_v3_store", { p_store: storeId }));
   }
   async function route(request: Request): Promise<Response> {
@@ -674,7 +321,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
       const existing = dataOrThrow(await db.from("store_devices").select("*").eq("store_id", store.id).eq("device_id", deviceId).maybeSingle());
       if (existing?.revoked_at) throw new HttpError(403, "تم إلغاء هذا الجهاز من الأدمن. اطلب السماح به مجددًا.");
       const requiresStaffName = Number(store.allowed_devices || 1) > 1;
-      if (requiresStaffName && (!existing || !existing.staff_name) && requestedStaff.length < 2) throw new HttpError(409, "أدخل اسم الشخص الذي سيستخدم هذا الجهاز ليظهر اسمه في السجلات. لا يمكن تغييره بعد التسجيل إلا من الأدمن.");
+      if (requiresStaffName && (!existing || !existing.staff_name) && requestedStaff.length < 2) throw new HttpError(409, "أدخل اسم الشخص الذي سيستخدم هذا الجهاز ليظهر اسمه في السجلات. يُحفظ هذا الاسم مع جهاز تسجيل الدخول.");
       if (requiresStaffName && requestedStaff.length > 0 && (requestedStaff.length < 2 || /[\u0000-\u001f]/.test(requestedStaff))) throw new HttpError(400, "اكتب اسمًا من خانتين على الأقل بدون رموز تحكم.");
       const staffName = existing?.staff_name || (requiresStaffName ? requestedStaff : "");
       const at = now(), token = randomBytes(32).toString("base64url"), expiresAt = at + SESSION_MS;
@@ -686,14 +333,9 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
       const session = { token, expiresAt };
       store = dataOrThrow(await db.from("stores").select("*").eq("id", store.id).single());
       if (!store) throw new HttpError(401, "جلسة المتجر غير صالحة.");
-      const snapshot = await makeSnapshot(store);
       const deviceInfo = { staffName: deviceRecord.staff_name || "صاحب المتجر", permissions: { registerPayments: true, deleteRecords: true, deleteContacts: true, ...parseJsonObject(deviceRecord.permissions) } };
-      // pagedSnapshot tells the app to pull the ledger in pages (GET /mobile/snapshot-page) rather
-      // than import this response. The inline snapshot stays in the body so older builds keep working.
-      // Which ledger this store speaks is a property of the store, so the login states it rather
-      // than making the app probe and guess. A signed-ledger store refuses every legacy sync route.
-      const ledger = await isV3Store(Number(store.id)) ? "v3" : "legacy";
-      return ok({ ...session, ledger, forcePasswordChange: !!store.force_password_change, snapshotDeferred: body.pagedSnapshot === true, snapshot, account: snapshot.account, device: deviceInfo, deviceStaffName: deviceInfo.staffName });
+      return ok({ ...session, ledger: "v3", forcePasswordChange: !!store.force_password_change,
+        account: await accountForStore(store), device: deviceInfo, deviceStaffName: deviceInfo.staffName });
     }
 
     if (request.method === "POST" && pathname === "/admin/logout") {
@@ -760,8 +402,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
         if (!store) throw new HttpError(404, "المتجر غير موجود.");
         if (store.status === "deleted" && !(request.method === "GET" && action === "") && action !== "unarchive") throw new HttpError(409, "الحساب مؤرشف. أعده من الأرشيف أولًا.");
         store = await refreshStoreStatus(store);
-        const ledgerCurrent = await isV3Store(storeId);
-        if (ledgerCurrent && request.method === "POST" && (/^(backups|archives)\/\d+\/restore$/.test(action) || /^devices\/[^/]+\/permissions$/.test(action))) throw new HttpError(409, "استخدم استرداد الأوامر المعتمد وصلاحيات الحساب لهذا المتجر.");
+        const ledgerInitialized = await isLedgerInitialized(storeId);
         if (request.method === "POST" && ["archive", "unarchive", "end-sessions", "revoke-all"].includes(action)) {
           const body = await bodyJson(request), reason = text(body.reason, 2000);
           if (!reason) throw new HttpError(400, "اكتب سبب الإجراء.");
@@ -770,92 +411,18 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
 
         if (request.method === "GET" && action === "") {
           const reason = text(url.searchParams.get("reason") || "Store management in admin dashboard", 2000);
-          const raw = ledgerCurrent ? dataOrThrow(await db.rpc("sadid_support_snapshot", { p_admin_hash: hashToken(auth.token), p_store: storeId, p_reason: reason })) : null;
-          const [devices, backups, contactArchives, auditEvents, controls] = await Promise.all([
-            listDevices(storeId), ledgerCurrent ? [] : listBackups(storeId), ledgerCurrent ? [] : listContactArchives(storeId),
-            db.from("audit_events").select("actor,action,description,created_at,device_id").eq("store_id", storeId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(200),
+          const raw = ledgerInitialized ? dataOrThrow(await db.rpc("sadid_support_snapshot", { p_admin_hash: hashToken(auth.token), p_store: storeId, p_reason: reason })) : null;
+          const [devices, controls] = await Promise.all([
+            listDevices(storeId),
             db.rpc("sadid_admin_controls", { p_admin_hash: hashToken(auth.token), p_store: storeId }),
           ]);
           const control = dataOrThrow(controls);
-          const account = { ...publicStore(store), archived: store.status === "deleted", ledgerMode: ledgerCurrent ? "current" : "legacy", canDelete: !ledgerCurrent && !control.hasDeviceHistory };
-          const snapshot = raw ? adminLedgerSnapshot(raw, account) : await makeSnapshot(store);
-          const events = raw ? ledgerAuditEvents(raw) : dataOrThrow(auditEvents).map((row: Json) => ({ actor: row.actor, action: row.action, description: row.description, createdAt: row.created_at, deviceId: row.device_id }));
-          return ok({ store: account, snapshot, devices, backups, contactArchives, auditEvents: events, ...control });
-        }
-        if (request.method === "GET" && action === "archives") return ok({ archives: await listContactArchives(storeId) });
-        const restoreArchive = action.match(/^archives\/(\d+)\/restore$/);
-        if (request.method === "POST" && restoreArchive) {
-          const archiveId = Number(restoreArchive[1]);
-          const archive = dataOrThrow(await db.from("contact_archives").select("id,restored_at").eq("id", archiveId).eq("store_id", storeId).maybeSingle());
-          if (!archive) throw new HttpError(404, "نسخة الزبون المحذوف غير موجودة.");
-          if (archive.restored_at) throw new HttpError(409, "تمت استعادة هذا السجل مسبقًا.");
-          const currentSnapshot = await makeSnapshot(store), at = now();
-          const restored = await db.rpc("sadad_restore_contact_archive_checked", {
-            p_store_id: storeId, p_archive_id: archiveId, p_expected_revision: Number(store.revision), p_current_snapshot: currentSnapshot, p_now: at,
-          });
-          const revision = await rpcResult(restored, { restore: true });
-          const updated = dataOrThrow(await db.from("stores").select("*").eq("id", storeId).single());
-          return ok({ restored: true, revision: Number(revision), snapshot: await makeSnapshot(updated), archives: await listContactArchives(storeId) });
-        }
-        if (request.method === "GET" && /^backups\/\d+$/.test(action)) {
-          const backupId = Number(action.split("/")[1]);
-          const backup = dataOrThrow(await db.from("store_backups").select("id,created_at,reason,snapshot_json,contact_count,debt_count,payment_count").eq("id", backupId).eq("store_id", storeId).maybeSingle());
-          if (!backup) throw new HttpError(404, "النسخة الاحتياطية غير موجودة.");
-          return ok({ backup: { id: backup.id, createdAt: backup.created_at, reason: backup.reason, contactCount: backup.contact_count, debtCount: backup.debt_count, paymentCount: backup.payment_count }, snapshot: backup.snapshot_json });
-        }
-        const restoreBackup = action.match(/^backups\/(\d+)\/restore$/);
-        if (request.method === "POST" && restoreBackup) {
-          const backupId = Number(restoreBackup[1]);
-          const backup = dataOrThrow(await db.from("store_backups").select("id").eq("id", backupId).eq("store_id", storeId).maybeSingle());
-          if (!backup) throw new HttpError(404, "النسخة الاحتياطية غير موجودة.");
-          const body = await bodyJson(request);
-          let contactId: number | null = null;
-          if (body.contactId !== undefined && body.contactId !== null) {
-            contactId = Number(body.contactId);
-            if (!Number.isSafeInteger(contactId) || contactId < 1) throw new HttpError(400, "معرّف الشخص غير صالح.");
-          }
-          const currentSnapshot = await makeSnapshot(store), at = now();
-          const restored = await db.rpc("sadad_restore_store_backup_checked", {
-            p_store_id: storeId, p_backup_id: backupId, p_contact_id: contactId,
-            p_expected_revision: Number(store.revision), p_current_snapshot: currentSnapshot, p_now: at,
-          });
-          const revision = await rpcResult(restored, { restore: true });
-          const updated = dataOrThrow(await db.from("stores").select("*").eq("id", storeId).single());
-          return ok({ restored: true, revision: Number(revision), snapshot: await makeSnapshot(updated) });
+          const account = { ...publicStore(store), archived: store.status === "deleted", canDelete: !ledgerInitialized && !control.hasDeviceHistory };
+          const snapshot = adminLedgerSnapshot(raw || { contacts: [], debts: [], payments: [], events: [] }, account);
+          return ok({ store: account, snapshot, devices, auditEvents: raw ? ledgerAuditEvents(raw) : [], ...control });
         }
         if (request.method === "GET" && action === "devices") return ok({ devices: await listDevices(storeId) });
 
-        const devicePermissionsMatch = action.match(/^devices\/([A-Za-z0-9._:%-]+)\/permissions$/);
-        if (request.method === "POST" && devicePermissionsMatch) {
-          const deviceId = decodeURIComponent(devicePermissionsMatch[1]);
-          const device = dataOrThrow(await db.from("store_devices").select("*").eq("store_id", storeId).eq("device_id", deviceId).maybeSingle());
-          if (!device) throw new HttpError(404, "الجهاز غير معروف لهذا الحساب.");
-          const body = await bodyJson(request); const permissions: Json = { registerPayments: true, deleteRecords: true, deleteContacts: true, ...parseJsonObject(device.permissions) };
-          for (const key of ["registerPayments", "deleteRecords", "deleteContacts"]) if (typeof body[key] === "boolean") permissions[key] = body[key];
-          dataOrThrow(await db.from("store_devices").update({ permissions }).eq("store_id", storeId).eq("device_id", deviceId));
-          return ok({ permissions });
-        }
-        const deleteDevice = action.match(/^devices\/([A-Za-z0-9._:%-]+)\/delete$/);
-        if (request.method === "DELETE" && deleteDevice) {
-          const deviceId = decodeURIComponent(deleteDevice[1]);
-          dataOrThrow(await db.from("sessions").delete().eq("kind", "store").eq("principal_id", storeId).eq("device_id", deviceId));
-          const removed = dataOrThrow(await db.from("store_devices").delete().eq("store_id", storeId).eq("device_id", deviceId).select("device_id"));
-          if (!removed.length) throw new HttpError(404, "الجهاز غير معروف لهذا الحساب.");
-          return ok({ deleted: true });
-        }
-        if (request.method === "POST" && action === "devices/revoke-all") {
-          const at = now();
-          dataOrThrow(await db.from("store_devices").update({ revoked_at: at }).eq("store_id", storeId).is("revoked_at", null));
-          dataOrThrow(await db.from("sessions").delete().eq("kind", "store").eq("principal_id", storeId));
-          return ok({ revoked: true });
-        }
-        const revokeDevice = action.match(/^devices\/([A-Za-z0-9._:%-]+)\/revoke$/);
-        if (request.method === "POST" && revokeDevice) {
-          const deviceId = decodeURIComponent(revokeDevice[1]);
-          dataOrThrow(await db.from("store_devices").update({ revoked_at: now() }).eq("store_id", storeId).eq("device_id", deviceId).is("revoked_at", null));
-          dataOrThrow(await db.from("sessions").delete().eq("kind", "store").eq("principal_id", storeId).eq("device_id", deviceId));
-          return ok({ revoked: true });
-        }
         const allowDevice = action.match(/^devices\/([A-Za-z0-9._:%-]+)\/allow$/);
         if (request.method === "POST" && allowDevice) {
           const deviceId = decodeURIComponent(allowDevice[1]);
@@ -882,14 +449,13 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
             name, username, status: nextStatus, suspend_until: suspendUntil,
             verified: body.verified === undefined ? store.verified : !!body.verified,
             debtor_limit: debtorLimit, permissions,
-            whatsapp_enabled: body.whatsappEnabled === undefined ? store.whatsapp_enabled : !!body.whatsappEnabled,
             allowed_devices: maxDevices, revision: Number(store.revision) + 1,
           }).eq("id", storeId);
           if (update.error?.code === "23505") throw new HttpError(409, "اسم المستخدم مستخدم بالفعل.");
           if (update.error) throw update.error;
           await enforceDeviceCap(storeId, maxDevices);
           if (nextStatus !== "active") dataOrThrow(await db.from("sessions").delete().eq("kind", "store").eq("principal_id", storeId));
-          const updated = dataOrThrow(await db.from("stores").select("id,name,username,status,suspend_until,verified,debtor_limit,permissions,whatsapp_enabled,allowed_devices").eq("id", storeId).single());
+          const updated = dataOrThrow(await db.from("stores").select("id,name,username,status,suspend_until,verified,debtor_limit,permissions,allowed_devices").eq("id", storeId).single());
           return ok({ store: { ...updated, maxDevices, allowedDevices: maxDevices, permissions: parseJsonObject(updated.permissions) } });
         }
         if (request.method === "POST" && action === "subscription") {
@@ -922,7 +488,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
         }
         if (request.method === "DELETE" && action === "permanent") {
           const control = dataOrThrow(await db.rpc("sadid_admin_controls", { p_admin_hash: hashToken(auth.token), p_store: storeId }));
-          if (ledgerCurrent || control.hasDeviceHistory) throw new HttpError(409, "هذا الحساب له سجل محفوظ. استخدم أرشفة الحساب بدل الحذف النهائي.");
+          if (ledgerInitialized || control.hasDeviceHistory) throw new HttpError(409, "هذا الحساب له سجل محفوظ. استخدم أرشفة الحساب بدل الحذف النهائي.");
           if (url.searchParams.get("confirm") !== store.username) throw new HttpError(400, "أرسل اسم المستخدم لتأكيد الحذف النهائي.");
           dataOrThrow(await db.from("sessions").delete().eq("kind", "store").eq("principal_id", storeId));
           dataOrThrow(await db.from("stores").delete().eq("id", storeId));
@@ -934,8 +500,7 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
     }
     if (pathname.startsWith("/mobile/")) {
       const auth = await requireSession(request, "store");
-      let store = auth.user;
-      if (!MOBILE_V3_EXEMPT.some(([method, path]) => method === request.method && path === pathname) && await isV3Store(store.id)) throw new HttpError(409, LEGACY_LEDGER_READ_ONLY, { code: "legacy_ledger_read_only" });
+      const store = auth.user;
       if (request.method === "GET" && pathname === "/mobile/session") return ok({ account: await accountForStore(store), forcePasswordChange: !!store.force_password_change, revision: Number(store.revision) });
       if (request.method === "POST" && pathname === "/mobile/change-password") {
         const body = await bodyJson(request), currentPassword = String(body.currentPassword || ""), password = String(body.password || "");
@@ -947,97 +512,6 @@ export function makeApi({ db, now = Date.now, fetcher = fetch }: Dependencies) {
         dataOrThrow(await db.from("stores").update({ salt: next.salt, password_hash: next.hash, force_password_change: false }).eq("id", store.id));
         dataOrThrow(await db.from("sessions").delete().eq("kind", "store").eq("principal_id", store.id).neq("token_hash", hashToken(auth.token)));
         return ok({ forcePasswordChange: false });
-      }
-      if (request.method === "GET" && pathname === "/mobile/activity") {
-        const events = dataOrThrow(await db.from("audit_events").select("actor,action,description,created_at").eq("store_id", store.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(300));
-        return ok({ events: events.map((item: Json) => ({ actor: item.actor, action: item.action, description: item.description, createdAt: item.created_at })) });
-      }
-      if (request.method === "GET" && pathname === "/mobile/snapshot-page") {
-        // Paged ledger download. The app stages every page locally and commits it only if the
-        // revision still matches the one it asked for (see PagedSnapshotTransfer.java).
-        const table = url.searchParams.get("table") || "";
-        if (!(LEDGER_TABLES as readonly string[]).includes(table)) throw new HttpError(400, "جدول غير صالح.");
-        const revision = Number(url.searchParams.get("revision"));
-        if (!Number.isSafeInteger(revision) || revision !== Number(store.revision)) {
-          throw new HttpError(409, "تغيّر السجل أثناء التحميل. أعد المحاولة.", { revision: Number(store.revision), reloadRequired: true });
-        }
-        const after = Number(url.searchParams.get("after") || 0);
-        if (!Number.isSafeInteger(after) || after < 0) throw new HttpError(400, "مؤشر غير صالح.");
-        const rows = dataOrThrow(await db.from(table).select("*").eq("store_id", store.id).gt("id", after).order("id", { ascending: true }).limit(SNAPSHOT_PAGE_LIMIT)) as Json[];
-        return ok({
-          rows: rows.map(ledgerRowToWire),
-          revision: Number(store.revision),
-          nextAfter: rows.length ? Number(rows[rows.length - 1].id) : after,
-          done: rows.length < SNAPSHOT_PAGE_LIMIT,
-          account: await accountForStore(store),
-        });
-      }
-      if (request.method === "POST" && pathname === "/mobile/sync-delta") {
-        requirePermission(store, "contacts");
-        requirePermission(store, "debts");
-        if (!auth.device) throw new HttpError(401, "الجهاز غير معتمد.");
-        const body = await bodyJson(request);
-        const deviceId = text(auth.device.device_id, 120), batchId = text(body.batchId, 100);
-        // A retried batch answers with the revision it already committed instead of a false conflict.
-        const replayed = await findSyncReceipt(store.id, deviceId, batchId);
-        if (replayed !== null) return ok({ revision: replayed, acknowledged: true, replayed: true });
-        const changed = await syncDelta(store, body, auth.device);
-        const revision = Number(changed.revision);
-        await recordSyncReceipt(store.id, deviceId, batchId, revision);
-        const latest = dataOrThrow(await db.from("stores").select("*").eq("id", store.id).single());
-        return ok({ revision, account: await accountForStore(latest), acknowledged: true });
-      }
-      if (request.method === "GET" && pathname === "/mobile/snapshot") return ok({ snapshot: await makeSnapshot(store) });
-      if (request.method === "POST" && pathname === "/mobile/sync") {
-        requirePermission(store, "contacts"); requirePermission(store, "debts");
-        const body = await bodyJson(request);
-        if (!auth.device) throw new HttpError(401, "الجهاز غير معتمد.");
-        const result = await syncSnapshot(store, body.snapshot || {}, body.baseRevision, auth.device);
-        return ok(result);
-      }
-      if (request.method === "GET" && pathname === "/mobile/whatsapp") {
-        const canUse = parseJsonObject(store.permissions).whatsapp !== false;
-        return ok({ enabled: !!store.whatsapp_enabled && canUse, connected: !!store.whatsapp_number_id,
-          phoneNumberId: store.whatsapp_number_id, number: store.whatsapp_number_id ? `••••${String(store.whatsapp_number_id).slice(-4)}` : "",
-          templateName: store.whatsapp_template_name, templateLanguage: store.whatsapp_template_language, featureAllowed: canUse });
-      }
-      if (request.method === "PUT" && pathname === "/mobile/whatsapp") {
-        requirePermission(store, "whatsapp");
-        if (!store.whatsapp_enabled) throw new HttpError(403, "ربط واتساب غير مفعّل من الأدمن لهذا المتجر.");
-        const body = await bodyJson(request), phoneId = text(body.phoneNumberId, 80), accessToken = text(body.accessToken, 4096);
-        const templateName = text(body.templateName, 512), templateLanguage = text(body.templateLanguage || "ar", 20);
-        if (!/^\d{5,30}$/.test(phoneId) || accessToken.length < 30) throw new HttpError(400, "أدخل Phone Number ID ورمز وصول صالحين من Meta.");
-        if (templateName && !/^[a-z0-9_]{1,512}$/.test(templateName)) throw new HttpError(400, "اسم قالب Meta يجب أن يحتوي أحرفاً إنجليزية صغيرة وأرقاماً وشرطة سفلية.");
-        dataOrThrow(await db.from("stores").update({ whatsapp_number_id: phoneId, whatsapp_token_enc: encryptSecret(accessToken), whatsapp_template_name: templateName, whatsapp_template_language: templateLanguage }).eq("id", store.id));
-        return ok({ connected: true, phoneNumberId: phoneId, templateName, templateLanguage });
-      }
-      if (request.method === "POST" && pathname === "/mobile/whatsapp/send-report") {
-        requirePermission(store, "reports"); requirePermission(store, "whatsapp");
-        if (!store.whatsapp_enabled || !store.whatsapp_number_id || !store.whatsapp_token_enc) throw new HttpError(403, "اربط حساب واتساب للأعمال واطلب تفعيله من الأدمن.");
-        const metaVersion = Deno.env.get("META_GRAPH_VERSION") || "";
-        if (!/^v\d+\.\d+$/.test(metaVersion)) throw new HttpError(503, "لم يحدد الأدمن إصدار Meta Graph API المدعوم في إعدادات الخادم.");
-        const body = await bodyJson(request), contactId = Number(body.contactId);
-        const contact = dataOrThrow(await db.from("contacts").select("*").eq("store_id", store.id).eq("id", contactId).maybeSingle());
-        if (!contact || !contact.phone) throw new HttpError(404, "أضف رقم هاتف لهذا الشخص أولاً.");
-        if (!contact.whatsapp_opt_in) throw new HttpError(403, "لا يمكن إرسال كشف قبل موافقة الشخص على استلام رسائل واتساب.");
-        const snapshot = await makeSnapshot(store), person = snapshot.contacts.find((row: Json) => Number(row.id) === contactId);
-        const transactions = snapshot.transactions.filter((row: Json) => Number(row.contactId) === contactId);
-        const summary = `كشف ${contact.name}: لي ${Number(person?.receivable || 0).toFixed(2)} ₪، عليّ ${Number(person?.payable || 0).toFixed(2)} ₪. ${transactions.length} حركة مسجلة. — سدد`;
-        let destination = String(contact.phone).replace(/\D/g, "");
-        if (destination.startsWith("00")) destination = destination.slice(2);
-        if (destination.length < 8 || destination.length > 15 || destination.startsWith("0")) throw new HttpError(400, "أدخل رقم الشخص بالصيغة الدولية مع رمز الدولة، مثل 97059xxxxxxx.");
-        const token = decryptSecret(store.whatsapp_token_enc);
-        let message: Json;
-        if (store.whatsapp_template_name) {
-          const parameters = [contact.name, `${Number(person?.receivable || 0).toFixed(2)} ₪`, `${Number(person?.payable || 0).toFixed(2)} ₪`, `${transactions.length} حركة`].map(value => ({ type: "text", text: String(value).slice(0, 900) }));
-          message = { messaging_product: "whatsapp", to: destination, type: "template", template: { name: store.whatsapp_template_name, language: { code: store.whatsapp_template_language || "ar" }, components: [{ type: "body", parameters }] } };
-        } else message = { messaging_product: "whatsapp", to: destination, type: "text", text: { preview_url: false, body: summary } };
-        const response = await fetcher(`https://graph.facebook.com/${metaVersion}/${store.whatsapp_number_id}/messages`, {
-          method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(message),
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new HttpError(502, text(result.error?.message || "فشل إرسال كشف واتساب إلى Meta.", 300));
-        return ok({ sent: true, messageId: result.messages?.[0]?.id || "" });
       }
       throw new HttpError(404, "مسار التطبيق غير موجود.");
     }

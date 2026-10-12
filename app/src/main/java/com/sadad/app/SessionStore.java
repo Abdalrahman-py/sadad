@@ -49,7 +49,6 @@ final class SessionStore implements LedgerSession {
                 .putString("token", encryptedToken)
                 .putLong("expires_at", response.optLong("expiresAt", 0L))
                 .putString("account", account == null ? "{}" : account.toString())
-                .putLong("revision", response.optJSONObject("snapshot") == null ? 0L : response.optJSONObject("snapshot").optLong("revision", 0L))
                 .putBoolean("force_password_change", response.optBoolean("forcePasswordChange", false))
                 .putString("device_staff_name", staffName)
                 .putString("device_permissions", devicePermissions == null ? "{}" : devicePermissions.toString());
@@ -57,7 +56,7 @@ final class SessionStore implements LedgerSession {
         if (account != null && !accountId.isEmpty()) {
             JSONObject saved = new JSONObject().put("id", accountId).put("username", account.optString("username", ""))
                     .put("name", account.optString("name", "")).put("account", account.toString()).put("encryptedToken", encryptedToken)
-                    .put("expiresAt", response.optLong("expiresAt", 0L)).put("revision", response.optJSONObject("snapshot") == null ? 0L : response.optJSONObject("snapshot").optLong("revision", 0L))
+                    .put("expiresAt", response.optLong("expiresAt", 0L))
                     .put("staffName", staffName).put("devicePermissions", devicePermissions == null ? "{}" : devicePermissions.toString())
                     .put("forcePasswordChange", response.optBoolean("forcePasswordChange", false))
                     .put("encryptedAuth", encryptedAuth);
@@ -106,9 +105,9 @@ final class SessionStore implements LedgerSession {
                 if (decryptToken(encryptedToken).isEmpty()) return false;
                 JSONObject account = new JSONObject(item.optString("account", "{}"));
                 preferences.edit().putString("token", encryptedToken).putLong("expires_at", item.optLong("expiresAt", 0L))
-                        .putString("account", account.toString()).putLong("revision", item.optLong("revision", 0L))
+                        .putString("account", account.toString())
                         .putBoolean("force_password_change", item.optBoolean("forcePasswordChange", false)).putString("sync_owner", item.optString("username", ""))
-                        .putString("sync_account_id", accountId).putBoolean("sync_dirty", false).putBoolean("sync_blocked", false)
+                        .putString("sync_account_id", accountId).putBoolean("sync_dirty", false)
                         .putString("device_staff_name", item.optString("staffName", ""))
                         .putString("device_permissions", item.optString("devicePermissions", "{}"))
                         .putString(AUTH_KEY, item.optString("encryptedAuth", ""))
@@ -193,8 +192,6 @@ final class SessionStore implements LedgerSession {
         return !"paused".equals(mode) && (!"timed".equals(mode) || subscriptionExpiry > System.currentTimeMillis());
     }
     long expiresAt() { return preferences.getLong("expires_at", 0L); }
-    public long revision() { return preferences.getLong("revision", 0L); }
-    public void setRevision(long revision) { preferences.edit().putLong("revision", revision).apply(); updateCurrentSavedBundle(); }
     public String deviceId() {
         String value = preferences.getString("device_id", "");
         if (!value.isEmpty()) return value;
@@ -204,8 +201,6 @@ final class SessionStore implements LedgerSession {
     }
     public boolean hasUnsyncedChanges() { return preferences.getBoolean("sync_dirty", false); }
     public void setUnsyncedChanges(boolean value) { preferences.edit().putBoolean("sync_dirty", value).apply(); }
-    public boolean syncBlocked() { return preferences.getBoolean("sync_blocked", false); }
-    public void setSyncBlocked(boolean value) { preferences.edit().putBoolean("sync_blocked", value).apply(); }
     String syncOwner() { return preferences.getString("sync_owner", ""); }
     public String syncAccountId() { return preferences.getString("sync_account_id", ""); }
     public boolean forcePasswordChange() { return preferences.getBoolean("force_password_change", false); }
@@ -241,7 +236,6 @@ final class SessionStore implements LedgerSession {
             throw new IllegalStateException("تعذر حفظ الجلسة المجددة.");
     }
 
-    /** The ledger is always the signed one for a connected build; nothing negotiates a mode. */
 
     void clear() { preferences.edit().remove("token").remove("expires_at").remove("account").remove("force_password_change").remove(AUTH_KEY).apply(); }
 
@@ -255,7 +249,7 @@ final class SessionStore implements LedgerSession {
             JSONObject saved = new JSONObject().put("id", id).put("username", account.optString("username", syncOwner()))
                     .put("name", account.optString("name", "")).put("account", account.toString())
                     .put("encryptedToken", preferences.getString("token", "")).put("expiresAt", expiresAt())
-                    .put("revision", revision()).put("staffName", deviceStaffName())
+                    .put("staffName", deviceStaffName())
                     .put("devicePermissions", devicePermissions().toString()).put("forcePasswordChange", forcePasswordChange())
                     .put("encryptedAuth", preferences.getString(AUTH_KEY, ""));
             upsertSavedAccount(saved);

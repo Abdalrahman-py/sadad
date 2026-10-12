@@ -12,22 +12,46 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         Bundle result = new Bundle();
         try {
             if (!getTargetContext().getPackageName().startsWith("com.sadad.qa.")) throw new AssertionError("Use an isolated QA applicationId");
+            localUpgradeKeepsFinancialRowsWithoutLegacySync();
             compoundWriteRollsBack();
             refreshedAuthSurvivesAccountSwitch();
             storeKeysSurviveReopening();
-            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation\n");
+            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement\n");
             finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
         }
     }
 
+    private void localUpgradeKeepsFinancialRowsWithoutLegacySync() throws Exception {
+        String filename = "qa-legacy-retirement.db";
+        getTargetContext().deleteDatabase(filename);
+        SadadDatabase initial = new SadadDatabase(getTargetContext(), filename);
+        initial.saveContact(new JSONObject().put("name", "Standalone row"));
+        initial.close();
+        android.database.sqlite.SQLiteDatabase fixture = getTargetContext().openOrCreateDatabase(filename, 0, null);
+        fixture.execSQL("CREATE TABLE IF NOT EXISTS sync_control(id INTEGER PRIMARY KEY, suppress INTEGER, ready INTEGER)");
+        fixture.execSQL("CREATE TABLE IF NOT EXISTS sync_outbox(seq INTEGER PRIMARY KEY,entity TEXT,row_id INTEGER)");
+        fixture.execSQL("DROP TRIGGER IF EXISTS queue_contacts_INSERT");
+        fixture.execSQL("CREATE TRIGGER queue_contacts_INSERT BEFORE INSERT ON contacts BEGIN SELECT RAISE(ABORT,'obsolete sync trigger'); END");
+        fixture.setVersion(8);
+        fixture.close();
+        SadadDatabase upgraded = new SadadDatabase(getTargetContext(), filename);
+        try {
+            if (upgraded.getSnapshot().getJSONArray("contacts").length() != 1) throw new AssertionError("Upgrade lost local financial rows");
+            upgraded.saveContact(new JSONObject().put("name", "New row"));
+            upgraded.importLedgerView(new JSONObject().put("epoch", "current").put("cursor", 0)
+                    .put("contacts", new JSONArray()).put("debts", new JSONArray()).put("payments", new JSONArray()));
+            if (upgraded.getSnapshot().getJSONArray("contacts").length() != 0) throw new AssertionError("Signed view kept obsolete test rows");
+        } finally { upgraded.close(); getTargetContext().deleteDatabase(filename); }
+    }
+
     private void storeKeysSurviveReopening() throws Exception {
-        InstallationKey first = new InstallationKey(getTargetContext(), "qa-store-a", false);
-        InstallationKey second = new InstallationKey(getTargetContext(), "qa-store-b", false);
+        InstallationKey first = new InstallationKey(getTargetContext(), "qa-store-a");
+        InstallationKey second = new InstallationKey(getTargetContext(), "qa-store-b");
         if (first.id().equals(second.id()) || first.publicKey().toString().equals(second.publicKey().toString()))
             throw new AssertionError("Stores share an installation identity or signing key");
-        InstallationKey reopened = new InstallationKey(getTargetContext(), "qa-store-a", false);
+        InstallationKey reopened = new InstallationKey(getTargetContext(), "qa-store-a");
         if (!first.id().equals(reopened.id()) || !first.publicKey().toString().equals(reopened.publicKey().toString()))
             throw new AssertionError("Store identity changed after reopening");
     }

@@ -28,15 +28,15 @@
 | قاعدة البيانات المحلية | `SadadDatabase.java` | `saveContact`، `saveDebt`، `savePayment`، `historyActivities` |
 | الجلسة والدخول | `MainActivity` + `SessionStore.java` | |
 | مزامنة السجل الموقّع (v3) | `LedgerQueue.java` → `SignedLedgerSync.java` + `LedgerClient.java` | |
-| توافق العملاء القدماء | `sadad-api/handler.ts` | مسارات الخادم باقية حتى قرار نقل المتاجر والعملاء؛ محرّك Android القديم حُذف |
+| هوية المتجر والإدارة | `sadad-api/handler.ts` | الدخول والجلسة وإدارة الحساب؛ البروتوكول المالي القديم حُذف من المصدر |
 | طابور العمليات وبناء الأمر | `LedgerQueue.java` + `LedgerCommand.java` | `LedgerCommand.now()` يبني الطابع الزمني المرسل |
 | الإسقاط المحلي للسجل | `LedgerProjection.java` | |
 | تصدير الكشوفات | `LedgerTablePdf.java` / `LedgerTableExcel.java` | |
 | مشاركة الملفات | `PdfShareProvider.java` | |
 | تذكيرات الاستحقاق | `DueReminderManager.java` | |
 | بوابة الهوية (Auth envelope) | `sadad-auth/handler.ts` | `/mobile/login`، `/mobile/auth/refresh` |
-| بوابة التوافق والإدارة | `sadad-api/handler.ts` | `route()` — سلسلة `if` على المسار (21 مسارًا) |
-| السجل الموقّع على الخادم | `sadid-ledger/index.ts` | `/mobile/v3/enroll` ثم `verifyProof` |
+| بوابة الحسابات والإدارة | `sadad-api/handler.ts` | `route()` |
+| السجل الموقّع على الخادم | `sadid-ledger/handler.ts` | `/mobile/v3/enroll` ثم `verifyProof` |
 | إدارة التركيبات والاستعادة | `sadid-ledger/admin.ts` | `/admin/*` |
 | لوحة الإدارة | `server/public/admin.js` | |
 | بناء اللوحة للنشر | `tools/build-admin-pages.cjs` | يكتب `_site/` |
@@ -91,4 +91,6 @@
   المستودع كاملة قبل تنظيف أكتوبر 2026، بما فيها نسخة Flutter ونسخ الخوادم المحذوفة.
 - الوسم `pre-supabase-ledger-correctness-2026-10-12` والفرع
   `archive/pre-supabase-ledger-correctness` يحفظان نقطة البداية مع التعديلات الستة المعلقة (340 ملفًا متتبّعًا).
-- نسخة Flutter المرجعية: `archive/Sadad-Flutter`.
+- نسخة Flutter حُذفت من الشجرة الحالية؛ مرجعها `pre-consolidation-2026-10-11:archive/Sadad-Flutter` في Git.
+- أكّد المستخدم أن جميع المتاجر والبيانات تجريبية. لا تُبقِ بروتوكولًا ماليًا ثانيًا لحماية عملاء قدامى؛
+  لا يزال نشر الوظائف وحذف الجداول السحابية يحتاجان مراجعة واعتمادًا وفق `docs/CONTINUE_HERE.md`.

@@ -15,7 +15,7 @@ try {
  const user=randomUUID(),phone=randomUUID(),oldPhone=randomUUID(),contact=randomUUID(),debt=randomUUID(),payment=randomUUID(),authSession=randomUUID();
  await db.exec(`insert into public.admins(id,username,salt,password_hash,force_password_change,created_at) values(1,'admin-test','x','x',false,0);
  insert into public.sessions(token_hash,kind,principal_id,expires_at,created_at) values('valid-admin','admin',1,9999999999999,0),('expired-admin','admin',1,1,0);
- insert into public.stores(id,name,username,salt,password_hash,force_password_change,created_at,subscription_mode) values(1,'Ledger store','ledger-test','x','x',false,0,'permanent'),(2,'Legacy store','legacy-test','x','x',false,0,'permanent');
+ insert into public.stores(id,name,username,salt,password_hash,force_password_change,created_at,subscription_mode) values(1,'Ledger store','ledger-test','x','x',false,0,'permanent'),(2,'Uninitialized store','uninitialized-test','x','x',false,0,'permanent');
  insert into public.sadid_ledger_state(store_id) values(1);`);
  await db.query('insert into auth.users values($1,$2)',[user,'test@example.invalid']);
  await db.query('insert into auth.sessions values($1,$2,null)',[authSession,user]);
@@ -29,7 +29,7 @@ try {
  const summaries=async(hash='valid-admin')=>(await db.query('select public.sadid_admin_summaries($1,$2) result',[hash,[1,2]])).rows[0].result;
  await db.exec('set role service_role');
  await check('Summary uses latest corrected principal and net payments',async()=>{const s=(await summaries()).find(x=>x.storeId===1);assert.equal(s.debtTotal,110);assert.equal(s.receivable,80);assert.equal(s.payable,0);assert.equal(s.contacts,1);assert.equal(s.activeContacts,0);assert.equal(s.payments,1);});
- await check('Ledger and legacy stores are distinguished',async()=>assert.equal((await summaries()).find(x=>x.storeId===2).initialized,false));
+ await check('Ledger initialization is reported for new stores',async()=>assert.equal((await summaries()).find(x=>x.storeId===2).initialized,false));
  await check('Forged and expired admin sessions are denied',async()=>{await assert.rejects(summaries('forged'),/admin_authorization_required/);await assert.rejects(summaries('expired-admin'),/admin_authorization_required/);});
  await db.exec('reset role');
  await db.query("insert into public.sadid_reversals(store_id,id,payment_id,reason,operation_id,created_at) values(1,$1,$2,'Returned payment',$3,now())",[randomUUID(),payment,randomUUID()]);

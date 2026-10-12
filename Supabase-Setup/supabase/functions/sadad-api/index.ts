@@ -7,7 +7,7 @@ if (!supabaseUrl || !serviceRoleKey) throw new Error("Supabase Edge Function env
 
 // The service-role client is created only inside this server-side function. Never send its key to Android or the admin page.
 const db: any = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-const api = makeApi({ db, now: Date.now, fetcher: fetch });
+const api = makeApi({ db, now: Date.now });
 
 Deno.serve(async (request: Request) => {
   try { return await api.route(request); }

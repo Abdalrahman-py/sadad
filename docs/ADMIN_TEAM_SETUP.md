@@ -24,10 +24,10 @@ The current backend allows **one approved ledger phone per store**. The login-de
 
 ## Store administration
 
-- Name, username, verification, active-contact limit, login-device limit, feature permissions, and WhatsApp availability save to live Supabase.
+- Name, username, verification, active-contact limit, login-device limit, feature permissions save to live Supabase.
 - Subscription duration, extension, pause, suspension and activation use hosted account rules.
-- Password reset forces a change at next login and terminates both legacy and ledger session authorizations.
-- Phone requests, approval, revocation, login-session termination and all-device revocation are available in the selected store.
+- Password reset forces a change at next login and terminates both login and ledger session authorizations.
+- Phone requests, approval, revocation, login-session termination and all-device revocation are available in the selected store. After revocation or restoring an archived account, allow the phone to log in from the login-device list, then approve its new signed registration separately. Allowing login does not approve ledger access.
 - Recovery accepts the original command list from the replacement phone's recovery screen. Select the revoked old phone and approved replacement, enter a reason, approve the exact list and copy the resulting permit into the phone. Permits expire after 24 hours. Before approval the dashboard previews the list: entry counts by type, both money totals, the entry date range, every entry in full, and any problem that would make the server reject it — a command that does not originate from the selected old phone or generation, a missing or duplicated operation id, an unsupported schema version, or an invalid amount, direction or method. Approval stays disabled while a blocking problem remains, and the confirmation names the totals rather than only the count.
 - Archiving disables the account and devices while preserving financial history. Enable **إظهار المؤرشفة** to inspect or restore it. Restoring leaves it suspended; activate it and approve a newly registered phone separately. Permanent deletion is available only when the account has no current ledger or installation history.
 
@@ -37,7 +37,7 @@ The main screen reads current ledger tables through authenticated, audited serve
 
 Opening a store records the admin identity, reason, request ID and record counts. Financial summaries are also audited. Ledger activity, phone decisions, recovery permits and account actions appear within the store. CSV export includes the financial transactions.
 
-Admins inspect the ledger and authorize recovery; financial corrections remain owner operations in the app's immutable ledger. The dashboard does not replace financial history with a legacy backup. Legacy restoration controls appear only for a store that has not initialized the current ledger.
+Admins inspect the ledger and authorize recovery; financial corrections remain owner operations in the app's immutable ledger. The dashboard exposes signed recovery only. Stores awaiting their first ledger enrollment show empty financial data. The retired snapshot/backup restoration controls have been removed from source; publishing and database retirement are gated in `CONTINUE_HERE.md`.
 
 ## Backend deployment and checks
 

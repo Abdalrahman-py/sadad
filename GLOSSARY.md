@@ -12,8 +12,8 @@ Names in `monospace` are the real symbols, so a reader can jump from the word to
 surface stores it; the app is logged into exactly one at a time (`SessionStore.syncAccountId`).
 
 **Ledger** (`السجل`) — the store's financial record: who owes what, and what was paid. Locally it is
-`SadadDatabase` (`contacts` / `debts` / `payments`); server-side it is the `sadid_*` tables plus the
-legacy `contacts` / `debts` / `payments`.
+`SadadDatabase` (`contacts` / `debts` / `payments`); server-side it is the `sadid_*` tables.
+The old remote financial tables are scheduled for deletion by the reviewed retirement migration.
 
 **Contact** (`شخص`) — a customer or a supplier. Balances are derived, never stored: debts minus
 recorded payments.
@@ -27,37 +27,38 @@ counting toward the debt's remaining balance.
 
 **Snapshot** — a whole ledger state. Signed sync caches the server's snapshot in `EncryptedJournal`;
 `SadadDatabase.importLedgerView` projects it with pending operations into the screen tables.
-`getSnapshot` / `importSnapshot` remain for local export/import and retained server compatibility.
+`getSnapshot` / `importSnapshot` remain for local export/import and the standalone edition.
 
-**Delta** — the older protocol's batch of changed rows. Retained on the server for installed clients;
-the connected Android edition sends signed operations instead.
+**Delta** — the removed protocol's batch of changed rows. The connected Android edition sends
+signed operations; no current client uses a row delta endpoint.
 
-**Outbox** (`sync_outbox`) — legacy local storage written by database triggers. The table/triggers
-remain for upgrade preservation; signed sync uses the encrypted journal, not this outbox.
+**Outbox** (`sync_outbox`) — removed local storage for the old protocol. SQLite schema version 9
+drops its table and triggers; signed sync uses the encrypted journal.
 
 **Watermark** — the old client's outbox sequence captured before downloading. Its staging engine
 was removed; it is not the signed ledger cursor.
 
-**Revision** — the server's monotonic version of a store's ledger. The app carries its own copy
-(`SessionStore.revision`) and only ever adopts the value the server reports.
+**Revision** — a retained server counter for account metadata changes. Signed ledger positions
+use cursor and epoch; `SessionStore` no longer stores the old protocol revision.
 
 **Conflict** — a change cannot be accepted against the expected version or recovery epoch. Signed
 sync preserves the original journal operation and its verdict; it does not replace the whole ledger.
 
-**Ledger mode** (`ledger_mode`) — server-side protocol eligibility: `legacy` or `v3`. The connected
-Android client uses signed sync exclusively; this flag does not select a second Android engine.
+**Ledger initialization** — presence of `sadid_ledger_state` for a store. `sadid_is_v3_store`
+reports this readiness state; it does not select a second financial protocol.
 
-**Legacy ledger** — the older server protocol and tables, retained pending store and client cutover.
+**Legacy ledger** — the removed snapshot/delta protocol. All stores are test stores, as confirmed
+by the owner; remaining cloud retirement work is gated in `docs/CONTINUE_HERE.md`.
 
 **Signed ledger** (`v3`) — the adopted ledger. Every request carries a device signature, and the
-device must be enrolled and approved before it may write. Not all production stores are initialized;
+device must be enrolled and approved before it may write. Not all test stores are initialized;
 the measured inventory and cutover gate are in `docs/CONTINUE_HERE.md`.
 
 **Installation** — a signed identity scoped to project and store: a non-exportable P-256 key in the
 Android Keystore plus a stable UUID (`InstallationKey`). Different stores on one phone have distinct
-identities. A legacy global identity is reused only for its verified original store binding.
+identities. Old global test identities are never adopted by a store.
 
-**Store device** — a phone registered to a store (`store_devices`), with a staff name, permissions,
+**Store device** — a phone registered to a store (`store_devices`), with a staff name, identity metadata,
 and its own revocation state. Distinct from an installation.
 
 **Operation** — a single signed ledger change (`contact.create`, `debt.create`, `payment.create`),

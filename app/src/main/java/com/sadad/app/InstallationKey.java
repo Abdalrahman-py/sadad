@@ -17,21 +17,17 @@ import java.util.UUID;
 final class InstallationKey implements InstallationSigner {
  private final String alias;
  private final String installationId;
- InstallationKey(Context context,String storeId,boolean adoptLegacy)throws Exception{
-  this(context.getApplicationContext().getSharedPreferences("sadid.installation",0),storeId,adoptLegacy);
+ InstallationKey(Context context,String storeId)throws Exception{
+  this(context.getApplicationContext().getSharedPreferences("sadid.installation",0),storeId);
  }
- InstallationKey(android.content.SharedPreferences preferences,String storeId,boolean adoptLegacy)throws Exception{
+ InstallationKey(android.content.SharedPreferences preferences,String storeId)throws Exception{
   String scope=hash(LedgerClient.PROJECT+"|"+storeId);
   synchronized(InstallationKey.class){
    String id=preferences.getString("id."+scope,"");
    if(id.isEmpty()){
-    String legacy=preferences.getString("id","");
-    String claimed=preferences.getString("legacy_store","");
-    boolean reuse=adoptLegacy&&!legacy.isEmpty()&&(claimed.isEmpty()||claimed.equals(storeId));
-    id=reuse?legacy:UUID.randomUUID().toString();
+    id=UUID.randomUUID().toString();
     android.content.SharedPreferences.Editor editor=preferences.edit().putString("id."+scope,id)
-      .putString("alias."+scope,reuse?"sadid.installation.ec.v1":"sadid.installation.ec."+scope);
-    if(reuse)editor.putString("legacy_store",storeId);
+      .putString("alias."+scope,"sadid.installation.ec."+scope);
     if(!editor.commit())throw new IllegalStateException("تعذر حفظ هوية التركيب.");
    }
    installationId=id;

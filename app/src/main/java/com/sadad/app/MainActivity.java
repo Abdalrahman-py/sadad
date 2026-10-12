@@ -98,7 +98,7 @@ public final class MainActivity extends Activity {
     SadadDatabase database;
     SessionStore sessions;
     LocalSecurity localSecurity;
-    /** The signed-ledger queue for the signed-in store; null while the store is on the old protocol. */
+    /** The signed-ledger queue for the signed-in store; null until the signed-in queue is opened. */
     private LedgerQueue ledger;
     /** The last signed-ledger notice shown, so a standing refusal is not repeated on every pass. */
     private String lastLedgerNotice = "";
@@ -354,9 +354,6 @@ public final class MainActivity extends Activity {
             loginStandalone(normalizedUsername, password, staffName);
             return;
         }
-        if (sessions.hasUnsyncedChanges() && sessions.syncAccountId().isEmpty() && !sessions.syncOwner().isEmpty() && !sessions.syncOwner().equalsIgnoreCase(normalizedUsername)) {
-            showBrandedMessage("توجد بيانات غير متزامنة لحساب آخر. سجّل الدخول بهذا الحساب أولًا مع اتصال بالخادم."); return;
-        }
         if (changingAccount) return;
         changingAccount = true;
         showBrandedMessage("جارٍ الاتصال بالخادم والتحقق من الاشتراك والجهاز…");
@@ -387,7 +384,6 @@ public final class MainActivity extends Activity {
                     profile.putString(accountOwnerKey, prefs.getString("owner_name", "").trim());
                 profile.apply();
                 boolean mustChange = response.optBoolean("forcePasswordChange", false);
-                int legacyRows = database.unmappedRowCount();
                 runOnUiThread(() -> {
                     changingAccount = false;
                     getPreferences(0).edit().putBoolean(PREF_FORCED_PASSWORD_LOGIN, false).apply();
@@ -395,7 +391,6 @@ public final class MainActivity extends Activity {
                     else if (localSecurity.hasPin() && getPreferences(0).getBoolean("lock_enabled", true)) {
                         show("unlock"); if (getPreferences(0).getBoolean("biometric_enabled", false)) requestBiometric(false);
                     } else showAfterAuthentication();
-                    if (legacyRows > 0) showBrandedMessage("بقيت السجلات القديمة محفوظة على الجهاز. صدّرها وراجع الإدارة لنقلها إلى الدفتر المعتمد.");
                     if (!mustChange) syncNow();
                 });
             } catch (Exception error) {
@@ -439,7 +434,6 @@ public final class MainActivity extends Activity {
                 sessions.save(response);
                 switchDatabaseForAccount("offline-123");
                 sessions.setUnsyncedChanges(false);
-                sessions.setSyncBlocked(false);
                 getPreferences(0).edit().putString("store_name", account.optString("name", "متجري")).apply();
                 runOnUiThread(() -> { changingAccount = false; showAfterAuthentication(); });
             } catch (Exception e) {
@@ -519,7 +513,7 @@ public final class MainActivity extends Activity {
     }
     private final Runnable uploadDebounce = this::syncNow;
 
-    /** True when this store reads and writes through the signed ledger rather than the old protocol. */
+    /** True for the connected edition. */
     /**
      * The signed ledger is the only protocol for a connected build. This must not depend on a
      * marker in the login response: the deployed backend omits it, and the app then silently fell
@@ -551,7 +545,6 @@ public final class MainActivity extends Activity {
             SignedLedgerSync.Result result = queue.sync();
             materializeLedger();
             sessions.setUnsyncedChanges(queue.hasPendingWork());
-            sessions.setSyncBlocked(false);
             return result;
         } catch (Exception error) {
             return SignedLedgerSync.Result.of(SignedLedgerSync.Outcome.RETRY_LATER,
@@ -1094,7 +1087,6 @@ public final class MainActivity extends Activity {
 
     private boolean accountHasPendingWork() throws Exception {
         if (BuildConfig.STANDALONE_MODE) return false;
-        if (database.unmappedRowCount() > 0) return true;
         if (sessions.auth().optString("accessToken", "").isEmpty()) return sessions.hasUnsyncedChanges();
         return ledgerQueue().hasPendingWork();
     }

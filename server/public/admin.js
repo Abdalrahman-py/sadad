@@ -10,8 +10,6 @@
   let stores = [];
   let current = null;
   let currentSnapshot = null;
-  let currentBackups = [];
-  let currentContactArchives = [];
   let bootstrap = false;
   let currentInstallations = [];
   let storeRequest = 0;
@@ -205,101 +203,35 @@
     try {
       const result = await api(`/api/admin/stores/${id}`);
       if(request!==storeRequest)return;
-      current = result.store; currentSnapshot = result.snapshot; currentBackups = result.backups || []; currentContactArchives = result.contactArchives || [];
+      current = result.store; currentSnapshot = result.snapshot;
       $('#ledgerSearch').value=''; $('#storePanel').classList.remove('hidden'); $('#storeHeading').textContent = current.name;
       $('#storeMeta').textContent = `${current.username} · أنشئ ${new Date(current.createdAt).toLocaleDateString('ar-PS')}`;
       $('#storeName').value = current.name; $('#storeUsername').value = current.username; $('#debtorLimit').value = current.debtorLimit; $('#maxDevices').value = current.maxDevices || 1;
-      $('#verified').checked = current.verified; $('#whatsappEnabled').checked = current.whatsappEnabled;
+      $('#verified').checked = current.verified;
       $('#permissions').innerHTML = permissionNames.map(name => `<label><input type="checkbox" data-perm="${name}" ${current.permissions[name] !== false ? 'checked' : ''}>${labels[name]}</label>`).join('');
       $('#freezeState').textContent = current.status === 'active' ? 'الحساب فعال حاليًا.' : current.suspendUntil ? `الحساب مجمّد حتى ${dateFmt(current.suspendUntil)}.` : 'الحساب مجمّد حتى يعيد الأدمن تفعيله.';
       $('#subscriptionMode').value = current.subscriptionMode || 'permanent';
       $('#subscriptionState').textContent = current.subscriptionMode === 'permanent' ? 'فعال دائمًا.' : current.subscriptionMode === 'paused' ? `الاشتراك موقوف، والمدة المتبقية محفوظة: ${duration(current.subscriptionRemainingMs)}.` : current.subscriptionRemainingMs > 0 ? `متبقي ${duration(current.subscriptionRemainingMs)}، وينتهي ${dateFmt(current.subscriptionExpiresAt)}.` : `انتهى الاشتراك في ${dateFmt(current.subscriptionExpiresAt)}. يحتاج تجديدًا من الأدمن.`;
       $('#extendSubscription').disabled = current.subscriptionMode === 'permanent';
       currentInstallations=result.installations || [];
-      renderInstallations(); renderDevices(result.devices || []); renderControlHistory(result); renderBackups(currentBackups); renderContactArchives(); renderStoreStats(); renderLedger(); renderRecovery(result.recoveryPermits || []);
-      const modern=current.ledgerMode==='current';
-      $('#legacyBackups').classList.toggle('hidden',modern || current.archived); $('#legacyArchives').classList.toggle('hidden',modern || current.archived);
+      renderInstallations(); renderDevices(result.devices || []); renderControlHistory(result); renderStoreStats(); renderLedger(); renderRecovery(result.recoveryPermits || []);
       $('#storeSettingsFields').disabled=current.archived; $('#recoveryFields').disabled=current.archived;
       ['activateStore','freezeHour','freezeDay','freezeForever','resetPassword','saveSubscription','extendSubscription','endStoreSessions','revokeAllDevices'].forEach(id=>$('#'+id).disabled=current.archived || (id==='extendSubscription' && current.subscriptionMode==='permanent'));
       $('#archiveStore').classList.toggle('hidden',current.archived); $('#unarchiveStore').classList.toggle('hidden',!current.archived);
       $('#deleteStore').classList.toggle('hidden',current.archived || !current.canDelete);
       $('#archiveHint').textContent=current.archived ? 'الحساب مؤرشف. إعادته تحفظ الدفتر وتتركه موقوفًا حتى تفعّله وتعتمد هاتفه.' : 'الأرشفة توقف الحساب وأجهزته وتحفظ دفتره وسجل نشاطه.';
-      $('#ledgerReadInfo').textContent=currentSnapshot.requestId ? `قراءة مسجلة · رقم الطلب: ${currentSnapshot.requestId}` : 'لم يُهيأ الدفتر المعتمد بعد؛ تظهر بيانات السجل السابق إن وجدت.';
+      $('#ledgerReadInfo').textContent=currentSnapshot.requestId ? `قراءة مسجلة · رقم الطلب: ${currentSnapshot.requestId}` : 'لم يُهيأ الدفتر المعتمد بعد؛ يبدأ بعد تسجيل الهاتف واعتماده.';
       $('#tempPasswordResult').textContent=''; $('#tempPasswordResult').classList.add('hidden');
       $('#storePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) { notice(error.message, true); }
   }
   function renderDevices(devices) {
-    if(current.ledgerMode==='current' || current.archived) {
-      $('#deviceList').innerHTML=devices.length ? devices.map(device=>`<div class="record-row"><div><b>${esc(device.staffName || device.label || 'جهاز تسجيل دخول')}</b><small dir="ltr">${esc(device.id)}</small><small>${esc(dateFmt(device.lastSeenAt))} · ${device.revokedAt?'منتهٍ':'مسجل'}</small></div></div>`).join('') : '<p class="muted">لا توجد أجهزة تسجيل دخول.</p>';
-      return;
-    }
-    $('#deviceList').innerHTML = devices.length ? devices.map((device,index) => {
-      const perms={registerPayments:true,deleteRecords:true,deleteContacts:true,...(device.permissions||{})};
-      const safeId=esc(encodeURIComponent(device.id));
-      return `<article class="device-card" data-device-row="${safeId}"><div class="record-row"><div><b>${esc(device.staffName || 'صاحب المتجر')}</b><small>${esc(device.label || 'جهاز مسجل')} · آخر دخول: ${esc(dateFmt(device.lastSeenAt))}${device.revokedAt ? ' · أُلغي السماح' : ''}</small></div>${device.revokedAt ? `<button class="button secondary" data-allow="${safeId}">السماح مجددًا</button>` : `<button class="button danger" data-revoke="${safeId}">إيقاف مؤقت</button>`}</div><div class="device-permissions"><label><input type="checkbox" data-device-perm="registerPayments" ${perms.registerPayments?'checked':''}> تسجيل الدفعات</label><label><input type="checkbox" data-device-perm="deleteRecords" ${perms.deleteRecords?'checked':''}> حذف السجلات</label><label><input type="checkbox" data-device-perm="deleteContacts" ${perms.deleteContacts?'checked':''}> حذف الأشخاص</label><button class="button secondary" data-save-device="${safeId}">حفظ الصلاحيات</button><button class="button quiet" data-delete-device="${safeId}">إزالة الاسم والجهاز</button></div></article>`;
-    }).join('') : '<p class="muted">لا توجد أجهزة مربوطة بعد.</p>';
-    document.querySelectorAll('[data-save-device]').forEach(button => button.addEventListener('click', async () => {
-      const deviceId=decodeURIComponent(button.dataset.saveDevice), row=button.closest('[data-device-row]');
-      const permissions={}; row.querySelectorAll('[data-device-perm]').forEach(input=>permissions[input.dataset.devicePerm]=input.checked);
-      try { await api(`/api/admin/stores/${current.id}/devices/${encodeURIComponent(deviceId)}/permissions`,{method:'POST',body:JSON.stringify(permissions)}); notice('تم حفظ صلاحيات هذا المستخدم.'); }
-      catch(error){notice(error.message,true);}
-    }));
-    document.querySelectorAll('[data-revoke]').forEach(button => button.addEventListener('click', async () => {
-      const deviceId = decodeURIComponent(button.dataset.revoke);
-      if (!confirm('إلغاء ربط هذا الجهاز؟ سيُطلب من صاحبه التواصل مع الأدمن قبل استخدامه مجددًا.')) return;
-      try { await api(`/api/admin/stores/${current.id}/devices/${encodeURIComponent(deviceId)}/revoke`, { method: 'POST' }); notice('تم إلغاء الجهاز.'); await openStore(current.id); }
-      catch (error) { notice(error.message, true); }
-    }));
-    document.querySelectorAll('[data-allow]').forEach(button => button.addEventListener('click', async () => {
-      const deviceId = decodeURIComponent(button.dataset.allow);
-      try { await api(`/api/admin/stores/${current.id}/devices/${encodeURIComponent(deviceId)}/allow`, { method: 'POST' }); notice('تم السماح للجهاز مجددًا.'); await openStore(current.id); }
-      catch (error) { notice(error.message, true); }
-    }));
-    document.querySelectorAll('[data-delete-device]').forEach(button => button.addEventListener('click', async () => {
-      const deviceId=decodeURIComponent(button.dataset.deleteDevice);
-      if(!confirm('سيتم حذف ربط اسم هذا المستخدم والجهاز وإنهاء جلسته. عند دخوله لاحقًا سيُسجّل الاسم من جديد. متابعة؟')) return;
-      try { await api(`/api/admin/stores/${current.id}/devices/${encodeURIComponent(deviceId)}/delete`,{method:'DELETE'}); notice('تم حذف اسم المستخدم وربط الجهاز.'); await openStore(current.id); }
-      catch(error){notice(error.message,true);}
-    }));
-  }
-  function renderBackups(backups) {
-    const select = $('#backupSelect'); select.innerHTML = backups.length ? backups.map(item => `<option value="${item.id}">${esc(dateFmt(item.createdAt))} · ${esc(item.reason)} · ${fmt(item.contactCount)} أشخاص / ${fmt(item.debtCount)} ديون / ${fmt(item.paymentCount)} دفعات</option>`).join('') : '<option value="">لا توجد نسخ محفوظة</option>';
-    $('#restoreContact').innerHTML = '<option value="">اختر النسخة أولًا</option>'; $('#restoreInfo').textContent = backups.length ? `عدد النسخ المحفوظة: ${backups.length} (آخر 7 نسخ قبل الحذف).` : 'تُحفظ نسخة قبل حذف البيانات، ونسخة كاملة لقاعدة البيانات يوميًا على الخادم.';
-  }
-  $('#backupSelect').addEventListener('change', async () => {
-    const backupId = $('#backupSelect').value; $('#restoreContact').innerHTML = '<option value="">جارٍ تحميل الأشخاص…</option>';
-    if (!backupId || !current) { $('#restoreContact').innerHTML = '<option value="">اختر النسخة أولًا</option>'; return; }
-    try {
-      const result = await api(`/api/admin/stores/${current.id}/backups/${backupId}`); const contacts = result.snapshot.contacts || [];
-      $('#restoreContact').innerHTML = contacts.length ? `<option value="">اختر شخصًا للاستعادة</option>${contacts.map(person => `<option value="${person.id}">${esc(person.name)}${person.phone ? ` · ${esc(person.phone)}` : ''}</option>`).join('')}` : '<option value="">النسخة لا تحتوي أشخاصًا</option>';
-      $('#restoreInfo').textContent = `${result.backup.reason} · ${dateFmt(result.backup.createdAt)} · يمكن استعادة المتجر كاملًا أو شخص واحد.`;
-    } catch (error) { $('#restoreContact').innerHTML = '<option value="">تعذر تحميل النسخة</option>'; notice(error.message, true); }
-  });
-  async function restoreBackup(contactId = null) {
-    const backupId = $('#backupSelect').value;
-    if (!backupId) { notice('اختر نسخة محفوظة أولًا.', true); return; }
-    const message = contactId == null ? 'سيستبدل هذا سجل المتجر الحالي بمحتوى النسخة المختارة. متابعة؟' : 'سيستبدل سجل هذا الشخص فقط بمحتوى النسخة المختارة. متابعة؟';
-    if (!confirm(message)) return;
-    try {
-      await api(`/api/admin/stores/${current.id}/backups/${backupId}/restore`, { method: 'POST', body: JSON.stringify({ contactId }) });
-      notice(contactId == null ? 'تمت استعادة سجل المتجر.' : 'تمت استعادة سجل الشخص.'); await loadDashboard(); await openStore(current.id);
-    } catch (error) { notice(error.message, true); }
-  }
-  $('#restoreStore').addEventListener('click', () => restoreBackup());
-  $('#restorePerson').addEventListener('click', () => { const value = $('#restoreContact').value; if (!value) { notice('اختر شخصًا من النسخة أولًا.', true); return; } restoreBackup(Number(value)); });
-  function renderContactArchives() {
-    const box = $('#deletedContactArchives');
-    if (!currentContactArchives.length) { box.innerHTML = '<p class="muted">لا توجد سجلات زبائن محذوفين محفوظة.</p>'; return; }
-    box.innerHTML = currentContactArchives.map(archive => `<div class="record-row"><div><b>${esc(archive.contactName)}</b><small>حُفظ ${esc(dateFmt(archive.archivedAt))} · ${fmt(archive.debtCount)} دين · ${fmt(archive.paymentCount)} دفعة${archive.restoredAt ? ' · تمت الاستعادة سابقًا' : ''}</small></div><button class="button ${archive.restoredAt ? 'quiet' : 'secondary'}" data-restore-archive="${Number(archive.id)}" ${archive.restoredAt ? 'disabled' : ''}>${archive.restoredAt ? 'تمت الاستعادة' : 'استعادة للمتجر'}</button></div>`).join('');
-    box.querySelectorAll('[data-restore-archive]').forEach(button => button.addEventListener('click', async () => {
-      const archive = currentContactArchives.find(item => Number(item.id) === Number(button.dataset.restoreArchive));
-      if (!archive || archive.restoredAt || !current) return;
-      if (!confirm(`استعادة ${archive.contactName} وسجل حركاته إلى حساب المتجر؟`)) return;
-      const storeId = current.id;
+    $('#deviceList').innerHTML=devices.length ? devices.map(device=>`<div class="record-row"><div><b>${esc(device.staffName || device.label || 'جهاز تسجيل دخول')}</b><small dir="ltr">${esc(device.id)}</small><small>${esc(dateFmt(device.lastSeenAt))} · ${device.revokedAt?'منتهٍ':'مسجل'}</small></div>${device.revokedAt && !current.archived ? `<button class="button quiet" data-allow-login="${esc(encodeURIComponent(device.id))}">السماح بالدخول</button>` : ''}</div>`).join('') : '<p class="muted">لا توجد أجهزة تسجيل دخول.</p>';
+    $('#deviceList').querySelectorAll('[data-allow-login]').forEach(button => button.addEventListener('click', async () => {
+      if (!confirm('السماح لهذا الهاتف بتسجيل الدخول؟ اعتماد الدفتر يحتاج موافقة مستقلة.')) return;
       try {
-        await api(`/api/admin/stores/${storeId}/archives/${archive.id}/restore`, { method: 'POST', body: '{}' });
-        notice(`تمت استعادة ${archive.contactName} إلى حساب المتجر.`); await loadDashboard(); await openStore(storeId);
+        await api(`/api/admin/stores/${current.id}/devices/${button.dataset.allowLogin}/allow`, { method: 'POST' });
+        notice('سُمح بالدخول؛ اعتمد تسجيل الدفتر الجديد بعد دخول الهاتف.'); await openStore(current.id);
       } catch (error) { notice(error.message, true); }
     }));
   }
@@ -319,7 +251,7 @@
       const maxDevices = integerInput('#maxDevices', 1, 50, current?.maxDevices || 1);
       const debtorLimit = integerInput('#debtorLimit', 0, 1000000, 0);
       const permissions = {}; for (const name of permissionNames) permissions[name] = $(`[data-perm="${name}"]`).checked;
-      const result = await api(`/api/admin/stores/${current.id}/update`, { method: 'POST', body: JSON.stringify({ name: $('#storeName').value.trim(), username: $('#storeUsername').value.trim(), debtorLimit, maxDevices, verified: $('#verified').checked, whatsappEnabled: $('#whatsappEnabled').checked, permissions }) });
+      const result = await api(`/api/admin/stores/${current.id}/update`, { method: 'POST', body: JSON.stringify({ name: $('#storeName').value.trim(), username: $('#storeUsername').value.trim(), debtorLimit, maxDevices, verified: $('#verified').checked, permissions }) });
       const savedLimit = Number(result.store?.maxDevices ?? result.store?.allowedDevices);
       if (savedLimit !== maxDevices) throw new Error('لم يؤكد الخادم حفظ عدد الأجهزة المطلوب. أعد المحاولة.');
       notice(`تم حفظ الإعدادات. عدد الأجهزة المسموحة الآن: ${savedLimit}.`); await loadDashboard(); await openStore(current.id);
