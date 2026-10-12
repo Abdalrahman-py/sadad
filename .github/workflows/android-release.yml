@@ -1,0 +1,96 @@
+name: Publish production Android APK
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/android-ci.yml
+
+  release:
+    needs: checks
+    if: github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      SADAD_KEYSTORE_FILE: ${{ runner.temp }}/sadad-release.jks
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Install release verification tools
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
+      - name: Require production signing credentials
+        env:
+          SADAD_KEYSTORE_BASE64: ${{ secrets.SADAD_KEYSTORE_BASE64 }}
+          SADAD_KEYSTORE_PASSWORD: ${{ secrets.SADAD_KEYSTORE_PASSWORD }}
+          SADAD_KEY_ALIAS: ${{ secrets.SADAD_KEY_ALIAS }}
+          SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
+        run: |
+          for name in SADAD_KEYSTORE_BASE64 SADAD_KEYSTORE_PASSWORD SADAD_KEY_ALIAS SADAD_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Use a tag such as v2.5.12'; exit 1; }
+          umask 077
+          printf '%s' "$SADAD_KEYSTORE_BASE64" | base64 --decode > "$SADAD_KEYSTORE_FILE"
+      - name: Build signed server release against live Supabase
+        env:
+          SADAD_KEYSTORE_PASSWORD: ${{ secrets.SADAD_KEYSTORE_PASSWORD }}
+          SADAD_KEY_ALIAS: ${{ secrets.SADAD_KEY_ALIAS }}
+          SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
+        run: |
+          ./gradlew testServerReleaseUnitTest assembleServerRelease --console=plain \
+            -PSADAD_APPLICATION_ID=com.sadad.app \
+            -PSADAD_API_BASE_URL=https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api \
+            -PSADAD_AUTH_BASE_URL=https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-auth
+      - name: Verify production APK and create checksum
+        run: |
+          apk=app/build/outputs/apk/server/release/app-server-release.apk
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          "$tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
+          if grep -qi 'CN=Android Debug' "$RUNNER_TEMP/apk-signature.txt"; then
+            echo '::error::A debug signing key cannot publish a production APK'
+            exit 1
+          fi
+          "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='com.sadad.app'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "versionName='${GITHUB_REF_NAME#v}'" "$RUNNER_TEMP/apk-badging.txt" || { echo '::error::Tag must match versionName in app/build.gradle.kts'; exit 1; }
+          if grep -q 'application-debuggable' "$RUNNER_TEMP/apk-badging.txt"; then
+            echo '::error::The release APK is debuggable'
+            exit 1
+          fi
+          "$tools/aapt" dump xmltree "$apk" AndroidManifest.xml > "$RUNNER_TEMP/apk-manifest.txt"
+          grep -q 'usesCleartextTraffic.*=(type 0x12)0x0' "$RUNNER_TEMP/apk-manifest.txt"
+          mkdir -p release
+          cp "$apk" "release/Sadad-${GITHUB_REF_NAME#v}-server-release.apk"
+          cd release
+          sha256sum ./*.apk > SHA256SUMS
+      - name: Publish APK and checksum to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/*.apk release/SHA256SUMS \
+            --verify-tag --generate-notes --title "Sadad ${GITHUB_REF_NAME#v}"
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$SADAD_KEYSTORE_FILE"

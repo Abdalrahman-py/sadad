@@ -199,16 +199,7 @@ final class NativeScreens {
         EditText password = input("كلمة المرور", true); body.addView(password, matchWithBottom(16));
         EditText staffName = input("اسم الشخص على هذا الجهاز", false); staffName.setSingleLine(true);
         body.addView(staffName, matchWithBottom(12));
-        if (BuildConfig.STANDALONE_MODE) {
-            body.addView(button("دخول آمن", primary, Color.WHITE, () -> host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString())), match());
-        } else {
-            EditText serverUrl = input(BuildConfig.DEBUG ? "رابط الخادم" : "رابط الخادم (ثابت في هذه النسخة)", false); serverUrl.setSingleLine(true); serverUrl.setText(host.sessions.apiBaseUrl());
-            serverUrl.setEnabled(BuildConfig.DEBUG); serverUrl.setFocusable(BuildConfig.DEBUG);
-            body.addView(serverUrl, matchWithBottom(16));
-            body.addView(button("دخول آمن", primary, Color.WHITE, () -> {
-                if (host.configureApiBaseUrl(serverUrl.getText().toString())) host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString());
-            }), match());
-        }
+        body.addView(button("دخول آمن", primary, Color.WHITE, () -> host.loginLocal(username.getText().toString(), password.getText().toString(), staffName.getText().toString())), match());
 
         TextView support = label("تواصل معنا لتفعيل حسابك", 14, primary, true);
         support.setGravity(Gravity.CENTER); support.setPadding(0, dp(15), 0, dp(4));
@@ -1616,4 +1607,3 @@ final class NativeScreens {
     private View spaceWidth(int width) { View v = new View(host); v.setLayoutParams(new LinearLayout.LayoutParams(dp(width), 1)); return v; }
     private static void addGap(LinearLayout parent, int height) { View v = new View(parent.getContext()); parent.addView(v, new LinearLayout.LayoutParams(1, Math.round(height * parent.getResources().getDisplayMetrics().density))); }
 }
-
