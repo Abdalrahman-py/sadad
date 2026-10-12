@@ -12,7 +12,7 @@ android {
     namespace = "com.sadad.app"
     buildFeatures { buildConfig = true }
     // Live backend: the Supabase project's sadad-api edge function.
-    // A legacy self-hosted server ending in /api still works for debug builds.
+    // Origins are build-time settings; no account preference can redirect credentials.
     val apiBaseUrl = providers.gradleProperty("SADAD_API_BASE_URL")
         .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api")
     // The gateway that issues the Auth envelope the signed ledger requires. Login and token refresh
@@ -79,7 +79,7 @@ android {
 }
 
 dependencies {
-    // JVM tests only. LedgerSync is pure Java over org.json, and Android's unit-test runtime stubs
+    // JVM tests only. The signed ledger is pure Java over org.json, and Android's unit-test runtime stubs
     // org.json, so the real implementation has to be on the test classpath for it to run at all.
     testImplementation(libs.junit)
     testImplementation(libs.json)

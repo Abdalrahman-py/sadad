@@ -25,40 +25,50 @@ on the wire (`amount`).
 **Payment** (`دفعة`) — a settlement against a debt. Can be reversed; a reversed payment stops
 counting toward the debt's remaining balance.
 
-**Snapshot** — a whole ledger revision, as one object (`getSnapshot`, `importSnapshot`).
+**Snapshot** — a whole ledger state. Signed sync caches the server's snapshot in `EncryptedJournal`;
+`SadadDatabase.importLedgerView` projects it with pending operations into the screen tables.
+`getSnapshot` / `importSnapshot` remain for local export/import and retained server compatibility.
 
-**Delta** — the queued slice of changes, bounded at 500 rows, uploaded in one batch and acknowledged
-as a unit (`pendingDelta`, `acknowledgeDelta`).
+**Delta** — the older protocol's batch of changed rows. Retained on the server for installed clients;
+the connected Android edition sends signed operations instead.
 
-**Outbox** (`sync_outbox`) — the local queue of rows that changed and have not been acknowledged.
-Written by database triggers, never by hand.
+**Outbox** (`sync_outbox`) — legacy local storage written by database triggers. The table/triggers
+remain for upgrade preservation; signed sync uses the encrypted journal, not this outbox.
 
-**Watermark** — the outbox sequence number captured *before* a download starts. The commit is refused
-if the watermark moved, so edits made during a download are never overwritten
-(`outboxWatermark`, `commitSnapshotStage`).
+**Watermark** — the old client's outbox sequence captured before downloading. Its staging engine
+was removed; it is not the signed ledger cursor.
 
 **Revision** — the server's monotonic version of a store's ledger. The app carries its own copy
 (`SessionStore.revision`) and only ever adopts the value the server reports.
 
-**Conflict** — the server is ahead *and* the device has unsynced edits. Nothing is overwritten: the
-owner is asked which side to keep.
+**Conflict** — a change cannot be accepted against the expected version or recovery epoch. Signed
+sync preserves the original journal operation and its verdict; it does not replace the whole ledger.
 
-**Ledger mode** (`ledger_mode`) — which protocol a store's ledger speaks: `legacy` (`/mobile/*`) or
-`v3` (the signed ledger). Set once from the server's answer at login, never guessed mid-sync.
+**Ledger mode** (`ledger_mode`) — server-side protocol eligibility: `legacy` or `v3`. The connected
+Android client uses signed sync exclusively; this flag does not select a second Android engine.
 
-**Legacy ledger** — the older protocol. Still correct, and still what a non-v3 store uses.
+**Legacy ledger** — the older server protocol and tables, retained pending store and client cutover.
 
 **Signed ledger** (`v3`) — the adopted ledger. Every request carries a device signature, and the
-device must be enrolled and approved before it may write. Every real store currently runs on this.
+device must be enrolled and approved before it may write. Not all production stores are initialized;
+the measured inventory and cutover gate are in `docs/CONTINUE_HERE.md`.
 
-**Installation** — the signed ledger's identity for one app installation: a non-exportable P-256 key
-in the Android Keystore plus a UUID (`InstallationKey`). Lost with the device by design.
+**Installation** — a signed identity scoped to project and store: a non-exportable P-256 key in the
+Android Keystore plus a stable UUID (`InstallationKey`). Different stores on one phone have distinct
+identities. A legacy global identity is reused only for its verified original store binding.
 
 **Store device** — a phone registered to a store (`store_devices`), with a staff name, permissions,
 and its own revocation state. Distinct from an installation.
 
 **Operation** — a single signed ledger change (`contact.create`, `debt.create`, `payment.create`),
 carrying an `operationId`, an `entityId`, and the operations it `dependsOn`.
+
+**Compound action** — one user save represented by several operations, such as a contact with its
+first debt or a payment split over debts. `LedgerQueue` validates it before writing;
+`EncryptedJournal.addBatch` persists all operations in one transaction or none.
+
+**Activity** — the latest 200 ledger events, including operation verdicts, scoped to a store and
+ordered by descending sequence (`sadid_activity`). Login and admin audit events are separate.
 
 **Receipt** — the server's per-operation verdict: `accepted`, or a rejection with a code. A receipt
 is what turns a queued operation into a confirmed one.
@@ -109,7 +119,9 @@ past the interface is evidence the module is the wrong shape.
 
 ### Where the sync seam lives
 
-`LedgerSync` is the module; `SyncSession`, `SyncLedger` and `SyncTransport` are its seam, implemented
-by `SessionStore`, `SadadDatabase` and `HttpSyncTransport` respectively. `LedgerSync.Outcome` is the
-vocabulary a caller acts on. Callers keep the lock, the threading, and every dialog — the module owns
-the protocol and nothing else.
+`LedgerQueue` is the application interface for reads, writes, activity and one sync pass.
+`SignedLedgerSync` owns the signed protocol through `LedgerApi`, `LedgerJournal`,
+`InstallationSigner`, `DeviceEnvironment` and `LedgerSession`.
+`SignedLedgerSync.Outcome` is the vocabulary a caller acts on. `MainActivity` and
+`LedgerSyncService` serialize sync and identity changes with `SyncScheduler.LOCK`; UI dialogs stay
+with the activity. The older `LedgerSync` and its transport/interfaces have been removed.

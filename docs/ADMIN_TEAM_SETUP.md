@@ -1,31 +1,17 @@
 # Team admin dashboard
 
-Use one dashboard at `http://localhost:8081/`. Store accounts, financial balances, phone approval, recovery permits, and admin activity are integrated in this screen.
+Use the [published dashboard](https://abdalrahman-py.github.io/sadad/). Store accounts, financial balances, phone approval, recovery permits, and admin activity are integrated in this screen.
 
 The shared test username is `admin_sadid`, provisioned in the live `sadid` Supabase project (`vhftjmiltqfwmrszdtgf`). Get its password from the team lead. Starting the dashboard does not create or reset an admin account.
 
-## Start on any team machine
+## Open on any team machine
 
-Install Node.js 24 or newer and run from the repository root:
+Open [the hosted dashboard](https://abdalrahman-py.github.io/sadad/) with internet access and sign in.
+The page returned HTTP 200 on 12 October 2026. Backend/source deployment drift is recorded in
+`docs/CONTINUE_HERE.md`; a successful page load does not verify its latest backend features.
 
-```sh
-node tools/admin-preview.cjs
-```
-
-Keep the process running and open `http://localhost:8081/`. The legacy Node/SQLite alternatives (`npm start` inside `server/`, `server/Start-Sadad.cmd`) were removed in October 2026 together with that server. No package installation, `.env`, SQLite database, local account setup, or Supabase CLI login is needed.
-
-Each teammate starts their own preview; all authenticate against the same hosted database. Internet access to Supabase is required. To choose another port:
-
-```sh
-SADAD_ADMIN_PREVIEW_PORT=8082 node tools/admin-preview.cjs
-```
-
-PowerShell:
-
-```powershell
-$env:SADAD_ADMIN_PREVIEW_PORT = '8082'
-node tools/admin-preview.cjs
-```
+For static publishing, run `node tools/build-admin-pages.cjs` from the repository root. It builds
+`_site/` from `server/public/`. The local HTTP preview script has been retired.
 
 ## Create and activate a store
 

@@ -70,10 +70,14 @@ adb -s emulator-5554 shell am instrument -w com.sadad.qa.offline.test/com.sadad.
 - اختبارات قاعدة البيانات (pglite، بلا خادم حقيقي):
   ```sh
   npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
-  npx --yes --package=node@22.16.0 node --max-old-space-size=256 Supabase-Setup/scripts/test-v3-ledger.mjs
+  node Supabase-Setup/scripts/test-v3-ledger.mjs
+  node Supabase-Setup/scripts/test-v3-authorization.mjs
+  node Supabase-Setup/scripts/test-admin-dashboard.mjs
   ```
 - اختبارات وحدة JVM بلا هاتف: `./gradlew testServerDebugUnitTest` — محرّك المزامنة وعميل
   الدفتر الموقّع. تُشغَّل تلقائيًا في CI (`.github/workflows/android-ci.yml`) مع بناء النسختين.
+- اختبار معاملات الطابور وKeystore على هاتف QA منفصل: راجع قسم التحقق الحالي في
+  `docs/CONTINUE_HERE.md`؛ بناء الاختبار وحده لا يثبت نجاحه على الجهاز.
 - اختبارات وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/`.
 
 ## تنزيل APK جاهز
@@ -99,17 +103,10 @@ message, and the page's content policy allows the `vhftjmiltqfwmrszdtgf` origin 
 dashboard uses the same live Supabase admin account. It is rebuilt only when `server/public/**`,
 `tools/build-admin-pages.cjs` or the workflow itself change, so it can lag the tree.
 
-From the repository root, use Node.js 24 or newer:
-
-```sh
-git pull --ff-only
-node tools/admin-preview.cjs
-```
-
-Open <http://localhost:8081/> and sign in with the shared `admin_sadid` account. Get the
-password from the team lead. The browser authenticates against the live Supabase project
-(`vhftjmiltqfwmrszdtgf`); no local admin account, SQLite database, `.env` or CLI login is
-needed. See [team setup and verification](docs/ADMIN_TEAM_SETUP.md).
+افتح [لوحة الإدارة المنشورة](https://abdalrahman-py.github.io/sadad/) وسجّل الدخول بحساب
+`admin_sadid`؛ اطلب كلمة المرور من مسؤول الفريق. اللوحة ملفات ثابتة وعملياتها تتصل بـ
+Supabase. لبناء ملفات النشر محليًا: `node tools/build-admin-pages.cjs`؛ الناتج في `_site/`.
+تفاصيل التشغيل في [دليل الفريق](docs/ADMIN_TEAM_SETUP.md).
 
 ## خدمات لم تُفعّل بعد
 
@@ -119,5 +116,6 @@ needed. See [team setup and verification](docs/ADMIN_TEAM_SETUP.md).
 ## مسار واحد: الدفتر المعتمد (v3)
 
 حُذف خادم Node/SQLite القديم (`server/server.js`) وملفات تشغيله واختباراته، فلم يكن يشغّله أي
-عميل: التطبيق واللوحة يتصلان بـ Supabase. والبروتوكول القديم في `/mobile/*` في طريق الإزالة
-بعد أن ينقل التطبيق كتاباته إلى الدفتر الموقّع — الحالة في `docs/CONTINUE_HERE.md`.
+عميل: التطبيق واللوحة يتصلان بـ Supabase. عميل Android المتصل يستخدم الدفتر الموقّع وحده. مسارات الخادم القديمة باقية حتى قرار نقل
+المتاجر والعملاء القدماء؛ مسارات الهوية والإدارة والتقارير لها مستدعون حاليون. الحالة في
+`docs/CONTINUE_HERE.md`.

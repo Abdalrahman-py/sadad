@@ -18,8 +18,7 @@
 
 ## خريطة الكود: أين تعيش كل ميزة
 
-مصدر واحد لكل ميزة. ابدأ من السطر المذكور هنا بدل البحث في الشجرة. الأرقام مقيسة على شجرة
-`main` في 12 أكتوبر 2026 (إجمالي كود التطبيق 7,067 سطرًا في 24 ملفًا؛ ثلاثة ملفات تحمل 59% منه).
+مصدر واحد لكل ميزة. ابدأ من نقطة البداية المذكورة، وافحص المستدعين قبل الحذف.
 
 | الميزة | الملف | نقطة البداية |
 | --- | --- | --- |
@@ -28,8 +27,8 @@
 | جدول المسار ← الشاشة | `NativeScreens.java` | `addPage(String page)` (سلسلة `case`) |
 | قاعدة البيانات المحلية | `SadadDatabase.java` | `saveContact`، `saveDebt`، `savePayment`، `historyActivities` |
 | الجلسة والدخول | `MainActivity` + `SessionStore.java` | |
-| مزامنة السجل الموقّع (v3) | `SignedLedgerSync.java` → `LedgerClient.java` → `HttpSyncTransport.java` | |
-| السجل القديم `/mobile/*` | `LedgerSync.java` | ما زال يخدم المتجر 900001 وحده |
+| مزامنة السجل الموقّع (v3) | `LedgerQueue.java` → `SignedLedgerSync.java` + `LedgerClient.java` | |
+| توافق العملاء القدماء | `sadad-api/handler.ts` | مسارات الخادم باقية حتى قرار نقل المتاجر والعملاء؛ محرّك Android القديم حُذف |
 | طابور العمليات وبناء الأمر | `LedgerQueue.java` + `LedgerCommand.java` | `LedgerCommand.now()` يبني الطابع الزمني المرسل |
 | الإسقاط المحلي للسجل | `LedgerProjection.java` | |
 | تصدير الكشوفات | `LedgerTablePdf.java` / `LedgerTableExcel.java` | |
@@ -76,7 +75,8 @@
 - اختبارات قاعدة البيانات: `Supabase-Setup/scripts/*.mjs` عبر pglite.
 - وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/`.
 - CI: `.github/workflows/android-ci.yml` يشغّل اختبارات الـJVM وبناء النسختين واختبارات Edge
-  على كل دفع/طلب سحب يمسّ `app/` أو `gradle/` أو `Supabase-Setup/supabase/functions/`.
+  واختبارات PostgreSQL المحلية. يشمل التشغيل تغييرات التطبيق والبناء والوظائف والترحيلات
+  وسكربتات قاعدة البيانات.
   اختبارات الجهاز تبقى يدوية، فالمشغّل لا يوفّر هاتفًا.
 
 ## الكتابة والتوثيق
@@ -89,4 +89,6 @@
 
 - الوسم `pre-consolidation-2026-10-11` والفرع `archive/pre-consolidation` يحفظان شجرة
   المستودع كاملة قبل تنظيف أكتوبر 2026، بما فيها نسخة Flutter ونسخ الخوادم المحذوفة.
+- الوسم `pre-supabase-ledger-correctness-2026-10-12` والفرع
+  `archive/pre-supabase-ledger-correctness` يحفظان نقطة البداية مع التعديلات الستة المعلقة (340 ملفًا متتبّعًا).
 - نسخة Flutter المرجعية: `archive/Sadad-Flutter`.

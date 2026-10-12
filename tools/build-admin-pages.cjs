@@ -10,7 +10,7 @@ const output = path.join(repository, '_site');
 const plain = ['admin.html', 'admin-tajawal.woff2', 'logo-light.jpeg', 'logo-dark.png'];
 // These change on every deploy, and GitHub Pages caches by filename. Stamp the content hash
 // into the name and rewrite the references, so a teammate never runs a stale dashboard after a
-// deploy. The local preview serves Cache-Control: no-store, so it does not need this.
+// deploy.
 const hashed = ['admin.css', 'admin.js'];
 
 fs.rmSync(output, { recursive: true, force: true });
