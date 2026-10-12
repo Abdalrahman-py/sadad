@@ -63,7 +63,7 @@ try{
    await capability('read');
    const snapshot=(await db.query('select public.sadid_snapshot() as result')).rows[0].result;
    assert.deepEqual(snapshot.payments.map(row=>row.method).sort(),['wallet_jawwal','wallet_palpay']);
-  } finally {await db.exec('reset role;rollback');}
+  } finally {await db.exec('rollback;reset role');}
  });
  await check('تعديل الشخص يحفظ التفاصيل ويمنع الكتابة بنسخة قديمة',async()=>{
   await db.exec('reset role;begin');
@@ -74,7 +74,7 @@ try{
    await capability('read');
    const snapshot=(await db.query('select public.sadid_snapshot() as result')).rows[0].result;
    assert.equal(snapshot.contacts[0].name,'اسم جديد');assert.equal(snapshot.contacts[0].phone,'+970599123456');assert.equal(snapshot.contacts[0].version,2);
-  } finally {await db.exec('reset role;rollback');}
+  } finally {await db.exec('rollback;reset role');}
  });
  const payment=command('payment.create',{debtId:debt.entityId,amountCents:10000,method:'cash'},{dependsOn:[debt.operationId]});
  await check('دفع ١٠٠ شيكل',async()=>assert.equal((await apply(payment)).status,'accepted'));
@@ -91,6 +91,46 @@ try{
  await check('منع تعديل جداول المال المباشر',async()=>{await assert.rejects(db.exec('update public.sadid_debts set amount_cents=1'),/permission denied/);await assert.rejects(db.exec('delete from public.sadid_payments'),/permission denied/);});
  await check('ربط التفويض بمحتوى الأمر',async()=>{await capability('write',contact);await assert.rejects(db.query('select public.sadid_apply($1)',[debt]),/authorization_required/);});
  await check('النسخة المتسقة تحافظ على الأصول والتصحيحات والعكس',async()=>{await capability('read');const s=(await db.query('select public.sadid_snapshot() as result')).rows[0].result;assert.equal(s.debts[0].amount_cents,50000);assert.equal(s.payments.length,1);assert.equal(s.adjustments.length,1);assert.equal(s.reversals.length,1);assert.equal(s.contacts[0].version,3);});
+ await check('سجل النشاط موقع النطاق ومرتب بالأحدث',async()=>{
+  await capability('read');
+  const events=(await db.query('select public.sadid_activity() as result')).rows[0].result;
+  assert.equal(events[0].commandType,'contact.restore');
+  assert.equal(events[0].userId,user);assert.equal(events[0].installationId,installation);
+  assert.equal(events[0].generation,1);assert.equal(events[0].status,'accepted');
+  assert.ok(events.every((event,index)=>index===0||events[index-1].sequence>event.sequence));
+ });
+ await check('سجل النشاط لا يسرب متجرًا آخر ويقتصر على أحدث ٢٠٠ عملية',async()=>{
+  await db.exec('reset role;begin');
+  try {
+   await db.exec("insert into public.stores(id,name,username,salt,password_hash,created_at) values(2,'آخر','other','x','x',0);insert into public.sadid_ledger_state(store_id) values(2)");
+   await db.exec("create temporary table activity_fixture as select n sequence,gen_random_uuid() operation_id from generate_series(101,305) n");
+   await db.query("insert into public.sadid_operations(store_id,operation_id,request,result,user_id,installation_id,generation) select 1,operation_id,'{}','{\"status\":\"accepted\"}',$1,$2,1 from activity_fixture",[user,installation]);
+   await db.query("insert into public.sadid_events(store_id,sequence,operation_id,kind,entity_id,user_id,installation_id,generation,command,created_at) select 1,sequence,operation_id,'contact.create',gen_random_uuid(),$1,$2,1,'{\"type\":\"contact.create\"}','2026-10-10' from activity_fixture",[user,installation]);
+   const foreign=command('contact.create',{name:'سر متجر آخر'});
+   await db.query("insert into public.sadid_operations(store_id,operation_id,request,result,user_id,installation_id,generation) values(2,$1,$2,'{\"status\":\"accepted\"}',$3,$4,1)",[foreign.operationId,foreign,user,installation]);
+   await db.query("insert into public.sadid_events(store_id,sequence,operation_id,kind,entity_id,user_id,installation_id,generation,command) values(2,999,$1,'contact.create',$2,$3,$4,1,$5)",[foreign.operationId,foreign.entityId,user,installation,foreign]);
+   await capability('read');const events=(await db.query('select public.sadid_activity() as result')).rows[0].result;
+   assert.equal(events.length,200);assert.equal(events[0].sequence,305);assert.equal(events[199].sequence,106);
+   assert.ok(events.every(event=>event.operationId!==foreign.operationId));
+  } finally {await db.exec('rollback;reset role');}
+ });
+ for(const [name,fault] of [
+  ['رمز تفويض مزور',()=>db.query("select set_config('request.headers',$1,false)",[JSON.stringify({'x-sadad-capability':'forged'})])],
+  ['مستخدم مختلف',()=>db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:randomUUID(),session_id:session})])],
+  ['تفويض منتهي',()=>db.exec("update sadid_private.capabilities set expires_at=now()-interval '1 minute'")],
+  ['جلسة Auth محذوفة',()=>db.query('delete from auth.sessions where id=$1',[session])],
+  ['جهاز ملغى',()=>db.query("update sadid_private.installations set status='revoked' where id=$1",[installation])],
+  ['متجر موقوف',()=>db.exec("update public.stores set status='suspended' where id=1")]
+ ]) await check('رفض سجل النشاط: '+name,async()=>{
+  await db.exec('reset role;begin');
+  try {await capability('read');await db.exec('reset role');await fault();await db.exec('set role authenticated');await assert.rejects(db.query('select public.sadid_activity()'),/authorization_required/);}
+  finally {await db.exec('rollback;reset role');}
+ });
+ await check('سجل النشاط يرفض تفويض الكتابة والنداء العام والخدمة',async()=>{
+  await capability('write',contact);await assert.rejects(db.query('select public.sadid_activity()'),/authorization_required/);
+  await db.exec('reset role;set role anon');await assert.rejects(db.query('select public.sadid_activity()'),/permission denied/);
+  await db.exec('reset role;set role service_role');await assert.rejects(db.query('select public.sadid_activity()'),/permission denied/);
+ });
   await check('منع الخدمة من تنفيذ الدالة المالية',async()=>{await db.exec('reset role;set role service_role');await assert.rejects(db.query('select public.sadid_apply($1)',[contact]),/permission denied/);});
   await db.exec('reset role');
   const recovered=command('contact.create',{name:'مدخل مستعاد'});

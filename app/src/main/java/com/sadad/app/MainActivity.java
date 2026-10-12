@@ -1145,27 +1145,43 @@ public final class MainActivity extends Activity {
     boolean devicePermissionAllowed(String permission) { return sessions == null || sessions.devicePermissionAllowed(permission); }
 
     void showStoreActivityLog() {
-        if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("سجل المستخدمين متاح في النسخة المتصلة فقط."); return; }
+        if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("سجل عمليات الدفتر متاح في النسخة المتصلة فقط."); return; }
+        String scope = accountScope();
         executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
             try {
-                JSONArray events = apiRequest("GET", "/mobile/activity", null, sessions.token()).optJSONArray("events");
-                JSONArray rows = events == null ? new JSONArray() : events;
-                String[] labels = new String[rows.length()];
-                for (int i = 0; i < rows.length(); i++) {
-                    JSONObject event = rows.optJSONObject(i);
-                    labels[i] = (event == null ? "" : event.optString("actor", "صاحب المتجر") + " · " + event.optString("action", "حركة") + "\n"
-                            + event.optString("description", "") + "\n" + DateFormat.getDateFormat(this).format(new Date(event.optLong("createdAt")))
-                            + " · " + DateFormat.getTimeFormat(this).format(new Date(event.optLong("createdAt"))));
+                JSONArray events = ledgerQueue().activity();
+                String[] labels = new String[events.length()];
+                for (int i = 0; i < events.length(); i++) {
+                    JSONObject event = events.getJSONObject(i);
+                    String action;
+                    switch (event.optString("commandType")) {
+                        case "contact.create": action = "إضافة شخص"; break;
+                        case "contact.update": action = "تعديل شخص"; break;
+                        case "contact.archive": action = "أرشفة شخص"; break;
+                        case "contact.restore": action = "استعادة شخص"; break;
+                        case "debt.create": action = "تسجيل دين"; break;
+                        case "debt.correct": action = "تصحيح دين"; break;
+                        case "payment.create": action = "تسجيل دفعة"; break;
+                        case "payment.reverse": action = "عكس دفعة"; break;
+                        default: action = "عملية دفتر";
+                    }
+                    String user = event.optString("userId"), device = event.optString("installationId");
+                    String actor = "مستخدم " + user.substring(0, Math.min(8, user.length())) + " · جهاز " + device.substring(0, Math.min(8, device.length()));
+                    String refusal = "rejected".equals(event.optString("status")) ? " · مرفوضة: " + LedgerMessages.of(event.optString("code")) : "";
+                    Date at = new Date(event.getLong("createdAt"));
+                    labels[i] = action + refusal + "\n" + actor + " · إصدار " + event.optInt("generation") + "\n"
+                            + DateFormat.getDateFormat(this).format(at) + " · " + DateFormat.getTimeFormat(this).format(at);
                 }
-                runOnUiThread(() -> {
-                    AlertDialog.Builder dialog = new SadadDialog.Builder(this).setTitle("سجل نشاط المستخدمين");
-                    if (labels.length == 0) dialog.setMessage("لا توجد عمليات مسجلة بعد.");
+                postForAccount(scope, () -> {
+                    AlertDialog.Builder dialog = new SadadDialog.Builder(this).setTitle("آخر ٢٠٠ عملية دفتر");
+                    if (labels.length == 0) dialog.setMessage("لا توجد عمليات دفتر مسجلة بعد. لا يشمل هذا السجل الدخول أو إجراءات الإدارة.");
                     else dialog.setItems(labels, (d, which) -> { });
                     dialog.setPositiveButton("إغلاق", null).show();
                 });
-            } catch (Exception e) {
-                String message=e.getMessage()==null?"تعذر تحميل سجل النشاط.":e.getMessage();
-                runOnUiThread(() -> showBrandedMessage(message));
+            } catch (Exception error) {
+                String message = error.getMessage() == null ? "تعذر تحميل سجل عمليات الدفتر." : error.getMessage();
+                postForAccount(scope, () -> showBrandedMessage(message));
             }
         });
     }

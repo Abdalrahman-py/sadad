@@ -95,6 +95,7 @@ public final class SignedLedgerSyncTest {
             return receipt;
         }
         public JSONArray outcomes(JSONArray operationIds) { return new JSONArray(); }
+        public JSONArray activity() { throw new AssertionError("Sync must not fetch activity"); }
     }
 
     private static final class FakeDevice implements DeviceEnvironment {

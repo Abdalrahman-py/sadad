@@ -184,6 +184,8 @@ final class LedgerQueue {
         return SignedLedgerSync.sync(client, journal, installation, device, storeId, userId);
     }
 
+    JSONArray activity() throws Exception { return client.activity(); }
+
     /**
      * An operation the ledger only accepts while the store is online — an archive or a correction.
      * The snapshot is taken first so the command carries the epoch and the row's current version,

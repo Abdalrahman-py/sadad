@@ -248,6 +248,15 @@ public final class LedgerClientTest {
         assertEquals("", lastRoute);
     }
 
+    @Test public void activityIsFetchedThroughTheSignedRoute() throws Exception {
+        answer = "{\"ok\":true,\"events\":[{\"sequence\":7,\"commandType\":\"payment.create\"}]}";
+        JSONArray events = client().activity();
+        assertEquals(7, events.getJSONObject(0).getInt("sequence"));
+        assertEquals("/mobile/v3/activity", lastRoute);
+        assertEquals("GET", lastMethod);
+        assertTrue(lastProofValid);
+    }
+
     // ------------------------------------------------------------------ the contract
 
     @Test public void enrolmentIsSignedWithTheKeyBeingEnrolled() throws Exception {

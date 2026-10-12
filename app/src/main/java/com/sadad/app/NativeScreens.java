@@ -1209,7 +1209,7 @@ final class NativeScreens {
     }
 
     private void showAccountMenu() {
-        String[] options = BuildConfig.STANDALONE_MODE ? new String[]{"تغيير صورة الحساب", "المظهر", "إعدادات الإشعارات"} : new String[]{"تغيير صورة الحساب", "المظهر", "إعدادات الإشعارات", "حسابات المتاجر", "مزامنة السجلات", "سجل نشاط المستخدمين"};
+        String[] options = BuildConfig.STANDALONE_MODE ? new String[]{"تغيير صورة الحساب", "المظهر", "إعدادات الإشعارات"} : new String[]{"تغيير صورة الحساب", "المظهر", "إعدادات الإشعارات", "حسابات المتاجر", "مزامنة السجلات", "سجل عمليات الدفتر"};
         new SadadDialog.Builder(host).setTitle(host.storeName().isEmpty() ? "متجري" : host.storeName()).setItems(options, (d, which) -> {
             if (which == 0) host.editProfilePhoto();
             else if (which == 1) showAppearancePicker();

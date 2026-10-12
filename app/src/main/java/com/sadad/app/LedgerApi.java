@@ -23,4 +23,7 @@ interface LedgerApi {
 
     /** Receipts for operations already submitted, by operation id. The ledger answers with a list. */
     JSONArray outcomes(JSONArray operationIds) throws Exception;
+
+    /** Latest 200 ledger operations in descending server sequence; excludes login/admin events. */
+    JSONArray activity() throws Exception;
 }

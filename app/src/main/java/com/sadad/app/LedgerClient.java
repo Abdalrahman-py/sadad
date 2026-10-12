@@ -67,6 +67,10 @@ final class LedgerClient implements LedgerApi {
         return receipts == null ? new JSONArray() : receipts;
     }
 
+    @Override public JSONArray activity() throws Exception {
+        return request("GET", "/mobile/v3/activity", null, "").getJSONArray("events");
+    }
+
     /** Enrolment answers {@code {status, generation}}: which side of admin approval this device is on. */
     static String status(JSONObject answer) { return answer.optString("status", ""); }
 
