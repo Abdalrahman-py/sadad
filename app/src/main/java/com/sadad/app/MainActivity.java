@@ -106,7 +106,6 @@ public final class MainActivity extends Activity {
     private long routeContact,routeEditing;
     String contactFormBackTarget() { return contactFormOrigin; }
     private volatile boolean biometricPromptInProgress;
-    private volatile boolean demoCustomerSession;
     private long leftAt;
     private long pendingNotificationContactId;
     private static final int REQUEST_SAVE_PDF = 7315;
@@ -160,12 +159,8 @@ public final class MainActivity extends Activity {
     void refreshCurrentScreen() { if (screens != null) screens.show(currentRoute); }
     void show(String route) {
         if (route == null || route.isEmpty() || route.equals(currentRoute)) return;
-        if ("customer_login".equals(route) || "customer_portal".equals(route)) { show(sessions.isActive() ? "home" : "login"); return; }
-        if (route.equals("login") || route.equals("welcome") || route.equals("unlock") || route.equals("force_password") || route.equals("customer_login")) {
+        if (route.equals("login") || route.equals("welcome") || route.equals("unlock") || route.equals("force_password")) {
             navigation.clear(); currentRoute = route; screens.show(route); return;
-        }
-        if (route.equals("customer_portal") && BuildConfig.STANDALONE_MODE && demoCustomerSession) {
-            currentRoute = route; screens.show(route); return;
         }
         if (!sessions.isActive()) { currentRoute = "login"; screens.show("login"); return; }
         if ("contact_form".equals(route)) contactFormOrigin = currentRoute;
@@ -180,41 +175,6 @@ public final class MainActivity extends Activity {
     void finishWelcome() {
         getPreferences(0).edit().putBoolean("welcome_seen", true).putBoolean(PREF_FORCED_PASSWORD_WELCOME, true).apply();
         openInitialRoute();
-    }
-
-    void loginDemoCustomer(String phone, String password) {
-        if (!BuildConfig.STANDALONE_MODE) {
-            showBrandedMessage("دخول الزبائن الرسمي سيفعّل بعد ربط التحقق الحقيقي من رقم الهاتف بالخادم.");
-            return;
-        }
-        String normalized = normalizeCustomerPhone(phone);
-        if (!"97059999999".equals(normalized) || !"123123".equals(password)) {
-            showBrandedMessage("رقم الهاتف أو كلمة المرور غير صحيحة.");
-            return;
-        }
-        demoCustomerSession = true;
-        show("customer_portal");
-    }
-
-    void exitDemoCustomer() {
-        demoCustomerSession = false;
-        show("login");
-    }
-
-    private String normalizeCustomerPhone(String value) {
-        if (value == null) return "";
-        StringBuilder digits = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c >= '\u0660' && c <= '\u0669') c = (char) ('0' + c - '\u0660');
-            else if (c >= '\u06F0' && c <= '\u06F9') c = (char) ('0' + c - '\u06F0');
-            if (c >= '0' && c <= '9') digits.append(c);
-        }
-        String normalized = digits.toString();
-        if (normalized.startsWith("00970")) return normalized.substring(2);
-        if (normalized.startsWith("970")) return normalized;
-        if (normalized.startsWith("0")) return "970" + normalized.substring(1);
-        return normalized;
     }
 
     private void maybeRequestNotificationPermission() {
@@ -759,17 +719,6 @@ public final class MainActivity extends Activity {
         afterSignedWrite();
     }
 
-    /** Undoing an archive, the same way round. */
-    void restoreContact(long contactLocalId) throws Exception {
-        if (!signedLedger()) return;
-        String contactId = database.remoteUuidFor("contacts", contactLocalId);
-        if (contactId.isEmpty()) return;
-        LedgerQueue queue = ledgerQueue();
-        queue.online("contact.restore", new JSONObject().put("contactId", contactId)
-                .put("reason", LedgerCommand.reason("استعادة من سلة المحذوفات")), database.remoteVersionFor("contacts", contactLocalId));
-        afterSignedWrite();
-    }
-
     /** What a caller needs to know when a server-side action finishes. */
     interface LedgerAction { void complete(boolean success, String message); }
 
@@ -941,17 +890,6 @@ public final class MainActivity extends Activity {
         } catch (Exception e) { showBrandedMessage("تعذر تحميل السجلات من الخادم."); }
     }
 
-    void refreshServerData() {
-        if (!sessions.isActive()) { showBrandedMessage("سجّل الدخول إلى الخادم أولًا."); return; }
-        if (sessions.hasUnsyncedChanges()) {
-            new SadadDialog.Builder(this).setTitle("تحميل سجلات الخادم")
-                    .setMessage("تحميل السجلات من الخادم سيستبدل التعديلات المحلية غير المزامنة. هل تريد المتابعة؟")
-                    .setNegativeButton("إلغاء", null).setPositiveButton("تحميل", (dialog, which) -> requestServerSnapshot()).show();
-            return;
-        }
-        requestServerSnapshot();
-    }
-
     void retryLocalSync() {
         if (!sessions.hasUnsyncedChanges()) { showBrandedMessage("لا توجد تغييرات محلية بانتظار المزامنة."); return; }
         sessions.setSyncBlocked(false);
@@ -1014,8 +952,6 @@ public final class MainActivity extends Activity {
         screens.show(currentRoute);
     }
 
-    void saveAndSharePdf(byte[] pdf, String suggestedName) { savePdf(pdf, suggestedName, true); }
-
     interface ReportGenerator { byte[] create() throws Exception; }
     private final java.util.concurrent.ExecutorService exports = java.util.concurrent.Executors.newSingleThreadExecutor();
     void generateReport(ReportGenerator generator, String name, String mime, boolean share) {
@@ -1042,7 +978,6 @@ public final class MainActivity extends Activity {
         catch (Exception e) { pendingPdf = null; pendingPdfName = null; showBrandedMessage("تعذر فتح شاشة حفظ ملف PDF."); }
     }
 
-    private void sharePdf(byte[] pdf, String name) { shareReport(pdf, name, "application/pdf"); }
     private void shareReport(byte[] pdf, String name, String mime) {
         if (pdf == null || pdf.length == 0) { showBrandedMessage("ملف الكشف فارغ."); return; }
         try {
@@ -1268,15 +1203,6 @@ public final class MainActivity extends Activity {
         show("login");
     }
 
-    void removeSavedStoreAccount(String accountId) {
-        if (accountId == null || accountId.isEmpty() || accountId.equals(sessions.syncAccountId())) {
-            showBrandedMessage("لا يمكن إزالة الحساب المفتوح من هنا. استخدم تسجيل الخروج لإزالته."); return;
-        }
-        sessions.removeSavedAccount(accountId);
-        screens.show("settings");
-        showBrandedMessage("تمت إزالة الحساب من هذا الجهاز.");
-    }
-
     void switchStoreAccount(String accountId) {
         if (accountId == null || accountId.isEmpty() || accountId.equals(sessions.syncAccountId())) return;
         if (sessions.hasUnsyncedChanges() || sessions.syncBlocked()) { showBrandedMessage("زامن سجلات الحساب الحالي قبل التبديل."); return; }
@@ -1482,8 +1408,7 @@ public final class MainActivity extends Activity {
                 && localSecurity.hasPin() && getPreferences(0).getBoolean("lock_enabled", true)) {
             show("unlock");
             if (getPreferences(0).getBoolean("biometric_enabled", false)) requestBiometric(false);
-        } else if (!sessions.isActive() && !"login".equals(currentRoute) && !"welcome".equals(currentRoute)
-                && !"customer_login".equals(currentRoute) && !("customer_portal".equals(currentRoute) && demoCustomerSession)) show("login");
+        } else if (!sessions.isActive() && !"login".equals(currentRoute) && !"welcome".equals(currentRoute)) show("login");
         leftAt = 0;
         if (!BuildConfig.STANDALONE_MODE && sessions.isActive() && !"force_password".equals(currentRoute)) {
             syncNow();
@@ -1494,8 +1419,6 @@ public final class MainActivity extends Activity {
 
     @SuppressWarnings("deprecation") @Override public void onBackPressed() {
         String route = currentRoute;
-        if ("customer_portal".equals(route)) { exitDemoCustomer(); return; }
-        if ("customer_login".equals(route)) { show("login"); return; }
         if ("force_password".equals(route)) { showBrandedMessage("غيّر كلمة المرور المؤقتة أولًا للمتابعة."); return; }
         if ("welcome".equals(route)) { finishWelcome(); return; }
         if (!navigation.isEmpty()) {

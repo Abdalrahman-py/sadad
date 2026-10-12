@@ -69,17 +69,6 @@ final class LedgerQueue {
         catch (Exception unreadable) { return false; }
     }
 
-    /** The enrolment answer: {@code pending} until an admin approves this device. */
-    String installationStatus() {
-        try { return journal.metadata("installation").optString("status", ""); }
-        catch (Exception unreadable) { return ""; }
-    }
-
-    JSONObject syncState() {
-        try { return journal.metadata("sync"); }
-        catch (Exception unreadable) { return new JSONObject(); }
-    }
-
     /**
      * Queues one edit. The command is built from the epoch the last snapshot declared and depends on
      * the operations that introduce the rows it references, so the ledger can accept them in order

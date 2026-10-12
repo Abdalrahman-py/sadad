@@ -126,18 +126,6 @@ final class SessionStore implements SyncSession, LedgerSession {
         return first != null && activateSavedAccount(first.optString("id", ""));
     }
 
-    synchronized String savedToken(String accountId) {
-        JSONArray saved = savedAccounts();
-        for (int i = 0; i < saved.length(); i++) {
-            JSONObject item = saved.optJSONObject(i);
-            if (item != null && accountId.equals(item.optString("id"))) {
-                try { return decryptToken(item.optString("encryptedToken", "")); }
-                catch (Exception ignored) { return ""; }
-            }
-        }
-        return "";
-    }
-
     synchronized void removeSavedAccount(String accountId) {
         JSONArray saved = savedAccounts(), updated = new JSONArray();
         for (int i = 0; i < saved.length(); i++) {

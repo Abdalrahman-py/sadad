@@ -96,8 +96,6 @@ final class NativeScreens {
         palette();
         if ("welcome".equals(page)) { buildWelcome(); return; }
         if ("login".equals(page)) { buildLogin(); return; }
-        if ("customer_login".equals(page)) { buildCustomerLogin(); return; }
-        if ("customer_portal".equals(page)) { buildCustomerPortal(); return; }
         if ("force_password".equals(page)) { buildForcedPasswordChange(); return; }
         if ("unlock".equals(page)) { buildUnlock(); return; }
         buildShell(page);
@@ -222,100 +220,6 @@ final class NativeScreens {
         root.addView(scroll, new LinearLayout.LayoutParams(-1, -1)); host.setContentView(root);
     }
 
-    private void buildCustomerLogin() {
-        root = new LinearLayout(host); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(24), dp(20), dp(24), dp(20)); root.setBackground(pageBackground()); root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        LinearLayout card = new LinearLayout(host); card.setOrientation(LinearLayout.VERTICAL); card.setGravity(Gravity.CENTER_HORIZONTAL);
-        card.setPadding(dp(22), dp(28), dp(22), dp(26)); card.setBackground(shape(surface, 26));
-        card.addView(logo(dp(98)), new LinearLayout.LayoutParams(dp(98), dp(98)));
-        TextView eyebrow = label("بوابة الزبون", 14, accent, true); eyebrow.setGravity(Gravity.CENTER); eyebrow.setPadding(0, dp(14), 0, dp(4)); card.addView(eyebrow);
-        TextView title = label("عرض حساباتي", 24, text, true); title.setGravity(Gravity.CENTER); card.addView(title);
-        if (!BuildConfig.STANDALONE_MODE) {
-            TextView notice = label("دخول الزبائن الرسمي يتطلب تفعيل التحقق من ملكية رقم الهاتف عبر SMS وربطه بالخادم. لم يتم تفعيل تسجيل حقيقي قبل اختيار مزود الرسائل.", 14, muted, false);
-            notice.setGravity(Gravity.CENTER); notice.setPadding(0, dp(12), 0, dp(12)); card.addView(notice);
-            card.addView(button("العودة لتسجيل دخول المتجر", primary, Color.WHITE, () -> host.show("login")), matchWithBottom(10));
-            card.addView(button("تواصل معنا", soft, softForeground(), host::openSupportWhatsApp), match());
-        } else {
-            TextView hint = label("أدخل رقم الهاتف وكلمة مرور حساب الاختبار.", 14, muted, false); hint.setGravity(Gravity.CENTER); hint.setPadding(0, dp(6), 0, dp(14)); card.addView(hint);
-            EditText phone = input("رقم الهاتف", false); phone.setSingleLine(true); phone.setInputType(3); phone.setTextDirection(View.TEXT_DIRECTION_LTR);
-            card.addView(phone, matchWithBottom(10));
-            EditText password = input("كلمة المرور", true); password.setSingleLine(true); card.addView(password, matchWithBottom(14));
-            TextView demo = label("بيانات حساب الاختبار: 0599999999 / 123123", 13, accent, true); demo.setGravity(Gravity.CENTER); demo.setPadding(0, 0, 0, dp(12)); card.addView(demo);
-            card.addView(button("دخول الزبون", primary, Color.WHITE, () -> host.loginDemoCustomer(phone.getText().toString(), password.getText().toString())), matchWithBottom(10));
-            card.addView(button("العودة لتسجيل دخول المتجر", soft, softForeground(), () -> host.show("login")), match());
-        }
-        root.addView(card, new LinearLayout.LayoutParams(-1, -2)); host.setContentView(root);
-    }
-
-    /** Local, read-only demonstration. It never adds sample balances and only shows exact phone matches. */
-    private void buildCustomerPortal() {
-        root = new LinearLayout(host); root.setOrientation(LinearLayout.VERTICAL); root.setBackground(pageBackground()); root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        ScrollView scroller = scroll(); LinearLayout page = new LinearLayout(host); page.setOrientation(LinearLayout.VERTICAL); page.setPadding(dp(18), dp(14), dp(18), dp(20));
-        page.addView(logo(dp(64)), new LinearLayout.LayoutParams(dp(64), dp(64)));
-        TextView title = label("حساباتي لدى المتاجر", 23, text, true); page.addView(title, topBottom(12, 3));
-        page.addView(label("عرض محلي تجريبي للبيانات المرتبطة برقم الهاتف فقط.", 13, muted, false), bottomMargin(12));
-        TextView privacy = label("هذه نسخة اختبار مستقلة. تظهر هنا السجلات الفعلية الموجودة على هذا الجهاز فقط؛ لا توجد بيانات تجريبية مضافة ولا اتصال بمتاجر أخرى.", 12, muted, false);
-        privacy.setPadding(dp(12), dp(10), dp(12), dp(10)); privacy.setBackground(shape(soft, 16)); page.addView(privacy, bottomMargin(14));
-
-        JSONObject data = snapshot(); JSONArray people = array(data, "contacts"); JSONArray transactions = array(data, "transactions"); JSONArray debts = array(data, "debts");
-        int matched = 0; String signedPhone = "0599999999";
-        for (int i = 0; i < people.length(); i++) {
-            JSONObject person = people.optJSONObject(i); if (person == null || !normalizePhone(signedPhone).equals(normalizePhone(person.optString("phone")))) continue;
-            matched++;
-            LinearLayout shop = card(surface); shop.setPadding(dp(14), dp(14), dp(14), dp(14)); shop.setElevation(dp(2));
-            shop.addView(label(host.storeName().isEmpty() ? "متجر محفوظ على هذا الجهاز" : host.storeName(), 17, text, true));
-            shop.addView(label("الاسم المسجل: " + person.optString("name", "زبون"), 13, muted, false), topMargin(4));
-            shop.addView(label("الرصيد المستحق: " + money(person.optDouble("receivable")), 18, primary, true), topMargin(9));
-            if (person.optDouble("receivable") > 0d) {
-                String store = host.storeName().trim().isEmpty() ? "متجر سدد" : host.storeName().trim();
-                shop.addView(label("إشعار: لديك دين مسجل لدى متجر " + store + ".", 13, warn, true), topMargin(6));
-            }
-            int transactionCount = 0;
-            for (int t = 0; t < transactions.length(); t++) {
-                JSONObject tx = transactions.optJSONObject(t); if (tx == null || tx.optLong("contactId") != person.optLong("id") || !"receivable".equals(tx.optString("direction"))) continue;
-                transactionCount++;
-                String heading = "payment".equals(tx.optString("kind")) ? "دفعة مسجلة" : "دين مسجل";
-                shop.addView(label(heading + " · " + money(tx.optDouble("amount")), 13, text, true), topMargin(7));
-                shop.addView(label(dayAndTime(tx.optLong("createdAt")), 11, muted, false), topMargin(2));
-                String note = tx.optString("note", "").trim(); if (!note.isEmpty()) shop.addView(label("البيان: " + note, 12, muted, false), topMargin(2));
-            }
-            int open = 0;
-            for (int d = 0; d < debts.length(); d++) {
-                JSONObject debt = debts.optJSONObject(d); if (debt == null || debt.optLong("contactId") != person.optLong("id") || !"receivable".equals(debt.optString("direction")) || debt.optDouble("remaining") <= 0) continue;
-                open++;
-                String due = debt.optString("dueDate", "").trim();
-                if (!due.isEmpty()) shop.addView(label("استحقاق " + formatDueDate(due) + " · متبقٍ " + money(debt.optDouble("remaining")), 12, accent, false), topMargin(4));
-            }
-            if (transactionCount == 0) shop.addView(label("لا توجد حركات مسجلة.", 12, muted, false), topMargin(8));
-            if (open == 0) shop.addView(label("لا يوجد رصيد دين مفتوح.", 12, accent, false), topMargin(6));
-            page.addView(shop, bottomMargin(12));
-        }
-        if (matched == 0) {
-            LinearLayout empty = card(surface); empty.setPadding(dp(16), dp(18), dp(16), dp(18));
-            empty.addView(label("لا توجد سجلات لهذا الرقم على هذا الجهاز.", 15, text, true));
-            empty.addView(label("أضف الرقم نفسه في حساب متجر الاختبار ثم افتح بوابة الزبون مجددًا.", 12, muted, false), topMargin(7));
-            page.addView(empty, bottomMargin(14));
-        }
-        page.addView(button("تسجيل الخروج", soft, softForeground(), host::exitDemoCustomer), bottomMargin(8));
-        scroller.addView(page); root.addView(scroller, new LinearLayout.LayoutParams(-1, -1)); host.setContentView(root);
-    }
-
-    private String normalizePhone(String value) {
-        if (value == null) return "";
-        StringBuilder digits = new StringBuilder();
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (c >= '\u0660' && c <= '\u0669') c = (char) ('0' + c - '\u0660');
-            else if (c >= '\u06F0' && c <= '\u06F9') c = (char) ('0' + c - '\u06F0');
-            if (c >= '0' && c <= '9') digits.append(c);
-        }
-        String n = digits.toString();
-        if (n.startsWith("00970")) return n.substring(2);
-        if (n.startsWith("970")) return n;
-        if (n.startsWith("0")) return "970" + n.substring(1);
-        return n;
-    }
-
     private void buildForcedPasswordChange() {
         root = new LinearLayout(host); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
         root.setPadding(dp(24), dp(20), dp(24), dp(20)); root.setBackground(pageBackground()); root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
@@ -376,7 +280,6 @@ final class NativeScreens {
         brand.addView(titleBox, new LinearLayout.LayoutParams(0, -2,1));
         FrameLayout.LayoutParams brandParams = new FrameLayout.LayoutParams(-1, -2, Gravity.RIGHT | Gravity.CENTER_VERTICAL);brandParams.leftMargin=dp(100);
         header.addView(brand, brandParams);
-
 
         FrameLayout bell = new FrameLayout(host); bell.setContentDescription("الإشعارات");
         ImageButton bellButton = new ImageButton(host); bellButton.setImageResource(R.drawable.ic_notifications);
@@ -691,10 +594,6 @@ final class NativeScreens {
                     : LedgerTableExcel.create(store, owner, period, reportDatabase.getSnapshot(), onlyContactId, from, to),
                     "كشف-" + name + (which == 0 ? ".pdf" : ".xlsx"), which == 0 ? "application/pdf" : LedgerTableExcel.MIME, true);
         }).show();
-    }
-
-    private byte[] createContactStatementPdf(JSONObject person) throws Exception {
-        return LedgerTablePdf.create(host.storeName(), host.ownerName(), reportRangeLabel, snapshot(), person.optLong("id"), reportStartMillis, reportEndMillis);
     }
 
     private final class StatementPdfWriter {
@@ -1161,50 +1060,6 @@ final class NativeScreens {
 
     private boolean inReportRange(long timestamp) { return timestamp >= reportStartMillis && timestamp <= reportEndMillis; }
 
-    private void promptPrintDisbursement() {
-        LinearLayout form = new LinearLayout(host); form.setOrientation(LinearLayout.VERTICAL); form.setPadding(dp(20), dp(12), dp(20), dp(8));
-        EditText recipient = new EditText(host); recipient.setSingleLine(true); recipient.setHint("اسم المستلم");
-        EditText phone = new EditText(host); phone.setSingleLine(true); phone.setHint("رقم الهاتف (اختياري)"); phone.setInputType(3);
-        EditText amount = new EditText(host); amount.setSingleLine(true); amount.setHint("المبلغ بالشيكل"); amount.setInputType(8194 | 4096);
-        EditText reason = new EditText(host); reason.setMinLines(2); reason.setHint("سبب الصرف");
-        form.addView(label("سند صرف للطباعة. لا يسجل مصروفاً في دفتر الديون.", 12, muted, false), bottomMargin(7));
-        form.addView(recipient); form.addView(phone); form.addView(amount); form.addView(reason);
-        AlertDialog dialog = new SadadDialog.Builder(host).setTitle("إعداد سند صرف")
-                .setView(form).setNegativeButton("إلغاء", null).setPositiveButton("طباعة السند", null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
-            if (recipient.getText().toString().trim().isEmpty()) { recipient.setError("أدخل اسم المستلم."); return; }
-            try {
-                double value = Double.parseDouble(westernDigits(amount.getText().toString().trim()).replace(',', '.'));
-                if (value <= 0) { amount.setError("أدخل مبلغاً أكبر من صفر."); return; }
-                host.printPdf(createVoucherPdf("سند صرف", recipient.getText().toString(), phone.getText().toString(), value,
-                        "نقداً", reason.getText().toString(), System.currentTimeMillis()), "سند صرف " + recipient.getText().toString().trim());
-                dialog.dismiss();
-            } catch (Exception invalid) { amount.setError("أدخل مبلغاً صحيحاً."); }
-        }));
-        dialog.show();
-    }
-
-    private byte[] createVoucherPdf(String title, String personName, String phone, double amount,
-                                    String method, String note, long createdAt) throws Exception {
-        PdfDocument document = new PdfDocument();
-        JSONObject cover = new JSONObject().put("name", personName == null ? "" : personName);
-        StatementPdfWriter writer = new StatementPdfWriter(document, cover, 595, 842, 38);
-        writer.startPage();
-        writer.addBlock(title, 24, Color.rgb(6, 75, 66), true, 10, false);
-        writer.addBlock("رقم السند: " + Long.toString(Math.abs(createdAt), 36).toUpperCase(Locale.ROOT), 12, Color.rgb(75, 91, 85), false, 5, true);
-        writer.addBlock("المتجر: " + (host.storeName().trim().isEmpty() ? "سدد" : host.storeName()), 14, Color.rgb(25, 43, 38), true, 5, true);
-        if (!host.ownerName().trim().isEmpty()) writer.addBlock("صاحب المتجر: " + host.ownerName(), 12, Color.rgb(75, 91, 85), false, 5, true);
-        writer.addBlock("الاسم: " + (personName == null || personName.trim().isEmpty() ? "غير محدد" : personName.trim()), 15, Color.rgb(25, 43, 38), true, 5, true);
-        if (phone != null && !phone.trim().isEmpty()) writer.addBlock("رقم الهاتف: " + phone.trim(), 12, Color.rgb(75, 91, 85), false, 5, true);
-        writer.addBlock("المبلغ: " + money(amount) + " ₪", 20, Color.rgb(6, 75, 66), true, 7, true);
-        writer.addBlock("طريقة الدفع: " + (method == null ? "نقداً" : method), 12, Color.rgb(75, 91, 85), false, 5, true);
-        writer.addBlock("التاريخ والساعة: " + dayAndTime(createdAt), 12, Color.rgb(75, 91, 85), false, 5, true);
-        if (note != null && !note.trim().isEmpty()) writer.addBlock("البيان: " + note.trim(), 12, Color.rgb(35, 50, 45), false, 8, true);
-        writer.addBlock("توقيع المستلم: ____________________", 13, Color.rgb(35, 50, 45), false, 10, true);
-        writer.addBlock("توقيع صاحب المتجر: ____________________", 13, Color.rgb(35, 50, 45), false, 10, true);
-        writer.finish(); ByteArrayOutputStream output = new ByteArrayOutputStream(); document.writeTo(output); document.close(); return output.toByteArray();
-    }
-
     private void renderReportPeople(LinearLayout results, JSONArray contacts) {
         results.removeAllViews();
         String query = reportSearchText == null ? "" : reportSearchText.trim().toLowerCase(Locale.ROOT);
@@ -1225,8 +1080,6 @@ final class NativeScreens {
         else if (query.isEmpty() && matched > reportContactLimit) results.addView(button("عرض المزيد من الأشخاص", soft, softForeground(), () -> { reportContactLimit += 60; renderReportPeople(results, contacts); }), bottomMargin(10));
     }
 
-    private void shareCompletePdf() { exportCompletePdf(true); }
-
     private void exportCompletePdf(boolean share) {
         JSONObject snap = snapshot();
         if (array(snap, "contacts").length() == 0) { host.showBrandedMessage("أضف أشخاصًا وحركات قبل إنشاء كشف السجلات."); return; }
@@ -1239,10 +1092,6 @@ final class NativeScreens {
                     "كشف-سدد-" + new SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(new Date()) + (which == 0 ? ".pdf" : ".xlsx"),
                     which == 0 ? "application/pdf" : LedgerTableExcel.MIME, share);
         }).show();
-    }
-
-    private byte[] createCompleteStatementPdf(JSONObject snap) throws Exception {
-        return LedgerTablePdf.create(host.storeName(), host.ownerName(), reportRangeLabel, snap, 0L, reportStartMillis, reportEndMillis);
     }
 
     private void buildNotifications() {
@@ -1453,37 +1302,6 @@ final class NativeScreens {
         }
     }
 
-    private void addSubscriptionSummary() {
-        if (BuildConfig.STANDALONE_MODE) {
-            LinearLayout summary = card(soft); summary.setPadding(dp(15), dp(11), dp(15), dp(11));
-            summary.addView(label("نسخة مستقلة", 12, muted, false));
-        summary.addView(label("لا تتصل باشتراك أو خادم", 16, text, true), topMargin(3));
-            content.addView(summary, bottomMargin(17));
-            return;
-        }
-        JSONObject account = host.sessions.account();
-        String mode = account.optString("subscriptionMode", "permanent");
-        String detail;
-        if ("permanent".equals(mode)) detail = "اشتراكك فعال دون تاريخ انتهاء";
-        else if ("paused".equals(mode)) detail = "الاشتراك موقوف مؤقتًا";
-        else {
-            long expiry = account.optLong("subscriptionExpiresAt", 0L);
-            long remaining = Math.max(0L, expiry - System.currentTimeMillis());
-            if (remaining == 0L) detail = "انتهت مدة الاشتراك · تواصل مع الأدمن للتجديد";
-            else if (remaining < 86_400_000L) {
-                long hours = Math.max(1L, (remaining + 3_599_999L) / 3_600_000L);
-                detail = "متبقي أقل من يوم · " + NumberFormat.getIntegerInstance(Locale.US).format(hours) + " ساعة";
-            } else {
-                long days = remaining / 86_400_000L;
-                detail = days == 1L ? "متبقي يوم واحد" : "متبقي " + NumberFormat.getIntegerInstance(Locale.US).format(days) + " أيام";
-            }
-        }
-        LinearLayout summary = card(soft); summary.setPadding(dp(15), dp(11), dp(15), dp(11));
-        summary.addView(label("الاشتراك الحالي", 12, muted, false));
-        summary.addView(label(detail, 16, text, true), topMargin(3));
-        content.addView(summary, bottomMargin(17));
-    }
-
     private AlertDialog promptStoreProfile() {
         LinearLayout box = new LinearLayout(host); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(18), dp(6), dp(18), 0);
         EditText store = input("اسم المتجر", false); store.setText(host.storeName()); box.addView(store, bottomMargin(10));
@@ -1648,12 +1466,6 @@ final class NativeScreens {
         return box;
     }
 
-    private View actionCard(int glyph, String title, Runnable action) {
-        LinearLayout box = card(surface); box.setGravity(Gravity.CENTER); box.setPadding(dp(6), dp(10), dp(6), dp(8));
-        ImageView icon = iconView(glyph, accent); box.addView(icon, new LinearLayout.LayoutParams(dp(27), dp(27)));
-        TextView caption = label(title, 11, text, true); caption.setGravity(Gravity.CENTER); box.addView(caption, topMargin(8)); box.setOnClickListener(v -> action.run()); return box;
-    }
-
     private ImageView iconView(int resource, int color) {
         ImageView icon = new ImageView(host); icon.setImageResource(resource); icon.setColorFilter(host.isDarkTheme() && color == primary ? accent : color);
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER); icon.setContentDescription(null); return icon;
@@ -1733,7 +1545,6 @@ final class NativeScreens {
         if (color == surface) drawable.setStroke(dp(1), line); return drawable;
     }
 
-    private int shapeButtonColor() { return Color.rgb(159, 46, 51); }
     private SadadDatabase cachedDatabase;
     private long cachedSnapshotToken = Long.MIN_VALUE;
     private boolean cachedOverview;
@@ -1755,25 +1566,9 @@ final class NativeScreens {
         JSONArray contacts = array(snapshot(), "contacts"); for (int i = 0; i < contacts.length(); i++) { JSONObject c = contacts.optJSONObject(i); if (c != null && c.optLong("id") == id) return c; } return null;
     }
     private boolean isReceivableTransaction(JSONObject tx) { return tx != null && "receivable".equals(tx.optString("direction")); }
-    private int countReceivableTransactions(JSONArray transactions) {
-        int count = 0; for (int i = 0; i < transactions.length(); i++) if (isReceivableTransaction(transactions.optJSONObject(i))) count++; return count;
-    }
-    private int countReceivablePayments(JSONArray payments) {
-        Set<String> actions = new HashSet<>();
-        for (int i = 0; i < payments.length(); i++) {
-            JSONObject payment = payments.optJSONObject(i);
-            if (payment != null && isReceivableTransaction(payment)) actions.add(payment.optLong("contactId") + ":" + payment.optLong("createdAt") + ":" + payment.optString("method") + ":" + payment.optString("note"));
-        }
-        return actions.size();
-    }
-    private int countDebts(JSONArray debts) {
-        int count = 0; for (int i = 0; i < debts.length(); i++) { JSONObject debt = debts.optJSONObject(i); if (debt != null && "receivable".equals(debt.optString("direction"))) count++; } return count;
-    }
     private int contactsWithBalance(JSONArray contacts, String field) {
         int n = 0; for (int i = 0; i < contacts.length(); i++) { JSONObject c = contacts.optJSONObject(i); if (c != null && c.optDouble(field) > 0) n++; } return n;
     }
-    private JSONObject contactOf(JSONObject[] people, long id) { for (JSONObject p : people) if (p != null && p.optLong("id") == id) return p; return null; }
-    private JSONObject debtOf(JSONArray debts, long id) { for (int i = 0; i < debts.length(); i++) { JSONObject d = debts.optJSONObject(i); if (d != null && d.optLong("id") == id) return d; } return null; }
     private String money(double n) {
         try { return NumberFormat.getNumberInstance(Locale.US).format(n) + " ₪"; }
         catch (Exception e) { return String.format(Locale.US, "%.2f ₪", n); }

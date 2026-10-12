@@ -334,37 +334,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
         }
     }
 
-    public synchronized void updateDebt(JSONObject input) {
-        long debtId = input.optLong("debtId", -1L);
-        long amount = toCents(input.optString("amount", "0"));
-        String direction = input.optString("direction", "receivable");
-        if (amount <= 0L) throw new IllegalArgumentException("أدخل مبلغًا أكبر من صفر.");
-        if (!"receivable".equals(direction)) throw new IllegalArgumentException("يسجل هذا الإصدار الديون المستحقة لك فقط.");
-        SQLiteDatabase db = getWritableDatabase();
-        long paid = scalarLong(db, "SELECT COALESCE(SUM(amount_cents),0) FROM payments WHERE debt_id=?", new String[]{String.valueOf(debtId)});
-        if (amount < paid) throw new IllegalArgumentException("لا يمكن أن يقل أصل الدين عن الدفعات المسجلة.");
-        ContentValues values = new ContentValues();
-        values.put("amount_cents", amount);
-        values.put("direction", direction);
-        values.put("note", clean(input.optString("note"), 500));
-        values.put("due_date", clean(input.optString("dueDate"), 20));
-        int changed = db.update("debts", values, "id=?", new String[]{String.valueOf(debtId)});
-        if (changed == 0) throw new IllegalArgumentException("لم يتم العثور على الدين.");
-    }
-
-    public synchronized void deleteAllData() {
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try {
-            db.delete("payments", null, null);
-            db.delete("debts", null, null);
-            db.delete("contacts", null, null);
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
-    }
-
     /** Atomically creates a contact and, when entered, the contact's first receivable debt. */
     public synchronized JSONObject saveContactWithInitialDebt(JSONObject input, String amountText, String dueDate, String debtNote) throws JSONException {
         String name = clean(input.optString("name"), 120);
@@ -398,11 +367,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
             db.setTransactionSuccessful();
             return new JSONObject().put("id", contactId).put("debtId", debtId);
         } finally { db.endTransaction(); }
-    }
-
-    public synchronized boolean deleteContact(long contactId) {
-        try { return deleteContactToTrash(contactId); }
-        catch (JSONException e) { throw new IllegalStateException("تعذر حفظ السجل في سلة المحذوفات.", e); }
     }
 
     /** Archives and removes a contact's fully settled ledger while keeping the contact itself. */
@@ -664,7 +628,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
     synchronized Cursor openHomeHistory() {
         return getReadableDatabase().rawQuery("SELECT d.id*2 AS _id,d.contact_id,c.name,'debt' AS kind,d.amount_cents,d.created_at,d.created_by FROM debts d JOIN contacts c ON c.id=d.contact_id WHERE d.direction='receivable' UNION ALL SELECT MIN(p.id)*2+1,d.contact_id,c.name,'payment',SUM(p.amount_cents),p.created_at,p.created_by FROM payments p JOIN debts d ON d.id=p.debt_id JOIN contacts c ON c.id=d.contact_id WHERE d.direction='receivable' GROUP BY p.created_at,d.contact_id,p.note,p.method,p.created_by ORDER BY 6 DESC,1 DESC",null);
     }
-    synchronized JSONObject getRecentHistory(int limit) throws JSONException { return buildSnapshot(true,0,Math.max(1,limit)); }
     synchronized JSONObject getOverview() throws JSONException { return buildSnapshot(true,0,1000); }
     synchronized JSONObject getPersonSnapshot(long id) throws JSONException { return buildSnapshot(false,id,0); }
     private JSONObject buildSnapshot(boolean overview, long onlyPerson, int limit) throws JSONException {
@@ -887,10 +850,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
         } finally { db.endTransaction(); }
     }
 
-    public synchronized boolean hasContacts() {
-        try (Cursor cursor = getReadableDatabase().rawQuery("SELECT 1 FROM contacts LIMIT 1", null)) { return cursor.moveToFirst(); }
-    }
-
     /**
      * Folds the signed ledger into the local tables, which stay the only thing the screens, the
      * exports and the reminders read. Contacts, debts and payments are matched on the ledger's UUID
@@ -1039,14 +998,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
         getWritableDatabase().update("contacts", values, "id=?", new String[]{String.valueOf(contactId)});
     }
 
-    /** The epoch and cursor of the last snapshot this device folded in. */
-    public synchronized JSONObject ledgerMeta() {
-        try (Cursor cursor = getReadableDatabase().rawQuery("SELECT epoch,cursor,updated_at FROM ledger_meta WHERE id=1", null)) {
-            if (!cursor.moveToFirst()) return new JSONObject();
-            return new JSONObject().put("epoch", cursor.getString(0)).put("cursor", cursor.getLong(1)).put("updatedAt", cursor.getLong(2));
-        } catch (JSONException impossible) { return new JSONObject(); }
-    }
-
     /** Rows this device holds that the signed ledger has never seen — the pre-cutover leftovers. */
     public synchronized int unmappedRowCount() {
         int total = 0;
@@ -1146,19 +1097,6 @@ public final class SadadDatabase extends SQLiteOpenHelper implements SyncLedger 
                 if (cursor.getLong(0) == exceptId) continue;
                 if (phoneDigits(cursor.getString(1)).equals(digits)) return true;
             }
-        }
-        return false;
-    }
-
-    public synchronized boolean hasExactDuplicateContact(String name, String phone, long exceptId) {
-        return hasDuplicateContact(clean(name, 120), clean(phone, 40), exceptId);
-    }
-
-    public synchronized boolean hasPotentialPhoneDuplicate(String phone, long exceptId) {
-        String digits = normalizedPhoneDigits(phone);
-        if (digits.isEmpty()) return false;
-        try (Cursor cursor = getReadableDatabase().rawQuery("SELECT id,phone FROM contacts WHERE id<>?", new String[]{String.valueOf(exceptId)})) {
-            while (cursor.moveToNext()) if (digits.equals(normalizedPhoneDigits(cursor.getString(1)))) return true;
         }
         return false;
     }
