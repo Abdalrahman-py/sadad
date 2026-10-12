@@ -333,7 +333,27 @@ infer the mode from a mid-sync 409 — the durable v3 queue lives in a different
 `APP/PagedSnapshotTransfer.java` is not used by the v3 path (a v3 snapshot is one consistent
 read); leave it for the legacy branch.
 
-### 4.3 The one hard structural problem
+### 4.3 The id model — decided on 12 October 2026
+
+Chosen: **a stable UUID column on the existing tables** (option 1 of the three below, without a
+separate mapping table). Each of `contacts`, `debts` and `payments` carries `remote_uuid` +
+`remote_version`, with a unique index on the UUID; `SadadDatabase.importLedgerView` matches rows on
+the UUID and inserts what it does not have, so every existing integer id — and everything that
+points at it: the screens, the exports, the reminders — keeps working unchanged.
+
+Why this one: the signed ledger is the store's only writer, so a row that the ledger does not have
+must disappear, and a row that it does must keep its local identity across snapshots. Option 2
+(rendering the screens from `view()`) would have meant touching every read path in `NativeScreens`
+for no behavioural gain; option 3 (a separate ledger database plus an adapter) would have left two
+places holding the same money. A local row with **no** UUID is left alone rather than deleted: those
+are entries typed before the device joined the signed ledger, and a silent delete is a lost record.
+`SadadDatabase.unmappedRowCount()` counts them so the cutover can be reported instead of guessed.
+
+`LedgerRepository.view()` — the projection the parked client kept in `LedgerRepository.java` — was
+ported as `LedgerProjection` and is pure JSON, tested in the JVM (13 tests). The Android half is
+`LedgerQueue`.
+
+The three options as originally posed, kept for the record:
 
 `APP/SadadDatabase` keys everything on `INTEGER PRIMARY KEY AUTOINCREMENT` ids
 (`APP/SadadDatabase.java:154-180`), and the UI reads `getSnapshot()/getOverview()/getPersonSnapshot()`
