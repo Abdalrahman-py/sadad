@@ -54,6 +54,14 @@ jobs:
       - name: JVM unit tests (no device, no emulator)
         run: ./gradlew testServerDebugUnitTest --console=plain
 
+      # This step exists because the first CI run caught a real one: a device set to UTC produced a
+      # different createdAt shape ("Z") than a device at +03:00, and only the runner's zone exposed
+      # it. Running the suite in a non-UTC zone as well keeps that class of bug visible.
+      - name: JVM unit tests under a non-UTC device zone
+        run: ./gradlew testServerDebugUnitTest --rerun-tasks --console=plain
+        env:
+          TZ: Asia/Gaza
+
       - name: Build both flavors
         run: ./gradlew assembleServerDebug assembleStandaloneDebug --console=plain
 
