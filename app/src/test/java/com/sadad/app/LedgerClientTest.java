@@ -137,7 +137,7 @@ public final class LedgerClientTest {
         public String token() { return device; }
         public JSONObject auth() { return envelope; }
         public void updateAuth(JSONObject auth) { envelope = auth; }
-        public String apiBaseUrl() { return gateway; }
+        public String authBaseUrl() { return gateway; }
     }
 
     // ------------------------------------------------------------------ the verifying peer
