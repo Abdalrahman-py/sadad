@@ -16,6 +16,7 @@ interface LedgerSession {
 
     void updateAuth(JSONObject auth) throws Exception;
 
-    /** Base address of the gateway, where {@code /mobile/auth/refresh} lives. */
-    String apiBaseUrl();
+    /** Base address of the gateway, where {@code /mobile/auth/refresh} lives. The signed ledger is a
+     *  different origin, and only the gateway can renew the Auth envelope the signed requests carry. */
+    String authBaseUrl();
 }

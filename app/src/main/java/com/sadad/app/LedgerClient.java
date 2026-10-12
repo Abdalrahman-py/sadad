@@ -119,7 +119,7 @@ final class LedgerClient implements LedgerApi {
         String refreshToken = auth.optString("refreshToken");
         if (refreshToken.isEmpty()) return;   // nothing to renew with: let the ledger answer 401
         JSONObject body = new JSONObject().put("refreshToken", refreshToken);
-        HttpURLConnection connection = (HttpURLConnection) new URL(session.apiBaseUrl().replaceAll("/+$", "") + "/mobile/auth/refresh").openConnection();
+        HttpURLConnection connection = (HttpURLConnection) new URL(session.authBaseUrl().replaceAll("/+$", "") + "/mobile/auth/refresh").openConnection();
         try {
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(10000);

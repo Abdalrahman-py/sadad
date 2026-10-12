@@ -225,6 +225,10 @@ final class SessionStore implements SyncSession, LedgerSession {
     }
     public void setAccount(JSONObject account) { preferences.edit().putString("account", account == null ? "{}" : account.toString()).apply(); updateCurrentSavedBundle(); }
     public String apiBaseUrl() { return preferences.getString("api_base_url", BuildConfig.API_BASE_URL); }
+
+    /** The gateway that issues the Auth envelope. Fixed at build time, like the ledger's own origin:
+     *  a device session must not be renewable against a host the user can type into. */
+    public String authBaseUrl() { return BuildConfig.AUTH_BASE_URL; }
     void setApiBaseUrl(String value) { preferences.edit().putString("api_base_url", value).apply(); updateCurrentSavedBundle(); }
 
     /** Auth envelope (accessToken/refreshToken/expiresAt) issued by the sadad-auth gateway.

@@ -607,7 +607,8 @@ final class NativeScreens {
                 .setPositiveButton("حذف الزبون", (dialog, which) -> host.showUndoBanner(
                         "الزبون " + name,
                         () -> host.showBrandedMessage("تم التراجع عن حذف " + name + "."),
-                        () -> {
+                        () -> host.archiveContactAsync(id, "حذف الزبون من التطبيق", (archived, failure) -> {
+                            if (!archived) { host.showBrandedMessage(failure.isEmpty() ? "تعذر حذف السجل." : failure); return; }
                             try {
                                 if (!host.database.deleteContactToTrash(id)) return;
                                 host.markLedgerChanged();
@@ -616,7 +617,7 @@ final class NativeScreens {
                             } catch (Exception error) {
                                 host.showBrandedMessage(error.getMessage() == null ? "تعذر حذف السجل." : error.getMessage());
                             }
-                        })).show();
+                        }))).show();
     }
 
     private boolean hasOutstandingDebt(JSONObject person) {
@@ -638,6 +639,12 @@ final class NativeScreens {
     private void confirmDeleteLedger(JSONObject person) {
         if (!host.devicePermissionAllowed("deleteRecords")) { host.showBrandedMessage("الأدمن قيّد حذف السجلات لهذا المستخدم."); return; }
         String name = person.optString("name", "هذا الشخص");
+        if (host.signedLedger()) {
+            // The signed ledger has no operation that erases a history: a payment is undone with a
+            // reversal and a debt is corrected, both of which need a reason and an admin-approved path.
+            host.showBrandedMessage("لا يحذف الدفتر المعتمد سجل الحركات؛ استخدم حذف الزبون، أو الإلغاء والتصحيح من لوحة الأدمن.");
+            return;
+        }
         if (hasOutstandingDebt(person)) { promptSettleBeforeDelete(person); return; }
         JSONArray transactions = array(snapshot(), "transactions");
         boolean hasHistory = false;
@@ -844,12 +851,20 @@ final class NativeScreens {
                 JSONObject input = new JSONObject().put("name", personName).put("phone", personPhone)
                         .put("category", category.getText().toString().trim().isEmpty() ? "عميل" : category.getText().toString())
                         .put("note", note.getText().toString()).put("creditLimit", creditLimit.getText().toString()).put("createdBy", host.currentOperatorName());
-                if (edit) { input.put("id", editingContactId); host.database.updateContact(input); contactId = editingContactId; }
-                else {
+                if (edit) {
+                    // An edit is a correction the ledger has to accept: the local row alone would be
+                    // overwritten by the next snapshot.
+                    contactId = editingContactId;
+                    host.updateContactAsync(input.put("id", editingContactId), (saved, failure) -> {
+                        if (!saved) { host.showBrandedMessage(failure.isEmpty() ? "تعذر حفظ التعديل." : failure); return; }
+                        host.showBrandedMessage("تم حفظ بيانات الشخص."); host.show("contact_detail");
+                    });
+                    return;
+                } else {
                     String debtNote = withDebt && firstDebtNote != null ? firstDebtNote.getText().toString() : "";
                     if (creditOverride[0]) debtNote = appendAuditNote(debtNote, "تم تجاوز سقف الائتمان بموافقة صاحب المتجر");
-                    contactId = host.database.saveContactWithInitialDebt(input, amount,
-                            withDebt ? firstDebtDue.getText().toString() : "", debtNote).optLong("id");
+                    contactId = host.addContact(input, amount,
+                            withDebt ? firstDebtDue.getText().toString() : "", debtNote);
                 }
                 host.markLedgerChanged(); host.showBrandedMessage(withDebt ? "تم حفظ الشخص وتسجيل الدين الأول." : "تم حفظ بيانات الشخص."); host.show("contact_detail");
             } catch (Exception e) { String message = e.getMessage() == null ? "تعذر الحفظ" : e.getMessage(); name.setError(message); host.showBrandedMessage(message); }
@@ -905,7 +920,7 @@ final class NativeScreens {
                             .setPositiveButton("تأكيد تسجيل الدين", (d, w) -> { finalReviewed[0] = true; saveButton[0].performClick(); }).show();
                     return;
                 }
-                host.database.saveDebt(new JSONObject().put("contactId", person.optLong("id"))
+                host.addDebt(new JSONObject().put("contactId", person.optLong("id"))
                         .put("direction", "receivable")
                         .put("amount", value).put("dueDate", due.getText().toString()).put("note", appendDebtAudit(note.getText().toString(), creditOverride[0], anomalyReviewed[0]))
                         .put("createdBy", host.currentOperatorName()));
@@ -987,7 +1002,7 @@ final class NativeScreens {
                             .setPositiveButton("تأكيد تسجيل الدفعة", (d, w) -> { finalReviewed[0] = true; saveButton[0].performClick(); }).show();
                     return;
                 }
-                JSONObject receipt = host.database.savePayment(new JSONObject().put("contactId", person.optLong("id")).put("amount", value)
+                JSONObject receipt = host.addPayment(new JSONObject().put("contactId", person.optLong("id")).put("amount", value)
                         .put("method", methodName).put("note", note.getText().toString()).put("createdBy", host.currentOperatorName()));
                 host.markLedgerChanged();
                 new SadadDialog.Builder(host).setTitle("تم تسجيل الدفعة")
@@ -1401,6 +1416,15 @@ final class NativeScreens {
             actions.addView(button("استعادة", soft, softForeground(), () -> {
                 try {
                     if ("contact".equals(kind)) {
+                        if (host.signedLedger()) {
+                            // The un-archive is a server correction, so it runs off the UI thread and
+                            // the message follows its answer.
+                            host.restoreTrashedContactAsync(id, (restored, failure) -> {
+                                if (!restored) { host.showBrandedMessage(failure.isEmpty() ? "تعذر العثور على السجل المحذوف." : failure); return; }
+                                host.markLedgerChanged(); host.showBrandedMessage("تمت الاستعادة."); host.refreshCurrentScreen();
+                            });
+                            return;
+                        }
                         if (!host.database.restoreTrashContact(id)) { host.showBrandedMessage("تعذر العثور على السجل المحذوف."); return; }
                         host.markLedgerChanged();
                     } else if ("ledger".equals(kind)) {

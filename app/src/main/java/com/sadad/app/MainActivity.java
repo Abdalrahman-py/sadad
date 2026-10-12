@@ -91,6 +91,10 @@ public final class MainActivity extends Activity {
     SadadDatabase database;
     SessionStore sessions;
     LocalSecurity localSecurity;
+    /** The signed-ledger queue for the signed-in store; null while the store is on the old protocol. */
+    private LedgerQueue ledger;
+    /** The last signed-ledger notice shown, so a standing refusal is not repeated on every pass. */
+    private String lastLedgerNotice = "";
     private NativeScreens screens;
     private volatile String currentRoute = "welcome";
     private String contactFormOrigin = "home";
@@ -425,7 +429,9 @@ public final class MainActivity extends Activity {
             try {
                 JSONObject request = new JSONObject().put("username", normalizedUsername).put("password", password)
                         .put("deviceId", sessions.deviceId()).put("deviceName", deviceName()).put("staffName", staffName == null ? "" : staffName.trim()).put("pagedSnapshot", !legacyLocal && !existingPending);
-                JSONObject response = apiRequest("POST", "/mobile/login", request, "");
+                // Login goes through the gateway: it is the only issuer of the Auth envelope the
+                // signed ledger's requests carry, and it answers with the store's protocol.
+                JSONObject response = gatewayRequest("POST", "/mobile/login", request, "");
                 JSONObject account = response.optJSONObject("account");
                 JSONObject snapshot = response.optJSONObject("snapshot");
                 String accountId = account == null ? "" : account.optString("id", "");
@@ -434,6 +440,7 @@ public final class MainActivity extends Activity {
                         : account != null && oldSyncAccountId.equals(accountId));
                 if (existingPending && !pending) throw new IllegalStateException("توجد بيانات غير متزامنة تخص حساب متجر مختلف. سجّل الدخول بحسابه أو صدّرها قبل المتابعة.");
                 sessions.save(response);
+                sessions.setLedgerMode(response.optString("ledger", ""));
                 if (!accountId.isEmpty()) switchDatabaseForAccount(accountId);
                 if (account != null) sessions.setAccount(account);
                 DueReminderManager.setStoreName(this, storeName());
@@ -445,7 +452,11 @@ public final class MainActivity extends Activity {
                     if (!prefs.contains(accountOwnerKey) && "sadad.db".equals(sessions.databaseNameForAccount(accountId)) && !prefs.getString("owner_name","").trim().isEmpty()) profile.putString(accountOwnerKey,prefs.getString("owner_name","").trim());
                     profile.apply();
                 }
-                if (pending) { sessions.setRevision(oldRevision); sessions.setUnsyncedChanges(true); }
+                if (signedLedger()) {
+                    // A signed-ledger store keeps its data in the queue, not in the legacy outbox:
+                    // the first pass after login enrols this device and pulls the ledger.
+                    sessions.setUnsyncedChanges(true);
+                } else if (pending) { sessions.setRevision(oldRevision); sessions.setUnsyncedChanges(true); }
                 else if (legacyLocal) { sessions.setUnsyncedChanges(true); sessions.setSyncBlocked(true); }
                 else {
                     if (response.optBoolean("snapshotDeferred")) LedgerSync.pull(sessions, database, new HttpSyncTransport(sessions));
@@ -464,7 +475,7 @@ public final class MainActivity extends Activity {
                         pendingLegacyServerSnapshot = snapshot;
                         pendingLegacyServerHasRows = hasLedgerRows(snapshot);
                         if (!mustChange) offerLegacyDataChoice(snapshot, pendingLegacyServerHasRows);
-                    } else if (pending && !mustChange) syncNow();
+                    } else if (!mustChange && (pending || signedLedger())) syncNow();
                 });
             } catch (Exception e) {
                 boolean networkFailure = e instanceof java.net.SocketTimeoutException
@@ -550,7 +561,21 @@ public final class MainActivity extends Activity {
     }
 
     private JSONObject apiRequest(String method, String endpoint, JSONObject body, String token) throws Exception {
-        String base = sessions.apiBaseUrl().trim();
+        return request(sessions.apiBaseUrl(), method, endpoint, body, token);
+    }
+
+    /** The gateway, which is the only issuer of the Auth envelope a signed request carries. */
+    private JSONObject gatewayRequest(String method, String endpoint, JSONObject body, String token) throws Exception {
+        return request(BuildConfig.AUTH_BASE_URL, method, endpoint, body, token);
+    }
+
+    private JSONObject request(String baseUrl, String method, String endpoint, JSONObject body, String token) throws Exception {
+        return request(baseUrl, method, endpoint, body, token, "");
+    }
+
+    /** The same exchange, also presenting the device token a private gateway route requires. */
+    private JSONObject request(String baseUrl, String method, String endpoint, JSONObject body, String token, String deviceToken) throws Exception {
+        String base = baseUrl.trim();
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         HttpURLConnection connection = (HttpURLConnection) new URL(base + endpoint).openConnection();
         connection.setRequestMethod(method);
@@ -559,6 +584,7 @@ public final class MainActivity extends Activity {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
         if (token != null && !token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
+        if (deviceToken != null && !deviceToken.isEmpty()) connection.setRequestProperty("X-Sadad-Session", deviceToken);
         if (body != null) {
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
@@ -592,6 +618,246 @@ public final class MainActivity extends Activity {
     }
     private final Runnable uploadDebounce = this::syncNow;
 
+    /** True when this store reads and writes through the signed ledger rather than the old protocol. */
+    boolean signedLedger() { return "v3".equals(sessions.ledgerMode()); }
+
+    /** The queue for the signed-in store, opened once per session. */
+    private LedgerQueue ledgerQueue() throws Exception {
+        if (ledger == null) ledger = LedgerQueue.open(this, sessions);
+        return ledger;
+    }
+
+    private void closeLedger() { if (ledger != null) { ledger.close(); ledger = null; } }
+
+    /** Folds the signed ledger into the local tables the screens, the exports and the reminders read. */
+    void materializeLedger() throws Exception { database.importLedgerView(ledgerQueue().view()); }
+
+    /**
+     * One pass of the signed protocol. The snapshot is folded into the local tables even when the
+     * pass reported a problem, so a store that is only waiting for approval still sees what the
+     * server already holds.
+     */
+    private SignedLedgerSync.Result signedSync() {
+        try {
+            SignedLedgerSync.Result result = ledgerQueue().sync();
+            materializeLedger();
+            return result;
+        } catch (Exception error) {
+            return SignedLedgerSync.Result.of(SignedLedgerSync.Outcome.RETRY_LATER,
+                    error.getMessage() == null || error.getMessage().isEmpty() ? "تعذر فتح الدفتر المعتمد." : error.getMessage());
+        }
+    }
+
+    /** The signed pass's outcome as the screen sees it. Repeated notices are said once. */
+    private void applySignedResult(SignedLedgerSync.Result result) {
+        if (result.outcome == SignedLedgerSync.Outcome.SYNCED) {
+            lastLedgerNotice = "";
+            runOnUiThread(this::refreshCurrentScreen);
+            network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
+            return;
+        }
+        if (result.outcome == SignedLedgerSync.Outcome.IDLE) return;
+        if (result.outcome == SignedLedgerSync.Outcome.RETRY_LATER) { SyncScheduler.schedule(this, true); return; }
+        String message = result.message == null ? "" : result.message;
+        if (message.isEmpty() || message.equals(lastLedgerNotice)) return;
+        lastLedgerNotice = message;
+        runOnUiThread(() -> showBrandedMessage(message));
+    }
+
+    /**
+     * The store's write path. On the signed ledger an edit becomes a queued operation, which is then
+     * folded into the local tables so the screen shows it immediately — marked as pending until the
+     * server accepts it.
+     */
+    long addContact(JSONObject input, String initialAmount, String dueDate, String debtNote) throws Exception {
+        if (!signedLedger()) return database.saveContactWithInitialDebt(input, initialAmount == null ? "" : initialAmount, dueDate, debtNote).optLong("id");
+        LedgerQueue queue = ledgerQueue();
+        String name = input.optString("name");
+        String phone = input.optString("phone");
+        String contactId = queue.add(LedgerCommand.CONTACT_CREATE, "",
+                LedgerCommand.contactPayload(name, phone, input.optString("category", "عميل"), input.optString("note")));
+        if (initialAmount != null && !initialAmount.trim().isEmpty()) {
+            long cents = SadadDatabase.centsOf(initialAmount);
+            if (cents > 0L) queue.add(LedgerCommand.DEBT_CREATE, contactId, LedgerCommand.debtPayload(contactId, cents, "receivable", debtNote, dueDate));
+        }
+        afterSignedWrite();
+        long id = database.localIdFor("contacts", contactId);
+        if (id == 0L) throw new IllegalStateException("حُفظ الإدخال في الطابور؛ ستتم المزامنة تلقائيًا.");
+        try {
+            long limit = SadadDatabase.centsOf(input.optString("creditLimit", "0"));
+            if (limit > 0L) database.setLocalCreditLimit(id, limit);
+        } catch (IllegalArgumentException notAMoney) {
+            // The contact is already queued; a ceiling the form could not parse must not undo that.
+        }
+        return id;
+    }
+
+    /** A debt against one contact, on whichever protocol this store is on. */
+    void addDebt(JSONObject input) throws Exception {
+        if (!signedLedger()) { database.saveDebt(input); return; }
+        long contactLocalId = input.optLong("contactId", -1L);
+        String contactId = database.remoteUuidFor("contacts", contactLocalId);
+        if (contactId.isEmpty()) throw new IllegalArgumentException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
+        long cents = SadadDatabase.centsOf(input.optString("amount", "0"));
+        LedgerQueue queue = ledgerQueue();
+        queue.add(LedgerCommand.DEBT_CREATE, contactId,
+                LedgerCommand.debtPayload(contactId, cents, input.optString("direction", "receivable"), input.optString("note"), input.optString("dueDate")));
+        afterSignedWrite();
+    }
+
+    /**
+     * A payment against a contact's whole balance. The ledger records a payment per debt, so the
+     * amount is allocated over the open debts oldest first — the same rule the offline ledger has
+     * always used — and each slice becomes its own operation.
+     */
+    JSONObject addPayment(JSONObject input) throws Exception {
+        if (!signedLedger()) return database.savePayment(input);
+        long contactLocalId = input.optLong("contactId", -1L);
+        String contactId = database.remoteUuidFor("contacts", contactLocalId);
+        if (contactId.isEmpty()) throw new IllegalArgumentException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
+        long amount = SadadDatabase.centsOf(input.optString("amount", "0"));
+        if (amount <= 0L) throw new IllegalArgumentException("أدخل مبلغ دفعة أكبر من صفر.");
+        String method = input.optString("method", "cash"), note = input.optString("note", "");
+        LedgerQueue queue = ledgerQueue();
+        JSONObject view = queue.view();
+        JSONArray debts = view.optJSONArray("debts");
+        java.util.List<JSONObject> open = new java.util.ArrayList<>();
+        for (int index = 0; debts != null && index < debts.length(); index++) {
+            JSONObject debt = debts.getJSONObject(index);
+            if (!"receivable".equals(debt.optString("direction")) || !contactId.equals(debt.optString("contact_id"))) continue;
+            if (debt.optLong("remainingCents") <= 0L) continue;
+            open.add(debt);
+        }
+        open.sort(java.util.Comparator.comparingLong(debt -> debt.optLong("createdAtMillis")));
+        long remaining = amount;
+        for (JSONObject debt : open) {
+            if (remaining <= 0L) break;
+            long allocation = Math.min(debt.optLong("remainingCents"), remaining);
+            if (allocation <= 0L) continue;
+            String debtId = debt.optString("id");
+            queue.add(LedgerCommand.PAYMENT_CREATE, debtId, LedgerCommand.paymentPayload(debtId, allocation, method, note));
+            remaining -= allocation;
+        }
+        if (remaining > 0L) throw new IllegalArgumentException("مبلغ الدفعة أكبر من إجمالي الدين الحالي للشخص.");
+        afterSignedWrite();
+        return new JSONObject().put("contactId", contactLocalId).put("amount", amount / 100.0d).put("createdAt", System.currentTimeMillis());
+    }
+
+    /**
+     * Removing a contact on the signed ledger is an archive the server has to agree to, because the
+     * ledger is the only place the deletion would survive: a local delete alone would come back on
+     * the next snapshot.
+     */
+    void archiveContact(long contactLocalId, String reason) throws Exception {
+        if (!signedLedger()) return;
+        String contactId = database.remoteUuidFor("contacts", contactLocalId);
+        if (contactId.isEmpty()) return;
+        long version = database.remoteVersionFor("contacts", contactLocalId);
+        LedgerQueue queue = ledgerQueue();
+        queue.online("contact.archive", new JSONObject().put("contactId", contactId)
+                .put("reason", LedgerCommand.reason(reason)), version);
+        afterSignedWrite();
+    }
+
+    /** Undoing an archive, the same way round. */
+    void restoreContact(long contactLocalId) throws Exception {
+        if (!signedLedger()) return;
+        String contactId = database.remoteUuidFor("contacts", contactLocalId);
+        if (contactId.isEmpty()) return;
+        LedgerQueue queue = ledgerQueue();
+        queue.online("contact.restore", new JSONObject().put("contactId", contactId)
+                .put("reason", LedgerCommand.reason("استعادة من سلة المحذوفات")), database.remoteVersionFor("contacts", contactLocalId));
+        afterSignedWrite();
+    }
+
+    /** What a caller needs to know when a server-side action finishes. */
+    interface LedgerAction { void complete(boolean success, String message); }
+
+    /**
+     * Archiving and restoring are corrections the server has to accept, so they are network calls —
+     * and a network call on the UI thread is a crash on Android. They run on the network executor and
+     * report back on the UI thread; the caller decides what to do with the local trash only after the
+     * server has agreed.
+     */
+    void archiveContactAsync(long contactLocalId, String reason, LedgerAction callback) {
+        if (!signedLedger()) { callback.complete(true, ""); return; }
+        network.execute(() -> {
+            try { archiveContact(contactLocalId, reason); runOnUiThread(() -> callback.complete(true, "")); }
+            catch (Exception error) { reportLedgerFailure(error, callback); }
+        });
+    }
+
+    /** The same shape for an edit: the ledger has to accept it, so it runs off the UI thread. */
+    void updateContactAsync(JSONObject input, LedgerAction callback) {
+        long localId = input.optLong("id", -1L);
+        if (!signedLedger()) {
+            try { database.updateContact(input); callback.complete(true, ""); }
+            catch (Exception error) {
+                callback.complete(false, error.getMessage() == null ? "تعذر حفظ التعديل." : error.getMessage());
+            }
+            return;
+        }
+        network.execute(() -> {
+            try {
+                String contactId = database.remoteUuidFor("contacts", localId);
+                if (contactId.isEmpty()) throw new IllegalStateException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
+                LedgerQueue queue = ledgerQueue();
+                JSONObject payload = new JSONObject()
+                        .put("contactId", contactId)
+                        .put("name", input.optString("name"))
+                        .put("phone", input.optString("phone"))
+                        .put("category", input.optString("category", "عميل"))
+                        .put("note", input.optString("note"));
+                queue.online("contact.update", payload, database.remoteVersionFor("contacts", localId));
+                afterSignedWrite();
+                try {
+                    long limit = SadadDatabase.centsOf(input.optString("creditLimit", "0"));
+                    if (limit > 0L) database.setLocalCreditLimit(localId, limit);
+                } catch (IllegalArgumentException notAMoney) {
+                    // The correction is already accepted; an unparsable ceiling must not undo it.
+                }
+                runOnUiThread(() -> callback.complete(true, ""));
+            } catch (Exception error) { reportLedgerFailure(error, callback); }
+        });
+    }
+
+    void restoreTrashedContactAsync(long trashItemId, LedgerAction callback) {
+        if (!signedLedger()) { callback.complete(false, ""); return; }
+        network.execute(() -> {
+            try {
+                if (restoreTrashedContact(trashItemId)) runOnUiThread(() -> callback.complete(true, ""));
+                else runOnUiThread(() -> callback.complete(false, ""));
+            } catch (Exception error) { reportLedgerFailure(error, callback); }
+        });
+    }
+
+    private void reportLedgerFailure(Exception error, LedgerAction callback) {
+        String message = error.getMessage() == null || error.getMessage().isEmpty() ? "تعذر إتمام الإجراء." : error.getMessage();
+        runOnUiThread(() -> callback.complete(false, message));
+    }
+
+    /**
+     * Restoring a contact that was archived while this device was on the signed ledger. The version
+     * has to come from the ledger — the local row was removed when the archive was folded in — so it
+     * is read from the last snapshot the queue holds.
+     */
+    boolean restoreTrashedContact(long trashItemId) throws Exception {
+        String contactId = database.contactUuidInTrash(trashItemId);
+        if (contactId.isEmpty()) return false;
+        LedgerQueue queue = ledgerQueue();
+        queue.online("contact.restore", new JSONObject().put("contactId", contactId)
+                .put("reason", LedgerCommand.reason("استعادة من سلة المحذوفات")), queue.archivedVersion(contactId));
+        database.deleteTrashItem(trashItemId);
+        afterSignedWrite();
+        return true;
+    }
+
+    private void afterSignedWrite() throws Exception {
+        sessions.setUnsyncedChanges(true);
+        materializeLedger();
+        markLedgerChanged();
+    }
+
     private void registerConnectivitySync() {
         if (BuildConfig.STANDALONE_MODE || Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return;
         try {
@@ -613,7 +879,10 @@ public final class MainActivity extends Activity {
         if (!syncing.compareAndSet(false, true)) { syncAgain = true; return; }
         network.execute(() -> {
             synchronized (SyncScheduler.LOCK) {
-                try { applySyncResult(LedgerSync.sync(sessions, database, new HttpSyncTransport(sessions))); }
+                try {
+                    if (signedLedger()) applySignedResult(signedSync());
+                    else applySyncResult(LedgerSync.sync(sessions, database, new HttpSyncTransport(sessions)));
+                }
                 finally {
                     syncing.set(false);
                     if (syncAgain) { syncAgain = false; syncNow(); }
@@ -692,6 +961,16 @@ public final class MainActivity extends Activity {
     private void requestServerSnapshot() {
         if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("هذه النسخة مستقلة ولا تتصل بخادم."); return; }
         network.execute(() -> {
+            if (signedLedger()) {
+                SignedLedgerSync.Result result = signedSync();
+                runOnUiThread(() -> {
+                    refreshCurrentScreen();
+                    showBrandedMessage(result.outcome == SignedLedgerSync.Outcome.SYNCED
+                            ? "تم تحميل أحدث السجلات من الدفتر المعتمد."
+                            : result.message == null ? "تعذر تحميل السجلات من الخادم." : result.message);
+                });
+                return;
+            }
             LedgerSync.Result result = LedgerSync.pull(sessions, database, new HttpSyncTransport(sessions));
             if (result.movedData() || result.outcome == LedgerSync.Outcome.UP_TO_DATE) {
                 network.execute(() -> DueReminderManager.checkDueDates(getApplicationContext()));
@@ -903,7 +1182,19 @@ public final class MainActivity extends Activity {
     void logout() {
         String token = sessions.token();
         String accountId = sessions.syncAccountId();
-        if (!BuildConfig.STANDALONE_MODE && !token.isEmpty()) network.execute(() -> { try { apiRequest("POST", "/mobile/logout", new JSONObject(), token); } catch (Exception ignored) { } });
+        // The gateway is the only place that can revoke the Auth binding behind a signed-ledger
+        // session, so a v3 store logs out through it; a legacy store keeps its own route.
+        if (!BuildConfig.STANDALONE_MODE && !token.isEmpty()) {
+            boolean v3 = signedLedger();
+            String access = sessions.auth().optString("accessToken", "");
+            network.execute(() -> {
+                try {
+                    if (v3 && !access.isEmpty()) request(BuildConfig.AUTH_BASE_URL, "POST", "/mobile/logout", new JSONObject(), access, token);
+                    else apiRequest("POST", "/mobile/logout", new JSONObject(), token);
+                } catch (Exception ignored) { }
+            });
+        }
+        closeLedger();
         if (!accountId.isEmpty()) sessions.removeSavedAccount(accountId);
         sessions.clear();
         localSecurity.clearPin();
@@ -1018,6 +1309,7 @@ public final class MainActivity extends Activity {
     private void switchDatabaseForAccount(String accountId) {
         String name = sessions.databaseNameForAccount(accountId);
         if (database != null && name.equals(database.getDatabaseName())) return;
+        closeLedger();
         if (database != null) database.close();
         database = new SadadDatabase(this, name);
     }
