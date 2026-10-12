@@ -44,7 +44,7 @@ public final class LedgerQueueTest {
                 .put("payments", new JSONArray()));
         journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
         journal.metadata("lease", new JSONObject().put("boot", 1).put("elapsed", 1000).put("wall", 1000)
-                .put("payload", new JSONObject().put("issuedAt", 1000).put("expiresAt", 604801000)));
+                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000)));
         InstallationSigner signer = new InstallationSigner() {
             public String id() { return "installation-1"; }
             public JSONObject publicKey() { return new JSONObject(); }

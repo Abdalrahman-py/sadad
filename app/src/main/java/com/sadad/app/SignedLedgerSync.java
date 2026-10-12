@@ -71,6 +71,11 @@ final class SignedLedgerSync {
             if (owner == null) return Result.of(Outcome.IDLE, "توجد مزامنة جارية.");
 
             JSONObject enrolment = ledger.enroll(installation.publicKey());
+            if (!installation.id().equals(enrolment.optString("installationId")) || enrolment.optInt("generation") <= 0
+                    || !Arrays.asList("active", "pending", "revoked").contains(enrolment.optString("status"))) {
+                throw new GeneralSecurityException("استجابة اعتماد الجهاز غير صالحة.");
+            }
+            journal.metadata("installation", enrolment);
             if (!"active".equals(enrolment.optString("status"))) {
                 return Result.of(Outcome.WAITING_APPROVAL, "طلب هذا الجهاز ينتظر موافقة الإدارة.");
             }
@@ -131,6 +136,9 @@ final class SignedLedgerSync {
                                    DeviceEnvironment device, String storeId, String userId) throws Exception {
         JSONObject lease = ledger.lease();
         JSONObject payload = verifyLease(lease, installation.id(), storeId, userId);
+        if (payload.optInt("generation") != journal.metadata("installation").optInt("generation")) {
+            throw new GeneralSecurityException("إصدار ترخيص الجهاز غير مطابق.");
+        }
         if (payload.optLong("expiresAt") - payload.optLong("issuedAt") != LEASE_MILLIS) {
             throw new GeneralSecurityException("مدة ترخيص غير صالحة.");
         }
@@ -170,6 +178,8 @@ final class SignedLedgerSync {
      * to the current boot (no lease survives a restart), and nothing must have blocked the device.
      */
     static boolean canAddOffline(LedgerJournal journal, DeviceEnvironment device) throws Exception {
+        JSONObject installation = journal.metadata("installation");
+        if (!"active".equals(installation.optString("status")) || installation.optInt("generation") <= 0) return false;
         if (BLOCKING.contains(journal.metadata("sync").optString("blockedCode", ""))) return false;
         JSONObject lease = journal.metadata("lease");
         if (!lease.has("payload") || device.bootCount() < 0 || lease.optLong("boot") != device.bootCount()) return false;
@@ -177,6 +187,7 @@ final class SignedLedgerSync {
         // A clock that moved backwards, or a wall clock that went back, means the lease cannot be trusted.
         if (elapsed < 0 || device.wallClock() < lease.optLong("wall") - 60000) return false;
         JSONObject payload = lease.getJSONObject("payload");
+        if (payload.optInt("generation") != installation.optInt("generation")) return false;
         return payload.optLong("issuedAt") + elapsed < payload.optLong("expiresAt");
     }
 

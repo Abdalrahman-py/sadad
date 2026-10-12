@@ -75,7 +75,7 @@ public final class SignedLedgerSyncTest {
     }
 
     private static final class FakeLedger implements LedgerApi {
-        JSONObject enrolAnswer = json("{\"status\":\"active\"}");
+        JSONObject enrolAnswer = json("{\"status\":\"active\",\"installationId\":\"" + INSTALLATION + "\",\"generation\":1}");
         JSONObject leaseAnswer;
         JSONObject snapshotAnswer = json("{\"epoch\":\"epoch-1\",\"cursor\":1}");
         final Map<String, JSONObject> receipts = new HashMap<>();
@@ -171,9 +171,21 @@ public final class SignedLedgerSyncTest {
 
     // ------------------------------------------------------------------ the pass
 
+    @Test public void anApprovedFirstSyncEnablesAnOfflineContact() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.enrolAnswer = new JSONObject().put("status", "active").put("installationId", INSTALLATION).put("generation", 1);
+        ledger.leaseAnswer = lease(INSTALLATION, 7, USER, 1_700_000_000_000L, 1_700_000_000_000L + 7L * 86400000, keyPair());
+        FakeJournal journal = new FakeJournal();
+        FakeDevice device = new FakeDevice();
+        assertEquals(SignedLedgerSync.Outcome.SYNCED, run(ledger, journal, device).outcome);
+        LedgerQueue queue = new LedgerQueue(journal, new FakeSigner(), ledger, device, STORE, USER, "موظف");
+        queue.add(LedgerCommand.CONTACT_CREATE, "", LedgerCommand.contactPayload("عميل", "", "عميل", ""));
+        assertEquals(1, queue.view().getJSONArray("contacts").length());
+    }
+
     @Test public void anUnapprovedDeviceIsReportedAsWaitingWithNothingElseAttempted() throws Exception {
         FakeLedger ledger = new FakeLedger();
-        ledger.enrolAnswer = new JSONObject().put("status", "pending");
+        ledger.enrolAnswer = new JSONObject().put("status", "pending").put("installationId", INSTALLATION).put("generation", 1);
         FakeJournal journal = new FakeJournal();
         FakeDevice device = new FakeDevice();
 
@@ -182,6 +194,17 @@ public final class SignedLedgerSyncTest {
         assertEquals(SignedLedgerSync.Outcome.WAITING_APPROVAL, result.outcome);
         assertEquals("no lease and no snapshot are fetched before approval", List.of("enroll"), ledger.calls);
         assertFalse("the lock must be released", journal.locked);
+    }
+
+    @Test public void pendingApprovalDisablesAnOldOfflineLease() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.leaseAnswer = lease(INSTALLATION, 7, USER, 1_700_000_000_000L, 1_700_000_000_000L + 7L * 86400000, keyPair());
+        FakeJournal journal = new FakeJournal();
+        FakeDevice device = new FakeDevice();
+        run(ledger, journal, device);
+        ledger.enrolAnswer.put("status", "pending");
+        assertEquals(SignedLedgerSync.Outcome.WAITING_APPROVAL, run(ledger, journal, device).outcome);
+        assertFalse(new LedgerQueue(journal, new FakeSigner(), ledger, device, STORE, USER, "موظف").canAdd());
     }
 
     @Test public void aPassRenewsTheLeaseAndKeepsItWhereTheOfflineRulesRead() throws Exception {
@@ -341,9 +364,10 @@ public final class SignedLedgerSyncTest {
 
     @Test public void aFreshLeaseOnThisBootAllowsOfflineEntries() throws Exception {
         FakeJournal journal = new FakeJournal();
+        journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
         FakeDevice device = new FakeDevice();
         journal.metadata("lease", new JSONObject()
-                .put("payload", new JSONObject().put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
+                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
                 .put("elapsed", device.elapsed).put("wall", device.wall).put("boot", device.boot));
 
         assertTrue(SignedLedgerSync.canAddOffline(journal, device));
@@ -353,7 +377,7 @@ public final class SignedLedgerSyncTest {
         FakeJournal journal = new FakeJournal();
         FakeDevice device = new FakeDevice();
         journal.metadata("lease", new JSONObject()
-                .put("payload", new JSONObject().put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
+                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
                 .put("elapsed", device.elapsed).put("wall", device.wall).put("boot", device.boot));
 
         device.boot = device.boot + 1;
@@ -365,7 +389,7 @@ public final class SignedLedgerSyncTest {
         FakeJournal journal = new FakeJournal();
         FakeDevice device = new FakeDevice();
         journal.metadata("lease", new JSONObject()
-                .put("payload", new JSONObject().put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 1000L))
+                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 1000L))
                 .put("elapsed", device.elapsed).put("wall", device.wall).put("boot", device.boot));
         device.elapsed = device.elapsed + 2000;
 
@@ -376,7 +400,7 @@ public final class SignedLedgerSyncTest {
         FakeJournal journal = new FakeJournal();
         FakeDevice device = new FakeDevice();
         journal.metadata("lease", new JSONObject()
-                .put("payload", new JSONObject().put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
+                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
                 .put("elapsed", device.elapsed).put("wall", device.wall).put("boot", device.boot));
         journal.metadata("sync", new JSONObject().put("blockedCode", "installation_revoked"));
 
@@ -387,7 +411,7 @@ public final class SignedLedgerSyncTest {
         FakeJournal journal = new FakeJournal();
         FakeDevice device = new FakeDevice();
         journal.metadata("lease", new JSONObject()
-                .put("payload", new JSONObject().put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
+                .put("payload", new JSONObject().put("generation", 1).put("issuedAt", 1_700_000_000_000L).put("expiresAt", 1_700_000_000_000L + 7L * 86400000))
                 .put("elapsed", device.elapsed).put("wall", device.wall).put("boot", device.boot));
         device.wall = device.wall - 600000;
 

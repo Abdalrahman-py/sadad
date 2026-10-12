@@ -33,9 +33,22 @@ final class LedgerQueue {
         if (storeId.isEmpty() || access.isEmpty()) throw new IllegalStateException("سجّل الدخول من البوابة أولًا ليُفتح الدفتر المعتمد.");
         String userId = subjectOf(access);
         if (userId.isEmpty()) throw new IllegalStateException("الجلسة غير صالحة؛ سجّل الدخول من جديد.");
-        InstallationKey installation = new InstallationKey(context);
-        return new LedgerQueue(new EncryptedJournal(context, scopeOf(storeId, userId)), installation,
-                new LedgerClient(session, installation), new AndroidEnvironment(context), storeId, userId, session.deviceStaffName());
+        EncryptedJournal journal = new EncryptedJournal(context, scopeOf(storeId, userId));
+        try {
+            String legacyId = context.getSharedPreferences("sadid.installation", 0).getString("id", "");
+            JSONObject envelope = journal.metadata("lease").optJSONObject("envelope");
+            boolean adoptLegacy = false;
+            if (!legacyId.isEmpty() && envelope != null) {
+                SignedLedgerSync.verifyLease(envelope, legacyId, storeId, userId);
+                adoptLegacy = true;
+            }
+            InstallationKey installation = new InstallationKey(context, storeId, adoptLegacy);
+            return new LedgerQueue(journal, installation, new LedgerClient(session, installation),
+                    new AndroidEnvironment(context), storeId, userId, session.deviceStaffName());
+        } catch (Exception error) {
+            journal.close();
+            throw error;
+        }
     }
 
     LedgerQueue(LedgerJournal journal, InstallationSigner installation, LedgerApi client,
