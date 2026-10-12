@@ -54,7 +54,10 @@ final class LedgerCommand {
     static String now(long millis) {
         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.ROOT);
         format.setTimeZone(TimeZone.getDefault());
-        return format.format(new Date(millis));
+        String text = format.format(new Date(millis));
+        // XXX renders a zero offset as "Z". The ledger's contract is the explicit ±hh:mm form, so a
+        // device set to UTC must not send a different shape from every other device.
+        return text.endsWith("Z") ? text.substring(0, text.length() - 1) + "+00:00" : text;
     }
 
     /**
