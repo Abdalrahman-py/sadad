@@ -13,6 +13,10 @@ import org.json.JSONObject;
  * {@code uncertain}, {@code blocked}, {@code reviewed}, {@code cancelled}, {@code confirmed}.
  */
 interface LedgerJournal {
+    JSONObject exportPlain() throws Exception;
+
+    void close() throws Exception;
+
     JSONObject metadata(String name) throws Exception;
 
     void metadata(String name, JSONObject value) throws Exception;
@@ -20,6 +24,9 @@ interface LedgerJournal {
     JSONArray entries() throws Exception;
 
     JSONObject add(JSONObject command) throws Exception;
+
+    /** Persists a compound user action completely, or leaves the journal unchanged. */
+    void addBatch(JSONArray commands) throws Exception;
 
     /** Moves an entry to {@code sending}, or returns null when it is already settled. */
     JSONObject startSend(String operationId) throws Exception;

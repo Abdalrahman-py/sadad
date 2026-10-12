@@ -42,6 +42,9 @@ public final class SignedLedgerSyncTest {
     // ------------------------------------------------------------------ fakes
 
     private static final class FakeJournal implements LedgerJournal {
+        public JSONObject exportPlain() throws Exception { return new JSONObject().put("cache", metadata("cache")).put("entries", entries()); }
+        public void close() { }
+        public void addBatch(JSONArray commands) throws Exception { for (int i=0;i<commands.length();i++) add(commands.getJSONObject(i)); }
         final Map<String, JSONObject> metadata = new HashMap<>();
         final List<JSONObject> entries = new ArrayList<>();
         boolean locked;

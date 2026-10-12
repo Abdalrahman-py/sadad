@@ -18,29 +18,30 @@ import java.nio.charset.StandardCharsets;
  * testable without a device.
  */
 final class LedgerQueue {
-    private final EncryptedJournal journal;
-    private final InstallationKey installation;
-    private final LedgerClient client;
+    private final LedgerJournal journal;
+    private final InstallationSigner installation;
+    private final LedgerApi client;
     private final DeviceEnvironment device;
-    private final SessionStore session;
+    private final String operatorName;
     private final String storeId;
     private final String userId;
 
-    private LedgerQueue(Context context, SessionStore session) throws Exception {
+    static LedgerQueue open(Context context, SessionStore session) throws Exception {
         JSONObject account = session.account();
-        this.storeId = account.optString("id", "");
-        this.session = session;
+        String storeId = account.optString("id", "");
         String access = session.auth().optString("accessToken", "");
         if (storeId.isEmpty() || access.isEmpty()) throw new IllegalStateException("سجّل الدخول من البوابة أولًا ليُفتح الدفتر المعتمد.");
-        this.userId = subjectOf(access);
-        this.device = new AndroidEnvironment(context);
-        this.installation = new InstallationKey(context);
-        this.journal = new EncryptedJournal(context, scopeOf(storeId, userId));
-        this.client = new LedgerClient(session, installation);
+        String userId = subjectOf(access);
+        if (userId.isEmpty()) throw new IllegalStateException("الجلسة غير صالحة؛ سجّل الدخول من جديد.");
+        InstallationKey installation = new InstallationKey(context);
+        return new LedgerQueue(new EncryptedJournal(context, scopeOf(storeId, userId)), installation,
+                new LedgerClient(session, installation), new AndroidEnvironment(context), storeId, userId, session.deviceStaffName());
     }
 
-    static LedgerQueue open(Context context, SessionStore session) throws Exception {
-        return new LedgerQueue(context, session);
+    LedgerQueue(LedgerJournal journal, InstallationSigner installation, LedgerApi client,
+                DeviceEnvironment device, String storeId, String userId, String operatorName) {
+        this.journal = journal; this.installation = installation; this.client = client;
+        this.device = device; this.storeId = storeId; this.userId = userId; this.operatorName = operatorName;
     }
 
     /** The journal's file name and key are derived from this; changing it orphans the queue. */
@@ -60,7 +61,7 @@ final class LedgerQueue {
 
     /** What the screens read: the server's ledger with this device's queued edits folded in. */
     JSONObject view() throws Exception {
-        return LedgerProjection.view(journal.exportPlain(), canAdd(), installation.id(), session.deviceStaffName());
+        return LedgerProjection.view(journal.exportPlain(), canAdd(), installation.id(), operatorName);
     }
 
     /** Whether the store may add an entry right now: an unexpired lease on this boot, nothing blocking. */
@@ -77,6 +78,12 @@ final class LedgerQueue {
      * @return the entity id the row will have on the ledger
      */
     String add(String type, String reference, JSONObject payload) throws Exception {
+        JSONObject command = command(type, reference, payload, LedgerCommand.newEntityId());
+        journal.add(command);
+        return command.getString("entityId");
+    }
+
+    private JSONObject command(String type, String reference, JSONObject payload, String entityId) throws Exception {
         if (!LedgerCommand.offlineType(type)) throw new IllegalArgumentException("هذا الإجراء يحتاج اتصالًا.");
         JSONObject cache = journal.metadata("cache");
         String epoch = cache.optString("epoch", "");
@@ -84,11 +91,50 @@ final class LedgerQueue {
         JSONObject installationState = journal.metadata("installation");
         if (!"active".equals(installationState.optString("status", ""))) throw new IllegalArgumentException("طلب هذا الجهاز ينتظر موافقة الإدارة.");
         if (!canAdd()) throw new IllegalArgumentException("يلزم اتصال للتحقق قبل إضافة إدخال؛ بقي الطابور والبيانات محفوظين.");
-        String entityId = LedgerCommand.newEntityId();
-        JSONObject command = LedgerCommand.of(type, entityId, payload, installation.id(),
+        return LedgerCommand.of(type, entityId, payload, installation.id(),
                 installationState.optInt("generation", 0), epoch, dependenciesOf(reference), LedgerCommand.now());
-        journal.add(command);
-        return entityId;
+    }
+
+    String createContact(JSONObject payload, String initialAmount, String dueDate, String debtNote) throws Exception {
+        long cents = SadadDatabase.centsOf(initialAmount);
+        String contactId = LedgerCommand.newEntityId();
+        JSONObject contact = command(LedgerCommand.CONTACT_CREATE, "", payload, contactId);
+        JSONArray commands = new JSONArray().put(contact);
+        if (cents > 0L) {
+            JSONObject debt = command(LedgerCommand.DEBT_CREATE, "",
+                    LedgerCommand.debtPayload(contactId, cents, "receivable", debtNote, dueDate), LedgerCommand.newEntityId());
+            debt.put("dependsOn", new JSONArray().put(contact.getString("operationId")));
+            commands.put(debt);
+        }
+        journal.addBatch(commands);
+        return contactId;
+    }
+
+    void payContact(String contactId, long amount, String method, String note) throws Exception {
+        if (amount <= 0L) throw new IllegalArgumentException("أدخل مبلغ دفعة أكبر من صفر.");
+        JSONObject view = view();
+        JSONArray debts = view.optJSONArray("debts");
+        java.util.List<JSONObject> open = new java.util.ArrayList<>();
+        for (int index = 0; debts != null && index < debts.length(); index++) {
+            JSONObject debt = debts.getJSONObject(index);
+            if (!"receivable".equals(debt.optString("direction")) || !contactId.equals(debt.optString("contact_id"))) continue;
+            if (debt.optLong("remainingCents") <= 0L) continue;
+            open.add(debt);
+        }
+        open.sort(java.util.Comparator.comparingLong(debt -> debt.optLong("createdAtMillis")));
+        long remaining = amount;
+        JSONArray commands = new JSONArray();
+        for (JSONObject debt : open) {
+            if (remaining <= 0L) break;
+            long allocation = Math.min(debt.optLong("remainingCents"), remaining);
+            if (allocation <= 0L) continue;
+            String debtId = debt.optString("id");
+            commands.put(command(LedgerCommand.PAYMENT_CREATE, debtId,
+                    LedgerCommand.paymentPayload(debtId, allocation, method, note), LedgerCommand.newEntityId()));
+            remaining -= allocation;
+        }
+        if (remaining > 0L) throw new IllegalArgumentException("مبلغ الدفعة أكبر من إجمالي الدين الحالي للشخص.");
+        journal.addBatch(commands);
     }
 
     /** The operationIds this edit waits on: the queued operations that introduce the row it names. */
@@ -161,9 +207,6 @@ final class LedgerQueue {
             return 0L;
         }
     }
-
-    /** The Auth envelope this device holds, so a caller can see whether the gateway login happened. */
-    JSONObject auth() { return session.auth(); }
 
     void close() {
         try { journal.close(); } catch (Exception ignored) { }

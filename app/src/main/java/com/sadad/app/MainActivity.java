@@ -612,12 +612,9 @@ public final class MainActivity extends Activity {
         LedgerQueue queue = ledgerQueue();
         String name = input.optString("name");
         String phone = input.optString("phone");
-        String contactId = queue.add(LedgerCommand.CONTACT_CREATE, "",
-                LedgerCommand.contactPayload(name, phone, input.optString("category", "عميل"), input.optString("note")));
-        if (initialAmount != null && !initialAmount.trim().isEmpty()) {
-            long cents = SadadDatabase.centsOf(initialAmount);
-            if (cents > 0L) queue.add(LedgerCommand.DEBT_CREATE, contactId, LedgerCommand.debtPayload(contactId, cents, "receivable", debtNote, dueDate));
-        }
+        String contactId = queue.createContact(
+                LedgerCommand.contactPayload(name, phone, input.optString("category", "عميل"), input.optString("note")),
+                initialAmount, dueDate, debtNote);
         afterSignedWrite();
         long id = database.localIdFor("contacts", contactId);
         if (id == 0L) throw new IllegalStateException("حُفظ الإدخال في الطابور؛ ستتم المزامنة تلقائيًا.");
@@ -657,26 +654,7 @@ public final class MainActivity extends Activity {
         if (amount <= 0L) throw new IllegalArgumentException("أدخل مبلغ دفعة أكبر من صفر.");
         String method = input.optString("method", "cash"), note = input.optString("note", "");
         LedgerQueue queue = ledgerQueue();
-        JSONObject view = queue.view();
-        JSONArray debts = view.optJSONArray("debts");
-        java.util.List<JSONObject> open = new java.util.ArrayList<>();
-        for (int index = 0; debts != null && index < debts.length(); index++) {
-            JSONObject debt = debts.getJSONObject(index);
-            if (!"receivable".equals(debt.optString("direction")) || !contactId.equals(debt.optString("contact_id"))) continue;
-            if (debt.optLong("remainingCents") <= 0L) continue;
-            open.add(debt);
-        }
-        open.sort(java.util.Comparator.comparingLong(debt -> debt.optLong("createdAtMillis")));
-        long remaining = amount;
-        for (JSONObject debt : open) {
-            if (remaining <= 0L) break;
-            long allocation = Math.min(debt.optLong("remainingCents"), remaining);
-            if (allocation <= 0L) continue;
-            String debtId = debt.optString("id");
-            queue.add(LedgerCommand.PAYMENT_CREATE, debtId, LedgerCommand.paymentPayload(debtId, allocation, method, note));
-            remaining -= allocation;
-        }
-        if (remaining > 0L) throw new IllegalArgumentException("مبلغ الدفعة أكبر من إجمالي الدين الحالي للشخص.");
+        queue.payContact(contactId, amount, method, note);
         afterSignedWrite();
         return new JSONObject().put("contactId", contactLocalId).put("amount", amount / 100.0d).put("createdAt", System.currentTimeMillis());
     }
