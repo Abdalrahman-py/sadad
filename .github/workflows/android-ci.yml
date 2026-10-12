@@ -2,8 +2,7 @@ name: Android and edge-function checks
 
 # Nothing else in this repository runs these: the app's JVM tests, the two debug
 # builds and the edge-function tests were manual before this workflow existed.
-# Scope is deliberately narrow — the app's own source and its build, plus the
-# Supabase edge functions — so a docs-only change does not spend runner minutes.
+# App, Edge and database changes run checks; docs-only changes do not.
 
 on:
   push:
@@ -15,6 +14,8 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'Supabase-Setup/supabase/functions/**'
+      - 'Supabase-Setup/supabase/migrations/**'
+      - 'Supabase-Setup/scripts/**'
       - '.github/workflows/android-ci.yml'
   pull_request:
     paths:
@@ -24,6 +25,8 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'Supabase-Setup/supabase/functions/**'
+      - 'Supabase-Setup/supabase/migrations/**'
+      - 'Supabase-Setup/scripts/**'
       - '.github/workflows/android-ci.yml'
   workflow_dispatch:
 
@@ -94,3 +97,18 @@ jobs:
             echo "=== $dir ==="
             (cd "$dir" && deno test -A)
           done
+
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install the pinned local PostgreSQL test runtime
+        run: npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
+      - name: Test migration and RPC contracts in isolated databases
+        run: |
+          node Supabase-Setup/scripts/test-v3-ledger.mjs
+          node Supabase-Setup/scripts/test-v3-authorization.mjs
+          node Supabase-Setup/scripts/test-admin-dashboard.mjs

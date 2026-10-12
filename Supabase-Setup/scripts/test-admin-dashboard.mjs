@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '../../.local-tools/node_modules/@electric-sql/pglite/dist/index.js';
 const db=new PGlite();
@@ -8,10 +8,10 @@ const checks=[];
 async function check(name,fn){await fn();checks.push(name);console.log(name+': passed');}
 try {
  await db.exec(`create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;
+ create function public.rls_auto_enable() returns event_trigger language plpgsql as $$ begin end $$;
  create schema auth;create table auth.users(id uuid primary key,email text);create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
  alter table auth.sessions enable row level security;grant usage on schema public to authenticated,service_role;`);
- for(const name of ['202610040001_initial_sadad.sql','20261010083726_sadad_android_auth_bindings.sql','20261010100605_sadid_v3_authorization_and_ledger.sql','20261010100856_sadid_v3_installation_control.sql','20261010102007_sadid_v3_authorization_hardening.sql','20261010102342_sadid_v3_recovery_permits.sql','20261010104039_sadid_v3_epoch_and_audited_support.sql','20261010105013_sadid_v3_cutover_and_auth_identity.sql','20261010110853_sadid_v3_performance_and_request_limits.sql','20261010134035_sadid_v3_support_policy_initplan.sql','20261010135352_sadid_v3_explicit_installation_revocation.sql','20261010140258_sadid_v3_strict_operation_contract.sql']) await db.exec(readFileSync(new URL(name,root),'utf8'));
- await db.exec(readFileSync(new URL('20261010173258_admin_dashboard_integration.sql',root),'utf8'));
+ for(const name of readdirSync(root).filter(name=>name.endsWith('.sql')).sort()) await db.exec(readFileSync(new URL(name,root),'utf8'));
  const user=randomUUID(),phone=randomUUID(),oldPhone=randomUUID(),contact=randomUUID(),debt=randomUUID(),payment=randomUUID(),authSession=randomUUID();
  await db.exec(`insert into public.admins(id,username,salt,password_hash,force_password_change,created_at) values(1,'admin-test','x','x',false,0);
  insert into public.sessions(token_hash,kind,principal_id,expires_at,created_at) values('valid-admin','admin',1,9999999999999,0),('expired-admin','admin',1,1,0);

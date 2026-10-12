@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
 import { PGlite } from '../../.local-tools/node_modules/@electric-sql/pglite/dist/index.js';
 const db=new PGlite();
@@ -20,21 +20,15 @@ async function capability(scope,request=null,permit=null){
 async function apply(cmd,permit=null){await capability('write',cmd,permit);return (await db.query('select public.sadid_apply($1) as result',[cmd])).rows[0].result;}
 try{
  await db.exec(`create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;
+ create function public.rls_auto_enable() returns event_trigger language plpgsql as $$ begin end $$;
  create schema auth;create table auth.users(id uuid primary key,email text);create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz);
  alter table auth.sessions enable row level security;
  grant usage on schema public to authenticated,service_role;`);
- await db.exec(readFileSync(new URL('202610040001_initial_sadad.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010083726_sadad_android_auth_bindings.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010100605_sadid_v3_authorization_and_ledger.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010100856_sadid_v3_installation_control.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010102007_sadid_v3_authorization_hardening.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010102342_sadid_v3_recovery_permits.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010104039_sadid_v3_epoch_and_audited_support.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010105013_sadid_v3_cutover_and_auth_identity.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010110853_sadid_v3_performance_and_request_limits.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010134035_sadid_v3_support_policy_initplan.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010135352_sadid_v3_explicit_installation_revocation.sql',root),'utf8'));
- await db.exec(readFileSync(new URL('20261010140258_sadid_v3_strict_operation_contract.sql',root),'utf8'));
+ // Supabase owns rls_auto_enable; only its EXECUTE grant is changed by our migrations.
+ // The supported local migration chain is the contract, including newly added SQL.
+ for(const file of readdirSync(root).filter(file=>file.endsWith('.sql')).sort()) {
+  await db.exec(readFileSync(new URL(file,root),'utf8'));
+ }
  await db.query('insert into auth.users values($1)',[user]);
  await db.query('insert into auth.sessions values($1,$2,null)',[session,user]);
  await db.exec("insert into public.stores(id,name,username,salt,password_hash,force_password_change,created_at) values(1,'تجربة','test','none','none',false,0);insert into public.sadid_ledger_state(store_id) values(1)");
@@ -62,6 +56,26 @@ try{
  await check('إصدار العقد إلزامي وليس حقلًا اختياريًا',async()=>{const c=command('contact.create',{name:'طلب ناقص'});delete c.schemaVersion;await assert.rejects(apply(c),/unsupported_schema/);});
  await check('الهاتف الموحد فريد حتى بعد الأرشفة',async()=>{await db.exec('reset role;begin');try{const a=command('contact.create',{name:'هاتف تحقق اصطناعي',phone:'+٩٩٩ ١٢٣٤٥٦٧٨٩'});assert.equal((await apply(a)).status,'accepted');assert.equal((await apply(command('contact.create',{name:'مكرر',phone:'+999123456789'}))).code,'duplicate_phone');assert.equal((await apply(command('contact.archive',{contactId:a.entityId,reason:'تحقق'},{expectedVersion:1}))).status,'accepted');assert.equal((await apply(command('contact.create',{name:'مكرر مؤرشف',phone:'+999123456789'}))).code,'duplicate_phone');}finally{await db.exec('reset role;rollback');}});
  await check('طريقة دفع مفقودة ونوع أمر غير مدعوم يرفضان دون مال',async()=>{assert.equal((await apply(command('payment.create',{debtId:debt.entityId,amountCents:1}))).code,'invalid_input');assert.equal((await apply(command('unknown.operation',{}))).code,'unsupported_operation');});
+ await check('محفظتا جوال وبال بي تسجلان عبر العقد الحالي',async()=>{
+  await db.exec('reset role;begin');
+  try {
+   for(const method of ['wallet_jawwal','wallet_palpay']) assert.equal((await apply(command('payment.create',{debtId:debt.entityId,amountCents:100,method}))).status,'accepted');
+   await capability('read');
+   const snapshot=(await db.query('select public.sadid_snapshot() as result')).rows[0].result;
+   assert.deepEqual(snapshot.payments.map(row=>row.method).sort(),['wallet_jawwal','wallet_palpay']);
+  } finally {await db.exec('reset role;rollback');}
+ });
+ await check('تعديل الشخص يحفظ التفاصيل ويمنع الكتابة بنسخة قديمة',async()=>{
+  await db.exec('reset role;begin');
+  try {
+   const edit=command('contact.update',{contactId:contact.entityId,name:'اسم جديد',phone:'+٩٧٠٥٩٩١٢٣٤٥٦',category:'عميل',note:'ملاحظة جديدة'},{expectedVersion:1});
+   assert.equal((await apply(edit)).status,'accepted');
+   assert.equal((await apply(command('contact.update',edit.payload,{expectedVersion:1}))).code,'entity_version_changed');
+   await capability('read');
+   const snapshot=(await db.query('select public.sadid_snapshot() as result')).rows[0].result;
+   assert.equal(snapshot.contacts[0].name,'اسم جديد');assert.equal(snapshot.contacts[0].phone,'+970599123456');assert.equal(snapshot.contacts[0].version,2);
+  } finally {await db.exec('reset role;rollback');}
+ });
  const payment=command('payment.create',{debtId:debt.entityId,amountCents:10000,method:'cash'},{dependsOn:[debt.operationId]});
  await check('دفع ١٠٠ شيكل',async()=>assert.equal((await apply(payment)).status,'accepted'));
  await check('رفض دفع زائد وحفظ الرفض',async()=>{const c=command('payment.create',{debtId:debt.entityId,amountCents:40001,method:'cash'});const r=await apply(c);assert.equal(r.code,'overpayment');assert.deepEqual(await apply(c),r);});
