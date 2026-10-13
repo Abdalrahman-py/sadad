@@ -1,8 +1,7 @@
-name: Android and edge-function checks
+name: Android, admin site and edge-function checks
 
-# Nothing else in this repository runs these: the app's JVM tests, the two debug
-# builds and the edge-function tests were manual before this workflow existed.
-# App, Edge and database changes run checks; docs-only changes do not.
+# App, dashboard, Edge and database changes run checks; docs-only changes do not.
+# Debug builds are checks only; android-release.yml publishes serverRelease.
 
 on:
   push:
@@ -13,10 +12,15 @@ on:
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
+      - 'gradlew'
+      - 'server/public/**'
+      - 'tools/build-admin-pages.cjs'
       - 'Supabase-Setup/supabase/functions/**'
       - 'Supabase-Setup/supabase/migrations/**'
       - 'Supabase-Setup/scripts/**'
       - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-release.yml'
+      - '.github/workflows/admin-pages.yml'
   pull_request:
     paths:
       - 'app/**'
@@ -24,11 +28,17 @@ on:
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
+      - 'gradlew'
+      - 'server/public/**'
+      - 'tools/build-admin-pages.cjs'
       - 'Supabase-Setup/supabase/functions/**'
       - 'Supabase-Setup/supabase/migrations/**'
       - 'Supabase-Setup/scripts/**'
       - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-release.yml'
+      - '.github/workflows/admin-pages.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -38,6 +48,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  admin-site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check dashboard JavaScript and build deployment assets
+        run: |
+          node --check server/public/admin.js
+          node tools/build-admin-pages.cjs
+
   android:
     runs-on: ubuntu-latest
     steps:

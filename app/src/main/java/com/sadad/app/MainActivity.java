@@ -48,7 +48,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URI;
 import java.util.Locale;
 import java.util.Date;
 import java.util.UUID;

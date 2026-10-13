@@ -88,7 +88,26 @@ public final class Ui254Instrumentation extends Instrumentation {
  android.widget.ListView findList(View v){if(v instanceof android.widget.ListView)return(android.widget.ListView)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){android.widget.ListView found=findList(((ViewGroup)v).getChildAt(i));if(found!=null)return found;}return null;}
  void collectBars(View v,java.util.ArrayList<MonthlyProgressView> out){if(v instanceof MonthlyProgressView)out.add((MonthlyProgressView)v);if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)collectBars(((ViewGroup)v).getChildAt(i),out);}
  void collectInputs(View v,java.util.ArrayList<EditText> out){if(v instanceof EditText)out.add((EditText)v);if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)collectInputs(((ViewGroup)v).getChildAt(i),out);}
- void migration()throws Exception{String file="qa254-migration.db";getTargetContext().deleteDatabase(file);SadadDatabase fixture=new SadadDatabase(getTargetContext(),file);long id=fixture.saveContact(new JSONObject().put("name","قديم")).getLong("id");fixture.saveDebt(new JSONObject().put("contactId",id).put("amount","100").put("direction","receivable"));fixture.savePayment(new JSONObject().put("contactId",id).put("amount","25").put("method","cash").put("createdBy","موظف قديم"));SQLiteDatabase db=fixture.getWritableDatabase();db.execSQL("CREATE TABLE payments_old (id INTEGER PRIMARY KEY AUTOINCREMENT,debt_id INTEGER NOT NULL REFERENCES debts(id) ON DELETE CASCADE,amount_cents INTEGER NOT NULL,method TEXT CHECK(method IN ('cash','bank','wallet')),note TEXT NOT NULL,created_by TEXT NOT NULL,created_at INTEGER NOT NULL)");db.execSQL("INSERT INTO payments_old SELECT * FROM payments");db.execSQL("DROP TABLE payments");db.execSQL("ALTER TABLE payments_old RENAME TO payments");db.setVersion(5);fixture.close();fixture=new SadadDatabase(getTargetContext(),file);JSONObject snapshot=fixture.getSnapshot();check(snapshot.getJSONArray("payments").getJSONObject(0).getString("createdBy").equals("موظف قديم"),"Old payment lost");fixture.savePayment(new JSONObject().put("contactId",id).put("amount","5").put("method","wallet_palpay"));check(fixture.getSnapshot().getJSONObject("totals").getDouble("receivable")==70,"Migration balance");fixture.close();}
+ void migration() throws Exception {
+  String file="qa254-migration.db";getTargetContext().deleteDatabase(file);
+  // Build an actual v5 schema; relabeling a v8 database hides migration failures.
+  try(SQLiteDatabase db=getTargetContext().openOrCreateDatabase(file,0,null)) {
+   db.execSQL("CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,phone TEXT NOT NULL DEFAULT '',category TEXT NOT NULL DEFAULT 'صديق',note TEXT NOT NULL DEFAULT '',whatsapp_opt_in INTEGER NOT NULL DEFAULT 0,credit_limit_cents INTEGER NOT NULL DEFAULT 0,created_by TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)");
+   db.execSQL("CREATE TABLE debts (id INTEGER PRIMARY KEY AUTOINCREMENT,contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,direction TEXT NOT NULL,amount_cents INTEGER NOT NULL,note TEXT NOT NULL DEFAULT '',due_date TEXT NOT NULL DEFAULT '',created_by TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)");
+   db.execSQL("CREATE TABLE payments (id INTEGER PRIMARY KEY AUTOINCREMENT,debt_id INTEGER NOT NULL REFERENCES debts(id) ON DELETE CASCADE,amount_cents INTEGER NOT NULL,method TEXT CHECK(method IN ('cash','bank','wallet')),note TEXT NOT NULL DEFAULT '',created_by TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)");
+   db.execSQL("CREATE TABLE trash_items (id INTEGER PRIMARY KEY AUTOINCREMENT,kind TEXT NOT NULL,title TEXT NOT NULL,payload TEXT NOT NULL,deleted_at INTEGER NOT NULL)");
+   db.execSQL("INSERT INTO contacts(id,name,created_at) VALUES(1,'قديم',1)");
+   db.execSQL("INSERT INTO debts(id,contact_id,direction,amount_cents,created_at) VALUES(1,1,'receivable',10000,1)");
+   db.execSQL("INSERT INTO payments(debt_id,amount_cents,method,created_by,created_at) VALUES(1,2500,'cash','موظف قديم',1)");
+   db.setVersion(5);
+  }
+  try(SadadDatabase fixture=new SadadDatabase(getTargetContext(),file)) {
+   JSONObject snapshot=fixture.getSnapshot();
+   check(snapshot.getJSONArray("payments").getJSONObject(0).getString("createdBy").equals("موظف قديم"),"Old payment lost");
+   fixture.savePayment(new JSONObject().put("contactId",1).put("amount","5").put("method","wallet_palpay"));
+   check(fixture.getSnapshot().getJSONObject("totals").getDouble("receivable")==70,"Migration balance");
+  }
+ }
  View root(){return host.getWindow().getDecorView();}void show(String route){runOnMainSync(()->{host.show(route);host.refreshCurrentScreen();});waitForIdleSync();android.os.SystemClock.sleep(400);waitForIdleSync();}
  TextView text(View view,String value){if(view instanceof TextView&&((TextView)view).getText().toString().contains(value))return (TextView)view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){TextView found=text(((ViewGroup)view).getChildAt(i),value);if(found!=null)return found;}return null;}
  Spinner spinner(View view){if(view instanceof Spinner)return (Spinner)view;if(view instanceof ViewGroup)for(int i=0;i<((ViewGroup)view).getChildCount();i++){Spinner found=spinner(((ViewGroup)view).getChildAt(i));if(found!=null)return found;}return null;}

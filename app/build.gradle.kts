@@ -31,8 +31,8 @@ android {
         testInstrumentationRunner = providers.gradleProperty("SADAD_TEST_RUNNER").getOrElse("com.sadad.app.QaInstrumentation")
         minSdk = 24
         targetSdk = 34
-        versionCode = 37
-        versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("2.5.11")
+        versionCode = 38
+        versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("2.5.12")
         buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "AUTH_BASE_URL", "\"${authBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
@@ -43,6 +43,7 @@ android {
         create("server") {
             dimension = "edition"
             applicationId = providers.gradleProperty("SADAD_APPLICATION_ID").getOrElse("com.sadad.app")
+            if (applicationId == "com.sadad.qa") resValue("string", "app_name", "سدد - فحص الجهاز")
             buildConfigField("boolean", "STANDALONE_MODE", "false")
         }
         create("standalone") {
@@ -91,5 +92,3 @@ tasks.withType<Test>().configureEach {
     systemProperty("sadad.live.credentials", providers.systemProperty("sadad.live.credentials").getOrElse(""))
     testLogging { showStandardStreams = true }
 }
-
-

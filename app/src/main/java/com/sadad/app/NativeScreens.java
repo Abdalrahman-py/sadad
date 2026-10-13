@@ -1610,4 +1610,3 @@ final class NativeScreens {
     private View spaceWidth(int width) { View v = new View(host); v.setLayoutParams(new LinearLayout.LayoutParams(dp(width), 1)); return v; }
     private static void addGap(LinearLayout parent, int height) { View v = new View(parent.getContext()); parent.addView(v, new LinearLayout.LayoutParams(1, Math.round(height * parent.getResources().getDisplayMetrics().density))); }
 }
-
