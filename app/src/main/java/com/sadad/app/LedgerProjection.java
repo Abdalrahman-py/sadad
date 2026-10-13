@@ -31,6 +31,73 @@ final class LedgerProjection {
 
     private LedgerProjection() { }
 
+    /** An incomplete response must never become an authoritative empty ledger. */
+    static void requireSnapshot(JSONObject snapshot, String storeId) throws JSONException {
+        if (snapshot.getInt("schemaVersion") != 1 || !storeId.equals(String.valueOf(snapshot.get("storeId")))
+                || snapshot.getString("epoch").isEmpty() || snapshot.getLong("cursor") < 0
+                || !"ILS".equals(snapshot.getString("currency"))) {
+            throw new JSONException("نطاق نسخة الدفتر أو إصدارها غير صالح؛ بقيت البيانات المحلية محفوظة.");
+        }
+        for (String table : new String[]{"contacts", "debts", "payments", "adjustments", "reversals", "debtBalances", "outcomes"})
+            snapshot.getJSONArray(table);
+        Set<String> contacts = new HashSet<>(), debts = new HashSet<>(), payments = new HashSet<>();
+        JSONArray rows = snapshot.getJSONArray("contacts");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (row.getString("id").isEmpty() || !contacts.add(row.getString("id")) || row.getString("name").trim().isEmpty())
+                throw new JSONException("نسخة الأشخاص غير صالحة.");
+        }
+        rows = snapshot.getJSONArray("debts");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (row.getString("id").isEmpty() || !debts.add(row.getString("id")) || !contacts.contains(row.getString("contact_id"))
+                    || !validMoney(row, "amount_cents") || !java.util.Arrays.asList("receivable", "payable").contains(row.getString("direction")))
+                throw new JSONException("نسخة الديون غير صالحة.");
+        }
+        rows = snapshot.getJSONArray("payments");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (row.getString("id").isEmpty() || !payments.add(row.getString("id")) || !debts.contains(row.getString("debt_id"))
+                    || !validMoney(row, "amount_cents")) throw new JSONException("نسخة الدفعات غير صالحة.");
+        }
+        Set<String> balances = new HashSet<>(), outcomes = new HashSet<>();
+        rows = snapshot.getJSONArray("debtBalances");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            long amount = row.getLong("amountCents"), paid = row.getLong("paidCents");
+            if (!debts.contains(row.getString("debtId")) || !balances.add(row.getString("debtId")) || !validMoney(row, "amountCents")
+                    || paid < 0 || paid > amount || row.getLong("remainingCents") != amount - paid || row.getLong("version") <= 0)
+                throw new JSONException("أرصدة نسخة الدفتر غير صالحة.");
+        }
+        if (!balances.equals(debts)) throw new JSONException("نسخة أرصدة الديون غير مكتملة.");
+        Set<String> reversals = new HashSet<>();
+        rows = snapshot.getJSONArray("reversals");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (!payments.contains(row.getString("payment_id")) || !reversals.add(row.getString("payment_id")))
+                throw new JSONException("نسخة إلغاءات الدفعات غير صالحة.");
+        }
+        rows = snapshot.getJSONArray("adjustments");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (!debts.contains(row.getString("debt_id")) || !validMoney(row, "amount_cents") || row.getLong("version") <= 1)
+                throw new JSONException("نسخة تصحيحات الديون غير صالحة.");
+        }
+        rows = snapshot.getJSONArray("outcomes");
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.getJSONObject(i);
+            if (row.getString("operationId").isEmpty() || !outcomes.add(row.getString("operationId"))
+                    || !java.util.Arrays.asList("accepted", "rejected").contains(row.getString("status")))
+                throw new JSONException("إيصالات نسخة الدفتر غير صالحة.");
+        }
+    }
+
+    private static boolean validMoney(JSONObject row, String field) throws JSONException {
+        Object value = row.get(field);
+        long amount = row.getLong(field);
+        return value instanceof Number && ((Number) value).doubleValue() == amount && amount > 0 && amount <= 9007199254740991L;
+    }
+
     /** True when the entry still represents an edit the server has not settled. */
     private static boolean projected(JSONObject entry) {
         return !SETTLED.contains(entry.optString("state"));
@@ -76,6 +143,10 @@ final class LedgerProjection {
 
         Map<String, JSONObject> debtById = new LinkedHashMap<>();
         JSONArray balances = cache.optJSONArray("debtBalances");
+        Map<String, JSONObject> balanceByDebt = new LinkedHashMap<>();
+        if (balances != null) for (int i = 0; i < balances.length(); i++) {
+            JSONObject balance = balances.getJSONObject(i); balanceByDebt.put(balance.getString("debtId"), balance);
+        }
         for (int index = 0; index < debts.length(); index++) {
             JSONObject debt = debts.getJSONObject(index);
             // A debt of an archived — or otherwise missing — contact is not part of the store's ledger
@@ -85,14 +156,10 @@ final class LedgerProjection {
             long paid = 0L;
             long version = 1L;
             if (balances != null) {
-                for (int balance = 0; balance < balances.length(); balance++) {
-                    JSONObject row = balances.getJSONObject(balance);
-                    if (row.optString("debtId").equals(debt.optString("id"))) {
-                        amount = row.optLong("amountCents", amount);
-                        paid = row.optLong("paidCents");
-                        version = row.optLong("version", 1L);
-                        break;
-                    }
+                JSONObject row = balanceByDebt.get(debt.optString("id"));
+                if (row != null) {
+                    amount = row.optLong("amountCents", amount);
+                    paid = row.optLong("paidCents"); version = row.optLong("version", 1L);
                 }
             } else {
                 for (int payment = 0; payment < payments.length(); payment++) {

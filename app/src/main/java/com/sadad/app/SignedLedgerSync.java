@@ -32,7 +32,7 @@ final class SignedLedgerSync {
     private static final List<String> SETTLED = Arrays.asList("confirmed", "rejected", "cancelled", "reviewed");
     /** Refusals that mean this device may not add entries at all until a person intervenes. */
     private static final List<String> BLOCKING = Arrays.asList(
-            "installation_revoked", "installation_or_session_revoked", "store_suspended", "password_change_required");
+            "installation_revoked", "installation_key_changed", "installation_or_session_revoked", "store_suspended", "password_change_required");
 
     enum Outcome {
         /** Another pass already holds the lock. */
@@ -43,6 +43,10 @@ final class SignedLedgerSync {
         RECOVERY_REQUIRED,
         /** The saved session cannot bind this installation; keep the journal and sign in again. */
         SIGN_IN_REQUIRED,
+        /** A revoked identity must be replaced explicitly, then approved by the admin. */
+        REGISTRATION_REQUIRED,
+        /** A permanent account restriction needs action, not an automatic retry. */
+        ACTION_REQUIRED,
         /** The queue was pushed and the snapshot is current. */
         SYNCED,
         /** Transient: run again. */
@@ -78,17 +82,19 @@ final class SignedLedgerSync {
                 throw new GeneralSecurityException("استجابة اعتماد الجهاز غير صالحة.");
             }
             journal.metadata("installation", enrolment);
+            if ("revoked".equals(enrolment.optString("status"))) throw new SyncFailure(403, new JSONObject(), "أُلغي اعتماد الهاتف.", "installation_revoked");
             if (!"active".equals(enrolment.optString("status"))) {
                 return Result.of(Outcome.WAITING_APPROVAL, "طلب هذا الجهاز ينتظر موافقة الإدارة.");
             }
 
             renewLease(ledger, journal, installation, device, storeId, userId);
-            journal.merge(ledger.snapshot());
+            mergeSnapshot(ledger, journal, storeId);
             if (journal.metadata("sync").optBoolean("recoveryRequired")) {
                 return Result.of(Outcome.RECOVERY_REQUIRED, "تغيّر إصدار استرداد الخادم؛ راجع الإيصالات قبل الإرسال.");
             }
 
             int accepted = 0, rejected = 0;
+            boolean sent = false;
             JSONArray entries = journal.entries();
             String permit = journal.metadata("recovery").optString("permitId", "");
             String epoch = journal.metadata("cache").optString("epoch", "");
@@ -101,13 +107,14 @@ final class SignedLedgerSync {
                     journal.state(entry, "blocked", "يلزم تصريح استرداد من الإدارة للأصل القديم.");
                     continue;
                 }
-                if (permit.isEmpty() && !epoch.equals(command.optString("expectedEpoch"))) {
+                if ((permit.isEmpty() || mine) && !epoch.equals(command.optString("expectedEpoch"))) {
                     journal.state(entry, "blocked", "إدخال من إصدار استرداد سابق؛ راجع الإدارة دون تغيير رقمه.");
                     continue;
                 }
                 journal.renew(owner);
                 JSONObject sending = journal.startSend(command.getString("operationId"));
                 if (sending == null) continue;
+                sent = true;
                 try {
                     JSONObject receipt = ledger.apply(new JSONObject(sending.getString("wire")), mine ? "" : permit);
                     boolean ok = "accepted".equals(receipt.optString("status"));
@@ -122,12 +129,18 @@ final class SignedLedgerSync {
                 }
             }
 
-            journal.merge(ledger.snapshot());
+            if (sent) mergeSnapshot(ledger, journal, storeId);
+            if (journal.metadata("sync").optBoolean("recoveryRequired"))
+                return Result.of(Outcome.RECOVERY_REQUIRED, "تغيّر إصدار استرداد الخادم أثناء الإرسال؛ راجع الإيصالات من الإعدادات.");
             return new Result(Outcome.SYNCED, null, accepted, rejected);
         } catch (SyncFailure refusal) {
             Result failure = fail(journal, refusal.code, refusal.getMessage());
+            if ("installation_revoked".equals(refusal.code) || "installation_key_changed".equals(refusal.code))
+                return Result.of(Outcome.REGISTRATION_REQUIRED, "أُلغي اعتماد هذا الهاتف. سجّله كجهاز جديد من إعدادات المزامنة ثم اطلب اعتماد الإدارة. بقيت الإدخالات محفوظة.");
+            if ("store_suspended".equals(refusal.code) || "password_change_required".equals(refusal.code))
+                return Result.of(Outcome.ACTION_REQUIRED, refusal.getMessage());
             if (refusal.status == 401 || "session_installation_conflict".equals(refusal.code)
-                    || "installation_key_changed".equals(refusal.code)) {
+                    || "authorization_required".equals(refusal.code)) {
                 return Result.of(Outcome.SIGN_IN_REQUIRED, "سجّل الدخول من جديد لربط الجلسة بهذا الجهاز. بقيت الإدخالات محفوظة.");
             }
             return failure;
@@ -136,6 +149,12 @@ final class SignedLedgerSync {
         } finally {
             if (owner != null) journal.release(owner);
         }
+    }
+
+    static void mergeSnapshot(LedgerApi ledger, LedgerJournal journal, String storeId) throws Exception {
+        JSONObject snapshot = ledger.snapshot();
+        LedgerProjection.requireSnapshot(snapshot, storeId);
+        journal.merge(snapshot);
     }
 
     /** Asks the ledger for a lease, verifies it, and keeps it where the offline rules can read it. */

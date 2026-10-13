@@ -57,7 +57,14 @@ public final class HardwareLedgerInstrumentation extends Instrumentation {
             runOnMainSync(() -> host.show("login")); waitForIdleSync();
             check(!containsServerField(host.getWindow().getDecorView()), "Server URL remains visible");
             report.append("PASS: device boot clock; login has no server URL field\n");
-            if (arguments != null && arguments.getBoolean("live", false)) liveProbe(host, report);
+            final MainActivity[] abandoned = { null };
+            runOnMainSync(() -> abandoned[0] = new MainActivity());
+            java.lang.reflect.Field worker = MainActivity.class.getDeclaredField("network"); worker.setAccessible(true);
+            ((java.util.concurrent.ExecutorService) worker.get(abandoned[0])).shutdown();
+            java.lang.reflect.Method dispatch = MainActivity.class.getDeclaredMethod("executeNetwork", Runnable.class); dispatch.setAccessible(true);
+            dispatch.invoke(abandoned[0], (Runnable) () -> { throw new AssertionError("Closed activity accepted network work"); });
+            report.append("PASS: late callback after worker shutdown does not crash\n");
+            if (arguments != null && Boolean.parseBoolean(String.valueOf(arguments.get("live")))) liveProbe(host, report);
             result.putString("stream", report.toString()); finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", report + "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
@@ -95,38 +102,62 @@ public final class HardwareLedgerInstrumentation extends Instrumentation {
 
     private void liveProbe(MainActivity host, StringBuilder report) throws Exception {
         File credentials = new File(getTargetContext().getFilesDir(), "device-login.json");
-        JSONObject login;
-        try { login = new JSONObject(new String(Files.readAllBytes(credentials.toPath()), StandardCharsets.UTF_8)); }
-        finally { credentials.delete(); }
-        JSONObject request = new JSONObject().put("username", login.getString("username")).put("password", login.getString("password"))
-                .put("deviceId", host.sessions.deviceId()).put("deviceName", "Sadad hardware QA")
-                .put("staffName", "Hardware QA");
-        java.lang.reflect.Method gateway = MainActivity.class.getDeclaredMethod("gatewayRequest", String.class, String.class, JSONObject.class, String.class);
-        gateway.setAccessible(true);
-        JSONObject answer;
-        try { answer = (JSONObject) gateway.invoke(host, "POST", "/mobile/login", request, ""); }
-        catch (java.lang.reflect.InvocationTargetException error) {
-            Throwable cause = error.getCause();
-            if (cause.getClass().getSimpleName().equals("ApiFailure")) {
-                report.append("LIVE LOGIN REFUSED: ").append(cause.getMessage()).append('\n');
-                return;
+        if (credentials.isFile()) {
+            JSONObject login;
+            try { login = new JSONObject(new String(Files.readAllBytes(credentials.toPath()), StandardCharsets.UTF_8)); }
+            finally { credentials.delete(); }
+            JSONObject request = new JSONObject().put("username", login.getString("username")).put("password", login.getString("password"))
+                    .put("deviceId", host.sessions.deviceId()).put("deviceName", "Sadad hardware QA")
+                    .put("staffName", "Hardware QA");
+            java.lang.reflect.Method gateway = MainActivity.class.getDeclaredMethod("gatewayRequest", String.class, String.class, JSONObject.class, String.class);
+            gateway.setAccessible(true);
+            JSONObject answer;
+            try { answer = (JSONObject) gateway.invoke(host, "POST", "/mobile/login", request, ""); }
+            catch (java.lang.reflect.InvocationTargetException error) {
+                Throwable cause = error.getCause();
+                if (cause.getClass().getSimpleName().equals("ApiFailure")) {
+                    report.append("LIVE LOGIN REFUSED: ").append(cause.getMessage()).append('\n');
+                    return;
+                }
+                throw error;
             }
-            throw error;
+            check(!LedgerQueue.subjectOf(answer.optJSONObject("auth") == null ? "" : answer.getJSONObject("auth").optString("accessToken")).isEmpty(),
+                    "Gateway omitted the signed ledger user");
+            host.sessions.save(answer);
         }
-        check(!LedgerQueue.subjectOf(answer.optJSONObject("auth") == null ? "" : answer.getJSONObject("auth").optString("accessToken")).isEmpty(),
-                "Gateway omitted the signed ledger user");
-        host.sessions.save(answer);
+        check(!LedgerQueue.subjectOf(host.sessions.auth().optString("accessToken")).isEmpty(),
+                "Sign into the QA app before the live probe, or supply device-login.json");
         check(!new SessionStore(getTargetContext()).token().isEmpty(), "Encrypted device session did not persist");
         check(!host.sessions.auth().optString("accessToken").isEmpty(), "Gateway omitted the Auth envelope");
-        report.append("PASS: live gateway login and encrypted session; signed ledger\n");
+        report.append("PASS: live authenticated session persists; signed ledger\n");
         LedgerQueue queue = LedgerQueue.open(getTargetContext(), host.sessions);
         try {
-            SignedLedgerSync.Result sync = queue.sync();
-            report.append("LIVE SIGNED SYNC: ").append(sync.outcome).append("; ").append(sync.message).append('\n');
-            if (sync.outcome == SignedLedgerSync.Outcome.SYNCED) {
-                check(queue.view().optJSONArray("contacts") != null, "Snapshot was not projected");
-                report.append("PASS: signed lease and downloaded ledger projection; no ledger operations submitted\n");
-            }
+                SignedLedgerSync.Result sync;
+                long deadline = android.os.SystemClock.elapsedRealtime() + 210000;
+                do {
+                    synchronized (SyncScheduler.LOCK) { sync = queue.sync(); }
+                    if (sync.outcome != SignedLedgerSync.Outcome.IDLE) break;
+                    Thread.sleep(1000);
+                } while (android.os.SystemClock.elapsedRealtime() < deadline);
+                report.append("LIVE SIGNED SYNC: ").append(sync.outcome).append("; ").append(sync.message).append('\n');
+                boolean revoked = Boolean.parseBoolean(String.valueOf(arguments.get("revoked")));
+                check(sync.outcome == (revoked ? SignedLedgerSync.Outcome.REGISTRATION_REQUIRED : SignedLedgerSync.Outcome.SYNCED),
+                        "Unexpected live sync result: " + sync.outcome + "; " + sync.message);
+                check(!revoked || queue.hasSnapshot(), "Revocation discarded the downloaded snapshot");
+                synchronized (SyncScheduler.LOCK) {
+                    check(queue.view().optJSONArray("contacts") != null, "Snapshot was not projected");
+                    JSONObject view = queue.view();
+                    host.database.importLedgerView(view);
+                    JSONObject saved = host.database.getSnapshot();
+                    check(saved.getJSONArray("contacts").length() == view.getJSONArray("contacts").length(), "Downloaded contacts missing from SQLite");
+                    check(saved.getJSONArray("debts").length() == view.getJSONArray("debts").length(), "Downloaded debts missing from SQLite");
+                    check(saved.getJSONArray("payments").length() == view.getJSONArray("payments").length(), "Downloaded payments missing from SQLite");
+                    runOnMainSync(() -> host.show("home")); waitForIdleSync();
+                    report.append(revoked ? "PASS: revoked installation preserves the displayed ledger: contacts="
+                            : "PASS: signed lease, downloaded ledger and committed visible database: contacts=")
+                            .append(saved.getJSONArray("contacts").length()).append(", debts=").append(saved.getJSONArray("debts").length())
+                            .append(", payments=").append(saved.getJSONArray("payments").length()).append("; no ledger operations submitted\n");
+                }
         } finally { queue.close(); }
     }
 

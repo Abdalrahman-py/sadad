@@ -12,3 +12,13 @@ Deno.test('Latest correction, reversed payment, archived contacts, and report re
  assert(s.transactions.filter((x:Record<string,unknown>)=>x.kind==='debt').map((x:Record<string,unknown>)=>x.amount),[100,40]);assert(s.requestId,'audit-id');
 });
 Deno.test('Empty initialized ledger remains valid',()=>assert(adminLedgerSnapshot({},{id:1}).totals,{receivable:0,payable:0,net:0}));
+
+Deno.test('Large ledger groups balances without scanning every debt for every contact',()=>{
+ let idReads=0;
+ const contacts=Array.from({length:1000},(_,index)=>({get id(){idReads++;return `c${index}`;},name:`Customer ${index}`}));
+ const debts=Array.from({length:1000},(_,index)=>({id:`d${index}`,contact_id:`c${index}`,direction:index%2?'payable':'receivable',amount_cents:10000,created_at:'2026-10-10T00:00:00Z'}));
+ const result=adminLedgerSnapshot({contacts,debts},{id:1});
+ assert(result.contacts[0].receivable,100);assert(result.contacts[1].payable,100);
+ assert(result.totals,{receivable:50000,payable:50000,net:0});
+ if(idReads>5000)throw new Error(`Contact identifiers read ${idReads} times; balance grouping is quadratic`);
+});

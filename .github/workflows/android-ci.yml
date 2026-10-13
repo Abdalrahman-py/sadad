@@ -15,6 +15,7 @@ on:
       - 'gradlew'
       - 'server/public/**'
       - 'tools/build-admin-pages.cjs'
+      - 'tools/test-admin-recovery.cjs'
       - 'Supabase-Setup/supabase/functions/**'
       - 'Supabase-Setup/supabase/migrations/**'
       - 'Supabase-Setup/scripts/**'
@@ -31,6 +32,7 @@ on:
       - 'gradlew'
       - 'server/public/**'
       - 'tools/build-admin-pages.cjs'
+      - 'tools/test-admin-recovery.cjs'
       - 'Supabase-Setup/supabase/functions/**'
       - 'Supabase-Setup/supabase/migrations/**'
       - 'Supabase-Setup/scripts/**'
@@ -55,6 +57,7 @@ jobs:
       - name: Check dashboard JavaScript and build deployment assets
         run: |
           node --check server/public/admin.js
+          node tools/test-admin-recovery.cjs
           node tools/build-admin-pages.cjs
 
   android:

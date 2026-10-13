@@ -41,14 +41,27 @@ import java.util.Arrays;
  *   ./gradlew testServerDebugUnitTest -Dsadad.live.credentials=/path/to/store-login.json
  * </pre>
  *
- * The file is JSON: {@code {"username": "...", "password": "..."}}, optionally with
- * {@code "gateway"} and {@code "ledger"} base addresses. It writes one contact to the store it names
+ * Its installation key is stored alongside that external file in an owner-only identity file, so
+ * approval remains usable on the next run. Run this harness on Linux with an external credentials path.
+ * The file is JSON: {@code {"username": "...", "password": "..."}}. It uses
+ * the fixed build-time project addresses. It writes one contact to the store it names
  * and archives it again, so point it at a test store.
  */
 public class LiveLedgerHarnessTest {
-    private static final String GATEWAY = System.getProperty("sadad.live.gateway", "https://vhftjmiltqfwmrzsdtgf.supabase.co/functions/v1/sadad-auth");
-    private static final String LEDGER = System.getProperty("sadad.live.ledger", "https://vhftjmiltqfwmrzsdtgf.supabase.co/functions/v1/sadid-ledger/api");
-    private static final String APIKEY = "sb_publishable_dK7HuYY8TbO8ZiBPbOZ2cw_1ZRL_chh";
+    private static final String GATEWAY = BuildConfig.AUTH_BASE_URL;
+    private static final String LEDGER = LedgerClient.BASE;
+    private static final String APIKEY = BuildConfig.SUPABASE_PUBLISHABLE_KEY;
+
+    @Test public void theHarnessReusesTheIdentityThatTheAdminApproved() throws Exception {
+        Assume.assumeTrue("harness identity storage requires POSIX permissions", java.nio.file.FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+        java.nio.file.Path directory = Files.createTempDirectory("sadad-harness-identity-");
+        java.nio.file.Path file = directory.resolve("identity.json");
+        try {
+            HarnessSigner first = new HarnessSigner(file), second = new HarnessSigner(file);
+            assertEquals(first.id(), second.id()); assertEquals(first.publicKey().toString(), second.publicKey().toString());
+            assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(file)));
+        } finally { Files.deleteIfExists(file); Files.deleteIfExists(directory); }
+    }
 
     @Test public void theAppClientRunsAgainstTheLiveLedger() throws Exception {
         String path = System.getProperty("sadad.live.credentials", System.getenv("SADAD_LIVE_CREDENTIALS"));
@@ -56,13 +69,14 @@ public class LiveLedgerHarnessTest {
         Assume.assumeTrue("no credentials file named; set -Dsadad.live.credentials", credentials != null && credentials.isFile());
         JSONObject login = new JSONObject(new String(Files.readAllBytes(Paths.get(credentials.getAbsolutePath())), StandardCharsets.UTF_8));
         String username = login.getString("username"), password = login.getString("password");
+        HarnessSigner signer = new HarnessSigner(Paths.get(credentials.getAbsolutePath() + ".identity.json"));
 
         // ---- 1. The gateway login, which is the only issuer of the Auth envelope.
         JSONObject request = new JSONObject().put("username", username).put("password", password)
-                .put("deviceId", java.util.UUID.randomUUID().toString())
+                .put("deviceId", signer.id())
                 .put("deviceName", "JVM harness").put("staffName", "اختبار آلي");
         JSONObject answer = exchange("POST", GATEWAY + "/mobile/login", request, "", "");
-        assertTrue("login refused: " + answer, answer.optBoolean("ok"));
+        assertTrue("login refused: " + answer.optString("message"), answer.optBoolean("ok"));
         assertEquals("v3", answer.optString("ledger"));
         String deviceToken = answer.getString("token");
         JSONObject auth = answer.getJSONObject("auth");
@@ -71,7 +85,6 @@ public class LiveLedgerHarnessTest {
         assertTrue(auth.optLong("expiresAt") > System.currentTimeMillis());
 
         HarnessSession session = new HarnessSession(deviceToken, auth);
-        HarnessSigner signer = new HarnessSigner();
         LedgerClient client = new LedgerClient(session, signer, LEDGER);
 
         // ---- 2. Enrolment. A fresh installation is pending until an admin approves it.
@@ -81,6 +94,7 @@ public class LiveLedgerHarnessTest {
         assertFalse("the ledger did not name the installation", installationId.isEmpty());
         System.out.println("live harness: enrolment " + status + " for installation " + installationId);
         Assume.assumeTrue("this installation is not approved yet; approve it in the dashboard and run again", "active".equals(status));
+        int generation = enrolment.getInt("generation");
 
         // ---- 3. The lease has to verify against the ledger's own key and scope.
         JSONObject lease = client.lease();
@@ -91,13 +105,14 @@ public class LiveLedgerHarnessTest {
         JSONObject before = client.snapshot();
         String epoch = before.optString("epoch");
         assertFalse("the snapshot carries no epoch", epoch.isEmpty());
-        int contactsBefore = before.optJSONArray("contacts").length();
+        LedgerProjection.requireSnapshot(before, answer.getJSONObject("account").optString("id"));
+        int contactsBefore = LedgerProjection.view(export(before,new JSONArray()),true,signer.id(),"اختبار آلي").getJSONArray("contacts").length();
         System.out.println("live harness: epoch " + epoch + ", cursor " + before.optLong("cursor") + ", contacts " + contactsBefore);
 
         // ---- 5. A real write, signed by the app's own canonical text.
         String name = "اختبار الاتصال " + LedgerCommand.now().substring(0, 16).replace('T', ' ');
         JSONObject command = LedgerCommand.of(LedgerCommand.CONTACT_CREATE, LedgerCommand.newEntityId(),
-                LedgerCommand.contactPayload(name, "", "اختبار", "أدخله فحص آلي ثم أُرشف"), signer.id(), 0, epoch, new JSONArray(), LedgerCommand.now());
+                LedgerCommand.contactPayload(name, "", "اختبار", "أدخله فحص آلي ثم أُرشف"), signer.id(), generation, epoch, new JSONArray(), LedgerCommand.now());
         JSONObject receipt = client.apply(command, "");
         assertEquals("accepted", receipt.optString("status"));
         assertEquals(command.optString("entityId"), receipt.optString("entityId"));
@@ -116,7 +131,7 @@ public class LiveLedgerHarnessTest {
         // ---- 7. A refusal, to show the ledger answers rather than accepting anything: a payment
         // against a debt that does not exist is rejected with a code the app turns into a sentence.
         JSONObject orphan = LedgerCommand.of(LedgerCommand.PAYMENT_CREATE, LedgerCommand.newEntityId(),
-                LedgerCommand.paymentPayload("11111111-1111-4111-8111-111111111111", 100L, "wallet_jawwal", ""), signer.id(), 0, epoch, new JSONArray(), LedgerCommand.now());
+                LedgerCommand.paymentPayload("11111111-1111-4111-8111-111111111111", 100L, "wallet_jawwal", ""), signer.id(), generation, epoch, new JSONArray(), LedgerCommand.now());
         JSONObject refusal = client.apply(orphan, "");
         assertEquals("rejected", refusal.optString("status"));
         assertEquals("debt_unavailable", refusal.optString("code"));
@@ -125,7 +140,7 @@ public class LiveLedgerHarnessTest {
         // ---- 8. Clean up after the test: archive the row this harness created.
         JSONObject archive = LedgerCommand.of("contact.archive", LedgerCommand.newEntityId(),
                 new JSONObject().put("contactId", stored.optString("id")).put("reason", "انتهى الفحص الآلي"),
-                signer.id(), 0, epoch, new JSONArray(), LedgerCommand.now()).put("expectedVersion", stored.optLong("version"));
+                signer.id(), generation, epoch, new JSONArray(), LedgerCommand.now()).put("expectedVersion", stored.optLong("version"));
         JSONObject archived = client.apply(archive, "");
         assertEquals("accepted", archived.optString("status"));
         JSONObject archivedRow = findContact(client.snapshot(), stored.optString("id"));
@@ -151,6 +166,7 @@ public class LiveLedgerHarnessTest {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setRequestMethod(method);
+            connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(20000);
             connection.setRequestProperty("apikey", APIKEY);
@@ -191,11 +207,22 @@ public class LiveLedgerHarnessTest {
 
     /** A real P-256 key on the JVM, signing the same canonical text the Keystore signs on the phone. */
     private static final class HarnessSigner implements InstallationSigner {
-        private final String id = java.util.UUID.randomUUID().toString();
+        private final String id;
         private final KeyPair pair;
 
-        HarnessSigner() throws Exception {
-            pair = KeyPairGenerator.getInstance("EC").generateKeyPair();
+        HarnessSigner(java.nio.file.Path file) throws Exception {
+            if (Files.exists(file)) {
+                JSONObject saved = new JSONObject(new String(Files.readAllBytes(file),StandardCharsets.UTF_8)); id = saved.getString("id");
+                java.security.KeyFactory factory = java.security.KeyFactory.getInstance("EC");
+                pair = new KeyPair(factory.generatePublic(new java.security.spec.X509EncodedKeySpec(Base64Url.decode(saved.getString("publicKey")))),
+                        factory.generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(Base64Url.decode(saved.getString("privateKey")))));
+            } else {
+                id = java.util.UUID.randomUUID().toString();
+                KeyPairGenerator generator = KeyPairGenerator.getInstance("EC"); generator.initialize(new ECGenParameterSpec("secp256r1")); pair = generator.generateKeyPair();
+                Files.createFile(file, java.nio.file.attribute.PosixFilePermissions.asFileAttribute(java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
+                Files.write(file, new JSONObject().put("id",id).put("publicKey",Base64Url.encode(pair.getPublic().getEncoded()))
+                        .put("privateKey",Base64Url.encode(pair.getPrivate().getEncoded())).toString().getBytes(StandardCharsets.UTF_8));
+            }
         }
 
         @Override public String id() { return id; }

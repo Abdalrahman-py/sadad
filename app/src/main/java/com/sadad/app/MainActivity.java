@@ -64,7 +64,11 @@ public final class MainActivity extends Activity {
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private volatile boolean changingAccount;
     private void executeNetwork(Runnable action) {
-        network.execute(() -> { synchronized (SyncScheduler.LOCK) { action.run(); } });
+        try { network.execute(() -> { synchronized (SyncScheduler.LOCK) { action.run(); } }); }
+        catch (java.util.concurrent.RejectedExecutionException stopped) {
+            // A late sync/connectivity callback can arrive after onDestroy shuts down this worker.
+            if (!network.isShutdown()) throw stopped;
+        }
     }
     private String accountScope() { return sessions.syncAccountId() + "|" + LedgerQueue.subjectOf(sessions.auth().optString("accessToken")) + "|" + sessions.token(); }
     private void postForAccount(String scope, Runnable action) {
@@ -115,6 +119,8 @@ public final class MainActivity extends Activity {
     private long leftAt;
     private long pendingNotificationContactId;
     private static final int REQUEST_SAVE_PDF = 7315;
+    private static final int REQUEST_RECOVERY_FILE = 7318;
+    private String pendingRecoveryScope;
     private static final int REQUEST_VOICE_DRAFT = 7316;
     private static final int REQUEST_PROFILE_PHOTO = 7317;
     private boolean pendingStorePhoto;
@@ -531,7 +537,10 @@ public final class MainActivity extends Activity {
     private void closeLedger() { if (ledger != null) { ledger.close(); ledger = null; } lastLedgerNotice = ""; }
 
     /** Folds the signed ledger into the local tables the screens, the exports and the reminders read. */
-    void materializeLedger() throws Exception { database.importLedgerView(ledgerQueue().view()); }
+    void materializeLedger() throws Exception {
+        LedgerQueue queue = ledgerQueue();
+        if (queue.hasSnapshot()) database.importLedgerView(queue.view());
+    }
 
     /**
      * One pass of the signed protocol. The snapshot is folded into the local tables even when the
@@ -565,7 +574,8 @@ public final class MainActivity extends Activity {
             return;
         }
         if (result.outcome == SignedLedgerSync.Outcome.IDLE) return;
-        if (result.outcome == SignedLedgerSync.Outcome.RETRY_LATER) { SyncScheduler.schedule(this, true); return; }
+        if (result.outcome == SignedLedgerSync.Outcome.RETRY_LATER) SyncScheduler.schedule(this, true);
+        postForAccount(scope, this::refreshCurrentScreen);
         String message = result.message == null ? "" : result.message;
         if (message.isEmpty() || message.equals(lastLedgerNotice)) return;
         lastLedgerNotice = message;
@@ -762,7 +772,7 @@ public final class MainActivity extends Activity {
 
     /** Runs the signed protocol on the serialized worker. */
     void syncNow() {
-        if (changingAccount || BuildConfig.STANDALONE_MODE || !sessions.isActive() || sessions.forcePasswordChange()) return;
+        if (network.isShutdown() || changingAccount || BuildConfig.STANDALONE_MODE || !sessions.isActive() || sessions.forcePasswordChange()) return;
         if (!syncing.compareAndSet(false, true)) { syncAgain = true; return; }
         String scope = accountScope();
         executeNetwork(() -> {
@@ -776,7 +786,7 @@ public final class MainActivity extends Activity {
 
     void retryLocalSync() { syncNow(); }
 
-    private void requestServerSnapshot() {
+    void requestServerSnapshot() {
         if (BuildConfig.STANDALONE_MODE) { showBrandedMessage("هذه النسخة مستقلة ولا تتصل بخادم."); return; }
         String scope = accountScope();
         executeNetwork(() -> {
@@ -784,9 +794,143 @@ public final class MainActivity extends Activity {
             SignedLedgerSync.Result result = signedSync();
             postForAccount(scope, () -> {
                 refreshCurrentScreen();
-                showBrandedMessage(result.outcome == SignedLedgerSync.Outcome.SYNCED ? "تم تحميل أحدث السجلات من الدفتر المعتمد."
+                showBrandedMessage(result.outcome == SignedLedgerSync.Outcome.SYNCED ? "تم تحديث نسخة الدفتر المعتمد. راجع حالة الإدخالات في إعدادات المزامنة."
                         : result.message == null ? "تعذر تحميل السجلات من الخادم." : result.message);
             });
+        });
+    }
+
+    void loadLedgerStatus(TextView target) {
+        String scope = accountScope();
+        executeNetwork(() -> {
+            try {
+                if (changingAccount || !scope.equals(accountScope())) return;
+                String text = ledgerQueue().status();
+                postForAccount(scope, () -> { if (target.isAttachedToWindow()) target.setText(text); });
+            } catch (Exception error) { postForAccount(scope, () -> target.setText("تعذر قراءة حالة المزامنة؛ بقيت البيانات محفوظة.")); }
+        });
+    }
+
+    private interface LedgerTask { void run(LedgerQueue queue, String scope) throws Exception; }
+    private void runLedgerTask(LedgerTask task) {
+        String scope = accountScope();
+        executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
+            try { task.run(ledgerQueue(), scope); }
+            catch (Exception error) { postForAccount(scope, () -> showBrandedMessage(error.getMessage() == null ? "تعذر إكمال الإجراء؛ بقيت البيانات محفوظة." : error.getMessage())); }
+        });
+    }
+
+    void registerLedgerAgain() {
+        new SadadDialog.Builder(this).setTitle("تسجيل الهاتف كجهاز جديد")
+                .setMessage("بعد إلغاء اعتماده فقط: تبقى السجلات والإدخالات المعلقة محفوظة، وتحتاج الهوية الجديدة اعتماد الإدارة. استرداد إدخالات الهوية السابقة يحتاج قائمة اعتماد وتصريحًا من اللوحة. احفظ نسخة استرداد أولًا.")
+                .setNegativeButton("إلغاء", null).setPositiveButton("تسجيل جديد", (d, w) -> runLedgerTask((queue, scope) -> {
+                    queue.prepareRegistration();
+                    InstallationKey.registerAgain(this, sessions.syncAccountId());
+                    changingAccount = true;
+                    closeLedger();
+                    sessions.removeSavedAccount(sessions.syncAccountId());
+                    sessions.clear();
+                    runOnUiThread(() -> {
+                        changingAccount = false; show("login");
+                        showBrandedMessage("تم حفظ هوية جديدة لهذا المتجر. سجّل الدخول ثم اعتمد طلب الهاتف الجديد من اللوحة.");
+                    });
+                })).show();
+    }
+
+    void exportLedgerRecovery() { promptRecoveryPassword(null, accountScope()); }
+
+    void pickLedgerRecovery() {
+        pendingRecoveryScope = accountScope(); ignoreNextResumeLock = true;
+        Intent open = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json");
+        try { startActivityForResult(open, REQUEST_RECOVERY_FILE); }
+        catch (Exception error) { pendingRecoveryScope = null; showBrandedMessage("تعذر فتح ملف الاسترداد."); }
+    }
+
+    private void promptRecoveryPassword(Uri file, String scope) {
+        EditText password = new EditText(this);
+        password.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        password.setHint("عبارة مرور من ١٢ حرفًا على الأقل");
+        AlertDialog dialog = new SadadDialog.Builder(this).setTitle(file == null ? "حفظ نسخة استرداد مشفرة" : "استيراد نسخة استرداد")
+                .setMessage(file == null ? "احتفظ بالملف وعبارة المرور خارج الهاتف. لا يحتوي الملف رموز الدخول أو مفاتيح الجهاز."
+                        : "أدخل عبارة مرور الملف. تُستورد الإدخالات بأرقامها الأصلية للحساب نفسه، وتحتاج مراجعة الإدارة قبل استرداد أصل سابق.")
+                .setView(password).setNegativeButton("إلغاء", null).setPositiveButton(file == null ? "حفظ" : "استيراد", null).create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!scope.equals(accountScope()) || changingAccount) { dialog.dismiss(); return; }
+            char[] secret = password.getText().toString().toCharArray();
+            if (secret.length < 12) { java.util.Arrays.fill(secret, '\0'); password.setError("أدخل عبارة المرور كاملة؛ ١٢ حرفًا على الأقل."); return; }
+            password.setText(""); dialog.dismiss();
+            executeNetwork(() -> {
+                try {
+                    if (changingAccount || !scope.equals(accountScope())) return;
+                    LedgerQueue queue = ledgerQueue();
+                    if (file == null) {
+                        byte[] sealed = queue.exportRecovery(secret);
+                        postForAccount(scope, () -> saveReport(sealed, "Sadad-Recovery.json", "application/json", false));
+                    } else {
+                        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                        try (InputStream input = getContentResolver().openInputStream(file)) {
+                            if (input == null) throw new java.io.IOException("تعذر قراءة الملف.");
+                            byte[] buffer = new byte[8192]; int count;
+                            while ((count = input.read(buffer)) != -1) {
+                                if (bytes.size() + count > 8 * 1024 * 1024) throw new java.io.IOException("ملف الاسترداد أكبر من الحد المسموح.");
+                                bytes.write(buffer, 0, count);
+                            }
+                        }
+                        queue.importRecovery(bytes.toByteArray(), secret);
+                        sessions.setUnsyncedChanges(queue.hasPendingWork());
+                        materializeLedger();
+                        postForAccount(scope, () -> { refreshCurrentScreen(); showBrandedMessage("حُفظت الإدخالات المستوردة. زامن ثم صدّر قائمة الاعتماد للإدارة عند الحاجة."); });
+                    }
+                } catch (javax.crypto.AEADBadTagException error) { postForAccount(scope, () -> showBrandedMessage("عبارة المرور غير صحيحة أو الملف تالف؛ بقيت البيانات محفوظة.")); }
+                catch (Exception error) { postForAccount(scope, () -> showBrandedMessage(error.getMessage() == null ? "تعذر فتح ملف الاسترداد؛ بقيت البيانات محفوظة." : error.getMessage())); }
+                finally { java.util.Arrays.fill(secret, '\0'); }
+            });
+        });
+    }
+
+    void exportLedgerManifest() {
+        runLedgerTask((queue, scope) -> {
+            JSONArray origins = queue.recoveryOrigins();
+            if (origins.length() == 0) throw new IllegalStateException("لا توجد إدخالات مالية معلقة تحتاج قائمة اعتماد.");
+            String[] labels = new String[origins.length()];
+            for (int i = 0; i < labels.length; i++) labels[i] = origins.getString(i);
+            postForAccount(scope, () -> new SadadDialog.Builder(this).setTitle("قائمة اعتماد الإدارة")
+                    .setMessage("اختر هوية الهاتف التي أضافت الإدخالات. هذا الملف يحتوي تفاصيل مالية واضحة؛ سلّمه للإدارة عبر قناة موثوقة.")
+                    .setItems(labels, (d, which) -> runLedgerTask((current, currentScope) -> {
+                        if (!scope.equals(currentScope)) return;
+                        byte[] manifest = current.recoveryManifest(labels[which]);
+                        postForAccount(scope, () -> saveReport(manifest, "Sadad-Approval-Manifest.json", "application/json", false));
+                    })).setNegativeButton("إلغاء", null).show());
+        });
+    }
+
+    void enterLedgerPermit() {
+        String scope = accountScope();
+        EditText permit = new EditText(this); permit.setHint("رقم التصريح من لوحة الإدارة"); permit.setSingleLine(true);
+        new SadadDialog.Builder(this).setTitle("تصريح استرداد الإدخالات").setView(permit).setNegativeButton("إلغاء", null)
+                .setPositiveButton("حفظ ومزامنة", (d, w) -> {
+                    String id = permit.getText().toString().trim();
+                    runLedgerTask((queue, currentScope) -> {
+                        if (!scope.equals(currentScope)) return;
+                        queue.recoveryPermit(id); applySignedResult(signedSync());
+                    });
+                }).show();
+    }
+
+    void reviewLedgerRecovery() {
+        runLedgerTask((queue, scope) -> {
+            JSONObject snapshot = queue.recoverySnapshot();
+            String epoch = snapshot.getString("epoch"); long cursor = snapshot.getLong("cursor");
+            postForAccount(scope, () -> new SadadDialog.Builder(this).setTitle("مراجعة نسخة استرداد الخادم")
+                    .setMessage("نسخة الخادم الجديدة: " + snapshot.optJSONArray("contacts").length() + " شخص، " + snapshot.optJSONArray("debts").length()
+                            + " دين، " + snapshot.optJSONArray("payments").length() + " دفعة. قبولها يُحدث العرض ويحفظ النسخة السابقة. الإيصالات المحلية التي اختفت تبقى معلقة بانتظار قرار الإدارة؛ لا يعاد ترقيمها أو إرسالها تلقائيًا.")
+                    .setNegativeButton("إلغاء", null).setPositiveButton("قبول النسخة بعد المراجعة", (d, w) -> runLedgerTask((current, currentScope) -> {
+                        if (!scope.equals(currentScope)) return;
+                        current.acceptRecoverySnapshot(epoch, cursor); materializeLedger(); sessions.setUnsyncedChanges(current.hasPendingWork());
+                        postForAccount(scope, () -> { refreshCurrentScreen(); showBrandedMessage("تم قبول النسخة. راجع الإدخالات المعلقة مع الإدارة."); });
+                    })).show());
         });
     }
 
@@ -837,14 +981,14 @@ public final class MainActivity extends Activity {
         if (pdf == null || pdf.length == 0) { showBrandedMessage("ملف الكشف فارغ."); return; }
         pendingPdf = pdf;
         pendingPdfName = suggestedName == null || suggestedName.trim().isEmpty() ? "Sadad-Statement.pdf" : suggestedName.trim();
-        String extension = LedgerTableExcel.MIME.equals(mime) ? ".xlsx" : ".pdf";
+        String extension = LedgerTableExcel.MIME.equals(mime) ? ".xlsx" : "application/json".equals(mime) ? ".json" : ".pdf";
         if (!pendingPdfName.toLowerCase(Locale.ROOT).endsWith(extension)) pendingPdfName += extension;
         Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         create.addCategory(Intent.CATEGORY_OPENABLE);
         create.setType(mime);
         create.putExtra(Intent.EXTRA_TITLE, pendingPdfName);
         try { startActivityForResult(create, REQUEST_SAVE_PDF); }
-        catch (Exception e) { pendingPdf = null; pendingPdfName = null; showBrandedMessage("تعذر فتح شاشة حفظ ملف PDF."); }
+        catch (Exception e) { pendingPdf = null; pendingPdfName = null; showBrandedMessage("تعذر فتح شاشة حفظ الملف."); }
     }
 
     private void shareReport(byte[] pdf, String name, String mime) {
@@ -852,7 +996,7 @@ public final class MainActivity extends Activity {
         try {
             java.io.File directory = new java.io.File(getCacheDir(), "exports"); if (!directory.exists() && !directory.mkdirs()) throw new java.io.IOException();
             String filename = name == null ? "كشف-سدد.pdf" : name.replaceAll("[\\\\/\\x00-\\x1F]", "-");
-            String extension = LedgerTableExcel.MIME.equals(mime) ? ".xlsx" : ".pdf";
+            String extension = LedgerTableExcel.MIME.equals(mime) ? ".xlsx" : "application/json".equals(mime) ? ".json" : ".pdf";
             if (!filename.toLowerCase(Locale.ROOT).endsWith(extension)) filename += extension;
             java.io.File file = new java.io.File(directory, filename);
             try (OutputStream out = new FileOutputStream(file)) { out.write(pdf); }
@@ -959,6 +1103,10 @@ public final class MainActivity extends Activity {
                     } catch (Exception detachedView) { showBrandedMessage("عاد الإملاء لكن الشاشة تغيّرت؛ افتح الحقل وحاول مرة أخرى."); }
                 }
             }
+        } else if (requestCode == REQUEST_RECOVERY_FILE) {
+            String scope = pendingRecoveryScope; pendingRecoveryScope = null;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && scope != null && scope.equals(accountScope()) && !changingAccount)
+                promptRecoveryPassword(data.getData(), scope);
         } else if (requestCode == REQUEST_SAVE_PDF) {
             byte[] contents = pendingPdf;
             pendingPdf = null;
@@ -970,7 +1118,7 @@ public final class MainActivity extends Activity {
                 if (output == null) throw new java.io.IOException("لم يتم فتح ملف الحفظ.");
                 output.write(contents);
                 output.flush();
-                if (!pendingPdfShare) { showBrandedMessage("تم حفظ كشف السجلات."); return; }
+                if (!pendingPdfShare) { showBrandedMessage("تم حفظ الملف."); return; }
                 Intent send = new Intent(Intent.ACTION_SEND);
                 send.setType(pendingReportMime);
                 send.putExtra(Intent.EXTRA_STREAM, uri);

@@ -24,7 +24,7 @@ public final class LedgerSyncService extends JobService {
                     LedgerQueue queue=LedgerQueue.open(this,session);
                     try{
                         SignedLedgerSync.Result result=queue.sync();
-                        try{db.importLedgerView(queue.view());}catch(Exception skipped){}
+                        if(queue.hasSnapshot())db.importLedgerView(queue.view());
                         session.setUnsyncedChanges(queue.hasPendingWork());
                         retry=result.retryable();
                     }finally{queue.close();}

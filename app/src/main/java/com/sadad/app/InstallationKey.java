@@ -35,6 +35,16 @@ final class InstallationKey implements InstallationSigner {
   }
  }
  public String id(){return installationId;}
+ static void registerAgain(Context context,String storeId)throws Exception{
+  registerAgain(context.getApplicationContext().getSharedPreferences("sadid.installation",0),storeId);
+ }
+ static void registerAgain(android.content.SharedPreferences preferences,String storeId)throws Exception{
+  String scope=hash(LedgerClient.PROJECT+"|"+storeId),id=UUID.randomUUID().toString();
+  synchronized(InstallationKey.class){
+   if(!preferences.edit().putString("id."+scope,id).putString("alias."+scope,"sadid.installation.ec."+scope+"."+id).commit())
+    throw new IllegalStateException("تعذر حفظ هوية الجهاز الجديدة؛ بقي الطابور محفوظًا.");
+  }
+ }
  private KeyStore store()throws Exception{KeyStore ks=KeyStore.getInstance("AndroidKeyStore");ks.load(null);if(!ks.containsAlias(alias)){KeyPairGenerator g=KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC,"AndroidKeyStore");g.initialize(new KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_SIGN|KeyProperties.PURPOSE_VERIFY).setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_SHA256).build());g.generateKeyPair();}return ks;}
  public JSONObject publicKey()throws Exception{ECPublicKey key=(ECPublicKey)store().getCertificate(alias).getPublicKey();ECPoint p=key.getW();return new JSONObject().put("kty","EC").put("crv","P-256").put("x",b64(fixed(p.getAffineX().toByteArray()))).put("y",b64(fixed(p.getAffineY().toByteArray())));}
  private static byte[] fixed(byte[] value){byte[] out=new byte[32];int size=Math.min(value.length,32);System.arraycopy(value,value.length-size,out,32-size,size);return out;}

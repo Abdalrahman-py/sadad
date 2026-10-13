@@ -1,6 +1,7 @@
 package com.sadad.app;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -46,6 +47,15 @@ public class LedgerProjectionTest {
         assertEquals(0L, LedgerProjection.millisOf(""));
         assertEquals(0L, LedgerProjection.millisOf("not a date"));
         assertEquals(7L, LedgerProjection.millisOf(7L));
+    }
+
+    @Test public void anIncompleteOrInconsistentBalanceSnapshotIsRefused() throws Exception {
+        JSONObject snapshot = serverCache().put("schemaVersion",1).put("storeId",7).put("currency","ILS").put("adjustments",new JSONArray());
+        LedgerProjection.requireSnapshot(snapshot,"7");
+        snapshot.getJSONArray("debtBalances").getJSONObject(0).put("remainingCents",2501);
+        assertThrows(org.json.JSONException.class, () -> LedgerProjection.requireSnapshot(snapshot,"7"));
+        snapshot.put("debtBalances",new JSONArray());
+        assertThrows(org.json.JSONException.class, () -> LedgerProjection.requireSnapshot(snapshot,"7"));
     }
 
     // ------------------------------------------------------------------ the folds

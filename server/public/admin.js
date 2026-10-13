@@ -18,7 +18,8 @@
   const labels = { contacts: 'جهات الاتصال', debts: 'الديون', payments: 'الدفعات', reports: 'الكشوفات والتقارير', analytics: 'الإحصائيات', export: 'التصدير', whatsapp: 'WhatsApp', appLock: 'قفل التطبيق' };
   const permissionNames = Object.keys(labels);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const fmt = value => new Intl.NumberFormat('ar-PS', { maximumFractionDigits: 2 }).format(Number(value || 0));
+  const numberFormat = new Intl.NumberFormat('ar-PS', { maximumFractionDigits: 2 });
+  const fmt = value => numberFormat.format(Number(value || 0));
   const englishDigits = value => String(value ?? '').replace(/[٠-٩]/g, digit => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/[۰-۹]/g, digit => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
   function integerInput(selector, min, max, fallback) {
     const raw = englishDigits($(selector).value).trim();
@@ -29,10 +30,12 @@
   }
   // One formatter for both shapes the API answers with: epoch milliseconds (legacy columns) and
   // ISO-8601 strings (Postgres timestamptz). An unparsable value shows a dash, never 'Invalid Date'.
+  const dateFormat = new Intl.DateTimeFormat('ar-PS');
+  const dateTimeFormat = new Intl.DateTimeFormat('ar-PS', { dateStyle: 'short', timeStyle: 'medium' });
   const dateFmt = value => {
     if (!value) return '—';
     const parsed = /^\d+$/.test(String(value)) ? new Date(Number(value)) : new Date(value);
-    return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString('ar-PS');
+    return Number.isNaN(parsed.getTime()) ? '—' : dateTimeFormat.format(parsed);
   };
   const modeName = mode => ({ permanent: 'فعال دائمًا', timed: 'مدة محددة', paused: 'موقوف' }[mode] || 'غير محدد');
   function duration(value) {
@@ -198,6 +201,8 @@
   });
   async function openStore(id) {
     const request = ++storeRequest;
+    const button = document.querySelector(`[data-open="${id}"]`);
+    if(button) {button.disabled=true; button.textContent='جارٍ التحميل…';}
     current=null; currentSnapshot=null; $('#ledgerPanel').classList.add('hidden');
     $('#storePanel').classList.add('hidden');
     try {
@@ -205,7 +210,7 @@
       if(request!==storeRequest)return;
       current = result.store; currentSnapshot = result.snapshot;
       $('#ledgerSearch').value=''; $('#storePanel').classList.remove('hidden'); $('#storeHeading').textContent = current.name;
-      $('#storeMeta').textContent = `${current.username} · أنشئ ${new Date(current.createdAt).toLocaleDateString('ar-PS')}`;
+      $('#storeMeta').textContent = `${current.username} · أنشئ ${dateFormat.format(new Date(current.createdAt))}`;
       $('#storeName').value = current.name; $('#storeUsername').value = current.username; $('#debtorLimit').value = current.debtorLimit; $('#maxDevices').value = current.maxDevices || 1;
       $('#verified').checked = current.verified;
       $('#permissions').innerHTML = permissionNames.map(name => `<label><input type="checkbox" data-perm="${name}" ${current.permissions[name] !== false ? 'checked' : ''}>${labels[name]}</label>`).join('');
@@ -223,7 +228,8 @@
       $('#ledgerReadInfo').textContent=currentSnapshot.requestId ? `قراءة مسجلة · رقم الطلب: ${currentSnapshot.requestId}` : 'لم يُهيأ الدفتر المعتمد بعد؛ يبدأ بعد تسجيل الهاتف واعتماده.';
       $('#tempPasswordResult').textContent=''; $('#tempPasswordResult').classList.add('hidden');
       $('#storePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch (error) { notice(error.message, true); }
+    } catch (error) { if(request===storeRequest)notice(error.message, true); }
+    finally {if(button) {button.disabled=false; button.textContent='إدارة';}}
   }
   function renderDevices(devices) {
     $('#deviceList').innerHTML=devices.length ? devices.map(device=>`<div class="record-row"><div><b>${esc(device.staffName || device.label || 'جهاز تسجيل دخول')}</b><small dir="ltr">${esc(device.id)}</small><small>${esc(dateFmt(device.lastSeenAt))} · ${device.revokedAt?'منتهٍ':'مسجل'}</small></div>${device.revokedAt && !current.archived ? `<button class="button quiet" data-allow-login="${esc(encodeURIComponent(device.id))}">السماح بالدخول</button>` : ''}</div>`).join('') : '<p class="muted">لا توجد أجهزة تسجيل دخول.</p>';
@@ -304,7 +310,7 @@
   const directionName = direction => direction==='receivable' ? 'للـمتجر' : direction==='payable' ? 'على المتجر' : '—';
   const actionName = action => ({'contact.create':'إضافة شخص','contact.archive':'أرشفة شخص','contact.unarchive':'إعادة شخص','debt.create':'إضافة دين','debt.correct':'تصحيح دين','payment.create':'تسجيل دفعة','payment.reverse':'عكس دفعة','operation.rejected':'عملية مرفوضة','installation.approved':'اعتماد هاتف','installation.revoked':'إلغاء اعتماد هاتف','recovery.approved':'اعتماد استرداد','account.archive':'أرشفة حساب','account.unarchive':'إعادة حساب من الأرشيف','account.end-sessions':'إنهاء الجلسات','account.revoke-all':'إلغاء جميع الأجهزة'}[action] || action);
   function renderInstallations() {
-    $('#installationList').innerHTML=currentInstallations.length ? currentInstallations.map(phone=>`<article class="device-card"><div class="record-row"><div><b class="installation-state ${esc(phone.status)}">${esc({pending:'بانتظار اعتمادك',active:'هاتف معتمد',revoked:'أُلغي الاعتماد'}[phone.status])} · ${fmt(phone.generation)}</b><code dir="ltr">${esc(phone.installationId)}</code><small>سُجل ${esc(dateFmt(phone.createdAt))}${phone.approvedBy?` · اعتمده ${esc(phone.approvedBy)}`:''}</small>${phone.reason?`<small>${esc(phone.reason)}</small>`:''}</div><div class="button-row">${phone.status==='pending'?`<button class="button primary" data-installation-approve="${esc(phone.installationId)}" ${current.archived?'disabled':''}>اعتماد الهاتف</button>`:''}${phone.status!=='revoked'?`<button class="button danger" data-installation-revoke="${esc(phone.installationId)}" ${current.archived?'disabled':''}>إلغاء الاعتماد</button>`:''}</div></div>${phone.status==='revoked'?'<p class="small muted">لإعادة هذا الهاتف، سجله كجهاز جديد من التطبيق ثم اعتمد طلبه الجديد.</p>':''}</article>`).join('') : '<p class="muted">لا توجد طلبات هواتف. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور المؤقتة ثم يظهر طلب هاتفه هنا.</p>';
+    $('#installationList').innerHTML=currentInstallations.length ? currentInstallations.map(phone=>`<article class="device-card"><div class="record-row"><div><b class="installation-state ${esc(phone.status)}">${esc({pending:'بانتظار اعتمادك',active:'هاتف معتمد',revoked:'أُلغي الاعتماد'}[phone.status])} · ${fmt(phone.generation)}</b><code dir="ltr">${esc(phone.installationId)}</code><small>سُجل ${esc(dateFmt(phone.createdAt))}${phone.approvedBy?` · اعتمده ${esc(phone.approvedBy)}`:''}</small>${phone.reason?`<small>${esc(phone.reason)}</small>`:''}</div><div class="button-row">${phone.status==='pending'?`<button class="button primary" data-installation-approve="${esc(phone.installationId)}" ${current.archived?'disabled':''}>اعتماد الهاتف</button>`:''}${phone.status!=='revoked'?`<button class="button danger" data-installation-revoke="${esc(phone.installationId)}" ${current.archived?'disabled':''}>إلغاء الاعتماد</button>`:''}</div></div>${phone.status==='revoked'?'<p class="small muted">لإعادة هذا الهاتف، افتح إعدادات التطبيق ← مزامنة السجلات والاسترداد ← تسجيل الهاتف كجهاز جديد، ثم اعتمد طلبه الجديد هنا.</p>':''}</article>`).join('') : '<p class="muted">لا توجد طلبات هواتف. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور المؤقتة ثم يظهر طلب هاتفه هنا.</p>';
     $('#installationList').querySelectorAll('[data-installation-approve]').forEach(button=>button.addEventListener('click',()=>installationAction(button.dataset.installationApprove,'approve')));
     $('#installationList').querySelectorAll('[data-installation-revoke]').forEach(button=>button.addEventListener('click',()=>installationAction(button.dataset.installationRevoke,'revoke')));
   }
@@ -347,11 +353,11 @@
   // --- Recovery manifest pre-flight ---------------------------------------------------
   // Approving a recovery is irreversible, and the server only reports the first problem it
   // finds. sadid_private.approve_recovery requires a JSON array of 1..1000 original commands,
-  // each with schemaVersion "1", the OLD installation's id and generation, a unique
+  // each with numeric schemaVersion 1, the OLD installation's id and generation, a unique
   // operationId, and a type in {contact.create, debt.create, payment.create}. Check all of that
   // here so the admin sees what they are authorising before they authorise it.
   const recoveryTypes = { 'contact.create': 'إضافة شخص', 'debt.create': 'إضافة دين', 'payment.create': 'تسجيل دفعة' };
-  const recoveryMethods = { cash: 'نقدي', bank: 'بنكي', wallet: 'محفظة' };
+  const recoveryMethods = { cash: 'نقدي', bank: 'بنكي', wallet: 'محفظة', wallet_jawwal: 'محفظة جوال', wallet_palpay: 'محفظة بال بي' };
   /** The one rule that decides whether approving a recovery is allowed: an active replacement
    *  phone, an old phone revoked before it, and a store that is not archived. The preview and the
    *  submit button both read it, so they cannot disagree. */
@@ -383,7 +389,7 @@
       if (!cmd || typeof cmd !== 'object') { problems.push({ level: 'block', message: `${at}: ليس كائنًا.` }); return; }
       if (!recoveryTypes[cmd.type]) problems.push({ level: 'block', message: `${at}: نوع غير مدعوم (${cmd.type ?? 'فارغ'}).` });
       else byType[cmd.type] = (byType[cmd.type] || 0) + 1;
-      if (cmd.schemaVersion !== '1') problems.push({ level: 'block', message: `${at}: schemaVersion يجب أن يكون "1".` });
+      if (cmd.schemaVersion !== 1) problems.push({ level: 'block', message: `${at}: إصدار قائمة الإدخالات غير مدعوم.` });
       if (!cmd.operationId) problems.push({ level: 'block', message: `${at}: بلا operationId.` });
       else if (seen.has(cmd.operationId)) problems.push({ level: 'block', message: `${at}: رقم عملية مكرر مع ${seen.get(cmd.operationId)}.` });
       else seen.set(cmd.operationId, at);
@@ -404,13 +410,13 @@
           details.push({ at, text: `شخص: ${name || '—'}`, sub: phone || 'بلا رقم' });
         } else if (cmd.type === 'debt.create') {
           const cents = Number(englishDigits(payload.amountCents));
-          if (!Number.isFinite(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدين غير صالح.` }); else debtCents += cents;
+          if (!Number.isSafeInteger(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدين غير صالح.` }); else debtCents += cents;
           if (!['receivable', 'payable'].includes(payload.direction)) problems.push({ level: 'block', message: `${at}: اتجاه الدين غير صالح.` });
           details.push({ at, text: `دين: ${recoveryMoney(cents)}`, sub: payload.direction === 'payable' ? 'مستحق على المتجر' : 'مستحق للمتجر' });
         } else if (cmd.type === 'payment.create') {
           const cents = Number(englishDigits(payload.amountCents));
-          if (!Number.isFinite(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدفعة غير صالح.` }); else paymentCents += cents;
-          if (!['cash', 'bank', 'wallet'].includes(payload.method)) problems.push({ level: 'block', message: `${at}: طريقة الدفع غير صالحة.` });
+          if (!Number.isSafeInteger(cents) || cents < 1) problems.push({ level: 'block', message: `${at}: مبلغ الدفعة غير صالح.` }); else paymentCents += cents;
+          if (!['cash', 'bank', 'wallet', 'wallet_jawwal', 'wallet_palpay'].includes(payload.method)) problems.push({ level: 'block', message: `${at}: طريقة الدفع غير صالحة.` });
           details.push({ at, text: `دفعة: ${recoveryMoney(cents)}`, sub: recoveryMethods[payload.method] || payload.method || '—' });
         }
       }
@@ -475,7 +481,7 @@
       button.disabled=true;
       const r=await ledgerApi('/recovery/approve',{oldInstallationId:$('#recoveryOld').value,newInstallationId:$('#recoveryNew').value,commands,reason:$('#recoveryReason').value.trim()});
       await openStore(storeId);
-      $('#recoveryResult').innerHTML=`<b>تم اعتماد الاسترداد</b><span class="permit-id">${esc(r.result.permitId)}</span><p>ينتهي ${esc(dateFmt(r.result.expiresAt))}. انسخ رقم التصريح وضعه في شاشة استرداد الهاتف الجديد.</p>`;
+      $('#recoveryResult').innerHTML=`<b>تم اعتماد الاسترداد</b><span class="permit-id">${esc(r.result.permitId)}</span><p>ينتهي ${esc(dateFmt(r.result.expiresAt))}. انسخ رقم التصريح إلى إعدادات الهاتف الجديد ← مزامنة السجلات والاسترداد ← إدخال تصريح الاسترداد.</p>`;
       $('#recoveryResult').classList.remove('hidden');notice('سُجلت موافقة الاسترداد.');
     }catch(error){$('#recoveryError').textContent=error.message;}
     finally{if(current?.id===storeId)button.disabled=!recoveryPermitted();}
@@ -492,9 +498,10 @@
     const query=$('#ledgerSearch').value.trim().toLowerCase();
     const contacts=currentSnapshot.contacts.filter(row=>`${row.name} ${row.phone || ''}`.toLowerCase().includes(query));
     const ids=new Set(contacts.map(row=>String(row.id)));
+    const contactNames=new Map(contacts.map(row=>[String(row.id),row.name]));
     $('#ledgerContacts').innerHTML=contacts.length?contacts.map(row=>`<tr><td>${esc(row.name)}</td><td dir="ltr">${esc(row.phone)}</td><td>${row.archived?'مؤرشف':'نشط'}</td><td>${fmt(row.receivable)} ₪</td><td>${fmt(row.payable)} ₪</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد جهات اتصال مطابقة.</td></tr>';
     const debts=currentSnapshot.debts.filter(row=>ids.has(String(row.contactId)));
-    $('#ledgerDebts').innerHTML=debts.length?debts.map(row=>`<tr><td>${esc(row.contactName || currentSnapshot.contacts.find(person=>String(person.id)===String(row.contactId))?.name || '')}</td><td>${directionName(row.direction)}</td><td>${fmt(row.amount)} ₪</td><td>${fmt(row.paid)} ₪</td><td>${fmt(row.remaining)} ₪</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد ديون مطابقة.</td></tr>';
+    $('#ledgerDebts').innerHTML=debts.length?debts.map(row=>`<tr><td>${esc(row.contactName || contactNames.get(String(row.contactId)) || '')}</td><td>${directionName(row.direction)}</td><td>${fmt(row.amount)} ₪</td><td>${fmt(row.paid)} ₪</td><td>${fmt(row.remaining)} ₪</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد ديون مطابقة.</td></tr>';
     const transactions=currentSnapshot.transactions.filter(row=>ids.has(String(row.contactId))).slice(0,100);
     $('#ledgerTransactions').innerHTML=transactions.length?transactions.map(row=>`<tr><td>${esc(transactionName(row.kind))}${row.reversed?' · معكوسة':''}</td><td>${esc(row.contactName)}</td><td>${fmt(row.amount)} ₪</td><td>${esc(dateFmt(row.createdAt))}</td><td class="ledger-note">${esc(row.note)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد حركات مطابقة.</td></tr>';
   }

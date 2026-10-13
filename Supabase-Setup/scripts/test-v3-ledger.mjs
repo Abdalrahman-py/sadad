@@ -29,6 +29,9 @@ try{
  for(const file of readdirSync(root).filter(file=>file.endsWith('.sql')).sort()) {
   await db.exec(readFileSync(new URL(file,root),'utf8'));
  }
+ await check('Activity migration leaves its executor without schema CREATE permission',async()=>{
+  assert.equal((await db.query("select has_schema_privilege('sadid_ledger_executor','sadid_private','CREATE') as allowed")).rows[0].allowed,false);
+ });
  await check('Retired financial RPC is unavailable even to the service role',async()=>{
   await db.exec('set role service_role');
   await assert.rejects(db.query('select public.sadad_admin_store_list()'),error=>error.code==='42883');

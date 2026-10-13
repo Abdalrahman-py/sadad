@@ -1,3 +1,5 @@
+> Historical port specification. The native port and legacy retirement are implemented in the current source. Old paths and pending-work statements below describe the original audit; use AGENTS.md and docs/CONTINUE_HERE.md for the current architecture and rollout gates.
+
 # Spec: port the signed v3 ledger client into the product app
 
 Target: move the signed v3 ledger client that lives only in the parked second Android

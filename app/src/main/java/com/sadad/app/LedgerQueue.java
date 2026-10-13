@@ -70,6 +70,13 @@ final class LedgerQueue {
         return LedgerProjection.view(journal.exportPlain(), canAdd(), installation.id(), operatorName);
     }
 
+    boolean hasSnapshot() throws Exception {
+        JSONObject cache = journal.metadata("cache");
+        if (!cache.has("epoch")) return false;
+        LedgerProjection.requireSnapshot(cache, storeId);
+        return true;
+    }
+
     /** Whether the store may add an entry right now: an unexpired lease on this boot, nothing blocking. */
     boolean canAdd() {
         try {
@@ -179,7 +186,91 @@ final class LedgerQueue {
 
     /** One pass of the signed protocol: enrol, lease, snapshot, push the queue, snapshot again. */
     SignedLedgerSync.Result sync() {
-        return SignedLedgerSync.sync(client, journal, installation, device, storeId, userId);
+        SignedLedgerSync.Result result = SignedLedgerSync.sync(client, journal, installation, device, storeId, userId);
+        try {
+            JSONObject state = journal.metadata("sync");
+            journal.metadata("sync", state.put("outcome", result.outcome.name()).put("message", result.message == null ? "" : result.message));
+        } catch (Exception error) {
+            return SignedLedgerSync.Result.of(SignedLedgerSync.Outcome.RETRY_LATER, "تعذر حفظ حالة المزامنة؛ بقيت الإدخالات محفوظة.");
+        }
+        return result;
+    }
+
+    String status() throws Exception {
+        JSONObject state = journal.metadata("sync"), cache = journal.metadata("cache");
+        String message = state.optString("message", state.optString("error", ""));
+        int pending = 0;
+        StringBuilder errors = new StringBuilder();
+        JSONArray entries = journal.entries();
+        for (int i = 0; i < entries.length(); i++) {
+            JSONObject entry = entries.getJSONObject(i);
+            if (!java.util.Arrays.asList("confirmed", "rejected", "cancelled", "reviewed").contains(entry.optString("state"))) pending++;
+            if (errors.length() < 600 && !entry.optString("error").isEmpty()) errors.append("\n").append(LedgerMessages.of(entry.optString("error")));
+        }
+        String saved = cache.has("epoch") ? "السجلات المحفوظة: " + cache.getJSONArray("contacts").length() + " شخص، " + cache.getJSONArray("debts").length() + " دين."
+                : "لم تُحمّل نسخة مكتملة من الخادم بعد.";
+        String updated = state.optLong("lastSnapshotAt") > 0 ? "\nآخر نسخة مكتملة: " + java.text.DateFormat.getDateTimeInstance().format(new java.util.Date(state.getLong("lastSnapshotAt"))) : "";
+        return saved + updated + "\nإدخالات تنتظر التحقق: " + pending + (message.isEmpty() ? "" : "\n" + message) + errors;
+    }
+
+    byte[] exportRecovery(char[] password) throws Exception { return RecoveryCrypto.seal(journal.exportPlain(), password); }
+
+    void importRecovery(byte[] file, char[] password) throws Exception { journal.importPlain(RecoveryCrypto.open(file, password)); }
+
+    JSONArray recoveryOrigins() throws Exception {
+        java.util.Set<String> origins = new java.util.LinkedHashSet<>();
+        JSONArray entries = journal.entries();
+        for (int i = 0; i < entries.length(); i++) {
+            JSONObject entry = entries.getJSONObject(i), command = entry.getJSONObject("command");
+            if (!java.util.Arrays.asList("confirmed", "rejected", "cancelled", "reviewed").contains(entry.optString("state"))
+                    && LedgerCommand.offlineType(command.optString("type"))) origins.add(command.getString("originInstallationId"));
+        }
+        return new JSONArray(origins);
+    }
+
+    byte[] recoveryManifest(String origin) throws Exception {
+        JSONArray commands = new JSONArray(), entries = journal.entries();
+        for (int i = 0; i < entries.length(); i++) {
+            JSONObject entry = entries.getJSONObject(i), command = entry.getJSONObject("command");
+            if (origin.equals(command.optString("originInstallationId")) && LedgerCommand.offlineType(command.optString("type"))
+                    && !java.util.Arrays.asList("confirmed", "rejected", "cancelled", "reviewed").contains(entry.optString("state")))
+                commands.put(new JSONObject(entry.getString("wire")));
+        }
+        if (commands.length() == 0 || commands.length() > 1000) throw new IllegalArgumentException("قائمة الاعتماد تحتاج من إدخال واحد إلى ١٠٠٠ إدخال للأصل نفسه؛ راجع الإدارة.");
+        byte[] bytes = commands.toString().getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > 4000000) throw new IllegalArgumentException("قائمة الاعتماد أكبر من الحد المسموح.");
+        return bytes;
+    }
+
+    void recoveryPermit(String id) throws Exception {
+        if (!id.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) throw new IllegalArgumentException("رقم تصريح الاسترداد غير صالح.");
+        journal.metadata("recovery", journal.metadata("recovery").put("permitId", id));
+    }
+
+    void prepareRegistration() throws Exception {
+        String code = journal.metadata("sync").optString("blockedCode");
+        if (!"installation_revoked".equals(code) && !"installation_key_changed".equals(code))
+            throw new IllegalStateException("زامن أولًا للتحقق من إلغاء اعتماد الهاتف. الهاتف المعتمد لا يحتاج تسجيلًا جديدًا.");
+        journal.metadata("lease", new JSONObject());
+        journal.metadata("installation", new JSONObject());
+    }
+
+    JSONObject recoverySnapshot() throws Exception {
+        if (!journal.metadata("sync").optBoolean("recoveryRequired")) throw new IllegalStateException("لا يوجد تغيير استرداد ينتظر المراجعة.");
+        JSONObject snapshot = client.snapshot();
+        LedgerProjection.requireSnapshot(snapshot, storeId);
+        return snapshot;
+    }
+
+    void acceptRecoverySnapshot(String epoch, long cursor) throws Exception {
+        String owner = journal.acquire();
+        if (owner == null) throw new IllegalStateException("توجد مزامنة جارية؛ أعد المحاولة بعد لحظة.");
+        try {
+            JSONObject snapshot = recoverySnapshot();
+            if (!epoch.equals(snapshot.getString("epoch")) || cursor != snapshot.getLong("cursor"))
+                throw new IllegalStateException("تغيرت النسخة منذ المراجعة؛ افتح المراجعة مجددًا.");
+            journal.acceptEpoch(snapshot);
+        } finally { journal.release(owner); }
     }
 
     JSONArray activity() throws Exception { return client.activity(); }
@@ -194,7 +285,7 @@ final class LedgerQueue {
         String owner = journal.acquire();
         if (owner == null) throw new IllegalStateException("توجد مزامنة جارية؛ انتظر لحظة ثم أعد الإجراء.");
         try {
-            journal.merge(client.snapshot());
+            SignedLedgerSync.mergeSnapshot(client, journal, storeId);
             if (journal.metadata("sync").optBoolean("recoveryRequired", false)) {
                 throw new IllegalStateException("تغيّر إصدار استرداد الخادم؛ راجع الإيصالات مع الإدارة قبل الإرسال.");
             }
@@ -217,7 +308,7 @@ final class LedgerQueue {
             }
             boolean accepted = "accepted".equals(receipt.optString("status"));
             journal.state(entry, accepted ? "acknowledged" : "rejected", receipt.optString("code", ""));
-            journal.merge(client.snapshot());
+            SignedLedgerSync.mergeSnapshot(client, journal, storeId);
             if (!accepted) throw new IllegalStateException(LedgerMessages.of(receipt.optString("code", "")));
             return receipt;
         } finally {

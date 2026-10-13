@@ -4,6 +4,14 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public final class InstallationKeyTest {
+    @Test public void registrationReplacesOnlyThatStoresIdentityAndPreservesTheJournalScope() throws Exception {
+        TestPreferences storage = new TestPreferences();
+        String first = new InstallationKey(storage.open(), "7").id();
+        String second = new InstallationKey(storage.open(), "3").id();
+        InstallationKey.registerAgain(storage.open(), "7");
+        assertNotEquals(first, new InstallationKey(storage.open(), "7").id());
+        assertEquals(second, new InstallationKey(storage.open(), "3").id());
+    }
     @Test public void twoStoresHaveDistinctStableIdentitiesAfterReopening() throws Exception {
         TestPreferences storage = new TestPreferences();
         String first = new InstallationKey(storage.open(), "7").id();

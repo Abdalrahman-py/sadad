@@ -1182,6 +1182,18 @@ final class NativeScreens {
         content.addView(button("مشاركة كشف السجلات", surface, text, () -> exportCompletePdf(true)), bottomMargin(12));
         content.addView(button("سلة المحذوفات", surface, text, () -> host.show("trash")), bottomMargin(12));
         content.addView(button("تواصل معنا على WhatsApp", surface, text, host::openSupportWhatsApp), bottomMargin(6));
+        if (host.signedLedger()) {
+            divider(); sectionTitle("مزامنة السجلات والاسترداد", "");
+            TextView status = label("جارٍ قراءة حالة المزامنة…", 14, text, false);
+            status.setContentDescription("حالة مزامنة السجلات"); content.addView(status, bottomMargin(12)); host.loadLedgerStatus(status);
+            content.addView(button("تحميل أحدث السجلات", surface, text, host::requestServerSnapshot), bottomMargin(8));
+            content.addView(button("حفظ نسخة استرداد مشفرة", surface, text, host::exportLedgerRecovery), bottomMargin(8));
+            content.addView(button("استيراد نسخة استرداد", surface, text, host::pickLedgerRecovery), bottomMargin(8));
+            content.addView(button("تصدير قائمة اعتماد الإدارة", surface, text, host::exportLedgerManifest), bottomMargin(8));
+            content.addView(button("إدخال تصريح الاسترداد", surface, text, host::enterLedgerPermit), bottomMargin(8));
+            content.addView(button("مراجعة نسخة استرداد الخادم", surface, text, host::reviewLedgerRecovery), bottomMargin(8));
+            content.addView(button("تسجيل الهاتف كجهاز جديد", surface, text, host::registerLedgerAgain), bottomMargin(8));
+        }
         divider(); sectionTitle("قفل التطبيق", "");
         Switch lock = switchRow("تفعيل", host.getPreferences(0).getBoolean("lock_enabled", false)); content.addView(lock, bottomMargin(8));
         lock.setOnCheckedChangeListener((button, checked) -> {

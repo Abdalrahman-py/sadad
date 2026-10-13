@@ -32,11 +32,16 @@ export function adminLedgerSnapshot(raw: Row, account: Row): Row {
       amount: money(Number(row.amount_cents)), reversed: reversed.has(row.id), method: row.method, note: row.note || '', createdAt: timestamp(row.created_at) };
   });
   const paymentRows = new Map<string, Row>(payments.map((row: Row) => [row.id, row]));
+  const balances = new Map<string, { receivable: number; payable: number }>();
+  for (const debt of debts) {
+    const balance = balances.get(debt.contactId) || { receivable: 0, payable: 0 };
+    if (debt.direction === 'receivable') balance.receivable += debt.remaining;
+    if (debt.direction === 'payable') balance.payable += debt.remaining;
+    balances.set(debt.contactId, balance);
+  }
   const contacts = (raw.contacts || []).map((row: Row) => {
-    const own = debts.filter((debt: Row) => debt.contactId === row.id);
     return { id: row.id, name: row.name, phone: row.phone || '', category: row.category || '', note: row.note || '', archived: !!row.archived,
-      receivable: own.filter((debt: Row) => debt.direction === 'receivable').reduce((sum: number, debt: Row) => sum + debt.remaining, 0),
-      payable: own.filter((debt: Row) => debt.direction === 'payable').reduce((sum: number, debt: Row) => sum + debt.remaining, 0) };
+      receivable: balances.get(row.id)?.receivable || 0, payable: balances.get(row.id)?.payable || 0 };
   });
   const transactions: Row[] = [
     ...(raw.debts || []).map((row: Row) => ({ ...debtRows.get(row.id), kind: 'debt', amount: money(Number(row.amount_cents)) })),

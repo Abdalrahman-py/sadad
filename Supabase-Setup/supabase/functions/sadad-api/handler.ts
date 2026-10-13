@@ -411,11 +411,12 @@ export function makeApi({ db, now = Date.now }: Dependencies) {
 
         if (request.method === "GET" && action === "") {
           const reason = text(url.searchParams.get("reason") || "Store management in admin dashboard", 2000);
-          const raw = ledgerInitialized ? dataOrThrow(await db.rpc("sadid_support_snapshot", { p_admin_hash: hashToken(auth.token), p_store: storeId, p_reason: reason })) : null;
-          const [devices, controls] = await Promise.all([
+          const [snapshotResult, devices, controls] = await Promise.all([
+            ledgerInitialized ? db.rpc("sadid_support_snapshot", { p_admin_hash: hashToken(auth.token), p_store: storeId, p_reason: reason }) : Promise.resolve({ data: null, error: null }),
             listDevices(storeId),
             db.rpc("sadid_admin_controls", { p_admin_hash: hashToken(auth.token), p_store: storeId }),
           ]);
+          const raw = dataOrThrow(snapshotResult);
           const control = dataOrThrow(controls);
           const account = { ...publicStore(store), archived: store.status === "deleted", canDelete: !ledgerInitialized && !control.hasDeviceHistory };
           const snapshot = adminLedgerSnapshot(raw || { contacts: [], debts: [], payments: [], events: [] }, account);

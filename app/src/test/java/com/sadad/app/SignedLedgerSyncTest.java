@@ -44,6 +44,8 @@ public final class SignedLedgerSyncTest {
     private static final class FakeJournal implements LedgerJournal {
         public JSONObject exportPlain() throws Exception { return new JSONObject().put("cache", metadata("cache")).put("entries", entries()); }
         public void close() { }
+        public void importPlain(JSONObject bundle) { throw new AssertionError("Unexpected recovery import"); }
+        public void acceptEpoch(JSONObject snapshot) { throw new AssertionError("Unexpected epoch reconciliation"); }
         public void addBatch(JSONArray commands) throws Exception { for (int i=0;i<commands.length();i++) add(commands.getJSONObject(i)); }
         final Map<String, JSONObject> metadata = new HashMap<>();
         final List<JSONObject> entries = new ArrayList<>();
@@ -78,7 +80,7 @@ public final class SignedLedgerSyncTest {
         JSONObject enrolAnswer = json("{\"status\":\"active\",\"installationId\":\"" + INSTALLATION + "\",\"generation\":1}");
         JSONObject leaseAnswer;
         SyncFailure enrollmentFailure;
-        JSONObject snapshotAnswer = json("{\"epoch\":\"epoch-1\",\"cursor\":1}");
+        JSONObject snapshotAnswer = json("{\"schemaVersion\":1,\"storeId\":7,\"currency\":\"ILS\",\"epoch\":\"epoch-1\",\"cursor\":1,\"contacts\":[],\"debts\":[],\"payments\":[],\"adjustments\":[],\"reversals\":[],\"debtBalances\":[],\"outcomes\":[]}");
         final Map<String, JSONObject> receipts = new HashMap<>();
         final Map<String, SyncFailure> refusals = new HashMap<>();
         final List<String> calls = new ArrayList<>();
@@ -245,7 +247,7 @@ public final class SignedLedgerSyncTest {
         assertNotNull(stored.optJSONObject("payload"));
         assertEquals(device.boot, stored.optLong("boot"));
         assertEquals(device.elapsed, stored.optLong("elapsed"));
-        assertTrue("the pass takes the snapshot twice: before and after the push", ledger.calls.stream().filter("snapshot"::equals).count() == 2);
+        assertEquals("an empty queue needs only one snapshot", 1, ledger.calls.stream().filter("snapshot"::equals).count());
     }
 
     @Test public void aLeaseSignedByAnotherKeyIsRefused() throws Exception {
@@ -373,7 +375,7 @@ public final class SignedLedgerSyncTest {
     @Test public void aServerThatMovedItsRecoveryGenerationStopsThePass() throws Exception {
         FakeLedger ledger = new FakeLedger();
         ledger.leaseAnswer = lease(INSTALLATION, 7, USER, 1_700_000_000_000L, 1_700_000_000_000L + 7L * 86400000, keyPair());
-        ledger.snapshotAnswer = new JSONObject().put("epoch", "epoch-2").put("cursor", 5);
+        ledger.snapshotAnswer.put("epoch", "epoch-2").put("cursor", 5);
         FakeJournal journal = new FakeJournal();
         journal.add(command("op-8", "epoch-1", INSTALLATION));
         // merge() records what the server said; the pass reads recoveryRequired from it
@@ -384,6 +386,36 @@ public final class SignedLedgerSyncTest {
 
         assertEquals(SignedLedgerSync.Outcome.RECOVERY_REQUIRED, result.outcome);
         assertFalse(ledger.calls.contains("apply:op-8"));
+    }
+
+    @Test public void anIncompleteSnapshotNeverReplacesTheLastGoodCache() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.leaseAnswer = lease(INSTALLATION, 7, USER, 1_700_000_000_000L, 1_700_000_000_000L + 7L * 86400000, keyPair());
+        FakeJournal journal = new FakeJournal();
+        JSONObject prior = new JSONObject(ledger.snapshotAnswer.toString());
+        journal.metadata("cache", prior);
+        ledger.snapshotAnswer.remove("contacts");
+        SignedLedgerSync.Result result = run(ledger, journal, new FakeDevice());
+        assertEquals(SignedLedgerSync.Outcome.RETRY_LATER, result.outcome);
+        assertEquals(0, journal.merges);
+        assertEquals(prior.toString(), journal.metadata("cache").toString());
+    }
+
+    @Test public void aSnapshotForAnotherStoreIsNeverImported() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.leaseAnswer = lease(INSTALLATION, 7, USER, 1_700_000_000_000L, 1_700_000_000_000L + 7L * 86400000, keyPair());
+        ledger.snapshotAnswer.put("storeId", 99);
+        FakeJournal journal = new FakeJournal();
+        assertEquals(SignedLedgerSync.Outcome.RETRY_LATER, run(ledger, journal, new FakeDevice()).outcome);
+        assertEquals(0, journal.merges);
+    }
+
+    @Test public void aRevokedInstallationNeedsRegistrationRatherThanRetry() throws Exception {
+        FakeLedger ledger = new FakeLedger();
+        ledger.enrollmentFailure = new SyncFailure(403, new JSONObject(), "تم إلغاء هذا الجهاز.", "installation_revoked");
+        SignedLedgerSync.Result result = run(ledger, new FakeJournal(), new FakeDevice());
+        assertFalse(result.retryable());
+        assertEquals("REGISTRATION_REQUIRED", result.outcome.name());
     }
 
     @Test public void aFreshLeaseOnThisBootAllowsOfflineEntries() throws Exception {

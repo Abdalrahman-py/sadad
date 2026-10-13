@@ -21,7 +21,10 @@ begin
  join public.sadid_operations o on o.store_id=e.store_id and o.operation_id=e.operation_id;
  return result;
 end $$;
+-- Ownership transfer requires CREATE; the deployed schema has already revoked it.
+grant create on schema sadid_private to sadid_ledger_executor;
 alter function sadid_private.activity() owner to sadid_ledger_executor;
+revoke create on schema sadid_private from sadid_ledger_executor;
 revoke all on function sadid_private.activity() from public,anon,authenticated,service_role;
 grant execute on function sadid_private.activity() to authenticated;
 create function public.sadid_activity() returns jsonb language sql security invoker set search_path='' as $$ select sadid_private.activity() $$;

@@ -76,12 +76,45 @@ public final class LedgerQueueTest {
         assertEquals(0, queue.view().getJSONArray("payments").length());
     }
 
+    @Test public void anUninitializedJournalCannotReplaceTheSavedLocalView() throws Exception {
+        MemoryJournal journal = new MemoryJournal(); LedgerQueue queue = queue(journal);
+        assertTrue(queue.hasSnapshot());
+        journal.metadata("cache", new JSONObject()); assertFalse(queue.hasSnapshot());
+        journal.metadata("cache", new JSONObject().put("epoch", "broken"));
+        assertThrows(org.json.JSONException.class, queue::hasSnapshot);
+    }
+
+    @Test public void manifestsKeepOriginalCommandsAndExcludeSettledEntries() throws Exception {
+        MemoryJournal journal = new MemoryJournal(); LedgerQueue queue = queue(journal);
+        queue.payContact("contact-1", 1000, "cash", "");
+        String wire = journal.entries.getJSONObject(0).getString("wire");
+        journal.entries.getJSONObject(0).put("state", "blocked");
+        assertEquals("installation-1", queue.recoveryOrigins().getString(0));
+        assertEquals(wire, new JSONArray(new String(queue.recoveryManifest("installation-1"), java.nio.charset.StandardCharsets.UTF_8)).getJSONObject(0).toString());
+        journal.entries.getJSONObject(0).put("state", "confirmed");
+        assertEquals(0, queue.recoveryOrigins().length());
+        assertThrows(IllegalArgumentException.class, () -> queue.recoveryManifest("installation-1"));
+    }
+
+    @Test public void activePhonesCannotRotateAndRecoveryPermitsAreValidated() throws Exception {
+        MemoryJournal journal = new MemoryJournal(); LedgerQueue queue = queue(journal);
+        assertThrows(IllegalStateException.class, queue::prepareRegistration);
+        assertTrue(queue.canAdd());
+        assertThrows(IllegalArgumentException.class, () -> queue.recoveryPermit("invalid"));
+        assertEquals(0, journal.metadata("recovery").length());
+        String id = "a0000000-0000-4000-8000-000000000001";
+        queue.recoveryPermit(id); assertEquals(id, journal.metadata("recovery").getString("permitId"));
+        journal.metadata("sync", new JSONObject().put("blockedCode", "installation_revoked"));
+        queue.prepareRegistration(); assertFalse(queue.canAdd()); assertEquals(1, queue.view().getJSONArray("contacts").length());
+    }
+
     static LedgerQueue queue(MemoryJournal journal) throws Exception {
-        journal.metadata("cache", new JSONObject().put("epoch", "epoch-1").put("cursor", 1)
+        journal.metadata("cache", new JSONObject().put("schemaVersion",1).put("storeId",7).put("currency","ILS").put("epoch", "epoch-1").put("cursor", 1)
                 .put("contacts", new JSONArray().put(new JSONObject().put("id", "contact-1").put("name", "عميل")))
                 .put("debts", new JSONArray().put(new JSONObject().put("id", "debt-1").put("contact_id", "contact-1")
                         .put("amount_cents", 10000).put("direction", "receivable").put("created_at", "2026-10-10T10:00:00+00:00")))
-                .put("payments", new JSONArray()));
+                .put("payments", new JSONArray()).put("adjustments",new JSONArray()).put("reversals",new JSONArray()).put("outcomes",new JSONArray())
+                .put("debtBalances",new JSONArray().put(new JSONObject().put("debtId","debt-1").put("amountCents",10000).put("paidCents",0).put("remainingCents",10000).put("version",1))));
         journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
         journal.metadata("lease", new JSONObject().put("boot", 1).put("elapsed", 1000).put("wall", 1000)
                 .put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "installation-1")
@@ -119,5 +152,7 @@ public final class LedgerQueueTest {
         public void renew(String owner) { }
         public void release(String owner) { }
         public void close() { }
+        public void importPlain(JSONObject bundle) { throw new AssertionError("Unexpected recovery import"); }
+        public void acceptEpoch(JSONObject snapshot) { throw new AssertionError("Unexpected epoch reconciliation"); }
     }
 }

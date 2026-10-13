@@ -813,7 +813,7 @@ public final class SadadDatabase extends SQLiteOpenHelper {
                 JSONObject row = debts.getJSONObject(i);
                 String uuid = row.optString("id");
                 Long contactId = contactIds.get(row.optString("contact_id"));
-                long amount = row.optLong("amount_cents", row.optLong("currentAmountCents", 0L));
+                long amount = row.optLong("currentAmountCents", row.optLong("amount_cents", 0L));
                 if (uuid.isEmpty() || contactId == null || amount <= 0L) continue;
                 seenDebts.add(uuid);
                 Long id = debtIds.get(uuid);

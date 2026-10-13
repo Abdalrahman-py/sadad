@@ -16,7 +16,7 @@ android {
     val apiBaseUrl = providers.gradleProperty("SADAD_API_BASE_URL")
         .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api")
     // The gateway that issues the Auth envelope the signed ledger requires. Login and token refresh
-    // go here; every other legacy route still goes to apiBaseUrl. Both are pinned into the build so
+    // go here; account and administration routes still go to apiBaseUrl. Both are pinned into the build so
     // a released app cannot be pointed at another origin.
     val authBaseUrl = providers.gradleProperty("SADAD_AUTH_BASE_URL")
         .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-auth")
@@ -31,8 +31,8 @@ android {
         testInstrumentationRunner = providers.gradleProperty("SADAD_TEST_RUNNER").getOrElse("com.sadad.app.QaInstrumentation")
         minSdk = 24
         targetSdk = 34
-        versionCode = 38
-        versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("2.5.12")
+        versionCode = 39
+        versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("2.5.13")
         buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "AUTH_BASE_URL", "\"${authBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${supabasePublishableKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")

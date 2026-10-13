@@ -36,6 +36,10 @@ interface LedgerJournal {
     /** Folds the server's snapshot and its receipts into the cache and the queue. */
     void merge(JSONObject snapshot) throws Exception;
 
+    void importPlain(JSONObject bundle) throws Exception;
+
+    void acceptEpoch(JSONObject snapshot) throws Exception;
+
     /** The worker lock: null when another sync holds it. */
     String acquire() throws Exception;
 
