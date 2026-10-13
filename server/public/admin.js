@@ -13,6 +13,13 @@
   let bootstrap = false;
   let currentInstallations = [];
   let storeRequest = 0;
+  let dashboardRequest = 0;
+  let storeController = null;
+  let dashboardController = null;
+  let ledgerRows = null;
+  let ledgerEvents = [];
+  const pages = { stores: 0, ledgerContacts: 0, ledgerDebts: 0 };
+  const pageSize = 100;
   let pendingAction = null;
 
   const labels = { contacts: 'جهات الاتصال', debts: 'الديون', payments: 'الدفعات', reports: 'الكشوفات والتقارير', analytics: 'الإحصائيات', export: 'التصدير', whatsapp: 'WhatsApp', appLock: 'قفل التطبيق' };
@@ -99,6 +106,7 @@
     const adapter = requestTargets[target];
     const body = adapter.body(options);
     const init = { method: adapter.method(options), headers: adapter.headers(options) };
+    if (options.signal) init.signal = options.signal;
     if (body !== undefined) init.body = body;
     const response = await fetch(adapter.url(path), init);
     const data = await response.json().catch(() => ({ ok: false, message: adapter.unreadable }));
@@ -111,6 +119,7 @@
   const api = (path, options = {}) => request('sadad', path, options);
   const ledgerApi = (path, body) => request('ledger', path, { body });
   function showAuth(setup) {
+    ++dashboardRequest; dashboardController?.abort(); storeController?.abort(); stores=[]; ledgerRows=null; ledgerEvents=[];
     ++storeRequest; current=null; currentSnapshot=null; $('#authPassword').value=''; $('#storePanel').classList.add('hidden'); $('#ledgerPanel').classList.add('hidden'); $('#tempPasswordResult').textContent='';
     bootstrap = setup; $('#authView').classList.remove('hidden'); $('#appView').classList.add('hidden');
     $('#authForm').classList.remove('hidden');
@@ -158,29 +167,59 @@
   $('#logoutBtn').addEventListener('click', async () => { try { await api('/api/admin/logout', { method: 'POST' }); } catch (_) {} token = ''; sessionStorage.removeItem(tokenKey); showAuth(false); });
 
   async function loadDashboard() {
+    const request = ++dashboardRequest;
+    dashboardController?.abort(); dashboardController = new AbortController();
     $('#connectionState').textContent = 'جارٍ تحديث البيانات…';
     try {
-      const result = await api(`/api/admin/dashboard?includeArchived=${$('#showArchived').checked}`);
+      const result = await api(`/api/admin/dashboard?includeArchived=${$('#showArchived').checked}`, { signal: dashboardController.signal });
+      if (request !== dashboardRequest) return;
       $('#adminName').textContent = result.meta.username; stores = result.stores;
-      $('#metrics').innerHTML = [['المتاجر', result.overview.stores], ['النشطة', result.overview.active], ['الموثقة', result.overview.trusted], ['أصل الديون الحالي', `${fmt(result.overview.debts)} ₪`]].map(item => `<article class="metric"><span>${item[0]}</span><b>${item[1]}</b></article>`).join('');
-      $('#connectionState').textContent = `متصل بقاعدة البيانات · آخر تحديث ${new Date().toLocaleTimeString('ar-PS')} · طلبات هواتف بانتظار الاعتماد: ${fmt(result.overview.pendingDevices)}`;
+      renderMetrics();
       renderStores();
-    } catch (error) { $('#connectionState').textContent = 'تعذر تحديث البيانات. اضغط تحديث للمحاولة مجددًا.'; throw error; }
+    } catch (error) { if (request !== dashboardRequest || error.name === 'AbortError') return; $('#connectionState').textContent = 'تعذر تحديث البيانات. اضغط تحديث للمحاولة مجددًا.'; throw error; }
   }
-  $('#refreshDashboard').addEventListener('click', async () => { try { await loadDashboard(); if (current) await openStore(current.id); } catch(error) {notice(error.message,true);} });
+  async function refreshStore(id, ledger = false) {
+    const selected = current?.id === id;
+    await Promise.all([ledger || !selected ? loadDashboard() : null, selected ? openStore(id, { refresh: true, ledger: ledger || !currentSnapshot }) : null]);
+  }
+  $('#refreshDashboard').addEventListener('click', async () => { try { if (current) await refreshStore(current.id, true); else await loadDashboard(); } catch(error) {notice(error.message,true);} });
   $('#showArchived').addEventListener('change', () => loadDashboard().catch(error => notice(error.message,true)));
+
+  function renderMetrics() {
+    const available = stores.filter(store => !store.archived);
+    const debtTotal = available.reduce((sum, store) => sum + Number(store.debtTotal || 0), 0);
+    const pending = available.reduce((sum, store) => sum + Number(store.pendingDevices || 0), 0);
+    $('#metrics').innerHTML = [['المتاجر', available.length], ['النشطة', available.filter(store => store.status === 'active').length], ['الموثقة', available.filter(store => store.verified).length], ['أصل الديون الحالي', `${fmt(debtTotal)} ₪`]].map(item => `<article class="metric"><span>${item[0]}</span><b>${item[1]}</b></article>`).join('');
+    $('#connectionState').textContent = `متصل بقاعدة البيانات · آخر تحديث ${new Date().toLocaleTimeString('ar-PS')} · طلبات هواتف بانتظار الاعتماد: ${fmt(pending)}`;
+  }
 
   function renderStores() {
     const query = $('#searchStores').value.trim().toLowerCase();
     const rows = stores.filter(store => `${store.name} ${store.username}`.toLowerCase().includes(query));
-    $('#storesBody').innerHTML = rows.map(store => {
+    $('#storesBody').innerHTML = pageRows(rows, 'stores').map(store => {
       const subscription = store.subscriptionMode === 'permanent' ? 'فعال دائمًا' : store.subscriptionMode === 'paused' ? 'موقوف' : store.subscriptionRemainingMs > 0 ? `متبقي ${duration(store.subscriptionRemainingMs)}` : 'منتهي';
       return `<tr><td><b>${esc(store.name)}</b>${store.verified ? '<small title="حساب موثّق" aria-label="حساب موثّق" style="display:inline-grid;place-items:center;width:17px;height:17px;margin-inline-start:7px;border-radius:50%;background:#d9f3ec;color:#087765;font-size:11px;font-weight:800;vertical-align:middle">✓</small>' : ''}</td><td>${esc(store.username)}</td><td><span class="status ${store.status === 'active' ? '' : 'suspended'}">${store.archived ? 'مؤرشف' : store.status === 'active' ? 'نشط' : 'مجمّد'}</span></td><td>${esc(subscription)}</td><td>${store.boundDevices ? 'معتمد' : 'غير معتمد'}${store.pendingDevices ? `<small class="pending-device">${fmt(store.pendingDevices)} طلب انتظار</small>` : ''}</td><td>${store.verified ? '<b class="verified">✓ موثوق</b>' : '—'}</td><td>${fmt(store.contacts)}</td><td>${fmt(store.debts)} · ${fmt(store.debtTotal)} ₪</td><td><button class="button quiet" data-open="${store.id}">إدارة</button></td></tr>`;
     }).join('');
     $('#emptyStores').classList.toggle('hidden', rows.length > 0);
-    document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openStore(Number(button.dataset.open))));
   }
-  $('#searchStores').addEventListener('input', renderStores);
+  $('#storesBody').addEventListener('click', async event => {
+    const button = event.target.closest('[data-open]');
+    if (button) await openStore(Number(button.dataset.open));
+  });
+  $('#searchStores').addEventListener('input', () => { pages.stores = 0; renderStores(); });
+  function pageRows(rows, key) {
+    pages[key] = Math.max(0, Math.min(pages[key], Math.ceil(rows.length / pageSize) - 1));
+    const start = pages[key] * pageSize;
+    $(`#${key}Page`).textContent = rows.length ? `${fmt(start + 1)}–${fmt(Math.min(start + pageSize, rows.length))} من ${fmt(rows.length)}` : 'لا نتائج';
+    $(`#${key}Prev`).disabled = pages[key] === 0;
+    $(`#${key}Next`).disabled = start + pageSize >= rows.length;
+    return rows.slice(start, start + pageSize);
+  }
+  for (const key of Object.keys(pages)) {
+    for (const [suffix, step] of [['Prev', -1], ['Next', 1]]) {
+      $(`#${key}${suffix}`).addEventListener('click', () => { pages[key] += step; if (key === 'stores') renderStores(); else renderLedger(); });
+    }
+  }
   const dialog = $('#createDialog');
   $('#newStoreBtn').addEventListener('click', () => { $('#createError').textContent=''; dialog.showModal(); }); $('#cancelCreate').addEventListener('click', () => dialog.close());
   function generatePassword() { const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%'; const bytes = new Uint32Array(18); crypto.getRandomValues(bytes); return Array.from(bytes, value => chars[value % chars.length]).join(''); }
@@ -193,23 +232,42 @@
       const body = { name: $('#newName').value.trim(), username: $('#newUsername').value.trim(), password: $('#newPassword').value, debtorLimit: integerInput('#newLimit', 0, 1000000, 0), maxDevices: integerInput('#newMaxDevices', 1, 50, 1), subscriptionMode: $('#newSubscriptionMode').value, subscriptionDays: integerInput('#newSubscriptionDays', 1, 36500, 30) };
       const result = await api('/api/admin/stores', { method: 'POST', body: JSON.stringify(body) });
       dialog.close(); $('#createStoreForm').reset(); $('#newMaxDevices').value = '1'; $('#newSubscriptionDays').value = '30'; $('#newSubscriptionDaysWrap').classList.remove('hidden');
-      await loadDashboard(); await openStore(result.id);
+      await Promise.all([loadDashboard(), openStore(result.id)]);
       $('#tempPasswordResult').textContent = `الحساب ${result.username} أُنشئ. كلمة المرور المؤقتة: ${result.password} — انسخها الآن وأرسلها بأمان.`; $('#tempPasswordResult').classList.remove('hidden');
       notice('تم إنشاء الحساب. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور ثم تطلب موافقتك على الهاتف.');
     } catch (error) { $('#createError').textContent=error.message; notice(error.message, true); }
     finally {submit.disabled=false;}
   });
-  async function openStore(id) {
+  async function openStore(id, { refresh = false, ledger = true } = {}) {
+    if (refresh && current?.id !== id) return;
     const request = ++storeRequest;
     const button = document.querySelector(`[data-open="${id}"]`);
-    if(button) {button.disabled=true; button.textContent='جارٍ التحميل…';}
-    current=null; currentSnapshot=null; $('#ledgerPanel').classList.add('hidden');
-    $('#storePanel').classList.add('hidden');
+    if (button && !refresh) { button.disabled = true; button.textContent = "جارٍ التحميل…"; }
+    storeController?.abort(); storeController = new AbortController();
+    const options = { signal: storeController.signal };
+    if (!refresh) {
+      current=null; currentSnapshot=null; ledgerRows=null; ledgerEvents=[]; pages.ledgerContacts=0; pages.ledgerDebts=0;
+      $('#ledgerSearch').value=''; $('#ledgerPanel').classList.add('hidden'); $('#storePanel').classList.add('hidden'); $('#storeStats').innerHTML='';
+    }
+    $('#storePanel').setAttribute('aria-busy', 'true');
+    if (ledger) $('#ledgerReadInfo').textContent='جارٍ تحميل السجل…';
+    const details = api(`/api/admin/stores/${id}?includeLedger=false`, options);
+    const ledgerRead = ledger ? api(`/api/admin/stores/${id}/ledger`, options) : null;
+    // The Ledger can reject while controls are still loading; await it below without an unhandled rejection.
+    ledgerRead?.catch(() => {});
     try {
-      const result = await api(`/api/admin/stores/${id}`);
+      const result = await details;
       if(request!==storeRequest)return;
-      current = result.store; currentSnapshot = result.snapshot;
-      $('#ledgerSearch').value=''; $('#storePanel').classList.remove('hidden'); $('#storeHeading').textContent = current.name;
+      current = result.store;
+      const listed = stores.find(store => store.id === id);
+      if (listed) {
+        Object.assign(listed, current);
+        listed.boundDevices = (result.installations || []).filter(phone => phone.status === 'active').length;
+        listed.pendingDevices = (result.installations || []).filter(phone => phone.status === 'pending').length;
+        stores = stores.filter(store => $('#showArchived').checked || !store.archived);
+        renderMetrics(); renderStores();
+      }
+      $('#storePanel').classList.remove('hidden'); $('#storeHeading').textContent = current.name;
       $('#storeMeta').textContent = `${current.username} · أنشئ ${dateFormat.format(new Date(current.createdAt))}`;
       $('#storeName').value = current.name; $('#storeUsername').value = current.username; $('#debtorLimit').value = current.debtorLimit; $('#maxDevices').value = current.maxDevices || 1;
       $('#verified').checked = current.verified;
@@ -219,25 +277,37 @@
       $('#subscriptionState').textContent = current.subscriptionMode === 'permanent' ? 'فعال دائمًا.' : current.subscriptionMode === 'paused' ? `الاشتراك موقوف، والمدة المتبقية محفوظة: ${duration(current.subscriptionRemainingMs)}.` : current.subscriptionRemainingMs > 0 ? `متبقي ${duration(current.subscriptionRemainingMs)}، وينتهي ${dateFmt(current.subscriptionExpiresAt)}.` : `انتهى الاشتراك في ${dateFmt(current.subscriptionExpiresAt)}. يحتاج تجديدًا من الأدمن.`;
       $('#extendSubscription').disabled = current.subscriptionMode === 'permanent';
       currentInstallations=result.installations || [];
-      renderInstallations(); renderDevices(result.devices || []); renderControlHistory(result); renderStoreStats(); renderLedger(); renderRecovery(result.recoveryPermits || []);
+      renderInstallations(); renderDevices(result.devices || []); renderControlHistory({ ...result, auditEvents: ledgerEvents }); renderRecovery(result.recoveryPermits || []);
       $('#storeSettingsFields').disabled=current.archived; $('#recoveryFields').disabled=current.archived;
       ['activateStore','freezeHour','freezeDay','freezeForever','resetPassword','saveSubscription','extendSubscription','endStoreSessions','revokeAllDevices'].forEach(id=>$('#'+id).disabled=current.archived || (id==='extendSubscription' && current.subscriptionMode==='permanent'));
       $('#archiveStore').classList.toggle('hidden',current.archived); $('#unarchiveStore').classList.toggle('hidden',!current.archived);
       $('#deleteStore').classList.toggle('hidden',current.archived || !current.canDelete);
       $('#archiveHint').textContent=current.archived ? 'الحساب مؤرشف. إعادته تحفظ الدفتر وتتركه موقوفًا حتى تفعّله وتعتمد هاتفه.' : 'الأرشفة توقف الحساب وأجهزته وتحفظ دفتره وسجل نشاطه.';
-      $('#ledgerReadInfo').textContent=currentSnapshot.requestId ? `قراءة مسجلة · رقم الطلب: ${currentSnapshot.requestId}` : 'لم يُهيأ الدفتر المعتمد بعد؛ يبدأ بعد تسجيل الهاتف واعتماده.';
       $('#tempPasswordResult').textContent=''; $('#tempPasswordResult').classList.add('hidden');
-      $('#storePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch (error) { if(request===storeRequest)notice(error.message, true); }
-    finally {if(button) {button.disabled=false; button.textContent='إدارة';}}
+      $('#storePanel').setAttribute('aria-busy', 'false');
+      if (!refresh) $('#storePanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (ledgerRead) {
+        const data = await ledgerRead;
+        if (request !== storeRequest) return;
+        currentSnapshot = data.snapshot; ledgerEvents = data.auditEvents || []; ledgerRows = null;
+        renderStoreStats(); renderLedger(); renderControlHistory({ ...result, auditEvents: ledgerEvents });
+        $('#ledgerReadInfo').textContent=currentSnapshot.requestId ? `قراءة مسجلة · رقم الطلب: ${currentSnapshot.requestId}` : 'لم يُهيأ الدفتر المعتمد بعد؛ يبدأ بعد تسجيل الهاتف واعتماده.';
+      }
+    } catch (error) {
+      if (request !== storeRequest || error.name === 'AbortError') return;
+      storeController.abort(); $('#storePanel').setAttribute('aria-busy', 'false');
+      if (ledger) $('#ledgerReadInfo').textContent='تعذر تحديث السجل. اضغط تحديث للمحاولة مجددًا.';
+      notice(error.message, true);
+    } finally { if (button) { button.disabled = false; button.textContent = 'إدارة'; } }
   }
   function renderDevices(devices) {
     $('#deviceList').innerHTML=devices.length ? devices.map(device=>`<div class="record-row"><div><b>${esc(device.staffName || device.label || 'جهاز تسجيل دخول')}</b><small dir="ltr">${esc(device.id)}</small><small>${esc(dateFmt(device.lastSeenAt))} · ${device.revokedAt?'منتهٍ':'مسجل'}</small></div>${device.revokedAt && !current.archived ? `<button class="button quiet" data-allow-login="${esc(encodeURIComponent(device.id))}">السماح بالدخول</button>` : ''}</div>`).join('') : '<p class="muted">لا توجد أجهزة تسجيل دخول.</p>';
     $('#deviceList').querySelectorAll('[data-allow-login]').forEach(button => button.addEventListener('click', async () => {
       if (!confirm('السماح لهذا الهاتف بتسجيل الدخول؟ اعتماد الدفتر يحتاج موافقة مستقلة.')) return;
+      const storeId = current.id;
       try {
-        await api(`/api/admin/stores/${current.id}/devices/${button.dataset.allowLogin}/allow`, { method: 'POST' });
-        notice('سُمح بالدخول؛ اعتمد تسجيل الدفتر الجديد بعد دخول الهاتف.'); await openStore(current.id);
+        await api(`/api/admin/stores/${storeId}/devices/${button.dataset.allowLogin}/allow`, { method: 'POST' });
+        notice('سُمح بالدخول؛ اعتمد تسجيل الدفتر الجديد بعد دخول الهاتف.'); await refreshStore(storeId);
       } catch (error) { notice(error.message, true); }
     }));
   }
@@ -250,22 +320,25 @@
     const active = currentSnapshot.debts.filter(debt => debt.remaining > 0).length, totals = currentSnapshot.totals;
     $('#storeStats').innerHTML = [['الأشخاص', currentSnapshot.contacts.length], ['الديون المفتوحة', active], ['مستحق للمتجر', `${fmt(totals.receivable)} ₪`], ['مستحق على المتجر', `${fmt(totals.payable)} ₪`], ['الدفعات', currentSnapshot.payments.length], ['صافي الرصيد', `${fmt(totals.net)} ₪`]].map(item => `<div class="mini-metric"><span>${item[0]}</span><b>${item[1]}</b></div>`).join('');
   }
-  $('#closeStore').addEventListener('click', () => { ++storeRequest; current=null; currentSnapshot=null; $('#storePanel').classList.add('hidden'); $('#ledgerPanel').classList.add('hidden'); });
+  $('#closeStore').addEventListener('click', () => { ++storeRequest; storeController?.abort(); current=null; currentSnapshot=null; ledgerRows=null; ledgerEvents=[]; $('#storePanel').classList.add('hidden'); $('#ledgerPanel').classList.add('hidden'); });
   $('#storeSettings').addEventListener('submit', async event => {
     event.preventDefault();
+    if (!current) return;
+    const storeId = current.id;
     try {
       const maxDevices = integerInput('#maxDevices', 1, 50, current?.maxDevices || 1);
       const debtorLimit = integerInput('#debtorLimit', 0, 1000000, 0);
       const permissions = {}; for (const name of permissionNames) permissions[name] = $(`[data-perm="${name}"]`).checked;
-      const result = await api(`/api/admin/stores/${current.id}/update`, { method: 'POST', body: JSON.stringify({ name: $('#storeName').value.trim(), username: $('#storeUsername').value.trim(), debtorLimit, maxDevices, verified: $('#verified').checked, permissions }) });
+      const result = await api(`/api/admin/stores/${storeId}/update`, { method: 'POST', body: JSON.stringify({ name: $('#storeName').value.trim(), username: $('#storeUsername').value.trim(), debtorLimit, maxDevices, verified: $('#verified').checked, permissions }) });
       const savedLimit = Number(result.store?.maxDevices ?? result.store?.allowedDevices);
       if (savedLimit !== maxDevices) throw new Error('لم يؤكد الخادم حفظ عدد الأجهزة المطلوب. أعد المحاولة.');
-      notice(`تم حفظ الإعدادات. عدد الأجهزة المسموحة الآن: ${savedLimit}.`); await loadDashboard(); await openStore(current.id);
+      notice(`تم حفظ الإعدادات. عدد الأجهزة المسموحة الآن: ${savedLimit}.`); await refreshStore(storeId);
     } catch (error) { notice(error.message, true); }
   });
   async function changeStatus(status, until = null) {
     if (!current) return;
-    try { await api(`/api/admin/stores/${current.id}/update`, { method: 'POST', body: JSON.stringify({ status, suspendUntil: until }) }); notice(status === 'active' ? 'تم تفعيل الحساب.' : 'تم تجميد الحساب.'); await loadDashboard(); await openStore(current.id); }
+    const storeId = current.id;
+    try { await api(`/api/admin/stores/${storeId}/update`, { method: 'POST', body: JSON.stringify({ status, suspendUntil: until }) }); notice(status === 'active' ? 'تم تفعيل الحساب.' : 'تم تجميد الحساب.'); await refreshStore(storeId); }
     catch (error) { notice(error.message, true); }
   }
   $('#activateStore').addEventListener('click', () => changeStatus('active'));
@@ -273,18 +346,22 @@
   $('#freezeDay').addEventListener('click', () => changeStatus('suspended', Date.now() + 86400000));
   $('#freezeForever').addEventListener('click', () => changeStatus('suspended', null));
   $('#saveSubscription').addEventListener('click', async () => {
+    if (!current) return;
+    const storeId = current.id;
     try {
       const mode = $('#subscriptionMode').value, body = { mode };
       if (mode === 'timed') body.days = Number($('#subscriptionDays').value);
-      await api(`/api/admin/stores/${current.id}/subscription`, { method: 'POST', body: JSON.stringify(body) });
-      notice(mode === 'paused' ? 'تم إيقاف الاشتراك.' : 'تم تحديث مدة الاشتراك.'); await loadDashboard(); await openStore(current.id);
+      await api(`/api/admin/stores/${storeId}/subscription`, { method: 'POST', body: JSON.stringify(body) });
+      notice(mode === 'paused' ? 'تم إيقاف الاشتراك.' : 'تم تحديث مدة الاشتراك.'); await refreshStore(storeId);
     } catch (error) { notice(error.message, true); }
   });
   $('#extendSubscription').addEventListener('click', async () => {
+    if (!current) return;
+    const storeId = current.id;
     try {
       const days = Number($('#extendDays').value); if (!Number.isInteger(days) || days < 1) { notice('أدخل عدد أيام صالحًا.', true); return; }
-      await api(`/api/admin/stores/${current.id}/subscription`, { method: 'POST', body: JSON.stringify({ mode: 'timed', days, extend: true }) });
-      notice('تم تمديد الاشتراك.'); await loadDashboard(); await openStore(current.id);
+      await api(`/api/admin/stores/${storeId}/subscription`, { method: 'POST', body: JSON.stringify({ mode: 'timed', days, extend: true }) });
+      notice('تم تمديد الاشتراك.'); await refreshStore(storeId);
     } catch (error) { notice(error.message, true); }
   });
   $('#resetPassword').addEventListener('click', async () => {
@@ -302,7 +379,7 @@
   });
   $('#downloadReport').addEventListener('click', () => {
     if (!currentSnapshot) return;
-    const rows = [['النوع', 'الشخص', 'الاتجاه', 'المبلغ', 'التاريخ', 'البيان'], ...currentSnapshot.transactions.map(item => [transactionName(item.kind), item.contactName, item.direction, item.amount, new Date(item.createdAt).toLocaleDateString('ar-PS'), item.note || ''])];
+    const rows = [['النوع', 'الشخص', 'الاتجاه', 'المبلغ', 'التاريخ', 'البيان'], ...currentSnapshot.transactions.map(item => [transactionName(item.kind), item.contactName, item.direction, item.amount, dateFormat.format(new Date(item.createdAt)), item.note || ''])];
     const csv = '\ufeff' + rows.map(row => row.map(value => `"${(typeof value==='string' && /^[=+@\t\r-]/.test(value)?"\'"+value:String(value)).replaceAll('"', '""')}"`).join(',')).join('\r\n');
     const anchor = document.createElement('a'); anchor.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); anchor.download = `sadad-store-${current.id}.csv`; anchor.click(); URL.revokeObjectURL(anchor.href);
   });
@@ -336,7 +413,7 @@
     const run=pendingAction,reason=$('#actionReason').value.trim();
     if(!reason){$('#actionError').textContent='اكتب سبب الإجراء.';return;}
     $('#confirmAction').disabled=true; $('#actionError').textContent='';
-    try{const storeId=await run(reason);$('#actionDialog').close();await loadDashboard();await openStore(storeId);notice('تم حفظ الإجراء وتسجيل سببه.');}
+    try{const storeId=await run(reason);$('#actionDialog').close();await refreshStore(storeId);notice('تم حفظ الإجراء وتسجيل سببه.');}
     catch(error){$('#actionError').textContent=error.message;}
     finally{$('#confirmAction').disabled=false;}
   });
@@ -480,7 +557,8 @@
       if(!confirm(`اعتماد استرداد ${fmt(commands.length)} إدخالًا (${psummary}) من الهاتف السابق؟\nالموافقة تشمل هذه الأوامر الأصلية فقط ولا يمكن التراجع عنها.`))return;
       button.disabled=true;
       const r=await ledgerApi('/recovery/approve',{oldInstallationId:$('#recoveryOld').value,newInstallationId:$('#recoveryNew').value,commands,reason:$('#recoveryReason').value.trim()});
-      await openStore(storeId);
+      await refreshStore(storeId);
+      if (current?.id !== storeId) return;
       $('#recoveryResult').innerHTML=`<b>تم اعتماد الاسترداد</b><span class="permit-id">${esc(r.result.permitId)}</span><p>ينتهي ${esc(dateFmt(r.result.expiresAt))}. انسخ رقم التصريح إلى إعدادات الهاتف الجديد ← مزامنة السجلات والاسترداد ← إدخال تصريح الاسترداد.</p>`;
       $('#recoveryResult').classList.remove('hidden');notice('سُجلت موافقة الاسترداد.');
     }catch(error){$('#recoveryError').textContent=error.message;}
@@ -496,16 +574,25 @@
     if(!currentSnapshot || !current)return;
     $('#ledgerPanel').classList.remove('hidden');
     const query=$('#ledgerSearch').value.trim().toLowerCase();
-    const contacts=currentSnapshot.contacts.filter(row=>`${row.name} ${row.phone || ''}`.toLowerCase().includes(query));
-    const ids=new Set(contacts.map(row=>String(row.id)));
-    const contactNames=new Map(contacts.map(row=>[String(row.id),row.name]));
+    if (!ledgerRows || ledgerRows.query !== query) {
+      const contacts=currentSnapshot.contacts.filter(row=>`${row.name} ${row.phone || ''}`.toLowerCase().includes(query));
+      const names=new Map(contacts.map(row=>[String(row.id), row.name]));
+      const debts=currentSnapshot.debts.filter(row=>names.has(String(row.contactId)));
+      const transactions=[];
+      for (const row of currentSnapshot.transactions) {
+        if (names.has(String(row.contactId))) transactions.push(row);
+        if (transactions.length === 100) break;
+      }
+      ledgerRows={query, contacts, names, debts, transactions};
+    }
+    const contacts=pageRows(ledgerRows.contacts, 'ledgerContacts');
     $('#ledgerContacts').innerHTML=contacts.length?contacts.map(row=>`<tr><td>${esc(row.name)}</td><td dir="ltr">${esc(row.phone)}</td><td>${row.archived?'مؤرشف':'نشط'}</td><td>${fmt(row.receivable)} ₪</td><td>${fmt(row.payable)} ₪</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد جهات اتصال مطابقة.</td></tr>';
-    const debts=currentSnapshot.debts.filter(row=>ids.has(String(row.contactId)));
-    $('#ledgerDebts').innerHTML=debts.length?debts.map(row=>`<tr><td>${esc(row.contactName || contactNames.get(String(row.contactId)) || '')}</td><td>${directionName(row.direction)}</td><td>${fmt(row.amount)} ₪</td><td>${fmt(row.paid)} ₪</td><td>${fmt(row.remaining)} ₪</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد ديون مطابقة.</td></tr>';
-    const transactions=currentSnapshot.transactions.filter(row=>ids.has(String(row.contactId))).slice(0,100);
+    const debts=pageRows(ledgerRows.debts, 'ledgerDebts');
+    $('#ledgerDebts').innerHTML=debts.length?debts.map(row=>`<tr><td>${esc(row.contactName || ledgerRows.names.get(String(row.contactId)) || '')}</td><td>${directionName(row.direction)}</td><td>${fmt(row.amount)} ₪</td><td>${fmt(row.paid)} ₪</td><td>${fmt(row.remaining)} ₪</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد ديون مطابقة.</td></tr>';
+    const transactions=ledgerRows.transactions;
     $('#ledgerTransactions').innerHTML=transactions.length?transactions.map(row=>`<tr><td>${esc(transactionName(row.kind))}${row.reversed?' · معكوسة':''}</td><td>${esc(row.contactName)}</td><td>${fmt(row.amount)} ₪</td><td>${esc(dateFmt(row.createdAt))}</td><td class="ledger-note">${esc(row.note)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">لا توجد حركات مطابقة.</td></tr>';
   }
-  $('#ledgerSearch').addEventListener('input',renderLedger);
+  $('#ledgerSearch').addEventListener('input',()=>{ pages.ledgerContacts=0; pages.ledgerDebts=0; renderLedger(); });
 
   startup();
 })();

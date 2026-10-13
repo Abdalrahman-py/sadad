@@ -6,6 +6,13 @@ on:
     paths:
       - 'server/public/**'
       - 'tools/build-admin-pages.cjs'
+      - 'tools/admin-dashboard.test.cjs'
+      - '.github/workflows/admin-pages.yml'
+  pull_request:
+    paths:
+      - 'server/public/**'
+      - 'tools/build-admin-pages.cjs'
+      - 'tools/admin-dashboard.test.cjs'
       - '.github/workflows/admin-pages.yml'
   workflow_dispatch:
 
@@ -19,9 +26,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  checks:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Dashboard regression checks
+        run: node tools/admin-dashboard.test.cjs
+      - name: Build dashboard assets
+        run: node tools/build-admin-pages.cjs
   deploy:
+    needs: checks
     # Publish from the upstream repo and from the owner's mirror; any other fork stays quiet.
-    if: github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad'
+    if: github.event_name != 'pull_request' && (github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad')
     runs-on: ubuntu-latest
     environment:
       name: github-pages

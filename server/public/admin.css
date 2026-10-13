@@ -7,3 +7,4 @@ textarea{font:inherit;border:1px solid #ccded7;border-radius:11px;padding:11px 1
 .admin-grid>*{min-width:0}.stack select{min-width:0;width:100%}.record-list{max-width:100%}.ledger-note{white-space:normal;max-width:260px;min-width:120px}@media(max-width:800px){.admin-grid{grid-template-columns:minmax(0,1fr)}}
 
 .admin-grid{align-items:start}
+.table-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px}

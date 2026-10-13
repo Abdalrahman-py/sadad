@@ -207,16 +207,34 @@ export function makeApi({ db, now = Date.now }: Dependencies) {
     const rows: Json[] = dataOrThrow(await db.from("stores").select("*").order("created_at", { ascending: false }));
     const visible = rows.filter(row => includeArchived || row.status !== "deleted");
     for (let index=0;index<visible.length;index++) if (visible[index].status !== "deleted") visible[index]=await refreshStoreStatus(visible[index]);
-    const summaries: Json[] = dataOrThrow(await db.rpc("sadid_admin_summaries", { p_admin_hash: hashToken(auth.token), p_stores: visible.map(row => Number(row.id)) }));
-    const installations: Json[] = dataOrThrow(await db.rpc("sadid_pending_installations", { p_admin_hash: hashToken(auth.token) }));
+    const results = await Promise.all([
+      db.rpc("sadid_admin_summaries", { p_admin_hash: hashToken(auth.token), p_stores: visible.map(row => Number(row.id)) }),
+      db.rpc("sadid_pending_installations", { p_admin_hash: hashToken(auth.token) }),
+    ]);
+    const [summaries, installations] = results.map(result => dataOrThrow<Json[]>(result));
+    const summaryByStore = new Map(summaries.map(row => [Number(row.storeId), row]));
+    const phonesByStore = new Map<number, { active: number; pending: number }>();
+    for (const phone of installations) {
+      const counts = phonesByStore.get(Number(phone.storeId)) || { active: 0, pending: 0 };
+      if (phone.status === "active") counts.active++;
+      if (phone.status === "pending") counts.pending++;
+      phonesByStore.set(Number(phone.storeId), counts);
+    }
     return visible.map(row => {
-      const summary = summaries.find(item => Number(item.storeId) === Number(row.id)) || {};
-      const phones = installations.filter(item => Number(item.storeId) === Number(row.id));
+      const summary = summaryByStore.get(Number(row.id)) || {};
+      const phones = phonesByStore.get(Number(row.id));
       return { ...publicStore(row), contacts: 0, debts: 0, debtTotal: 0,
         ...summary, archived: row.status === "deleted",
-        boundDevices: phones.filter(item => item.status === "active").length,
-        pendingDevices: phones.filter(item => item.status === "pending").length };
+        boundDevices: phones?.active || 0, pendingDevices: phones?.pending || 0 };
     });
+  }
+
+  async function readAdminLedger(auth: Principal, store: Json, account: Json, initialized: boolean, reason: string): Promise<Json> {
+    const raw = initialized ? dataOrThrow(await db.rpc("sadid_support_snapshot", {
+      p_admin_hash: hashToken(auth.token), p_store: Number(store.id), p_reason: reason,
+    })) : null;
+    return { snapshot: adminLedgerSnapshot(raw || { contacts: [], debts: [], payments: [], events: [] }, account),
+      auditEvents: raw ? ledgerAuditEvents(raw) : [] };
   }
 
   async function adminAccountAction(auth: Principal, storeId: number, action: string, reason: string): Promise<Json> {
@@ -409,18 +427,21 @@ export function makeApi({ db, now = Date.now }: Dependencies) {
           return ok({ result: await adminAccountAction(auth, storeId, action, reason) });
         }
 
+        const account: Json = { ...publicStore(store), archived: store.status === "deleted" };
+        if (request.method === "GET" && action === "ledger") {
+          const reason = text(url.searchParams.get("reason") || "Store ledger in admin dashboard", 2000);
+          return ok(await readAdminLedger(auth, store, account, ledgerInitialized, reason));
+        }
         if (request.method === "GET" && action === "") {
           const reason = text(url.searchParams.get("reason") || "Store management in admin dashboard", 2000);
-          const [snapshotResult, devices, controls] = await Promise.all([
-            ledgerInitialized ? db.rpc("sadid_support_snapshot", { p_admin_hash: hashToken(auth.token), p_store: storeId, p_reason: reason }) : Promise.resolve({ data: null, error: null }),
+          const [devices, controls, ledger] = await Promise.all([
             listDevices(storeId),
             db.rpc("sadid_admin_controls", { p_admin_hash: hashToken(auth.token), p_store: storeId }),
+            url.searchParams.get("includeLedger") === "false" ? null : readAdminLedger(auth, store, account, ledgerInitialized, reason),
           ]);
-          const raw = dataOrThrow(snapshotResult);
           const control = dataOrThrow(controls);
-          const account = { ...publicStore(store), archived: store.status === "deleted", canDelete: !ledgerInitialized && !control.hasDeviceHistory };
-          const snapshot = adminLedgerSnapshot(raw || { contacts: [], debts: [], payments: [], events: [] }, account);
-          return ok({ store: account, snapshot, devices, auditEvents: raw ? ledgerAuditEvents(raw) : [], ...control });
+          account.canDelete = !ledgerInitialized && !control.hasDeviceHistory;
+          return ok({ store: account, devices, ...ledger, ...control });
         }
         if (request.method === "GET" && action === "devices") return ok({ devices: await listDevices(storeId) });
 

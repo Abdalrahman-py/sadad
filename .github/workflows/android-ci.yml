@@ -16,6 +16,7 @@ on:
       - 'server/public/**'
       - 'tools/build-admin-pages.cjs'
       - 'tools/test-admin-recovery.cjs'
+      - 'tools/admin-dashboard.test.cjs'
       - 'Supabase-Setup/supabase/functions/**'
       - 'Supabase-Setup/supabase/migrations/**'
       - 'Supabase-Setup/scripts/**'
@@ -33,6 +34,7 @@ on:
       - 'server/public/**'
       - 'tools/build-admin-pages.cjs'
       - 'tools/test-admin-recovery.cjs'
+      - 'tools/admin-dashboard.test.cjs'
       - 'Supabase-Setup/supabase/functions/**'
       - 'Supabase-Setup/supabase/migrations/**'
       - 'Supabase-Setup/scripts/**'
@@ -58,6 +60,7 @@ jobs:
         run: |
           node --check server/public/admin.js
           node tools/test-admin-recovery.cjs
+          node tools/admin-dashboard.test.cjs
           node tools/build-admin-pages.cjs
 
   android:

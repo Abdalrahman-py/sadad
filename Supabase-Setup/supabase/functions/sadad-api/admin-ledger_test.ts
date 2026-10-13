@@ -22,3 +22,13 @@ Deno.test('Large ledger groups balances without scanning every debt for every co
  assert(result.totals,{receivable:50000,payable:50000,net:0});
  if(idReads>5000)throw new Error(`Contact identifiers read ${idReads} times; balance grouping is quadratic`);
 });
+
+Deno.test('Contact balances use bounded passes and integer cents', () => {
+ let reads = 0;
+ const contacts = Array.from({length:500}, (_, i) => ({get id() { reads++; return String(i); }, name:`Contact ${i}`}));
+ const debts = Array.from({length:1500}, (_, i) => ({id:String(i),contact_id:String(i%500),direction:i<1000?'receivable':'payable',amount_cents:i<500?10:i<1000?20:7,created_at:0}));
+ const snapshot = adminLedgerSnapshot({contacts,debts},{id:1});
+ assert(snapshot.contacts[0].receivable,0.3);assert(snapshot.contacts[0].payable,0.07);
+ assert(snapshot.totals,{receivable:150,payable:35,net:115});
+ if (reads > contacts.length * 4) throw new Error(`Contact ids read ${reads} times: projection rescans debts per contact`);
+});

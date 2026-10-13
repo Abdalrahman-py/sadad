@@ -51,6 +51,7 @@
         <div class="panel-head"><div><h2>حسابات المتاجر</h2><p class="muted">الحسابات التي أنشأها الأدمن فقط</p></div><div class="store-filters"><label class="inline-check"><input id="showArchived" type="checkbox">إظهار المؤرشفة</label><input id="searchStores" class="search" aria-label="بحث بالمتجر أو اسم المستخدم" placeholder="بحث بالمتجر أو اسم المستخدم"></div></div>
         <div class="table-wrap"><table><thead><tr><th>المتجر</th><th>اسم الدخول</th><th>الحالة</th><th>الاشتراك</th><th>الهاتف المعتمد</th><th>التوثيق</th><th>الأشخاص</th><th>الديون</th><th></th></tr></thead><tbody id="storesBody"></tbody></table></div>
         <div id="emptyStores" class="empty hidden">لا توجد حسابات متاجر. أنشئ أول حساب من زر الأعلى.</div>
+        <nav class="table-pagination" aria-label="صفحات المتاجر"><button type="button" class="button quiet" id="storesPrev">السابق</button><span id="storesPage" class="small muted" role="status"></span><button type="button" class="button quiet" id="storesNext">التالي</button></nav>
       </section>
 
       <section id="storePanel" class="panel hidden">
@@ -128,7 +129,9 @@
       <section id="ledgerPanel" class="panel hidden">
         <div class="panel-head"><div><h2>دفتر المتجر</h2><p class="muted small">قراءة مباشرة مسجّلة من قاعدة البيانات. التصحيحات المالية يجريها صاحب المتجر من الهاتف وتبقى في سجل الحركات.</p></div><input id="ledgerSearch" class="search" aria-label="بحث في جهات اتصال الدفتر" placeholder="بحث باسم الشخص أو الهاتف"></div>
         <h3>جهات الاتصال والأرصدة</h3><div class="table-wrap"><table><thead><tr><th>الشخص</th><th>الهاتف</th><th>الحالة</th><th>مستحق للمتجر</th><th>مستحق على المتجر</th></tr></thead><tbody id="ledgerContacts"></tbody></table></div>
+        <nav class="table-pagination" aria-label="صفحات جهات الاتصال"><button type="button" class="button quiet" id="ledgerContactsPrev">السابق</button><span id="ledgerContactsPage" class="small muted" role="status"></span><button type="button" class="button quiet" id="ledgerContactsNext">التالي</button></nav>
         <h3 class="ledger-heading">الديون والدفعات</h3><div class="table-wrap"><table><thead><tr><th>الشخص</th><th>الاتجاه</th><th>المبلغ الحالي</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody id="ledgerDebts"></tbody></table></div>
+        <nav class="table-pagination" aria-label="صفحات الديون"><button type="button" class="button quiet" id="ledgerDebtsPrev">السابق</button><span id="ledgerDebtsPage" class="small muted" role="status"></span><button type="button" class="button quiet" id="ledgerDebtsNext">التالي</button></nav>
         <h3 class="ledger-heading">سجل الحركات</h3><p class="small muted">تظهر أحدث 100 حركة هنا. تنزيل CSV يشمل جميع الحركات، بما فيها التصحيحات والدفعات المعكوسة.</p><div class="table-wrap"><table><thead><tr><th>النوع</th><th>الشخص</th><th>المبلغ</th><th>التاريخ</th><th>البيان</th></tr></thead><tbody id="ledgerTransactions"></tbody></table></div>
       </section>
       <footer>سدد · لوحة إدارة المتاجر · قاعدة البيانات المباشرة</footer>

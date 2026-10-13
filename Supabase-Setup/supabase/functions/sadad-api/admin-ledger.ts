@@ -18,9 +18,17 @@ export function adminLedgerSnapshot(raw: Row, account: Row): Row {
     if (!reversed.has(payment.id)) paid.set(payment.debt_id, (paid.get(payment.debt_id) || 0) + Number(payment.amount_cents));
   }
   const contactRows = new Map<string, Row>((raw.contacts || []).map((row: Row) => [row.id, row]));
+  const balances = new Map<string, Row>();
+  const totals = { receivable: 0, payable: 0 };
   const debts = (raw.debts || []).map((row: Row) => {
     const principal = Number(corrections.get(row.id)?.amount_cents ?? row.amount_cents);
     const paidCents = paid.get(row.id) || 0;
+    if (row.direction === 'receivable' || row.direction === 'payable') {
+      const balance = balances.get(row.contact_id) || { receivable: 0, payable: 0 };
+      balance[row.direction] += principal - paidCents;
+      balances.set(row.contact_id, balance);
+      totals[row.direction as keyof typeof totals] += principal - paidCents;
+    }
     return { id: row.id, contactId: row.contact_id, contactName: contactRows.get(row.contact_id)?.name || '', direction: row.direction,
       originalAmount: money(Number(row.amount_cents)), amount: money(principal), paid: money(paidCents), remaining: money(principal - paidCents),
       note: row.note || '', dueDate: row.due_date || '', createdAt: timestamp(row.created_at) };
@@ -32,16 +40,10 @@ export function adminLedgerSnapshot(raw: Row, account: Row): Row {
       amount: money(Number(row.amount_cents)), reversed: reversed.has(row.id), method: row.method, note: row.note || '', createdAt: timestamp(row.created_at) };
   });
   const paymentRows = new Map<string, Row>(payments.map((row: Row) => [row.id, row]));
-  const balances = new Map<string, { receivable: number; payable: number }>();
-  for (const debt of debts) {
-    const balance = balances.get(debt.contactId) || { receivable: 0, payable: 0 };
-    if (debt.direction === 'receivable') balance.receivable += debt.remaining;
-    if (debt.direction === 'payable') balance.payable += debt.remaining;
-    balances.set(debt.contactId, balance);
-  }
   const contacts = (raw.contacts || []).map((row: Row) => {
+    const balance = balances.get(row.id);
     return { id: row.id, name: row.name, phone: row.phone || '', category: row.category || '', note: row.note || '', archived: !!row.archived,
-      receivable: balances.get(row.id)?.receivable || 0, payable: balances.get(row.id)?.payable || 0 };
+      receivable: money(balance?.receivable || 0), payable: money(balance?.payable || 0) };
   });
   const transactions: Row[] = [
     ...(raw.debts || []).map((row: Row) => ({ ...debtRows.get(row.id), kind: 'debt', amount: money(Number(row.amount_cents)) })),
@@ -49,9 +51,7 @@ export function adminLedgerSnapshot(raw: Row, account: Row): Row {
     ...(raw.adjustments || []).map((row: Row) => ({ ...debtRows.get(row.debt_id), id: row.id, kind: 'correction', amount: money(Number(row.amount_cents) - Number(row.previous_amount_cents)), note: row.reason, createdAt: timestamp(row.created_at) })),
     ...(raw.reversals || []).map((row: Row) => ({ ...paymentRows.get(row.payment_id), id: row.id, kind: 'reversal', amount: -(paymentRows.get(row.payment_id)?.amount || 0), note: row.reason, createdAt: timestamp(row.created_at) })),
   ].sort((a, b) => b.createdAt - a.createdAt);
-  const receivableCents = debts.filter((row: Row) => row.direction === 'receivable').reduce((sum: number, row: Row) => sum + Math.round(row.remaining * 100), 0);
-  const payableCents = debts.filter((row: Row) => row.direction === 'payable').reduce((sum: number, row: Row) => sum + Math.round(row.remaining * 100), 0);
-  return { account, contacts, debts, payments, transactions, totals: { receivable: money(receivableCents), payable: money(payableCents), net: money(receivableCents - payableCents) },
+  return { account, contacts, debts, payments, transactions, totals: { receivable: money(totals.receivable), payable: money(totals.payable), net: money(totals.receivable - totals.payable) },
     requestId: raw.requestId, epoch: raw.epoch, cursor: raw.cursor };
 }
 
