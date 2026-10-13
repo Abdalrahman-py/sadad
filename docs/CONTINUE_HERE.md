@@ -58,6 +58,13 @@
 | JVM | Debug وRelease: **72** اختبارًا لكل نسخة، **71 ناجحًا وواحد حي متخطى**، صفر فشل/خطأ |
 | Android | `serverDebug` و`standaloneDebug` و`serverRelease` وAPK اختبارات الجهاز: بناء ناجح؛ فحص Release vital lint ناجح |
 | APK الناتج محليًا | `com.sadad.app`، **2.5.12/38**، Debug معطل وHTTP ممنوع؛ ملف Release **غير موقّع**، لم يُوزّع |
+| GitHub CI | [الفحوص الأربعة](https://github.com/Abdalrahman-py/sadad/actions/runs/38367778503) ناجحة على المصدر المدمج `f50e507`: Android واللوحة وEdge وقاعدة البيانات |
+| Pages | [نشر ناجح](https://github.com/Abdalrahman-py/sadad/actions/runs/38367778471)؛ فُحصت الصفحة العامة في 13 أكتوبر وتخدم `admin.ead7b37c8d.js` وعنوان مشروع Supabase الصحيح |
+
+`main` المحلي و`fork/main` متطابقان، وكل فروع التطوير المذكورة أعلاه ضمن تاريخ `main`.
+نسخة العمل المحلية نظيفة، والتعديلات القديمة محفوظة في `stash@{0}` باسم
+`pre-main-integration-2026-10-13` وفي `6887693`. تم التحقق أن حساب `gh` وهوية SSH كلاهما
+`Abdalrahman-py`؛ استُخدم نقل SSH المحدد في `gh` للدفع إلى fork. `origin/main` بقي `9d6f814`.
 
 بيئة الجهاز تحتاج JDK كاملًا: Java 21 النظامي لا يحمل `javac`، وإعداد Gradle المحلي يختار
 JDK 17. شُغّلت فحوص الدمج بـ Temurin **21.0.12.1** مؤقت ومتحقق من SHA-256 عبر

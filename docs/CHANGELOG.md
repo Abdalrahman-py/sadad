@@ -25,6 +25,9 @@
 - التحقق على الدمج: JVM لكل من Debug وRelease **71 ناجحًا وواحد متخطى**، Edge **28**،
   PostgreSQL **65**، بناء النسختين وRelease واختبارات الجهاز ناجح، واللوحة وworkflows سليمة.
   فحص الهاتف والمزامنة الحية والتوقيع الرسمي باقٍ؛ Release المحلي غير موقّع ولم يُوزّع.
+- [GitHub CI](https://github.com/Abdalrahman-py/sadad/actions/runs/38367778503) نجح بأقسامه
+  الأربعة على المصدر المدمج، و[Pages](https://github.com/Abdalrahman-py/sadad/actions/runs/38367778471)
+  نشر اللوحة الجديدة؛ فُحصت الصفحة العامة وتحمل `admin.ead7b37c8d.js` في 13 أكتوبر.
 
 ## 2.5.12 — 12 أكتوبر 2026 (حزمة اختبار الفريق المتصلة)
 
