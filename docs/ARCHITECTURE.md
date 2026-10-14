@@ -387,7 +387,7 @@ Split by model strength:
 - OpenCode auto-loads `AGENTS.md` (repo) + `~/.config/opencode/AGENTS.md` (global; it already has the Context7 rule).
 - OpenCode discovers skills from `~/.claude/skills/*/SKILL.md`, so all of Matt's skills (`tdd`, `implement`, `to-tickets`, `diagnosing-bugs`, `code-review`, …) are visible.
 - **Every discovered skill becomes a slash command**, so `/implement`, `/tdd` etc. work.
-- OpenCode parses only `name`, `description` and `slash` from skill frontmatter, so `disable-model-invocation` is ignored there. Harmless.
+- OpenCode v2.0.29 honours `disable-model-invocation`: such skills (`implement`, `to-spec`, `to-tickets`, …) run only as typed slash commands, never model-loaded. The ticket prompt covers what `implement` says.
 - Context7 MCP is already configured globally in `~/.config/opencode/opencode.json`. That file holds an API key, so **never copy it into the repo's `opencode.json`** (public repo).
 
 ### Gaps to fix before the first OpenCode ticket (setup ticket "00")

@@ -115,4 +115,4 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 ### Implementation skills
 
-Use only: implement, tdd, diagnosing-bugs, code-review, ponytail, supabase skills, writing-for-agents (doc tickets). Never use speckit-* or to-spec/to-tickets during implementation. In OpenCode, the repo `opencode.json` denies those skills and denies `git push`, destructive git and Supabase cloud commands; a human pushes and deploys.
+Use only: tdd, diagnosing-bugs, code-review, ponytail, supabase skills, writing-for-agents (doc tickets). The ticket prompt replaces `implement`, which OpenCode cannot load (`disable-model-invocation`). Never use speckit-* or to-spec/to-tickets during implementation. In OpenCode, the repo `opencode.json` denies those skills and denies `git push`, destructive git and Supabase cloud commands; a human pushes and deploys.
