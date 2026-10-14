@@ -724,47 +724,6 @@ public final class SadadDatabase extends SQLiteOpenHelper {
                         .put("net", fromCents(receivable - payable)));
     }
 
-    /** Replaces the local cache with the authenticated server snapshot in one transaction. */
-    public synchronized void importSnapshot(JSONObject snapshot) throws JSONException {
-        SQLiteDatabase db = getWritableDatabase();
-        JSONArray contacts = snapshot.optJSONArray("contacts");
-        JSONArray debts = snapshot.optJSONArray("debts");
-        JSONArray payments = snapshot.optJSONArray("payments");
-        db.beginTransaction();
-        try {
-            db.delete("payments", null, null);
-            db.delete("debts", null, null);
-            db.delete("contacts", null, null);
-            if (contacts != null) for (int i = 0; i < contacts.length(); i++) {
-                JSONObject row = contacts.getJSONObject(i);
-                ContentValues v = new ContentValues();
-                v.put("id", row.getLong("id")); v.put("name", clean(row.optString("name"), 120));
-                v.put("phone", clean(row.optString("phone"), 40)); v.put("category", clean(row.optString("category"), 40));
-                v.put("note", clean(row.optString("note"), 500)); v.put("whatsapp_opt_in", row.optBoolean("whatsappOptIn") ? 1 : 0);
-                v.put("credit_limit_cents", toCents(row.optString("creditLimit", "0")));
-                v.put("created_by", clean(row.optString("createdBy"), 120));
-                v.put("created_at", row.optLong("createdAt", System.currentTimeMillis()));
-                db.insertOrThrow("contacts", null, v);
-            }
-            if (debts != null) for (int i = 0; i < debts.length(); i++) {
-                JSONObject row = debts.getJSONObject(i); ContentValues v = new ContentValues();
-                v.put("id", row.getLong("id")); v.put("contact_id", row.getLong("contactId"));
-                v.put("direction", row.optString("direction", "receivable")); v.put("amount_cents", toCents(row.optString("amount", "0")));
-                v.put("note", clean(row.optString("note"), 500)); v.put("due_date", clean(row.optString("dueDate"), 20));
-                v.put("created_by", clean(row.optString("createdBy"), 120));
-                v.put("created_at", row.optLong("createdAt", System.currentTimeMillis())); db.insertOrThrow("debts", null, v);
-            }
-            if (payments != null) for (int i = 0; i < payments.length(); i++) {
-                JSONObject row = payments.getJSONObject(i); ContentValues v = new ContentValues();
-                v.put("id", row.getLong("id")); v.put("debt_id", row.getLong("debtId")); v.put("amount_cents", toCents(row.optString("amount", "0")));
-                v.put("method", row.optString("method", "cash")); v.put("note", clean(row.optString("note"), 500));
-                v.put("created_by", clean(row.optString("createdBy"), 120));
-                v.put("created_at", row.optLong("createdAt", System.currentTimeMillis())); db.insertOrThrow("payments", null, v);
-            }
-            db.setTransactionSuccessful();
-        } finally { db.endTransaction(); }
-    }
-
     /**
      * Folds the signed ledger into the local tables, which stay the only thing the screens, the
      * exports and the reminders read. Contacts, debts and payments are matched on the ledger's UUID
@@ -772,8 +731,7 @@ public final class SadadDatabase extends SQLiteOpenHelper {
      * that points at it keeps working; a row the ledger no longer has is dropped, because for a
      * store on the signed ledger the server is the truth.
      *
-     * <p>The connected view replaces pre-signed test rows too; standalone data uses importSnapshot.
-     * A fully empty view while rows exist locally is refused instead of wiping them.
+     * <p>A fully empty view while rows exist locally is refused instead of wiping them.
      */
     public synchronized void importLedgerView(JSONObject view) throws JSONException {
         SQLiteDatabase db = getWritableDatabase();

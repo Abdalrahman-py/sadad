@@ -20,11 +20,6 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.speech.RecognizerIntent;
-import android.print.PageRange;
-import android.print.PrintAttributes;
-import android.print.PrintDocumentAdapter;
-import android.print.PrintDocumentInfo;
-import android.print.PrintManager;
 import android.text.format.DateFormat;
 import android.view.Gravity;
 import android.view.View;
@@ -1059,37 +1054,6 @@ public final class MainActivity extends Activity {
             send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); send.setClipData(ClipData.newUri(getContentResolver(), "كشف حساب PDF", uri)); ignoreNextResumeLock = true;
             startActivity(Intent.createChooser(send, "مشاركة كشف السجلات"));
         } catch (Exception error) { showBrandedMessage("تعذر مشاركة الكشف."); }
-    }
-
-    void printPdf(byte[] pdf, String jobName) {
-        if (pdf == null || pdf.length == 0) { showBrandedMessage("ملف الطباعة فارغ."); return; }
-        try {
-            PrintManager printer = (PrintManager) getSystemService(PRINT_SERVICE);
-            if (printer == null) { showBrandedMessage("خدمة الطباعة غير متوفرة على هذا الجهاز."); return; }
-            final String safeName = jobName == null || jobName.trim().isEmpty() ? "سند سدد" : jobName.trim();
-            final byte[] content = pdf.clone();
-            PrintDocumentAdapter adapter = new PrintDocumentAdapter() {
-                @Override public void onLayout(PrintAttributes oldAttributes, PrintAttributes newAttributes,
-                                               CancellationSignal cancellationSignal, LayoutResultCallback callback,
-                                               Bundle extras) {
-                    if (cancellationSignal.isCanceled()) { callback.onLayoutCancelled(); return; }
-                    PrintDocumentInfo info = new PrintDocumentInfo.Builder(safeName + ".pdf")
-                            .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
-                            .setPageCount(PrintDocumentInfo.PAGE_COUNT_UNKNOWN).build();
-                    callback.onLayoutFinished(info, !newAttributes.equals(oldAttributes));
-                }
-                @Override public void onWrite(PageRange[] pages, android.os.ParcelFileDescriptor destination,
-                                              CancellationSignal cancellationSignal, WriteResultCallback callback) {
-                    try (FileOutputStream output = new FileOutputStream(destination.getFileDescriptor())) {
-                        if (cancellationSignal.isCanceled()) { callback.onWriteCancelled(); return; }
-                        output.write(content); output.flush();
-                        callback.onWriteFinished(new PageRange[]{PageRange.ALL_PAGES});
-                    } catch (Exception error) { callback.onWriteFailed(error.getMessage()); }
-                }
-            };
-            ignoreNextResumeLock = true;
-            printer.print(safeName, adapter, new PrintAttributes.Builder().build());
-        } catch (Exception e) { showBrandedMessage("تعذر فتح شاشة الطباعة. تأكد من إعداد خدمة طباعة على الجهاز."); }
     }
 
     android.graphics.drawable.Drawable profilePhoto(boolean store) {

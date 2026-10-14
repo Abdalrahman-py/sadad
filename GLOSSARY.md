@@ -27,7 +27,7 @@ counting toward the debt's remaining balance.
 
 **Snapshot** — a whole ledger state. Signed sync caches the server's snapshot in `EncryptedJournal`;
 `SadadDatabase.importLedgerView` projects it with pending operations into the screen tables.
-`getSnapshot` / `importSnapshot` remain for local export/import and the standalone edition.
+`getSnapshot` remains for local export and the standalone edition.
 
 **Delta** — the removed protocol's batch of changed rows. The connected Android edition sends
 signed operations; no current client uses a row delta endpoint.

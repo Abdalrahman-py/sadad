@@ -12,13 +12,8 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
-import android.graphics.pdf.PdfDocument;
 import android.graphics.drawable.GradientDrawable;
-import android.text.Layout;
 import android.text.Editable;
-import android.text.StaticLayout;
-import android.text.TextDirectionHeuristics;
-import android.text.TextPaint;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -587,62 +582,6 @@ final class NativeScreens {
                     : LedgerTableExcel.create(store, owner, period, reportDatabase.getSnapshot(), onlyContactId, from, to),
                     "كشف-" + name + (which == 0 ? ".pdf" : ".xlsx"), which == 0 ? "application/pdf" : LedgerTableExcel.MIME, true);
         }).show();
-    }
-
-    private final class StatementPdfWriter {
-        private static final int WIDTH = 595, HEIGHT = 842, TOP_BAND = 102;
-        private final PdfDocument document;
-        private final JSONObject person;
-        private final int pageWidth, pageHeight, margin, bodyWidth;
-        private PdfDocument.Page page;
-        private Canvas canvas;
-        private int pageNumber;
-        private float y;
-
-        StatementPdfWriter(PdfDocument document, JSONObject person, int pageWidth, int pageHeight, int margin) {
-            this.document = document; this.person = person; this.pageWidth = pageWidth; this.pageHeight = pageHeight;
-            this.margin = margin; this.bodyWidth = pageWidth - margin * 2;
-        }
-
-        void startPage() {
-            PdfDocument.PageInfo info = new PdfDocument.PageInfo.Builder(pageWidth, pageHeight, ++pageNumber).create();
-            page = document.startPage(info); canvas = page.getCanvas(); canvas.drawColor(Color.WHITE);
-            Paint band = new Paint(Paint.ANTI_ALIAS_FLAG); band.setColor(Color.rgb(4, 70, 61));
-            canvas.drawRect(0, 0, pageWidth, TOP_BAND, band);
-            drawText(canvas, "سدد  |  كشف حساب", margin, 23, bodyWidth, 24, Color.WHITE, true);
-            drawText(canvas, "كشف خاص بـ " + person.optString("name"), margin, 54, bodyWidth, 18, Color.rgb(220, 247, 238), false);
-            drawText(canvas, "صفحة " + pageNumber, margin, 78, bodyWidth, 14, Color.rgb(220, 247, 238), false);
-            y = TOP_BAND + 20;
-        }
-
-        void addBlock(String value, float size, int color, boolean bold, int gap, boolean card) {
-            TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            paint.setTextSize(size); paint.setColor(color); paint.setTypeface(bold ? Typeface.create("sans-serif", Typeface.BOLD) : Typeface.create("sans-serif", Typeface.NORMAL));
-            StaticLayout layout = StaticLayout.Builder.obtain(value, 0, value.length(), paint, bodyWidth - (card ? 22 : 0))
-                    .setAlignment(Layout.Alignment.ALIGN_NORMAL).setTextDirection(TextDirectionHeuristics.RTL).setIncludePad(true).build();
-            float cardHeight = layout.getHeight() + (card ? 18 : 0);
-            if (y + cardHeight > pageHeight - 40) { document.finishPage(page); startPage(); }
-            if (card) {
-                Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG); fill.setColor(Color.rgb(241, 249, 246));
-                canvas.drawRoundRect(new RectF(margin, y, pageWidth - margin, y + cardHeight), 10, 10, fill);
-                Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG); stroke.setStyle(Paint.Style.STROKE); stroke.setStrokeWidth(1); stroke.setColor(Color.rgb(215, 232, 225));
-                canvas.drawRoundRect(new RectF(margin, y, pageWidth - margin, y + cardHeight), 10, 10, stroke);
-                canvas.save(); canvas.translate(margin + 11, y + 9); layout.draw(canvas); canvas.restore();
-            } else {
-                canvas.save(); canvas.translate(margin, y); layout.draw(canvas); canvas.restore();
-            }
-            y += cardHeight + gap;
-        }
-
-        private void drawText(Canvas target, String value, int x, int top, int width, int size, int color, boolean bold) {
-            TextPaint paint = new TextPaint(Paint.ANTI_ALIAS_FLAG); paint.setTextSize(size); paint.setColor(color);
-            paint.setTypeface(bold ? Typeface.create("sans-serif", Typeface.BOLD) : Typeface.create("sans-serif", Typeface.NORMAL));
-            StaticLayout layout = StaticLayout.Builder.obtain(value, 0, value.length(), paint, width)
-                    .setAlignment(Layout.Alignment.ALIGN_NORMAL).setTextDirection(TextDirectionHeuristics.RTL).setIncludePad(true).build();
-            target.save(); target.translate(x, top); layout.draw(target); target.restore();
-        }
-
-        void finish() { if (page != null) { document.finishPage(page); page = null; } }
     }
 
     private void openCustomerWhatsApp(JSONObject person) {
