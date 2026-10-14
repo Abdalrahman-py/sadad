@@ -4,16 +4,18 @@
     tools/oc-tail.py              newest session in this project, last 15 steps
     tools/oc-tail.py SES_ID 40    given session, last 40 steps
 """
-import json, os, subprocess, sys, time
+import json, os, subprocess, sys, tempfile, time
 
 OPENCODE = os.path.expanduser("~/.opencode/bin/opencode")
 sid = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(
     [OPENCODE, "session", "list"], capture_output=True, text=True, check=True
 ).stdout.split()[0]
 count = int(sys.argv[2]) if len(sys.argv) > 2 else 15
-data = json.loads(subprocess.run(
-    [OPENCODE, "session", "export", sid], capture_output=True, text=True, check=True
-).stdout)
+# Piped export is cut off at 256 KB; a file is not.
+with tempfile.TemporaryFile("w+") as out:
+    subprocess.run([OPENCODE, "session", "export", sid], stdout=out, check=True)
+    out.seek(0)
+    data = json.load(out)
 
 lines = []
 for m in data["messages"]:
