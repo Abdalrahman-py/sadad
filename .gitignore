@@ -44,6 +44,7 @@ credentials.json
 
 # Agent working state (plans, scratch) — not a deliverable
 /.hermes/
+/.scratch/
 
 .DS_Store
 *.log

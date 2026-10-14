@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "./gradlew *": "allow",
+      "deno *": "allow",
+      "node *": "allow",
+      "npm install --prefix .local-tools*": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git add*": "allow",
+      "git commit*": "allow",
+      "rm *": "ask",
+      "gh *": "ask",
+      "git push*": "deny",
+      "git reset --hard*": "deny",
+      "git branch -D*": "deny",
+      "git clean*": "deny",
+      "git rebase*": "deny",
+      "supabase db push*": "deny",
+      "supabase functions deploy*": "deny",
+      "supabase migration repair*": "deny"
+    },
+    "skill": {
+      "speckit-*": "deny",
+      "to-spec": "deny",
+      "to-tickets": "deny"
+    }
+  }
+}
