@@ -164,12 +164,12 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
                 if (contacts.length() < 1) throw new AssertionError("The primed contact is missing");
                 final long personId = contacts.getJSONObject(0).optLong("id");
                 if (personId <= 0L) throw new AssertionError("The primed contact has no local row id");
+                // One main-thread block: the activity's own sync (fake token, so it can end in
+                // "sign in required" and navigate) cannot interleave between opening, typing and refreshing.
                 runOnMainSync(() -> {
                     host.screens.contactId = personId;
                     host.show("debt_form");
-                });
-                if (!"debt_form".equals(host.currentRoute())) throw new AssertionError("The debt form did not open");
-                runOnMainSync(() -> {
+                    if (!"debt_form".equals(host.currentRoute())) throw new AssertionError("The debt form did not open");
                     android.widget.EditText amount = firstEditor(host);
                     if (amount == null) throw new AssertionError("No amount field on the debt form");
                     amount.setText("42.50");
@@ -182,6 +182,7 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
                 });
                 runOnMainSync(() -> {
                     // Control: a user-path refresh still rebuilds, so the guard above protects something real.
+                    if (!"debt_form".equals(host.currentRoute())) host.show("debt_form");
                     android.widget.EditText amount = firstEditor(host);
                     amount.setText("42.50");
                     host.refreshCurrentScreen();
