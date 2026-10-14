@@ -41,7 +41,7 @@
 | بوابة الهوية (Auth envelope) | `sadad-auth/handler.ts` | `/mobile/login`، `/mobile/auth/refresh` |
 | بوابة الحسابات والإدارة | `sadad-api/handler.ts` | `route()` |
 | السجل الموقّع على الخادم | `sadid-ledger/handler.ts` | `/mobile/v3/enroll` ثم `verifyProof` |
-| إدارة التركيبات والاستعادة | `sadid-ledger/admin.ts` | `/admin/*` |
+| إدارة التركيبات والاستعادة | `sadid-ledger/handler.ts` | `/admin/*` (هوية الإدارة في `sadad-api`) |
 | لوحة الإدارة | `server/public/admin.js` | |
 | بناء اللوحة للنشر | `tools/build-admin-pages.cjs` | يكتب `_site/` |
 | الترحيلات | `Supabase-Setup/supabase/migrations/` | |

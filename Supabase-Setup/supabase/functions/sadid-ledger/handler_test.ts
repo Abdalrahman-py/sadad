@@ -41,3 +41,10 @@ Deno.test('forged activity proof never issues a capability or reads events',asyn
  equal(response.status,403);equal((await response.json()).code,'invalid_proof');
  equal(f.calls,['sadid_installation_key']);
 });
+Deno.test('sadid-ledger no longer serves admin login',async()=>{
+ const handler=makeHandler({db:{},newUserClient:()=>{throw new Error('not called');},leaseSigningKey:undefined as unknown as CryptoKey,leaseJwk:{}});
+ // Admin identity lives in sadad-api; with the stale-header form the ledger's own /admin/*
+ // branch must answer 404, not fall through to an identity session.
+ const response=await handler(new Request('https://test.invalid/functions/v1/sadid-ledger/api/admin/login',{method:'POST',headers:{'x-sadad-admin':'stale-token'},body:'{}'}));
+ equal(response.status,404);equal((await response.json()).message,'المسار غير موجود.');
+});

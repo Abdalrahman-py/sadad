@@ -1,5 +1,4 @@
 import { sha256,verifyProof } from './proof.ts';
-import { makeAdmin } from './admin.ts';
 const b64=(bytes:Uint8Array)=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization,apikey,content-type,x-sadad-session,x-sadad-admin,x-sadad-installation,x-sadad-time,x-sadad-nonce,x-sadad-signature,x-sadad-recovery','Access-Control-Allow-Methods':'GET,POST,OPTIONS'};
 const respond=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers});
@@ -7,14 +6,11 @@ const messages:Record<string,string>={authorization_required:'يلزم التح�
 function requireData(r:any){if(r.error)throw r.error;return r.data;}
 function sessionId(jwt:string){try{return JSON.parse(atob(jwt.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).session_id||'';}catch{return '';}}
 export function makeHandler({db,newUserClient,leaseSigningKey,leaseJwk}:{db:any,newUserClient:(jwt:string,capability:string)=>any,leaseSigningKey:CryptoKey,leaseJwk:JsonWebKey}) {
- const admin=makeAdmin({db,respond});
- return async(request:Request)=>{
- if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
- const route=new URL(request.url).pathname.replace(/^.*\/sadid-ledger/,'').replace(/^\/api/,'');
- try{
-  const moved=await admin.route(request,route);
-  if(moved)return moved;
-  if(request.method!=='GET'&&request.method!=='POST')return respond(405,{ok:false,message:'طريقة الطلب غير مدعومة.'});
+  return async(request:Request)=>{
+  if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
+  const route=new URL(request.url).pathname.replace(/^.*\/sadid-ledger/,'').replace(/^\/api/,'');
+  try{
+   if(request.method!=='GET'&&request.method!=='POST')return respond(405,{ok:false,message:'طريقة الطلب غير مدعومة.'});
   const raw=request.method==='GET'?'':await request.text();
   if(new TextEncoder().encode(raw).length>(route==='/admin/recovery/approve'?4000000:65536))return respond(413,{ok:false,message:'الطلب أكبر من الحد المسموح.'});
   let body:any={};try{body=raw?JSON.parse(raw):{};}catch{return respond(400,{ok:false,message:'صيغة البيانات غير صحيحة.'});}
