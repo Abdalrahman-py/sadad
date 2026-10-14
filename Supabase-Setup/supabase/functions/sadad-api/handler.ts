@@ -263,7 +263,8 @@ export function makeApi({ db, now = Date.now }: Dependencies) {
   }
   async function findAccount(table: "admins" | "stores", username: string): Promise<Json | null> {
     if (!safeUsername(username)) return null;
-    return dataOrThrow(await db.from(table).select("*").ilike("username", username).maybeSingle());
+    const pattern = username.replace(/[\\%_]/g, "\\$&");
+    return dataOrThrow(await db.from(table).select("*").ilike("username", pattern).maybeSingle());
   }
   async function countAdmins(): Promise<number> {
     const result = await db.from("admins").select("id", { count: "exact", head: true });

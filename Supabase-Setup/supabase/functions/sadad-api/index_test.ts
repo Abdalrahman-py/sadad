@@ -66,6 +66,8 @@ const NOT_FOUND_MESSAGE = "المسار غير موجود.";
 function query(cfg: { row?: Json | null; count?: number; list?: Json[] }): any {
   let countMode = false;
   const q: any = {};
+  // Records [method, args] for each filter call so tests can assert on the exact pattern sent.
+  q.calls = [] as Array<[string, any[]]>;
   q.select = (_columns?: unknown, options?: { head?: boolean }) => {
     if (options?.head) countMode = true;
     return q;
@@ -89,7 +91,10 @@ function query(cfg: { row?: Json | null; count?: number; list?: Json[] }): any {
       "delete",
       "insert",
     ]
-  ) q[method] = () => q;
+  ) q[method] = (...args: any[]) => {
+    q.calls.push([method, args]);
+    return q;
+  };
   q.single = q.maybeSingle = () =>
     Promise.resolve({ data: cfg.row ?? null, error: null });
   q.then = (resolved: (value: any) => any, rejected?: (reason: any) => any) =>
@@ -101,7 +106,7 @@ function query(cfg: { row?: Json | null; count?: number; list?: Json[] }): any {
   return q;
 }
 
-function fixture(options: { v3?: boolean; admins?: number; sessionOk?: boolean; admin?: boolean; rejectLegacy?: boolean; deviceCount?: number; revokedDevice?: boolean } = {}) {
+function fixture(options: { v3?: boolean; admins?: number; sessionOk?: boolean; admin?: boolean; rejectLegacy?: boolean; deviceCount?: number; revokedDevice?: boolean; capture?: (table: string, builder: any) => void } = {}) {
   const tables: Record<
     string,
     { row?: Json | null; count?: number; list?: Json[] }
@@ -116,7 +121,9 @@ function fixture(options: { v3?: boolean; admins?: number; sessionOk?: boolean; 
     from: (table: string) => {
       if (options.rejectLegacy && ["contacts", "debts", "payments", "store_backups", "contact_archives"].includes(table))
         throw new Error("Unexpected legacy financial read");
-      return query(tables[table] ?? { list: [] });
+      const builder = query(tables[table] ?? { list: [] });
+      if (options.capture) options.capture(table, builder);
+      return builder;
     },
     rpc: (name: string) => {
       if (name === "sadad_admin_store_list" && options.rejectLegacy) throw new Error("Unexpected legacy financial summary");
@@ -214,6 +221,44 @@ Deno.test("mobile session stays reachable on a version-3 store", async () => {
   const body = await response.json();
   assertEquals(response.status, 200);
   assertEquals(body.account.id, 7);
+});
+
+Deno.test("login escapes LIKE wildcards in the username", async () => {
+  const builders: Record<string, any> = {};
+  const { api, send } = fixture({ capture: (table: string, q: any) => {
+    builders[table] = q;
+  } });
+  await dispatch(
+    api,
+    send("/mobile/login", "POST", {
+      username: "a_c",
+      password: PASSWORD,
+      deviceId: DEVICE_ID,
+      deviceName: "Phone",
+      staffName: "Ali",
+    }),
+  );
+  const ilike = builders.stores.calls.find(([method]: [string]) => method === "ilike");
+  assertEquals(ilike?.[1][1], "a\\_c");
+});
+
+Deno.test("login keeps case-insensitive exact match", async () => {
+  const builders: Record<string, any> = {};
+  const { api, send } = fixture({ capture: (table: string, q: any) => {
+    builders[table] = q;
+  } });
+  await dispatch(
+    api,
+    send("/mobile/login", "POST", {
+      username: "Abc",
+      password: PASSWORD,
+      deviceId: DEVICE_ID,
+      deviceName: "Phone",
+      staffName: "Ali",
+    }),
+  );
+  const ilike = builders.stores.calls.find(([method]: [string]) => method === "ilike");
+  assertEquals(ilike?.[1][1], "Abc");
 });
 
 Deno.test("login states the protocol: a signed-ledger store", async () => {
