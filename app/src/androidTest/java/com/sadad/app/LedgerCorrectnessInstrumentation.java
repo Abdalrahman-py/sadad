@@ -18,7 +18,8 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             storeKeysSurviveReopening();
             signedRestorePreservesDataAndCorrections();
             writesRunOffMainThread();
-            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery\n");
+            syncRefreshKeepsOpenForm();
+            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery, sync keeps open form\n");
             finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
@@ -122,6 +123,92 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         new SessionStore(getTargetContext()).clear();
         getTargetContext().getSharedPreferences("sadad.session", 0).edit().remove("primary_database_account").apply();
         getTargetContext().deleteDatabase(journalFile);
+    }
+
+    private void syncRefreshKeepsOpenForm() throws Exception {
+        String store = "qa-form-store", user = "qa-form-sub";
+        String access = "qa-h." + Base64Url.encode(new JSONObject().put("sub", user).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)) + ".sig";
+        String scope = LedgerQueue.scopeOf(store, user);
+        String journalFile = "sadid-v3-" + InstallationKey.hash(scope) + ".db";
+        getTargetContext().deleteDatabase(journalFile);
+        getTargetContext().deleteDatabase("sadad.db");
+        android.content.SharedPreferences activityPrefs = getTargetContext().getSharedPreferences("MainActivity", 0);
+        activityPrefs.edit().remove("demo_data_seeded").putBoolean("welcome_seen", false)
+                .putBoolean("notification_permission_prompted", true).putBoolean("biometric_enabled", false).apply();
+        SessionStore session = new SessionStore(getTargetContext());
+        session.clear();
+        session.save(new JSONObject().put("token", "token-" + store).put("expiresAt", Long.MAX_VALUE)
+                .put("account", new JSONObject().put("id", store).put("username", store).put("name", store))
+                .put("auth", new JSONObject().put("accessToken", access).put("refreshToken", "refresh-form")));
+        try {
+            EncryptedJournal journal = new EncryptedJournal(getTargetContext(), scope);
+            journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
+            journal.metadata("lease", new JSONObject().put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "qa-form-installation")
+                    .put("storeId", store).put("userId", user).put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000))
+                    .put("boot", 1).put("elapsed", 1000).put("wall", 1000));
+            journal.metadata("cache", new JSONObject().put("epoch", "qa-form-epoch")
+                    .put("contacts", new JSONArray().put(new JSONObject().put("id", "person").put("name", "اختبار النموذج المفتوح")))
+                    .put("debts", new JSONArray()).put("payments", new JSONArray()));
+            journal.close();
+            startActivitySync(new android.content.Intent(getTargetContext(), MainActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            final MainActivity host = MainActivity.activeInstance.get();
+            if (host == null) throw new AssertionError("MainActivity did not start");
+            if (!host.isFormRoute("debt_form") || !host.isFormRoute("contact_form") || !host.isFormRoute("payment_form"))
+                throw new AssertionError("A *_form route is not recognized as a form");
+            if (host.isFormRoute("contacts") || host.isFormRoute("home") || host.isFormRoute("contact_detail"))
+                throw new AssertionError("A non-form route is marked as a form");
+            try {
+                host.materializeLedger();
+                final JSONArray contacts = host.database.getSnapshot().getJSONArray("contacts");
+                if (contacts.length() < 1) throw new AssertionError("The primed contact is missing");
+                final long personId = contacts.getJSONObject(0).optLong("id");
+                if (personId <= 0L) throw new AssertionError("The primed contact has no local row id");
+                runOnMainSync(() -> {
+                    host.screens.contactId = personId;
+                    host.show("debt_form");
+                });
+                if (!"debt_form".equals(host.currentRoute())) throw new AssertionError("The debt form did not open");
+                runOnMainSync(() -> {
+                    android.widget.EditText amount = firstEditor(host);
+                    if (amount == null) throw new AssertionError("No amount field on the debt form");
+                    amount.setText("42.50");
+                    if (!"42.50".equals(amount.getText().toString())) throw new AssertionError("Typing did not reach the field");
+                    // The path the posts call when a sync finishes. Before the fix this rebuilt the form and cleared the field.
+                    host.refreshUnlessEditing();
+                    android.widget.EditText still = firstEditor(host);
+                    if (still != amount || !"42.50".equals(still.getText().toString()))
+                        throw new AssertionError("A finished sync wiped the text typed into the open debt form");
+                });
+                runOnMainSync(() -> {
+                    // Control: a user-path refresh still rebuilds, so the guard above protects something real.
+                    android.widget.EditText amount = firstEditor(host);
+                    amount.setText("42.50");
+                    host.refreshCurrentScreen();
+                    if (firstEditor(host) == amount)
+                        throw new AssertionError("refreshCurrentScreen did not rebuild the view");
+                });
+            } finally { runOnMainSync(host::finish); }
+        } finally { cleanupStrictRun(journalFile); }
+    }
+
+    /** The first editable text box in the rebuild view order — on the debt form this is the amount field. */
+    private static android.widget.EditText firstEditor(MainActivity host) {
+        android.view.View root = host.findViewById(android.R.id.content);
+        if (!(root instanceof android.view.ViewGroup)) return null;
+        return firstEditor((android.view.ViewGroup) root);
+    }
+
+    private static android.widget.EditText firstEditor(android.view.ViewGroup group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            android.view.View child = group.getChildAt(i);
+            if (child instanceof android.widget.EditText) return (android.widget.EditText) child;
+            if (child instanceof android.view.ViewGroup) {
+                android.widget.EditText found = firstEditor((android.view.ViewGroup) child);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void storeKeysSurviveReopening() throws Exception {

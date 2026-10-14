@@ -105,7 +105,7 @@ public final class MainActivity extends Activity {
     private LedgerQueue ledger;
     /** The last signed-ledger notice shown, so a standing refusal is not repeated on every pass. */
     private String lastLedgerNotice = "";
-    private NativeScreens screens;
+    NativeScreens screens; // package-private: the in-app QA runner primes the open form through it
     private volatile String currentRoute = "welcome";
     private String contactFormOrigin = "home";
     private static final class NavigationEntry {
@@ -169,6 +169,12 @@ public final class MainActivity extends Activity {
     int brandLogoResource() { return isDarkTheme() ? R.drawable.sadad_logo_dark : R.drawable.sadad_logo; }
     String currentRoute() { return currentRoute; }
     void refreshCurrentScreen() { if (screens != null) screens.show(currentRoute); }
+    boolean isFormRoute(String route) { return route.endsWith("_form"); }
+    /**
+     * The refresh a finished sync posts. A sync's own rebuild must not touch an open form: what the
+     * user is typing is unsaved state, and leaving the form rebuilds from the DB fresh anyway.
+     */
+    void refreshUnlessEditing() { if (isFormRoute(currentRoute)) return; refreshCurrentScreen(); }
     void show(String route) {
         if (route == null || route.isEmpty() || route.equals(currentRoute)) return;
         if (route.equals("login") || route.equals("welcome") || route.equals("unlock") || route.equals("force_password")) {
@@ -569,13 +575,13 @@ public final class MainActivity extends Activity {
         }
         if (result.outcome == SignedLedgerSync.Outcome.SYNCED) {
             lastLedgerNotice = "";
-            postForAccount(scope, this::refreshCurrentScreen);
+            postForAccount(scope, this::refreshUnlessEditing);
             executeNetwork(() -> DueReminderManager.checkDueDates(getApplicationContext()));
             return;
         }
         if (result.outcome == SignedLedgerSync.Outcome.IDLE) return;
         if (result.outcome == SignedLedgerSync.Outcome.RETRY_LATER) SyncScheduler.schedule(this, true);
-        postForAccount(scope, this::refreshCurrentScreen);
+        postForAccount(scope, this::refreshUnlessEditing);
         String message = result.message == null ? "" : result.message;
         if (message.isEmpty() || message.equals(lastLedgerNotice)) return;
         lastLedgerNotice = message;
