@@ -22,7 +22,8 @@ local.properties
 node_modules/
 **/.wrangler/
 **/.dart_tool/
-**/data/
+# قواعد البيانات المحلية العابرة تعيش عند الجذر فقط؛ حزمة المصدر app/…/data تُتتبّع.
+/data/
 .local-tools/
 work/
 
@@ -41,6 +42,9 @@ credentials.json
 
 # Generated GitHub Pages dashboard
 /_site/
+
+# Supabase local link state (project ref only, but it is host state, not source)
+Supabase-Setup/supabase/.temp/
 
 # Agent working state (plans, scratch) — not a deliverable
 /.hermes/
