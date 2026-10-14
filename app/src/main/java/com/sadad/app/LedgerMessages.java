@@ -47,6 +47,7 @@ final class LedgerMessages {
         MESSAGES.put("store_suspended", "المتجر موقوف؛ حُفظت الإدخالات المعلقة.");
         MESSAGES.put("password_change_required", "غيّر كلمة المرور المؤقتة أولًا.");
         MESSAGES.put("request_rate_limited", "طلبات كثيرة؛ الإدخالات محفوظة، انتظر دقيقة ثم حاول مجددًا.");
+        MESSAGES.put("proof_replayed", "رمز إثبات هوية الجهاز مستخدم مسبقًا؛ أعد إرسال الطلب من جديد.");
     }
 
     private LedgerMessages() { }

@@ -48,3 +48,22 @@ Deno.test('sadid-ledger no longer serves admin login',async()=>{
  const response=await handler(new Request('https://test.invalid/functions/v1/sadid-ledger/api/admin/login',{method:'POST',headers:{'x-sadad-admin':'stale-token'},body:'{}'}));
  equal(response.status,404);equal((await response.json()).message,'المسار غير موجود.');
 });
+Deno.test('enroll forwards the proof nonce',async()=>{
+ const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+ const publicKey=await crypto.subtle.exportKey('jwk',pair.publicKey);
+ const user=crypto.randomUUID(),session=crypto.randomUUID(),installation=crypto.randomUUID();
+ const jwt='test.'+btoa(JSON.stringify({session_id:session}))+'.signature';
+ const route='/mobile/v3/enroll',time=String(Date.now()),nonce=crypto.randomUUID();
+ const raw=JSON.stringify({publicKey});
+ const signature=new Uint8Array(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},pair.privateKey,new TextEncoder().encode(proofText('POST',route,await sha256(raw),time,nonce,installation))));
+ const request=new Request('https://test.invalid/functions/v1/sadid-ledger/api'+route,{method:'POST',headers:{authorization:'Bearer '+jwt,'x-sadad-session':'legacy-token',
+  'content-type':'application/json','x-sadad-installation':installation,'x-sadad-time':time,'x-sadad-nonce':nonce,'x-sadad-signature':btoa(String.fromCharCode(...signature))},body:raw});
+ const db={auth:{getUser:()=>Promise.resolve({data:{user:{id:user}},error:null})},rpc:(name:string,args:Record<string,unknown>)=>{
+  equal(name,'sadid_enroll');equal(args.p_user,user);equal(args.p_session,session);equal(args.p_installation,installation);equal(args.p_key,publicKey);
+  equal(args.p_nonce,nonce); // الرقم الموقّع يصل إلى الدالة ليُسجّل وتُرفض إعادة إرساله
+  return Promise.resolve({data:{installationId:installation,generation:1,status:'pending'},error:null});
+ }};
+ const handler=makeHandler({db,newUserClient:()=>{throw new Error('not called');},leaseSigningKey:pair.privateKey,leaseJwk:publicKey});
+ const response=await handler(request);
+ equal(response.status,200);equal((await response.json()).result.status,'pending');
+});

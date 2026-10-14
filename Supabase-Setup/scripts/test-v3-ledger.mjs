@@ -157,6 +157,34 @@ try{
   await check('قراءة الإدارة مسجلة وبلا صلاحية مالية',async()=>{await db.exec('reset role;set role service_role');const r=(await db.query('select public.sadid_support_snapshot($1,$2,$3) as result',['admin-test-hash',1,'مراجعة دعم للاختبار'])).rows[0].result;assert.equal(r.contacts.length,2);await db.exec('reset role');assert.equal((await db.query('select count(*) n from sadid_private.admin_access_events')).rows[0].n,1);await db.exec('set role sadid_support_reader');await assert.rejects(db.exec('insert into public.sadid_payments(store_id,id,debt_id,amount_cents,method,operation_id,created_at) values(1,gen_random_uuid(),gen_random_uuid(),1,\'cash\',gen_random_uuid(),now())'),/permission denied/);});
   await check('رفض القراءة بعد حذف جلسة Auth',async()=>{await capability('read');await db.exec('reset role');await db.query('delete from auth.sessions where id=$1',[newSession]);await db.exec('set role authenticated');assert.equal((await db.query('select * from public.sadid_contacts')).rows.length,0);});
  await check('حد الطلبات يتراجع دون حفظ أرقام جزئية',async()=>{await db.exec('reset role');const before=(await db.query('select count(*) n from sadid_private.request_nonces')).rows[0].n;await assert.rejects(db.query("insert into sadid_private.request_nonces(installation_id,nonce) select $1,gen_random_uuid() from generate_series(1,301)",[newInstallation]),/request_rate_limited/);assert.equal((await db.query('select count(*) n from sadid_private.request_nonces')).rows[0].n,before);});
+ // إعادة استخدام رقم إثبات التركيب (انقطاع الشبكة ثم إعادة إرسال الطلب الملتقط): النداء الأول يسجّل
+ // الرقم الأحادي، وتكرار الطلب بالرقم نفسه يُرفض برمز محدد بغضّ النظر عن نافذة صلاحية الدليل
+ // (نافذة الـ٣٠٠ ثانية تُفحص في proof.ts على الحافة، أما الرفض هنا فبرمز ثابت دون شرط زمني).
+ await db.exec('reset role');
+ const proofKey='{"kty":"EC","crv":"P-256","x":"'+'A'.repeat(43)+'","y":"'+'B'.repeat(43)+'"}';
+ await db.query('update sadid_private.installations set public_key=$1,status=$2 where id=$3',[proofKey,'pending',installation]);
+ const replaySession=randomUUID();
+ await db.query('insert into auth.sessions values($1,$2)',[replaySession,user]);
+ const legacy={[session]:(randomUUID()+randomUUID()).replace(/-/g,''),[replaySession]:(randomUUID()+randomUUID()).replace(/-/g,'')};
+ for(const [sess,hash] of Object.entries(legacy)){
+  await db.query("insert into public.sessions(token_hash,kind,principal_id,expires_at,created_at) values($1,'store',1,9999999999999,0)",[hash]);
+  await db.query('insert into public.sadad_auth_bindings(session_hash,user_id,auth_session_id,store_id,expires_at) values($1,$2,$3,1,9999999999999)',[hash,user,sess]);
+ }
+ await check('enroll يرفض إعادة استخدام رقم إثبات التركيب',async()=>{
+  await db.exec('set role service_role');
+  const enroll='select public.sadid_enroll($1,$2,$3,$4,$5,$6) as result';
+  const args=(inst,nnc,sess)=>[user,sess,legacy[sess],inst,proofKey,nnc];
+  const firstNonce=randomUUID();
+  assert.equal((await db.query(enroll,args(installation,firstNonce,session))).rows[0].result.status,'pending');
+  const freshInstallation=randomUUID(),freshNonce=randomUUID();
+  assert.equal((await db.query(enroll,args(freshInstallation,freshNonce,replaySession))).rows[0].result.status,'pending');
+  await db.exec('reset role');
+  assert.equal((await db.query('select count(*) n from sadid_private.request_nonces where installation_id=$1 and nonce=$2',[freshInstallation,freshNonce])).rows[0].n,1);
+  await db.exec('set role service_role');
+  await assert.rejects(db.query(enroll,args(freshInstallation,freshNonce,replaySession)),/proof_replayed/);
+  await assert.rejects(db.query(enroll,args(installation,firstNonce,session)),/proof_replayed/);
+  await db.exec('reset role');
+ });
  await check('إلغاء تركيب صريح مسجل ولا يقبله مستخدم متجر',async()=>{await db.exec('reset role');await db.query('insert into auth.sessions values($1,$2,null)',[newSession,user]);await db.query('insert into sadid_private.installation_sessions values($1,$2,1,$3,2)',[newSession,user,newInstallation]);await capability('read');await assert.rejects(db.query('select public.sadid_revoke_installation($1,$2,$3)',['admin-test-hash',newInstallation,'إلغاء اختبار']),/permission denied/);await db.exec('reset role;set role service_role');const result=(await db.query('select public.sadid_revoke_installation($1,$2,$3) as result',['admin-test-hash',newInstallation,'تعطل جهاز الاختبار'])).rows[0].result;assert.equal(result.status,'revoked');await assert.rejects(capability('read'),/installation_or_session_revoked/);await db.exec('reset role');assert.equal((await db.query("select count(*) n from sadid_private.control_events where kind='installation.revoked'")).rows[0].n,1);});
  await db.exec('reset role');
  console.log(JSON.stringify({engine:(await db.query('select version()')).rows[0].version,tests},null,2));
