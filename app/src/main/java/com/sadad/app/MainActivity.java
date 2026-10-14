@@ -587,9 +587,13 @@ public final class MainActivity extends Activity {
      * folded into the local tables so the screen shows it immediately — marked as pending until the
      * server accepts it.
      */
-    long addContact(JSONObject input, String initialAmount, String dueDate, String debtNote) throws Exception {
+    private long addContact(JSONObject input, String initialAmount, String dueDate, String debtNote) throws Exception {
         if (changingAccount) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
-        if (!signedLedger()) return database.saveContactWithInitialDebt(input, initialAmount == null ? "" : initialAmount, dueDate, debtNote).optLong("id");
+        if (!signedLedger()) {
+            long id = database.saveContactWithInitialDebt(input, initialAmount == null ? "" : initialAmount, dueDate, debtNote).optLong("id");
+            markLedgerChanged();
+            return id;
+        }
         LedgerQueue queue = ledgerQueue();
         String name = input.optString("name");
         String phone = input.optString("phone");
@@ -609,9 +613,9 @@ public final class MainActivity extends Activity {
     }
 
     /** A debt against one contact, on whichever protocol this store is on. */
-    void addDebt(JSONObject input) throws Exception {
+    private void addDebt(JSONObject input) throws Exception {
         if (changingAccount) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
-        if (!signedLedger()) { database.saveDebt(input); return; }
+        if (!signedLedger()) { database.saveDebt(input); markLedgerChanged(); return; }
         long contactLocalId = input.optLong("contactId", -1L);
         String contactId = database.remoteUuidFor("contacts", contactLocalId);
         if (contactId.isEmpty()) throw new IllegalArgumentException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
@@ -627,9 +631,9 @@ public final class MainActivity extends Activity {
      * amount is allocated over the open debts oldest first — the same rule the offline ledger has
      * always used — and each slice becomes its own operation.
      */
-    JSONObject addPayment(JSONObject input) throws Exception {
+    private JSONObject addPayment(JSONObject input) throws Exception {
         if (changingAccount) throw new IllegalStateException("انتظر اكتمال تغيير الحساب.");
-        if (!signedLedger()) return database.savePayment(input);
+        if (!signedLedger()) { JSONObject receipt = database.savePayment(input); markLedgerChanged(); return receipt; }
         long contactLocalId = input.optLong("contactId", -1L);
         String contactId = database.remoteUuidFor("contacts", contactLocalId);
         if (contactId.isEmpty()) throw new IllegalArgumentException("هذا الشخص غير موجود في الدفتر المعتمد بعد؛ اتصل بالشبكة ثم أعد المحاولة.");
@@ -660,6 +664,51 @@ public final class MainActivity extends Activity {
 
     /** What a caller needs to know when a server-side action finishes. */
     interface LedgerAction { void complete(boolean success, String message); }
+
+    /** The same shape for a new Contact, carrying the row it created. */
+    interface LedgerContactSave { void complete(boolean success, long contactId, String message); }
+
+    /** The same shape for a new Payment, carrying its receipt. */
+    interface LedgerPaymentSave { void complete(boolean success, JSONObject receipt, String message); }
+
+    private String reportLedgerText(Exception error) {
+        return error.getMessage() == null || error.getMessage().isEmpty() ? "تعذر إتمام الإجراء." : error.getMessage();
+    }
+
+    /** Saves that must return at once: the ledger work runs on the worker and reports on the UI
+     *  thread, so the same scope check that guards the sync passes guards the callback too. */
+    void addContactAsync(JSONObject input, String initialAmount, String dueDate, String debtNote, LedgerContactSave callback) {
+        if (changingAccount) { callback.complete(false, 0L, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
+        executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
+            try { long id = addContact(input, initialAmount, dueDate, debtNote); postForAccount(scope, () -> callback.complete(true, id, "")); }
+            catch (Exception error) { postForAccount(scope, () -> callback.complete(false, 0L, reportLedgerText(error))); }
+        });
+    }
+
+    void addDebtAsync(JSONObject input, LedgerAction callback) {
+        if (changingAccount) { callback.complete(false, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
+        executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
+            try { addDebt(input); postForAccount(scope, () -> callback.complete(true, "")); }
+            catch (Exception error) { reportLedgerFailure(error, callback, scope); }
+        });
+    }
+
+    void addPaymentAsync(JSONObject input, LedgerPaymentSave callback) {
+        if (changingAccount) { callback.complete(false, null, "انتظر اكتمال تغيير الحساب."); return; }
+        String scope = accountScope();
+        executeNetwork(() -> {
+            if (changingAccount || !scope.equals(accountScope())) return;
+            try {
+                JSONObject receipt = addPayment(input);
+                postForAccount(scope, () -> callback.complete(true, receipt, ""));
+            }
+            catch (Exception error) { postForAccount(scope, () -> callback.complete(false, null, reportLedgerText(error))); }
+        });
+    }
 
     /**
      * Archiving and restoring are corrections the server has to accept, so they are network calls —
@@ -729,8 +778,7 @@ public final class MainActivity extends Activity {
     }
 
     private void reportLedgerFailure(Exception error, LedgerAction callback, String scope) {
-        String message = error.getMessage() == null || error.getMessage().isEmpty() ? "تعذر إتمام الإجراء." : error.getMessage();
-        postForAccount(scope, () -> callback.complete(false, message));
+        postForAccount(scope, () -> callback.complete(false, reportLedgerText(error)));
     }
 
     /**

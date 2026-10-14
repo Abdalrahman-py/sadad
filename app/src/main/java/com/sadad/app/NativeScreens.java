@@ -747,18 +747,28 @@ final class NativeScreens {
                     // An edit is a correction the ledger has to accept: the local row alone would be
                     // overwritten by the next snapshot.
                     contactId = editingContactId;
+                    saveButton[0].setEnabled(false);
                     host.updateContactAsync(input.put("id", editingContactId), (saved, failure) -> {
-                        if (!saved) { host.showBrandedMessage(failure.isEmpty() ? "تعذر حفظ التعديل." : failure); return; }
+                        if (!saved) { saveButton[0].setEnabled(true); host.showBrandedMessage(failure.isEmpty() ? "تعذر حفظ التعديل." : failure); return; }
                         host.showBrandedMessage("تم حفظ بيانات الشخص."); host.show("contact_detail");
                     });
-                    return;
                 } else {
                     String debtNote = withDebt && firstDebtNote != null ? firstDebtNote.getText().toString() : "";
                     if (creditOverride[0]) debtNote = appendAuditNote(debtNote, "تم تجاوز سقف الائتمان بموافقة صاحب المتجر");
-                    contactId = host.addContact(input, amount,
-                            withDebt ? firstDebtDue.getText().toString() : "", debtNote);
+                    String dueDate = withDebt ? firstDebtDue.getText().toString() : "";
+                    saveButton[0].setEnabled(false);
+                    host.addContactAsync(input, amount, dueDate, debtNote, (saved, savedContactId, failure) -> {
+                        if (!saved) {
+                            saveButton[0].setEnabled(true);
+                            String message = failure.isEmpty() ? "تعذر الحفظ" : failure;
+                            name.setError(message); host.showBrandedMessage(message);
+                            return;
+                        }
+                        contactId = savedContactId;
+                        host.showBrandedMessage(withDebt ? "تم حفظ الشخص وتسجيل الدين الأول." : "تم حفظ بيانات الشخص.");
+                        host.show("contact_detail");
+                    });
                 }
-                host.markLedgerChanged(); host.showBrandedMessage(withDebt ? "تم حفظ الشخص وتسجيل الدين الأول." : "تم حفظ بيانات الشخص."); host.show("contact_detail");
             } catch (Exception e) { String message = e.getMessage() == null ? "تعذر الحفظ" : e.getMessage(); name.setError(message); host.showBrandedMessage(message); }
         });
         content.addView(saveButton[0], topMargin(10));
@@ -812,11 +822,14 @@ final class NativeScreens {
                             .setPositiveButton("تأكيد تسجيل الدين", (d, w) -> { finalReviewed[0] = true; saveButton[0].performClick(); }).show();
                     return;
                 }
-                host.addDebt(new JSONObject().put("contactId", person.optLong("id"))
+                saveButton[0].setEnabled(false);
+                host.addDebtAsync(new JSONObject().put("contactId", person.optLong("id"))
                         .put("direction", "receivable")
                         .put("amount", value).put("dueDate", due.getText().toString()).put("note", appendDebtAudit(note.getText().toString(), creditOverride[0], anomalyReviewed[0]))
-                        .put("createdBy", host.currentOperatorName()));
-                host.markLedgerChanged(); host.showBrandedMessage("تم تسجيل الدين وتحديث الرصيد."); host.show("contact_detail");
+                        .put("createdBy", host.currentOperatorName()), (saved, failure) -> {
+                    if (!saved) { saveButton[0].setEnabled(true); amount.setError(failure.isEmpty() ? "تعذر الحفظ" : failure); host.showBrandedMessage(failure.isEmpty() ? "تعذر الحفظ" : failure); return; }
+                    host.showBrandedMessage("تم تسجيل الدين وتحديث الرصيد."); host.show("contact_detail");
+                });
             } catch (Exception e) {
                 String message = e.getMessage() == null ? "تحقق من المبلغ" : e.getMessage();
                 amount.setError(message); host.showBrandedMessage(message);
@@ -894,12 +907,20 @@ final class NativeScreens {
                             .setPositiveButton("تأكيد تسجيل الدفعة", (d, w) -> { finalReviewed[0] = true; saveButton[0].performClick(); }).show();
                     return;
                 }
-                JSONObject receipt = host.addPayment(new JSONObject().put("contactId", person.optLong("id")).put("amount", value)
-                        .put("method", methodName).put("note", note.getText().toString()).put("createdBy", host.currentOperatorName()));
-                host.markLedgerChanged();
-                new SadadDialog.Builder(host).setTitle("تم تسجيل الدفعة")
-                        .setMessage("تم حفظ الدفعة وخصم "+money(receipt.optDouble("amount"))+" من حساب "+person.optString("name")+".")
-                        .setPositiveButton("إغلاق",(d,w)->host.show("contact_detail")).show();
+                saveButton[0].setEnabled(false);
+                host.addPaymentAsync(new JSONObject().put("contactId", person.optLong("id")).put("amount", value)
+                        .put("method", methodName).put("note", note.getText().toString()).put("createdBy", host.currentOperatorName()),
+                        (saved, receipt, failure) -> {
+                            if (!saved) {
+                                saveButton[0].setEnabled(true);
+                                String message = failure.isEmpty() ? "تحقق من المبلغ" : failure;
+                                amount.setError(message); host.showBrandedMessage(message);
+                                return;
+                            }
+                            new SadadDialog.Builder(host).setTitle("تم تسجيل الدفعة")
+                                    .setMessage("تم حفظ الدفعة وخصم "+money(receipt.optDouble("amount"))+" من حساب "+person.optString("name")+".")
+                                    .setPositiveButton("إغلاق",(d,w)->host.show("contact_detail")).show();
+                        });
             } catch (Exception e) {
                 String message = e.getMessage() == null ? "تحقق من المبلغ" : e.getMessage();
                 amount.setError(message); host.showBrandedMessage(message);

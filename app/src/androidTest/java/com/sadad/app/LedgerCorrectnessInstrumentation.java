@@ -17,6 +17,7 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             refreshedAuthSurvivesAccountSwitch();
             storeKeysSurviveReopening();
             signedRestorePreservesDataAndCorrections();
+            writesRunOffMainThread();
             result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery\n");
             finish(-1, result);
         } catch (Throwable error) {
@@ -45,6 +46,82 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
                     .put("contacts", new JSONArray()).put("debts", new JSONArray()).put("payments", new JSONArray()));
             if (upgraded.getSnapshot().getJSONArray("contacts").length() != 0) throw new AssertionError("Signed view kept obsolete test rows");
         } finally { upgraded.close(); getTargetContext().deleteDatabase(filename); }
+    }
+
+    /**
+     * The save paths must never do the journal's disk work on the main thread: StrictMode armed on
+     * the main looper with penaltyDeath means a synchronous write here kills the process. The
+     * dispatch itself is the only point under the strict policy — the app's own screen rebuilds
+     * (which have always read SQLite on the main thread) are not this ticket's scope.
+     */
+    private void writesRunOffMainThread() throws Exception {
+        String store = "qa-strict-store", user = "qa-strict-sub";
+        // The access token has to read like a JWT or LedgerQueue cannot resolve the ledger's scope.
+        String access = "qa-h." + Base64Url.encode(new JSONObject().put("sub", user).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)) + ".sig";
+        String scope = LedgerQueue.scopeOf(store, user);
+        String journalFile = "sadid-v3-" + InstallationKey.hash(scope) + ".db";
+        getTargetContext().deleteDatabase(journalFile);
+        getTargetContext().deleteDatabase("sadad.db");
+        android.content.SharedPreferences activityPrefs = getTargetContext().getSharedPreferences("MainActivity", 0);
+        activityPrefs.edit().remove("demo_data_seeded").putBoolean("welcome_seen", false)
+                .putBoolean("notification_permission_prompted", true).putBoolean("biometric_enabled", false).apply();
+        SessionStore session = new SessionStore(getTargetContext());
+        session.clear();
+        session.save(new JSONObject().put("token", "token-" + store).put("expiresAt", Long.MAX_VALUE)
+                .put("account", new JSONObject().put("id", store).put("username", store).put("name", store))
+                .put("auth", new JSONObject().put("accessToken", access).put("refreshToken", "refresh-strict")));
+        EncryptedJournal journal = new EncryptedJournal(getTargetContext(), scope);
+        try {
+            journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
+            journal.metadata("lease", new JSONObject().put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "qa-strict-installation")
+                    .put("storeId", store).put("userId", user).put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000))
+                    .put("boot", 1).put("elapsed", 1000).put("wall", 1000));
+            journal.metadata("cache", new JSONObject().put("epoch", "qa-epoch")
+                    .put("contacts", new JSONArray().put(new JSONObject().put("id", "person").put("name", "اختبار الصارم")))
+                    .put("debts", new JSONArray()).put("payments", new JSONArray()));
+        } finally { journal.close(); }
+        MainActivity host;
+        try {
+            startActivitySync(new android.content.Intent(getTargetContext(), MainActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            host = MainActivity.activeInstance.get();
+            if (host == null) throw new AssertionError("MainActivity did not start");
+            // The queued contact has to be in the local tables before the write: materialize runs
+            // inside afterSignedWrite, which is already too late for the debt's owner lookup.
+            host.materializeLedger();
+            long personId = host.database.getSnapshot().getJSONArray("contacts").getJSONObject(0).optLong("id");
+            if (personId <= 0L) throw new AssertionError("The primed contact never reached the local view");
+            runStrictWrite(host, personId);
+        } finally { cleanupStrictRun(journalFile); }
+    }
+
+    private void runStrictWrite(MainActivity host, long personId) throws Exception {
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean saved = new java.util.concurrent.atomic.AtomicBoolean(false);
+        java.util.concurrent.atomic.AtomicReference<String> failure = new java.util.concurrent.atomic.AtomicReference<>("لم يصل رد الاستدعاء.");
+        JSONObject input = new JSONObject();
+        input.put("contactId", personId).put("direction", "receivable")
+                .put("amount", "120.50").put("note", "اختبار الكتابة خارج الخيط الرئيسي").put("createdBy", "qa");
+        runOnMainSync(() -> {
+            android.os.StrictMode.setThreadPolicy(new android.os.StrictMode.ThreadPolicy.Builder()
+                    .detectDiskReads().detectDiskWrites().penaltyDeath().build());
+            try {
+                host.addDebtAsync(input,
+                        (success, message) -> { saved.set(success); failure.set(message); done.countDown(); });
+            } finally {
+                android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.LAX);
+            }
+        });
+        if (!done.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("لم يصل رد حفظ الدين خلال 10 ثوانٍ.");
+        if (!saved.get()) throw new AssertionError("فشل حفظ الدين: " + failure.get());
+        if (host.database.getSnapshot().getJSONArray("debts").length() < 1)
+            throw new AssertionError("لم يصل الدين المسجّل إلى الجداول المحلية.");
+    }
+
+    private void cleanupStrictRun(String journalFile) {
+        new SessionStore(getTargetContext()).clear();
+        getTargetContext().getSharedPreferences("sadad.session", 0).edit().remove("primary_database_account").apply();
+        getTargetContext().deleteDatabase(journalFile);
     }
 
     private void storeKeysSurviveReopening() throws Exception {
