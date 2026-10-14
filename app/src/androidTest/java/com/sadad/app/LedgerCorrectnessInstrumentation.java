@@ -19,7 +19,9 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             signedRestorePreservesDataAndCorrections();
             writesRunOffMainThread();
             syncRefreshKeepsOpenForm();
-            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery, sync keeps open form\n");
+            importKeepsWorkingPast999Rows();
+            emptyViewNeverWipesLocalRows();
+            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery, sync keeps open form, import past 999 rows, no empty-view wipe\n");
             finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
@@ -43,10 +45,63 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         try {
             if (upgraded.getSnapshot().getJSONArray("contacts").length() != 1) throw new AssertionError("Upgrade lost local financial rows");
             upgraded.saveContact(new JSONObject().put("name", "New row"));
+            // A real connected view still replaces pre-signed rows; only a fully empty view is refused.
             upgraded.importLedgerView(new JSONObject().put("epoch", "current").put("cursor", 0)
-                    .put("contacts", new JSONArray()).put("debts", new JSONArray()).put("payments", new JSONArray()));
-            if (upgraded.getSnapshot().getJSONArray("contacts").length() != 0) throw new AssertionError("Signed view kept obsolete test rows");
+                    .put("contacts", new JSONArray().put(new JSONObject().put("id", "connected").put("name", "Connected row")))
+                    .put("debts", new JSONArray()).put("payments", new JSONArray()));
+            JSONArray left = upgraded.getSnapshot().getJSONArray("contacts");
+            if (left.length() != 1 || !"Connected row".equals(left.getJSONObject(0).optString("name")))
+                throw new AssertionError("Signed view never replaced obsolete test rows");
         } finally { upgraded.close(); getTargetContext().deleteDatabase(filename); }
+    }
+
+    /**
+     * Android 7-10 SQLite (minSdk 24) caps binds at 999, so a per-row bind in removeUnseen breaks
+     * the whole import there; on this device (API 30+) it only proves the import is idempotent
+     * across re-imports (rows are matched on remote_uuid, never re-inserted).
+     */
+    private void importKeepsWorkingPast999Rows() throws Exception {
+        String filename = "qa-999-rows.db";
+        getTargetContext().deleteDatabase(filename);
+        SadadDatabase db = new SadadDatabase(getTargetContext(), filename);
+        try {
+            JSONArray contacts = new JSONArray().put(new JSONObject().put("id", "c1").put("name", "عميل 999"));
+            JSONArray debts = new JSONArray().put(new JSONObject().put("id", "d1").put("contact_id", "c1").put("amount_cents", 10000));
+            JSONArray payments = new JSONArray();
+            for (int i = 0; i < 5000; i++)
+                payments.put(new JSONObject().put("id", "p" + i).put("debt_id", "d1").put("amount_cents", 100));
+            db.importLedgerView(view("qa-999-epoch", contacts, debts, payments));
+            if (db.getSnapshot().getJSONArray("payments").length() != 5000) throw new AssertionError("Large import lost first-import rows");
+            payments.remove(0);
+            db.importLedgerView(view("qa-999-epoch", contacts, debts, payments));
+            if (db.getSnapshot().getJSONArray("payments").length() != 4999)
+                throw new AssertionError("Second import over 999 rows failed or duplicated rows");
+        } finally { db.close(); getTargetContext().deleteDatabase(filename); }
+    }
+
+    /**
+     * A view that comes back with zero rows while the phone still holds data is a broken download,
+     * not an empty ledger: the local tables must survive it.
+     */
+    private void emptyViewNeverWipesLocalRows() throws Exception {
+        String filename = "qa-empty-view.db";
+        getTargetContext().deleteDatabase(filename);
+        SadadDatabase db = new SadadDatabase(getTargetContext(), filename);
+        try {
+            JSONArray contacts = new JSONArray();
+            for (int i = 1; i <= 3; i++)
+                contacts.put(new JSONObject().put("id", "c" + i).put("name", "عميل " + i));
+            db.importLedgerView(view("qa-empty-epoch", contacts, new JSONArray(), new JSONArray()));
+            if (db.getSnapshot().getJSONArray("contacts").length() != 3) throw new AssertionError("First import did not store the contacts");
+            db.importLedgerView(view("qa-empty-epoch", new JSONArray(), new JSONArray(), new JSONArray()));
+            if (db.getSnapshot().getJSONArray("contacts").length() != 3)
+                throw new AssertionError("An empty ledger view wiped local rows");
+        } finally { db.close(); getTargetContext().deleteDatabase(filename); }
+    }
+
+    private static JSONObject view(String epoch, JSONArray contacts, JSONArray debts, JSONArray payments) throws Exception {
+        return new JSONObject().put("epoch", epoch).put("cursor", 0)
+                .put("contacts", contacts).put("debts", debts).put("payments", payments);
     }
 
     /**

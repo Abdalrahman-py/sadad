@@ -773,6 +773,7 @@ public final class SadadDatabase extends SQLiteOpenHelper {
      * store on the signed ledger the server is the truth.
      *
      * <p>The connected view replaces pre-signed test rows too; standalone data uses importSnapshot.
+     * A fully empty view while rows exist locally is refused instead of wiping them.
      */
     public synchronized void importLedgerView(JSONObject view) throws JSONException {
         SQLiteDatabase db = getWritableDatabase();
@@ -858,9 +859,18 @@ public final class SadadDatabase extends SQLiteOpenHelper {
                     db.update("payments", v, "id=?", new String[]{String.valueOf(id)});
                 }
             }
-            removeUnseen(db, "payments", seenPayments);
-            removeUnseen(db, "debts", seenDebts);
-            removeUnseen(db, "contacts", seenContacts);
+            // An empty view while local tables still hold rows is a broken download, not an empty
+            // ledger: refuse to wipe. A per-table empty set while others have rows still deletes.
+            boolean emptyView = (contacts == null || contacts.length() == 0)
+                    && (debts == null || debts.length() == 0)
+                    && (payments == null || payments.length() == 0);
+            if (emptyView && (rowCount(db, "contacts") > 0 || rowCount(db, "debts") > 0 || rowCount(db, "payments") > 0)) {
+                android.util.Log.w("SadadDatabase", "لم يُطبَّق عرض فارغ على جداول تحوي صفوفًا");
+            } else {
+                removeUnseen(db, "payments", seenPayments);
+                removeUnseen(db, "debts", seenDebts);
+                removeUnseen(db, "contacts", seenContacts);
+            }
             ContentValues meta = new ContentValues();
             meta.put("id", 1);
             meta.put("epoch", view.optString("epoch"));
@@ -918,11 +928,22 @@ public final class SadadDatabase extends SQLiteOpenHelper {
     }
 
     private static void removeUnseen(SQLiteDatabase db, String table, Set<String> seen) {
-        String where = "COALESCE(remote_uuid,'')";
-        if (seen.isEmpty()) { db.execSQL("DELETE FROM " + table); return; }
-        StringBuilder sql = new StringBuilder("DELETE FROM " + table + " WHERE " + where + " NOT IN (");
-        for (int i = 0; i < seen.size(); i++) sql.append(i == 0 ? "?" : ",?");
-        db.execSQL(sql.append(")").toString(), seen.toArray());
+        // Android 7-10 SQLite caps binds at 999, so id staging goes through a temp table with one
+        // reused statement instead of one bind per seen row.
+        db.execSQL("CREATE TEMP TABLE IF NOT EXISTS seen_ids(id TEXT PRIMARY KEY)");
+        db.execSQL("DELETE FROM seen_ids");
+        if (!seen.isEmpty()) {
+            try (android.database.sqlite.SQLiteStatement insert = db.compileStatement("INSERT INTO seen_ids(id) VALUES (?)")) {
+                for (String id : seen) { insert.bindString(1, id); insert.execute(); }
+            }
+        }
+        db.execSQL("DELETE FROM " + table + " WHERE COALESCE(remote_uuid,'') NOT IN (SELECT id FROM seen_ids)");
+    }
+
+    private static long rowCount(SQLiteDatabase db, String table) {
+        try (Cursor cursor = db.rawQuery("SELECT count(*) FROM " + table, null)) {
+            return cursor.moveToFirst() ? cursor.getLong(0) : 0L;
+        }
     }
 
     private static long timestamp(JSONObject row) {
