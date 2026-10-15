@@ -27,12 +27,21 @@ public final class SadadDatabase extends SQLiteOpenHelper {
     /** 9 removes the retired sync outbox without changing financial tables. */
     private static final int DB_VERSION = 9;
 
-    /** Includes changes from this connection and other connections, without rebuilding the ledger. */
+    /** Every write method is synchronized and gets its connection here, so a reader never sees the bump before the commit. */
+    private long writes;
+
+    @Override public synchronized SQLiteDatabase getWritableDatabase() { writes++; return super.getWritableDatabase(); }
+
+    /**
+     * Moves on every write through this instance and every commit from another SadadDatabase on the
+     * same file. On the device the PRAGMA runs on the primary connection, whose data_version ignores its
+     * own commits, and total_changes() on a read-only connection, where it is always 0, so neither
+     * one alone sees a debt saved through this instance.
+     */
     public synchronized long changeToken() {
-        long version = 0, changes = 0;
+        long version = 0;
         try (Cursor c = getReadableDatabase().rawQuery("PRAGMA data_version", null)) { if (c.moveToFirst()) version = c.getLong(0); }
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT total_changes()", null)) { if (c.moveToFirst()) changes = c.getLong(0); }
-        return (version << 32) ^ changes;
+        return (version << 32) ^ writes;
     }
 
     @Override public void onOpen(SQLiteDatabase db) {
