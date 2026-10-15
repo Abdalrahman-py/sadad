@@ -18,9 +18,18 @@ Create a new file under `.scratch/<feature-slug>/` (creating the directory if ne
 
 Read the file at the referenced path. The user will normally pass the path or the issue number directly.
 
+## Implementation tickets
+
+Tickets in `.scratch/<feature-slug>/issues/` that OpenCode implements, one git worktree per ticket.
+
+- **Status flow**: `ready-for-agent` → `claimed` → `done (commit <sha>, branch ticket-NN, not merged)`, or `blocked: <reason>` / `review-pending (worktree <path>)`.
+- **Blocking**: a ticket is unblocked when every `Blocked by` ticket has a Status starting with `done`. The human picks the ticket number; agents never pick the next ticket themselves.
+- **Files section**: every repo path that Test first or Steps edits must appear under `Files you may edit`.
+- **Runner**: `.scratch/ticket` (`ready`, `lint NN`, `start NN`, `merge NN`). Run `ticket lint NN` after writing or changing a ticket. `merge` refuses a branch that changes files outside the ticket's Files section. Merge reviewed branches with `ticket merge NN`, not plain `git merge`, so the worktree and branch are removed too.
+
 ## Wayfinding operations
 
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+Used by `/wayfinder` for exploration efforts that have a `map.md`; the implementation-ticket rules above do not apply to them. The **map** is a file with one **child** file per ticket.
 
 - **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
 - **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
