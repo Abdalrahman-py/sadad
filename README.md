@@ -30,7 +30,7 @@
 
 ## البناء
 
-يحتاج JDK 21 وAndroid SDK 37. أنشئ `local.properties` في الجذر (مستبعد من Git):
+يحتاج JDK 21 وAndroid SDK 36. أنشئ `local.properties` في الجذر (مستبعد من Git):
 
 ```sh
 sdk.dir=/path/to/Android/Sdk
