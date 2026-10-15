@@ -36,7 +36,7 @@ install_android() {
       rm -rf /tmp/cmdline-tools /tmp/cmdline-tools.zip || return 1
   fi
   # android-36 builds main before ticket 30; android-37.0 builds it after.
-  yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null &&
+  { yes || true; } | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null &&
     "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
       "platforms;android-36" "platforms;android-37.0" "build-tools;36.0.0"
 }
