@@ -11,3 +11,7 @@ verify_jwt = false
 [functions.sadid-ledger]
 # Handler verifies the Supabase JWT itself; admin routes use X-Sadad-Admin, not a JWT.
 verify_jwt = false
+
+[functions.api]
+# Auth middleware verifies the Supabase JWT locally via auth.getClaims(); /v1/health is public.
+verify_jwt = false
