@@ -32,6 +32,9 @@
    الاشتباه: ذاكرة `NativeScreens.snapshot()` المرتبطة بـ`SadadDatabase.changeToken()`. لم يُحدد السبب.
 2. بلا شبكة تظهر رسالة Java الخام «Unable to resolve host …» من
    `LedgerClient.java` (`SyncFailure.unreachable(error.getMessage())`) بدل رسالة عربية.
+   **أُصلح في المصدر:** `SyncFailure.unreachable` يحمل نصًا عربيًا ثابتًا والخطأ الأصلي سببًا
+   (`getCause()`)، وتجديد الجلسة يمر بالمسار نفسه. لا تتكرر الرسالة نفسها حتى تنجح مزامنة
+   (`lastLedgerNotice`). اختبار JVM ناجح؛ لم يُجرَّب على الهاتف.
 3. الدخول يقطع الانتظار بعد 10 ثوانٍ بينما استغرق التشغيل البارد للخادم 11.7 ثانية، فيظهر
    «تعذر الوصول إلى الخادم». الإصلاح ملتزم في الفرع `claude/unruffled-noether-252deb`
    (`7505c78`) ولم يُدمج أو يُجرب على الهاتف.

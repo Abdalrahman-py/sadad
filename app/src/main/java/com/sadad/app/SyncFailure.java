@@ -20,6 +20,16 @@ final class SyncFailure extends Exception {
         this.code = code == null ? "" : code;
     }
 
-    /** A transport-level failure: nothing was answered. */
-    static SyncFailure unreachable(String message) { return new SyncFailure(NO_RESPONSE, new JSONObject(), message, "unreachable"); }
+    /**
+     * A transport-level failure: nothing was answered. The user sees fixed Arabic text, never the
+     * platform's English ("Unable to resolve host …"); the original error stays as the cause.
+     */
+    static SyncFailure unreachable(Exception error) {
+        String message = error instanceof java.net.SocketTimeoutException
+                ? "الخادم بطيء في الرد الآن. بياناتك محفوظة على الهاتف وستُزامن تلقائيًا."
+                : "تعذر الوصول إلى الخادم الآن. بياناتك محفوظة على الهاتف وستُزامن تلقائيًا عند عودة الشبكة.";
+        SyncFailure failure = new SyncFailure(NO_RESPONSE, new JSONObject(), message, "unreachable");
+        failure.initCause(error);
+        return failure;
+    }
 }

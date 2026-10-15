@@ -318,6 +318,29 @@ public final class LedgerClientTest {
         }
     }
 
+    @Test public void anOfflinePhoneSeesArabicNotTheUnresolvedHost() throws Exception {
+        // .invalid never resolves (RFC 6761), so this is the UnknownHostException of a phone offline.
+        try {
+            new LedgerClient(session, signer, "https://sadad.invalid/api").state();
+            fail("an unresolvable host must not look like success");
+        } catch (SyncFailure failure) {
+            assertEquals(SyncFailure.NO_RESPONSE, failure.status);
+            assertEquals("unreachable", failure.code);
+            assertEquals("تعذر الوصول إلى الخادم الآن. بياناتك محفوظة على الهاتف وستُزامن تلقائيًا عند عودة الشبكة.", failure.getMessage());
+            assertTrue(failure.getCause() instanceof java.net.UnknownHostException);
+        }
+
+        session.envelope = new JSONObject().put("refreshToken", "r1").put("expiresAt", 0);
+        session.gateway = "https://sadad.invalid";
+        try {
+            client().state();
+            fail("an offline renewal must not look like success");
+        } catch (SyncFailure failure) {
+            assertEquals("unreachable", failure.code);
+            assertTrue(failure.getCause() instanceof java.net.UnknownHostException);
+        }
+    }
+
     @Test public void anExpiredEnvelopeIsRenewedBeforeTheRequest() throws Exception {
         session.envelope = new JSONObject().put("accessToken", "stale-access")
                 .put("refreshToken", "r1").put("expiresAt", System.currentTimeMillis() - 1000);

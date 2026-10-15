@@ -116,7 +116,7 @@ final class LedgerClient implements LedgerApi {
         } catch (SyncFailure failure) {
             throw failure;
         } catch (Exception error) {
-            throw SyncFailure.unreachable(error.getMessage());
+            throw SyncFailure.unreachable(error);
         } finally { connection.disconnect(); }
     }
 
@@ -146,6 +146,10 @@ final class LedgerClient implements LedgerApi {
                 requireSameAccount();
                 session.updateAuth(payload.getJSONObject("auth"));
             }
+        } catch (SyncFailure failure) {
+            throw failure;
+        } catch (Exception error) {
+            throw SyncFailure.unreachable(error);
         } finally { connection.disconnect(); }
     }
 
