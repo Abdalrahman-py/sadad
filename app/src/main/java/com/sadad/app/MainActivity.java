@@ -400,8 +400,8 @@ public final class MainActivity extends Activity {
                     if (!mustChange) syncNow();
                 });
             } catch (Exception error) {
-                boolean unreachable = error instanceof java.net.SocketTimeoutException || error instanceof java.net.ConnectException || error instanceof java.net.UnknownHostException;
-                String message = unreachable ? "تعذر الوصول إلى الخادم. تحقق من اتصال الهاتف بالإنترنت ثم أعد المحاولة."
+                String network = LedgerClient.networkFailureMessage(error);
+                String message = network != null ? network
                         : error.getMessage() == null ? "تعذر الاتصال بالخادم." : error.getMessage();
                 runOnUiThread(() -> { changingAccount = false; showBrandedMessage(message); });
             }
@@ -480,8 +480,8 @@ public final class MainActivity extends Activity {
         HttpURLConnection connection = (HttpURLConnection) new URL(base + endpoint).openConnection();
         connection.setRequestMethod(method);
         connection.setInstanceFollowRedirects(false);
-        connection.setConnectTimeout(6000);
-        connection.setReadTimeout(10000);
+        connection.setConnectTimeout(LedgerClient.CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(LedgerClient.READ_TIMEOUT_MS);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
         if (token != null && !token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);

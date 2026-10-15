@@ -24,6 +24,12 @@ final class LedgerClient implements LedgerApi {
     /** The one place the project is named; every address and every lease check derives from it. */
     static final String PROJECT = "vhftjmiltqfwmrszdtgf";
     static final String BASE = "https://" + PROJECT + ".supabase.co/functions/v1/sadid-ledger/api";
+    /**
+     * Shared by every call to this project's functions. A cold start has answered /mobile/login
+     * in 11.7 s, so the read timeout leaves room for that instead of failing a reachable server.
+     */
+    static final int CONNECT_TIMEOUT_MS = 10000;
+    static final int READ_TIMEOUT_MS = 30000;
 
     private final LedgerSession session;
     private final InstallationSigner installation;
@@ -88,8 +94,8 @@ final class LedgerClient implements LedgerApi {
         HttpURLConnection connection = (HttpURLConnection) new URL(base + route).openConnection();
         try {
             connection.setRequestMethod(method);
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(20000);
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setUseCaches(false);
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
@@ -120,6 +126,14 @@ final class LedgerClient implements LedgerApi {
         } finally { connection.disconnect(); }
     }
 
+    /** The user-facing text for a network failure, or null when the error is not one. */
+    static String networkFailureMessage(Exception error) {
+        if (error instanceof java.net.SocketTimeoutException) return "الخادم بطيء في الرد الآن. انتظر قليلًا ثم أعد المحاولة.";
+        if (error instanceof java.net.ConnectException || error instanceof java.net.UnknownHostException)
+            return "تعذر الوصول إلى الخادم. تحقق من اتصال الهاتف بالإنترنت ثم أعد المحاولة.";
+        return null;
+    }
+
     /** The envelope is short-lived; renew it before it lapses so a signed request never 401s. */
     private synchronized void refresh() throws Exception {
         requireSameAccount();
@@ -132,8 +146,8 @@ final class LedgerClient implements LedgerApi {
         try {
             connection.setRequestMethod("POST");
             connection.setInstanceFollowRedirects(false);
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(20000);
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             connection.setRequestProperty("X-Sadad-Session", deviceToken);
