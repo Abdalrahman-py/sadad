@@ -1,6 +1,6 @@
 name: Android, admin site and edge-function checks
 
-# App, dashboard, Edge and database changes run checks; docs-only changes do not.
+# App, dashboard, Edge, database, formatting, status page and AGENTS.md changes run checks; other docs-only changes do not.
 # Debug builds are checks only; android-release.yml publishes serverRelease.
 
 on:
@@ -24,6 +24,13 @@ on:
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/android-release.yml'
       - '.github/workflows/admin-pages.yml'
+      - 'AGENTS.md'
+      - 'docs/CONTINUE_HERE.md'
+      - 'delivery/**'
+      - 'docs/archive/**'
+      - 'docs/plans/**'
+      - '.editorconfig'
+      - 'config/detekt/**'
   pull_request:
     paths:
       - 'app/**'
@@ -43,6 +50,13 @@ on:
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/android-release.yml'
       - '.github/workflows/admin-pages.yml'
+      - 'AGENTS.md'
+      - 'docs/CONTINUE_HERE.md'
+      - 'delivery/**'
+      - 'docs/archive/**'
+      - 'docs/plans/**'
+      - '.editorconfig'
+      - 'config/detekt/**'
   workflow_dispatch:
   workflow_call:
 
@@ -54,6 +68,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check docs and code formatting
+        run: ./tools/check.sh docs format
+
   admin-site:
     runs-on: ubuntu-latest
     steps:
