@@ -1,0 +1,12 @@
+complexity:
+  active: true
+  LargeClass:
+    active: true
+  LongMethod:
+    active: true
+
+style:
+  active: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 140

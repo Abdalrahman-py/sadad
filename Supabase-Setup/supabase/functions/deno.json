@@ -1,0 +1,8 @@
+{
+  "fmt": {
+    "include": ["api/"]
+  },
+  "lint": {
+    "include": ["api/"]
+  }
+}

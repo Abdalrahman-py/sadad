@@ -3,6 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+run_format() {
+  echo "== format =="
+  ./gradlew spotlessCheck detekt --console=plain
+  (cd Supabase-Setup/supabase/functions && deno fmt --check --permit-no-files && deno lint --permit-no-files)
+}
+
 run_dashboard() {
   echo "== dashboard =="
   node --check server/public/admin.js
@@ -35,19 +41,20 @@ run_database() {
 }
 
 if [[ $# -eq 0 ]]; then
-  sections=(dashboard android edge database)
+  sections=(format dashboard android edge database)
 else
   sections=("$@")
 fi
 
 for section in "${sections[@]}"; do
   case "$section" in
+    format) run_format ;;
     dashboard) run_dashboard ;;
     android) run_android ;;
     edge) run_edge ;;
     database) run_database ;;
     *)
-      echo "Unknown section: $section (expected: dashboard, android, edge, database)" >&2
+      echo "Unknown section: $section (expected: format, dashboard, android, edge, database)" >&2
       exit 1
       ;;
   esac
