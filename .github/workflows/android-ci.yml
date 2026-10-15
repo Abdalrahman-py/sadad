@@ -14,6 +14,7 @@ on:
       - 'gradle.properties'
       - 'gradlew'
       - 'server/public/**'
+      - 'tools/check.sh'
       - 'tools/build-admin-pages.cjs'
       - 'tools/test-admin-recovery.cjs'
       - 'tools/admin-dashboard.test.cjs'
@@ -32,6 +33,7 @@ on:
       - 'gradle.properties'
       - 'gradlew'
       - 'server/public/**'
+      - 'tools/check.sh'
       - 'tools/build-admin-pages.cjs'
       - 'tools/test-admin-recovery.cjs'
       - 'tools/admin-dashboard.test.cjs'
@@ -57,11 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check dashboard JavaScript and build deployment assets
-        run: |
-          node --check server/public/admin.js
-          node tools/test-admin-recovery.cjs
-          node tools/admin-dashboard.test.cjs
-          node tools/build-admin-pages.cjs
+        run: ./tools/check.sh dashboard
 
   android:
     runs-on: ubuntu-latest
@@ -79,8 +77,8 @@ jobs:
 
       # The runner image ships the Android SDK and sets ANDROID_HOME, so the
       # git-ignored local.properties is not needed here.
-      - name: JVM unit tests (no device, no emulator)
-        run: ./gradlew testServerDebugUnitTest --console=plain
+      - name: Run Android tests and builds
+        run: ./tools/check.sh android
 
       # This step exists because the first CI run caught a real one: a device set to UTC produced a
       # different createdAt shape ("Z") than a device at +03:00, and only the runner's zone exposed
@@ -89,12 +87,6 @@ jobs:
         run: ./gradlew testServerDebugUnitTest --rerun-tasks --console=plain
         env:
           TZ: Asia/Gaza
-
-      - name: Build both flavors
-        run: ./gradlew assembleServerDebug assembleStandaloneDebug --console=plain
-
-      - name: Compile the instrumented tests (they need a device to run)
-        run: ./gradlew assembleServerDebugAndroidTest --console=plain
 
       - name: Upload unit-test results
         if: always()
@@ -114,14 +106,8 @@ jobs:
         with:
           deno-version: v2.x
 
-      # One `deno test` per function directory, as AGENTS.md specifies.
       - name: Test each edge function
-        working-directory: Supabase-Setup/supabase/functions
-        run: |
-          for dir in sadad-api sadad-auth sadid-ledger; do
-            echo "=== $dir ==="
-            (cd "$dir" && deno test -A)
-          done
+        run: ./tools/check.sh edge
 
   database:
     runs-on: ubuntu-latest
@@ -130,10 +116,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install the pinned local PostgreSQL test runtime
-        run: npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
       - name: Test migration and RPC contracts in isolated databases
-        run: |
-          node Supabase-Setup/scripts/test-v3-ledger.mjs
-          node Supabase-Setup/scripts/test-v3-authorization.mjs
-          node Supabase-Setup/scripts/test-admin-dashboard.mjs
+        run: ./tools/check.sh database

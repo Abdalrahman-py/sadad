@@ -55,9 +55,11 @@
 ```sh
 # JDK 21 و Android SDK 36. local.properties مستبعد من Git ويحتاج:
 #   sdk.dir=/home/<user>/Android/Sdk
+./tools/check.sh
 ./gradlew assembleServerDebug assembleStandaloneDebug
 ```
 
+- `./tools/check.sh` هو بوابة الفحص والبناء الموحدة (تقبل أقسامًا اختيارية: `dashboard`، `android`، `edge`، `database`).
 - `app/` هو مشروع Gradle الوحيد؛ `settings.gradle.kts` في الجذر يتضمن `:app` فقط.
 - إصدار الإنتاج: `SADAD_KEYSTORE_FILE`، `SADAD_KEYSTORE_PASSWORD`، `SADAD_KEY_ALIAS`،
   `SADAD_KEY_PASSWORD` ثم `assembleServerRelease`.
@@ -75,12 +77,11 @@
 
 ## الاختبارات
 
+- البوابة الموحدة لكل الاختبارات والبناء (محليًا وفي CI): `./tools/check.sh`.
 - Instrumentation في `app/src/androidTest` تُشغَّل بمعرّف QA منفصل (`com.sadad.qa`) وتحتاج جهازًا.
-- اختبارات قاعدة البيانات: `Supabase-Setup/scripts/*.mjs` عبر pglite.
-- وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/`.
-- CI: `.github/workflows/android-ci.yml` يشغّل اختبارات الـJVM وبناء النسختين واختبارات Edge
-  واختبارات PostgreSQL المحلية. يشمل التشغيل تغييرات التطبيق والبناء والوظائف والترحيلات
-  وسكربتات قاعدة البيانات.
+- اختبارات قاعدة البيانات: `Supabase-Setup/scripts/*.mjs` عبر pglite (`./tools/check.sh database`).
+- وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/` (`./tools/check.sh edge`).
+- CI: `.github/workflows/android-ci.yml` يستدعي `./tools/check.sh` لكل قسم (مع إعادة تشغيل اختبارات الـJVM بمنطقة `Asia/Gaza`).
   اختبارات الجهاز تبقى يدوية، فالمشغّل لا يوفّر هاتفًا.
 
 ## الكتابة والتوثيق
