@@ -319,7 +319,8 @@ public final class LedgerClientTest {
     }
 
     @Test public void anOfflinePhoneSeesArabicNotTheUnresolvedHost() throws Exception {
-        // .invalid never resolves (RFC 6761), so this is the UnknownHostException of a phone offline.
+        // .invalid never resolves (RFC 6761): a phone offline. Behind an HTTP proxy (cloud sessions) the
+        // failure is the proxy's IOException rather than UnknownHostException, so assert the wider type.
         try {
             new LedgerClient(session, signer, "https://sadad.invalid/api").state();
             fail("an unresolvable host must not look like success");
@@ -327,7 +328,7 @@ public final class LedgerClientTest {
             assertEquals(SyncFailure.NO_RESPONSE, failure.status);
             assertEquals("unreachable", failure.code);
             assertEquals("تعذر الوصول إلى الخادم الآن. بياناتك محفوظة على الهاتف وستُزامن تلقائيًا عند عودة الشبكة.", failure.getMessage());
-            assertTrue(failure.getCause() instanceof java.net.UnknownHostException);
+            assertTrue(failure.getCause() instanceof java.io.IOException);
         }
 
         session.envelope = new JSONObject().put("refreshToken", "r1").put("expiresAt", 0);
@@ -337,7 +338,7 @@ public final class LedgerClientTest {
             fail("an offline renewal must not look like success");
         } catch (SyncFailure failure) {
             assertEquals("unreachable", failure.code);
-            assertTrue(failure.getCause() instanceof java.net.UnknownHostException);
+            assertTrue(failure.getCause() instanceof java.io.IOException);
         }
     }
 

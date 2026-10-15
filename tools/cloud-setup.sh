@@ -7,6 +7,21 @@ exec >/root/cloud-setup.log 2>&1
 
 npm install -g deno@2.7.12
 
+# Maven Central rate-limits the cloud's shared egress (HTTP 429): point Gradle at Google's mirror.
+mkdir -p /root/.gradle/init.d
+cat >/root/.gradle/init.d/maven-central-mirror.gradle <<'EOF'
+def mirror = 'https://maven-central.storage-download.googleapis.com/maven2/'
+def useMirror = { repos ->
+  repos.withType(MavenArtifactRepository).configureEach { r ->
+    if (r.url.toString().startsWith('https://repo.maven.apache.org/')) r.url = mirror
+  }
+}
+settingsEvaluated { settings ->
+  useMirror(settings.pluginManagement.repositories)
+  useMirror(settings.dependencyResolutionManagement.repositories)
+}
+EOF
+
 apt-get update -qq && apt-get install -y -qq unzip
 curl -fsSL -o /tmp/tools.zip https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
 mkdir -p /opt/android-sdk/cmdline-tools
