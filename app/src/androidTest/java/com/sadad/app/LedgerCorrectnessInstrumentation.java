@@ -129,12 +129,8 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         EncryptedJournal journal = new EncryptedJournal(getTargetContext(), scope);
         try {
             journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
-            journal.metadata("lease", new JSONObject().put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "qa-strict-installation")
-                    .put("storeId", store).put("userId", user).put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000))
-                    .put("boot", 1).put("elapsed", 1000).put("wall", 1000));
-            journal.metadata("cache", new JSONObject().put("epoch", "qa-epoch")
-                    .put("contacts", new JSONArray().put(new JSONObject().put("id", "person").put("name", "اختبار الصارم")))
-                    .put("debts", new JSONArray()).put("payments", new JSONArray()));
+            journal.metadata("lease", liveLease(store, user));
+            journal.metadata("cache", primedCache(store, "qa-epoch", "اختبار الصارم"));
         } finally { journal.close(); }
         MainActivity host;
         try {
@@ -147,8 +143,29 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             host.materializeLedger();
             long personId = host.database.getSnapshot().getJSONArray("contacts").getJSONObject(0).optLong("id");
             if (personId <= 0L) throw new AssertionError("The primed contact never reached the local view");
-            runStrictWrite(host, personId);
+            try { runStrictWrite(host, personId); }
+            finally { runOnMainSync(host::finish); }
         } finally { cleanupStrictRun(journalFile); }
+    }
+
+    /** A fresh lease for this installation on this boot, so the real AndroidEnvironment accepts it. */
+    private JSONObject liveLease(String store, String user) throws Exception {
+        AndroidEnvironment device = new AndroidEnvironment(getTargetContext());
+        long now = device.wallClock();
+        return new JSONObject().put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT)
+                        .put("installationId", new InstallationKey(getTargetContext(), store).id())
+                        .put("storeId", store).put("userId", user).put("generation", 1).put("issuedAt", now).put("expiresAt", now + 604800000L))
+                .put("boot", device.bootCount()).put("elapsed", device.elapsedRealtime()).put("wall", now);
+    }
+
+    /** A server snapshot that passes LedgerProjection.requireSnapshot, holding one contact. */
+    private static JSONObject primedCache(String store, String epoch, String name) throws Exception {
+        JSONObject cache = new JSONObject().put("schemaVersion", 1).put("storeId", store).put("currency", "ILS")
+                .put("epoch", epoch).put("cursor", 0)
+                .put("contacts", new JSONArray().put(new JSONObject().put("id", "person").put("name", name)));
+        for (String table : new String[]{"debts", "payments", "adjustments", "reversals", "debtBalances", "outcomes"})
+            cache.put(table, new JSONArray());
+        return cache;
     }
 
     private void runStrictWrite(MainActivity host, long personId) throws Exception {
@@ -198,12 +215,8 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         try {
             EncryptedJournal journal = new EncryptedJournal(getTargetContext(), scope);
             journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
-            journal.metadata("lease", new JSONObject().put("payload", new JSONObject().put("projectRef", LedgerClient.PROJECT).put("installationId", "qa-form-installation")
-                    .put("storeId", store).put("userId", user).put("generation", 1).put("issuedAt", 1000).put("expiresAt", 604801000))
-                    .put("boot", 1).put("elapsed", 1000).put("wall", 1000));
-            journal.metadata("cache", new JSONObject().put("epoch", "qa-form-epoch")
-                    .put("contacts", new JSONArray().put(new JSONObject().put("id", "person").put("name", "اختبار النموذج المفتوح")))
-                    .put("debts", new JSONArray()).put("payments", new JSONArray()));
+            journal.metadata("lease", liveLease(store, user));
+            journal.metadata("cache", primedCache(store, "qa-form-epoch", "اختبار النموذج المفتوح"));
             journal.close();
             startActivitySync(new android.content.Intent(getTargetContext(), MainActivity.class)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
