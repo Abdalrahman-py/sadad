@@ -59,6 +59,7 @@ run_database() {
   node Supabase-Setup/scripts/test-v3-ledger.mjs
   node Supabase-Setup/scripts/test-v3-authorization.mjs
   node Supabase-Setup/scripts/test-admin-dashboard.mjs
+  node Supabase-Setup/scripts/test-baseline.mjs
 }
 
 if [[ $# -eq 0 ]]; then
