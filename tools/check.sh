@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 run_format() {
   echo "== format =="
   ./gradlew spotlessCheck --console=plain
-  (cd Supabase-Setup/supabase/functions && deno fmt --check --permit-no-files && deno lint --permit-no-files)
+  (cd Supabase-Setup/supabase/functions && deno fmt --check && deno lint)
 }
 
 run_docs() {
@@ -45,7 +45,7 @@ run_android() {
 
 run_edge() {
   echo "== edge =="
-  for dir in sadad-api sadad-auth sadid-ledger; do
+  for dir in api sadad-api sadad-auth sadid-ledger; do
     echo "=== $dir ==="
     (cd "Supabase-Setup/supabase/functions/$dir" && deno test -A)
   done

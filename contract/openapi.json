@@ -1,0 +1,149 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Sadad API",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "duplicate_phone",
+          "invalid_phone",
+          "contact_limit_reached",
+          "contact_unavailable",
+          "debt_unavailable",
+          "payment_unavailable",
+          "overpayment",
+          "invalid_money",
+          "invalid_input",
+          "invalid_timestamp",
+          "entity_id_exists",
+          "entity_version_changed",
+          "reason_required",
+          "already_reversed",
+          "below_paid_total",
+          "unsupported_operation",
+          "dependency_rejected",
+          "dependency_pending",
+          "operation_id_reused",
+          "duplicate_operation_id",
+          "unsupported_schema",
+          "store_permission_denied",
+          "installation_revoked",
+          "installation_or_session_revoked",
+          "installation_key_changed",
+          "session_installation_conflict",
+          "ledger_not_initialized",
+          "epoch_changed",
+          "recovery_not_authorized",
+          "authorization_required",
+          "admin_authorization_required",
+          "store_suspended",
+          "password_change_required",
+          "request_rate_limited",
+          "enrollment_rate_limited",
+          "proof_replayed",
+          "replayed_request",
+          "invalid_proof",
+          "invalid_manifest",
+          "invalid_dependencies",
+          "invalid_operation",
+          "invalid_public_key",
+          "invalid_ids",
+          "invalid_transfer",
+          "invalid_scope",
+          "installation_unavailable",
+          "device_limit_reached",
+          "store_not_found",
+          "store_not_archived",
+          "history_is_immutable",
+          "not_found",
+          "method_not_allowed",
+          "payload_too_large",
+          "temporary_service_failure",
+          "internal_error"
+        ]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "code",
+          "message"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "200": {
+            "description": "Health check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
