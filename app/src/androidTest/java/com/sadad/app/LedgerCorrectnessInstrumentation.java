@@ -12,6 +12,8 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
         Bundle result = new Bundle();
         try {
             if (!getTargetContext().getPackageName().startsWith("com.sadad.qa.")) throw new AssertionError("Use an isolated QA applicationId");
+            changeTokenSeesWritesFromAnotherInstance();
+            contactScreenShowsNewDebt();
             localUpgradeKeepsFinancialRowsWithoutLegacySync();
             compoundWriteRollsBack();
             refreshedAuthSurvivesAccountSwitch();
@@ -21,11 +23,93 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             syncRefreshKeepsOpenForm();
             importKeepsWorkingPast999Rows();
             emptyViewNeverWipesLocalRows();
-            result.putString("stream", "PASS: compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery, sync keeps open form, import past 999 rows, no empty-view wipe\n");
+            result.putString("stream", "PASS: contact screen sees new debt, change token sees other instance, compound journal rollback, saved Auth rotation, store key isolation, legacy SQLite retirement, signed restore/corrections/re-registration/recovery, sync keeps open form, import past 999 rows, no empty-view wipe\n");
             finish(-1, result);
         } catch (Throwable error) {
             result.putString("stream", "FAIL: " + android.util.Log.getStackTraceString(error)); finish(0, result);
         }
+    }
+
+    /**
+     * The contact screen caches its snapshot on SadadDatabase.changeToken(). A debt saved on the
+     * ledger worker must still reach the screen the moment it reopens, without restarting the app.
+     */
+    private void contactScreenShowsNewDebt() throws Exception {
+        String store = "qa-stale-store", user = "qa-stale-sub";
+        String access = "qa-h." + Base64Url.encode(new JSONObject().put("sub", user).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)) + ".sig";
+        String scope = LedgerQueue.scopeOf(store, user);
+        String journalFile = "sadid-v3-" + InstallationKey.hash(scope) + ".db";
+        getTargetContext().deleteDatabase(journalFile);
+        getTargetContext().deleteDatabase("sadad.db");
+        android.content.SharedPreferences activityPrefs = getTargetContext().getSharedPreferences("MainActivity", 0);
+        activityPrefs.edit().remove("demo_data_seeded").putBoolean("welcome_seen", false)
+                .putBoolean("notification_permission_prompted", true).putBoolean("biometric_enabled", false).apply();
+        SessionStore session = new SessionStore(getTargetContext());
+        session.clear();
+        session.save(new JSONObject().put("token", "token-" + store).put("expiresAt", Long.MAX_VALUE)
+                .put("account", new JSONObject().put("id", store).put("username", store).put("name", store))
+                .put("auth", new JSONObject().put("accessToken", access).put("refreshToken", "refresh-stale")));
+        try {
+            EncryptedJournal journal = new EncryptedJournal(getTargetContext(), scope);
+            journal.metadata("installation", new JSONObject().put("status", "active").put("generation", 1));
+            journal.metadata("lease", liveLease(store, user));
+            journal.metadata("cache", primedCache(store, "qa-stale-epoch", "اختبار الرصيد"));
+            journal.close();
+            startActivitySync(new android.content.Intent(getTargetContext(), MainActivity.class)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            final MainActivity host = MainActivity.activeInstance.get();
+            if (host == null) throw new AssertionError("MainActivity did not start");
+            try {
+                host.materializeLedger();
+                final long personId = host.database.getSnapshot().getJSONArray("contacts").getJSONObject(0).optLong("id");
+                runOnMainSync(() -> { host.screens.contactId = personId; host.show("contact_detail"); });
+                if (!screenHasText(host, "0 حركة")) throw new AssertionError("The contact screen did not start at 0 movements");
+                java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+                java.util.concurrent.atomic.AtomicReference<String> failure = new java.util.concurrent.atomic.AtomicReference<>("لم يصل رد الاستدعاء.");
+                JSONObject input = new JSONObject().put("contactId", personId).put("direction", "receivable")
+                        .put("amount", "120.50").put("createdBy", "qa");
+                runOnMainSync(() -> host.addDebtAsync(input, (saved, message) -> {
+                    failure.set(saved ? null : message);
+                    host.show("contact_detail"); done.countDown();
+                }));
+                if (!done.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("لم يصل رد حفظ الدين خلال 10 ثوانٍ.");
+                if (failure.get() != null) throw new AssertionError("فشل حفظ الدين: " + failure.get());
+                if (!screenHasText(host, "1 حركة") || !screenHasText(host, "120.5"))
+                    throw new AssertionError("The contact screen kept the balance from before the debt was saved");
+            } finally { runOnMainSync(host::finish); }
+        } finally { cleanupStrictRun(store, journalFile); }
+    }
+
+    /**
+     * LedgerSyncService and the reminders open their own SadadDatabase on the same file; a commit
+     * there has to move the screen's token too.
+     */
+    private void changeTokenSeesWritesFromAnotherInstance() throws Exception {
+        String filename = "qa-change-token.db";
+        getTargetContext().deleteDatabase(filename);
+        SadadDatabase screen = new SadadDatabase(getTargetContext(), filename), service = new SadadDatabase(getTargetContext(), filename);
+        try {
+            screen.getSnapshot();
+            long before = screen.changeToken();
+            service.saveContact(new JSONObject().put("name", "من الخدمة"));
+            if (screen.changeToken() == before) throw new AssertionError("A write from another SadadDatabase did not change the token");
+            if (screen.getSnapshot().getJSONArray("contacts").length() != 1) throw new AssertionError("The other instance's contact is missing");
+        } finally { screen.close(); service.close(); getTargetContext().deleteDatabase(filename); }
+    }
+
+    /** True when a TextView on the current screen contains the text; read on the main thread. */
+    private boolean screenHasText(MainActivity host, String text) {
+        java.util.concurrent.atomic.AtomicBoolean found = new java.util.concurrent.atomic.AtomicBoolean(false);
+        runOnMainSync(() -> {
+            java.util.ArrayDeque<android.view.View> views = new java.util.ArrayDeque<>();
+            views.add(host.findViewById(android.R.id.content));
+            while (!views.isEmpty()) {
+                android.view.View view = views.poll();
+                if (view instanceof android.widget.TextView && ((android.widget.TextView) view).getText().toString().contains(text)) found.set(true);
+                if (view instanceof android.view.ViewGroup) for (int i = 0; i < ((android.view.ViewGroup) view).getChildCount(); i++) views.add(((android.view.ViewGroup) view).getChildAt(i));
+            }
+        });
+        return found.get();
     }
 
     private void localUpgradeKeepsFinancialRowsWithoutLegacySync() throws Exception {
@@ -145,7 +229,7 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             if (personId <= 0L) throw new AssertionError("The primed contact never reached the local view");
             try { runStrictWrite(host, personId); }
             finally { runOnMainSync(host::finish); }
-        } finally { cleanupStrictRun(journalFile); }
+        } finally { cleanupStrictRun(store, journalFile); }
     }
 
     /** A fresh lease for this installation on this boot, so the real AndroidEnvironment accepts it. */
@@ -191,8 +275,11 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
             throw new AssertionError("لم يصل الدين المسجّل إلى الجداول المحلية.");
     }
 
-    private void cleanupStrictRun(String journalFile) {
-        new SessionStore(getTargetContext()).clear();
+    /** Also forgets the saved account: the device keeps at most three, and each UI check saves one. */
+    private void cleanupStrictRun(String store, String journalFile) {
+        SessionStore session = new SessionStore(getTargetContext());
+        session.clear();
+        session.removeSavedAccount(store);
         getTargetContext().getSharedPreferences("sadad.session", 0).edit().remove("primary_database_account").apply();
         getTargetContext().deleteDatabase(journalFile);
     }
@@ -258,7 +345,7 @@ public final class LedgerCorrectnessInstrumentation extends Instrumentation {
                         throw new AssertionError("refreshCurrentScreen did not rebuild the view");
                 });
             } finally { runOnMainSync(host::finish); }
-        } finally { cleanupStrictRun(journalFile); }
+        } finally { cleanupStrictRun(store, journalFile); }
     }
 
     /** The first editable text box in the rebuild view order — on the debt form this is the amount field. */
