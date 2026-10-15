@@ -40,7 +40,7 @@
 ## البناء والفحص
 
 ```sh
-# JDK 21 و Android SDK 36 (sdk.dir في local.properties المستبعد من Git)
+# JDK 21 و Android SDK 37 (sdk.dir في local.properties المستبعد من Git)
 ./tools/check.sh
 ```
 
