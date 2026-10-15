@@ -4,11 +4,12 @@
 
 User paused feature work to define "done": a production-ready Sadad (Android app + Supabase backend + admin dashboard) that is fast, maintainable, scalable, and easy for AI agents to work in. This doc = (1) senior audit of where code departs from best practice, with evidence, (2) target state, (3) phased plan.
 
-Decisions taken (user, 2026-10-14):
-- Android: **strangler migration to Kotlin + Compose** inside `app/`, screen by screen, ledger core kept and ported behind tests.
-- **Drop standalone edition** (`standalone` flavor, `STANDALONE_MODE` branches, `"123"/"123"` local login).
-- Dashboard: **stay static, move to TypeScript + Vite build + typed API client**.
-- Backend: **consolidate on Supabase** — one auth system (Supabase Auth), shared Edge module, delta sync, batched ops, generated types.
+Decisions taken (user, 2026-10-14, revised 2026-10-15):
+- Android: **direct rebuild in Kotlin + Compose** inside `app/`, then one switch that deletes the Java app. (Was a screen-by-screen strangler; replaced 2026-10-15.)
+- **Drop standalone edition** (`standalone` flavor, `STANDALONE_MODE` branches, `"123"/"123"` local login). It goes with the Java app at the Phase 3 switch.
+- Dashboard: **stay static, move to TypeScript + Vite build + typed API client**, as part of the backend cutover.
+- Backend: **one cutover** to Supabase Auth + one `api` function + a squashed schema baseline, with a reset of the test cloud project.
+- **Clean cut, no legacy handling** (2026-10-15): all data is test data, so nothing is migrated, kept compatible or bridged (Part 3, "The clean-cut rule").
 
 AGENTS.md rules still hold: one source per component, no second Android project, no parallel server; cloud migrations need review/approval; public repo = no secrets.
 
@@ -178,7 +179,7 @@ Rules:
 **Libraries (each replaces hand-written code; nothing speculative)**
 - Kotlin 2.4.x + Compose BOM `2026.09.00` + `org.jetbrains.kotlin.plugin.compose` (verified via Context7), Material 3, `activity-compose` 1.13, `lifecycle-viewmodel-compose` 2.11. These replace `NativeScreens`, `SadadDialog` and the custom toast and undo banner.
 - Navigation Compose replaces the `ArrayDeque<NavigationEntry>` and `onBackPressed`.
-- Room (KSP) replaces `SadadDatabase` raw SQL, `changeToken` cache and `onOpen` schema.
+- Room (KSP) replaces `SadadDatabase` raw SQL, `changeToken` cache and `onOpen` schema. Nothing is migrated from the old database (Part 3, clean-cut rule).
 - WorkManager replaces `SyncScheduler`, `LedgerSyncService`, `statusPoll`, the connectivity callback and the `DueReminderManager` alarm.
 - OkHttp + kotlinx.serialization + coroutines replace both `HttpURLConnection` clients and org.json.
 - DataStore (Preferences) replaces the scattered `getPreferences(0)` keys.
@@ -205,6 +206,7 @@ Rules:
   - Lease renewal happens only when under 24 h remain; enroll only when the installation is not active.
 - **Read paths:** no `FOR UPDATE` on `stores`; a read-only consistent query is enough.
 - **Schema hygiene:**
+  - The migration chain is squashed into one baseline generated from `supabase/schemas/`; the test project is reset to it once.
   - One declarative file per routine (`supabase/schemas/` + `supabase db diff` generates migrations), so the deployed `apply()` is readable in one place.
   - Rows get pruned by pg_cron: expired capabilities, nonces and sessions.
   - Missing indexes get added.
@@ -219,7 +221,7 @@ Rules:
 - Vite + TypeScript. ES modules per view (`stores`, `store`, `ledger`, `installations`, `recovery`, `audit`), generated API types, and `lit-html` for templating (auto-escaping removes the XSS class; about 3 KB).
 - Server-side pagination and search on every list endpoint (`?cursor&limit&q`).
 - Biome for lint + format. Vitest + happy-dom for units, one Playwright smoke test against the preview build.
-- Hosting: keep GitHub Pages, or move to Cloudflare Pages for real security headers (`_headers`: CSP, `frame-ancestors`, HSTS). Decide in Phase 6.
+- Hosting: keep GitHub Pages, or move to Cloudflare Pages for real security headers (`_headers`: CSP, `frame-ancestors`, HSTS). Decide in Phase 2.
 
 **Repo / agents**
 - `AGENTS.md` stays under 150 lines: map, rules, one check command. `CLAUDE.md` is a one-line pointer to it.
@@ -234,85 +236,72 @@ Rules:
 
 ## Part 3 — Phased plan
 
-Each phase ends green on `./tools/check.sh` + CI, and gets a CHANGELOG line and a CONTINUE_HERE update. Cloud steps (migrations, function deploys, auth changes) need explicit user approval per AGENTS.md. Phases 3–4 and 6 can run in parallel after Phase 2.
+### The clean-cut rule (user decision, 2026-10-15)
 
-### Phase 0 — Stop the bleeding (S)
-1. Security:
-   - `findAccount` uses `.eq` on the normalized lowercase username, in both copies. Add a test with `a_c`.
-   - Record the enroll nonce.
-   - Delete the unused `sadid-ledger/admin.ts` identity routes if the dashboard truly doesn't call them (grep first).
-   - Add `[functions.sadid-ledger] verify_jwt=false` to `config.toml`.
-2. App correctness:
-   - Move `addContact`/`addDebt`/`addPayment` onto the existing executor with callbacks, reusing the `updateContactAsync` pattern (`MainActivity.java:682-716`).
-   - Don't `refreshCurrentScreen()` while on a form route.
-   - `removeUnseen` uses a temp table join instead of `NOT IN (?…)`, and refuses to wipe on an empty view.
-   - Remove the double `markLedgerChanged`.
-3. Hygiene:
-   - Fix `.gitignore` `**/data/` and untrack `.temp`.
-   - Remove dead code (A8 list).
-   - Commit this audit as `docs/ARCHITECTURE.md` and delete the untracked `ARCHITECTURE_MIGRATION_PLAN.md`.
-   - Exit: existing tests + new regression tests green; manual phone check of add/pay/sync.
+Every store, user and row is test data. The plan rebuilds; it never migrates, bridges or keeps an old thing alive:
 
-### Phase 1 — Foundation for agents and Kotlin (M)
-1. Add `tools/check.sh` and wire CI to it; add the formatters/linters (format-only commit first, so later diffs stay small).
-2. Add Kotlin + Compose plugins and the version catalog entries; delete unused catalog entries; enable R8 + `shrinkResources` with tested keep rules.
-3. **Drop standalone:** remove the flavor, the `STANDALONE_MODE` branches, the `"123"` login, the `src/standalone/` manifest and the CI build step. ADR-001.
-4. Create `:ledger-core` (Kotlin):
-   - Port `LedgerCommand`, `LedgerProjection`, payment allocation and `Cents`.
-   - Port `LedgerProjectionTest`/`LedgerCommandTest`/`LedgerQueueTest` first; the tests are the contract.
-   - The Java callers use the Kotlin API.
-5. Reset `CONTINUE_HERE.md`, trim `AGENTS.md`, add the `CLAUDE.md` pointer, prune `delivery/` + archives.
-   - Exit: same app behaviour, smaller tree, `check.sh` green, ledger-core coverage at or above the old tests.
+- **No data migration.** Old local databases, journals, cloud rows and accounts are dropped. Testers reinstall and get fresh test accounts.
+- **No compatibility.** No old-client routes, no dual login, no feature flags between old and new, no period where old and new backends both serve.
+- **No bridges.** New code never wraps or adapts old code: no Java↔Kotlin adapters, no `JSONObject` shims around the new core, no `AndroidView` hosting of old screens. Old code is deleted when its replacement switches on.
+- **Replace and delete in one phase.** A phase is not done while the code, table, function or route it replaces still exists.
 
-### Phase 2 — Backend sync v4, additive (M)
-1. Migrations (via declarative `schemas/`):
-   - `sadid_changes(after bigint, limit int)` reading `sadid_events`.
-   - Batch apply wrapper.
-   - Read paths drop `FOR UPDATE`.
-   - Indexes from B8; pg_cron cleanup.
-   - Set-based `admin_summaries` without per-load audit spam.
-   - Consolidate `apply()` into one readable definition.
-2. Add the new `api` function (Hono + zod + `getClaims`) serving `/v1/mobile/changes`, `/v1/mobile/operations` (batch), lease and enroll. v3 routes stay live until the app is cut over.
-3. Add `contract/` (fixtures + `errors.json`) and OpenAPI generation; pglite tests for changes, batch and the lock change. Make `test-v3-authorization.mjs` load the real migrations or delete it.
-4. Deploy automation workflow with an approval gate.
-   - Exit: pglite + Deno tests green; staging (Supabase branch) load test with a 50k-op fixture shows flat sync time; user approves the cloud apply.
+If a ticket seems to need an upgrade path, a fallback or an adapter, it is wrong. Stop and ask.
 
-### Phase 3 — Android data layer (L)
-1. Room DB (read model + outbox), `AppGraph`, DataStore, OkHttp `LedgerApi` with a signing interceptor, `SyncWorker` using v4 delta + batch.
-2. One-time migration:
-   - Read the old `EncryptedJournal` and copy non-settled entries into the outbox **preserving operationIds**.
-   - Drop the old SQLite read model and rebuild it from `changes`.
-   - Test on a device with pending entries.
-3. Repositories expose `Flow`. The legacy `NativeScreens` reads repositories through a thin Java-facing adapter, so the UI is unchanged but now off the main thread.
-4. StrictMode `penaltyDeath` in debug.
-   - Exit: instrumentation `LedgerCorrectnessInstrumentation` + `HardwareLedgerInstrumentation` pass on a phone; no StrictMode violations; journal growth bounded.
+**Accepted gap:** the Phase 2 cutover deletes the backend the current Java app talks to. From then until the Phase 3 switch there is no working Android app. The dashboard moves in Phase 2, so admins keep working.
 
-### Phase 4 — Compose UI strangler (L)
-1. `MainActivity` → `ComponentActivity` + `NavHost` + `enableEdgeToEdge()`.
-   - Change `NativeScreens` so builders return a `View` instead of calling `host.setContentView` (5 call sites: `NativeScreens.java:129,212,235,259,312`).
-   - Un-migrated routes render through `AndroidView`, so old and new screens coexist in one nav graph.
-2. Migration order, one PR per screen with a Compose UI test each: settings → login/unlock → home → contacts → contact detail → contact/debt/payment forms → history/reports → recovery/admin flows.
-3. Delete `NativeScreens`, `SadadDialog`, custom toast/undo and the old `MainActivity` code when the last route moves. Port the PDF/Excel exporters to Kotlin, running on IO.
-4. Baseline Profile + Macrobenchmark module (the one allowed extra module, test-only).
-   - Exit: Part 2 UI-thread, scroll, start and write-latency targets met.
+Each phase ends green on the check commands (see Verification), with a CHANGELOG line and a CONTINUE_HERE update. Cloud steps (reset, migrations, deploys, Auth changes) need explicit user approval per AGENTS.md.
 
-### Phase 5 — One identity (M)
-1. Migrate store and admin principals to Supabase Auth users. Data is test data, so this is a password reset: admin-issued temporary passwords, `force_password_change` kept as an `app_metadata` flag. Roles go in the access-token hook.
-2. App logs in via Auth directly; login/logout/switch account each manage **one** session. That fixes the open A→B→A account switching item.
-3. Delete `sadad-auth`, the custom session tables/functions and `sadad_auth_bindings`; fold the remaining sadad-api admin routes into `api`, then delete `sadad-api` and the v3 routes once app + dashboard are cut over. ADR-002.
-   - Exit: one auth path tested end to end; old functions undeployed after the user approves.
+### Phase 0 — Stop the bleeding (S) — done 2026-10-15
 
-### Phase 6 — Dashboard (M, parallel after Phase 2)
-1. Vite + TS project in `server/public/` (keeping the AGENTS.md path); `tools/build-admin-pages.cjs` replaced by `vite build` → `_site/`.
-2. Split views; lit-html; generated API types; server pagination/search; role-aware UI (support = read-only).
-3. Biome, Vitest, Playwright smoke; hosting headers decision.
-   - Exit: Lighthouse budget met; all lists server-paged; XSS test suite green.
+Security fixes (exact username match, enroll nonce, function config, duplicate admin routes), off-main writes, sync keeps open forms, `removeUnseen` without per-row binds, dead code. Deployed: `sadad-api` v10, `sadid-ledger` v9, migration `20261014121200`. Verified on a phone; the defects found there only matter until the Phase 2 cutover.
 
-### Phase 7 — Production hardening (M)
-1. targetSdk 36 (edge-to-edge and predictive back are already handled by Compose).
+### Phase 1 — Foundation (S)
+
+Tooling for the code that will be written, not for the code that will be deleted.
+
+1. `tools/check.sh` is the one gate, and CI calls it. It runs whatever exists: Gradle tests and build, `deno test` per function, pglite suites, dashboard tests.
+2. Formatters and linters apply to new code only: ktfmt + detekt (`LargeClass`, `LongMethod`, `MaxLineLength=140`) on Kotlin sources, `deno fmt`/`deno lint` on the new `api` function, Biome on the new dashboard. Java, the old functions and `admin.js` are never reformatted; they are deleted.
+3. Kotlin + Compose plugins and catalog entries; unused catalog entries removed.
+4. Docs reset: `CONTINUE_HERE.md` under 80 lines of current state, `AGENTS.md` trimmed, `CLAUDE.md` pointer, `delivery/` and release archives pruned (tag first).
+   - Exit: `check.sh` green locally and in CI; a Kotlin smoke test compiles.
+
+### Phase 2 — New backend and dashboard, then cutover (L)
+
+Built and tested locally (pglite + Deno), then switched on in one cloud reset.
+
+1. **Schema baseline:** declarative files in `Supabase-Setup/supabase/schemas/`, one file per table group and one per routine. A single baseline migration is generated from them. The 26 old migration files leave the tree (git history keeps them). Contents:
+   - ledger tables (`sadid_*`), events with a `(store_id, sequence)` cursor, operations and outcomes;
+   - `stores` without password columns; `store_memberships(user_id → auth.users)`; `installations` as the only device registry (label, staff name, permissions, status), capped by `stores.allowed_devices`;
+   - `apply()` in one readable definition, batch apply, `changes(after, limit)`, no `FOR UPDATE` on read paths;
+   - status and subscription enforced in `current_capability`;
+   - B8 indexes; pg_cron pruning of capabilities and nonces; set-based admin summaries.
+2. **One identity (ADR-002):** Supabase Auth only. A store is the Auth user `<username>@stores.sadad.invalid`. An admin is an Auth user with `app_metadata.role` = `admin` or `support`; the JWT already carries `app_metadata`, so no hook. `force_password_change` lives in `app_metadata`. Supabase Auth rate limits replace `login_rate_limits`.
+3. **One function `api`:** Hono + zod + `auth.getClaims()`. One auth middleware, one CORS/error module, error codes from `contract/errors.json`.
+   - `/v1/mobile/*`: enroll, lease, `changes`, batch `operations` (≤100, per-op receipts), recovery.
+   - `/v1/admin/*`: stores (create and reset password through the Auth admin API), subscription, installations approve/revoke, recovery approve, ledger view, summaries, audit. Role checks from claims; `support` is read-only.
+   - `contract/`: zod schemas → OpenAPI (`@hono/zod-openapi`) → `openapi-typescript` types; JSON fixtures that the Deno tests and later the Kotlin tests both load.
+4. **Dashboard:** Vite + TypeScript + lit-html in `server/public/`, Supabase Auth sign-in, generated API types, server-side paging and search, role-aware UI, Biome + Vitest + one Playwright smoke. `tools/build-admin-pages.cjs` becomes `vite build` → `_site/`.
+5. **Deploy automation:** a GitHub Actions workflow behind a protected environment (manual approval) applies the schema and deploys `api`. `config.toml` declares only `api`.
+6. **Cutover (human, approved):** reset the test project (drop the old schemas, Auth users, functions and migration history), apply the baseline, deploy `api`, create the first admin, publish the dashboard. Then delete from the tree: `sadad-api`, `sadad-auth`, `sadid-ledger`, the old pglite scripts and dashboard tests, and `admin.js`.
+   - Exit: pglite + Deno + dashboard tests green; a Deno smoke script against the live project signs in as a store, enrolls a generated P-256 installation, pushes a batch and reads `changes`; the dashboard creates a store and approves that installation; no old function exists in the project.
+
+### Phase 3 — New Android app (L)
+
+Written directly in Kotlin inside `app/` against the Phase 2 contract. The Java app stays untouched until the switch, then is deleted in one change.
+
+1. `:ledger-core` (pure Kotlin/JVM): `Cents(Long)`, typed commands, projection over `changes` events, payment allocation, proof text. The behaviour of today's `LedgerProjectionTest`/`LedgerCommandTest`/`LedgerQueueTest` is rewritten as Kotlin tests against the new API; they never call Java.
+2. Data layer: Room (read model + outbox), the outbox payload encrypted with one Keystore-wrapped AES key, DataStore, OkHttp `AuthApi` (`/auth/v1/token`) and `LedgerApi` with a signing interceptor, `SyncWorker` on WorkManager, `AppGraph`.
+3. Compose UI: `ComponentActivity` + `NavHost` + ViewModels reading Room `Flow`s; screens in order: login/unlock → home → contacts → contact detail → contact/debt/payment forms → history/reports → settings/recovery. Each screen has a Compose UI test. PDF/Excel exporters ported to Kotlin on IO.
+4. **Switch:** the manifest launches the new activity; delete every Java class, the `standalone` flavor, `STANDALONE_MODE`, the `"123"` login, the old `androidTest` runners and `res` leftovers. Enable R8 + `shrinkResources` with tested keep rules. Testers reinstall.
+5. Baseline Profile + Macrobenchmark module (the one allowed extra module, test-only); StrictMode `penaltyDeath` in debug.
+   - Exit: on a phone, login → add contact/debt/payment offline → sync → switch account A→B→A → logout; no StrictMode violations; Part 2 UI-thread, scroll, start and write-latency targets met; no `.java` file left under `app/src/main`.
+
+### Phase 4 — Production hardening (M)
+
+1. targetSdk 36 (edge-to-edge and predictive back come with Compose).
 2. Production signing key (open item); Play internal track; crash reporter live.
 3. Perf budgets in CI (APK size, Macrobenchmark on a Gradle Managed Device if the runner allows, else manual pre-release).
-4. Backup/restore drill on a Supabase branch (the full cloud restore with grants is still untested per CONTINUE_HERE); runbook in `docs/RUNBOOK.md`.
+4. Backup/restore drill on a Supabase branch; runbook in `docs/RUNBOOK.md`.
 5. Accessibility pass: 48dp targets, TalkBack labels, font scale; Compose semantics tests.
    - Exit: Part 2 table all green; "done".
 
@@ -325,23 +314,19 @@ Each phase ends green on `./tools/check.sh` + CI, and gets a CHANGELOG line and 
 - Dashboard: `server/public/admin.{html,js,css}`, `tools/build-admin-pages.cjs`, `.github/workflows/{android-ci,admin-pages,android-release}.yml`
 - Docs: `AGENTS.md`, `docs/CONTINUE_HERE.md`, `docs/CHANGELOG.md`, new `docs/ARCHITECTURE.md`, `docs/adr/`
 
-Reuse, don't rewrite:
-- Signed-ledger protocol and its JVM tests (`SignedLedgerSyncTest`, `LedgerProjectionTest`, `LedgerClientTest`).
-- pglite migration harness (`Supabase-Setup/scripts/test-v3-ledger.mjs`).
-- `updateContactAsync` off-main pattern (Phase 0).
+Carry over as behaviour, not as code (the clean-cut rule deletes the old files):
+- The signed-ledger protocol: idempotent `operationId`, the `InstallationKey` proof format, epochs, receipts, offline lease, recovery. Its JVM tests (`SignedLedgerSyncTest`, `LedgerProjectionTest`, `LedgerClientTest`) are the checklist for the new Kotlin tests.
+- The pglite approach from `Supabase-Setup/scripts/test-v3-ledger.mjs` for testing SQL without a local stack.
 - `sadid_events` sequence for delta sync.
-- `InstallationKey` proof format.
-- `LedgerTablePdf`/`LedgerTableExcel` logic.
+- `LedgerTablePdf`/`LedgerTableExcel` layout rules for the Kotlin exporters.
 
 ## Verification
 
 - Every phase: `./tools/check.sh` (Phase 1 onward); before that, `./gradlew testServerDebugUnitTest assembleServerDebug`, `deno test -A` per function, and the `node Supabase-Setup/scripts/*.mjs` pglite suites.
-- Phase 0: new unit tests (ilike wildcard rejected; enroll replay rejected; `removeUnseen` with 5,000 rows on an API 24 emulator); manual phone flow: add contact + debt + payment offline, then online sync, while typing in a form during sync.
-- Phase 2: pglite tests for `changes`/batch/lock; Supabase branch load test with a seeded 50k-op store comparing v3 snapshot vs v4 changes payload and latency.
-- Phase 3–4: instrumentation suites on a real phone (`QaInstrumentation` runner, `com.sadad.qa`); StrictMode clean; Macrobenchmark startup/scroll/write traces versus Part 2 targets.
-- Phase 5: end-to-end login → sync → switch account A→B→A → logout on a phone + dashboard admin/support role tests.
-- Phase 6: Vitest + Playwright against `vite preview`; Lighthouse CI.
-- Phase 7: signed release via `android-release.yml` gates; Play internal track install; restore drill on a branch.
+- Phase 0 (done 2026-10-15): unit tests for the wildcard and enroll replay; `LedgerCorrectnessInstrumentation` on a phone; manual flow offline add → online sync → type in a form during sync.
+- Phase 2: pglite tests on the baseline schema (claims-based authorization, roles, device cap, status gate, `changes`, batch, no read locks); Deno tests per route with contract fixtures; dashboard Vitest + Playwright; Supabase branch load test with a seeded 50k-op store; the live smoke script after cutover.
+- Phase 3: Kotlin unit tests for `:ledger-core` and the data layer with the contract fixtures; Compose UI tests per screen; the phone flow in the Phase 3 exit; Macrobenchmark startup/scroll/write traces versus Part 2 targets.
+- Phase 4: signed release via `android-release.yml` gates; Play internal track install; restore drill on a branch.
 
 ---
 
