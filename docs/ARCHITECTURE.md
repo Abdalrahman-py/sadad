@@ -193,6 +193,7 @@ Rules:
   - Coil: one profile photo.
   - KMP.
   - Any MVI framework.
+- Build toolchain: AGP `9.3.3`, Gradle `9.7.1`, `compileSdk 37` (`targetSdk 34` until Phase 4) — Compose BOM `2026.09.00` (Compose 1.12) requires `compileSdk 37`, which requires AGP ≥ 9.2 and Gradle 9.
 
 **Backend (Supabase, consolidated)**
 - **One identity: Supabase Auth.** Store users and admins are Auth users. Role goes in `app_metadata` (`admin | support | store`) via a custom access-token hook. Device limit and subscription checks stay in SQL (`current_capability`).
@@ -229,7 +230,7 @@ Rules:
 - Decisions go in `docs/adr/NNN-*.md`. `docs/ARCHITECTURE.md` = Part 2 of this doc.
 - `delivery/` evidence, `.patch` files, the committed APK and `docs/archive/releases/` are removed from the tree (tag first; still in history).
 - `./tools/check.sh` runs format check, lint, all tests and builds. CI calls the same script, so an agent runs exactly what CI runs.
-- Formatters: ktfmt via Spotless; detekt with the `LargeClass` / `LongMethod` / `MaxLineLength=140` rules; `deno fmt`/`deno lint`; Biome.
+- Formatters: ktfmt via Spotless (detekt dropped 2026-10-15: no stable release for Gradle 9 / Kotlin 2.4); `deno fmt`/`deno lint`; Biome.
 - Fix `.gitignore` `**/data/` (it would hide `app/.../data/`). Untrack `.temp/linked-project.json`. Pin all actions by SHA.
 
 ---
@@ -260,7 +261,7 @@ Security fixes (exact username match, enroll nonce, function config, duplicate a
 Tooling for the code that will be written, not for the code that will be deleted.
 
 1. `tools/check.sh` is the one gate, and CI calls it. It runs whatever exists: Gradle tests and build, `deno test` per function, pglite suites, dashboard tests.
-2. Formatters and linters apply to new code only: ktfmt + detekt (`LargeClass`, `LongMethod`, `MaxLineLength=140`) on Kotlin sources, `deno fmt`/`deno lint` on the new `api` function, Biome on the new dashboard. Java, the old functions and `admin.js` are never reformatted; they are deleted.
+2. Formatters and linters apply to new code only: ktfmt via Spotless on Kotlin sources (detekt dropped 2026-10-15: no stable release for Gradle 9 / Kotlin 2.4), `deno fmt`/`deno lint` on the new `api` function, Biome on the new dashboard. Java, the old functions and `admin.js` are never reformatted; they are deleted.
 3. Kotlin + Compose plugins and catalog entries; unused catalog entries removed.
 4. Docs reset: `CONTINUE_HERE.md` under 80 lines of current state, `AGENTS.md` trimmed, `CLAUDE.md` pointer, `delivery/` and release archives pruned (tag first).
    - Exit: `check.sh` green locally and in CI; a Kotlin smoke test compiles.

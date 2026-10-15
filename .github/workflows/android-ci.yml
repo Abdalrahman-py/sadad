@@ -30,7 +30,6 @@ on:
       - 'docs/archive/**'
       - 'docs/plans/**'
       - '.editorconfig'
-      - 'config/detekt/**'
   pull_request:
     paths:
       - 'app/**'
@@ -56,7 +55,6 @@ on:
       - 'docs/archive/**'
       - 'docs/plans/**'
       - '.editorconfig'
-      - 'config/detekt/**'
   workflow_dispatch:
   workflow_call:
 

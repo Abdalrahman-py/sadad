@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 run_format() {
   echo "== format =="
-  ./gradlew spotlessCheck detekt --console=plain
+  ./gradlew spotlessCheck --console=plain
   (cd Supabase-Setup/supabase/functions && deno fmt --check --permit-no-files && deno lint --permit-no-files)
 }
 

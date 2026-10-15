@@ -8,7 +8,6 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.hardware.fingerprint.FingerprintManager;
 import android.net.Uri;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -1436,20 +1435,7 @@ public final class MainActivity extends Activity {
             } catch (Exception e) { onBiometricResult(false, enabling); }
             return;
         }
-        if (Build.VERSION.SDK_INT >= 23) {
-            try {
-                FingerprintManager manager = (FingerprintManager) getSystemService(FINGERPRINT_SERVICE);
-                if (manager == null || !manager.isHardwareDetected() || !manager.hasEnrolledFingerprints()) {
-                    onBiometricResult(false, enabling); return;
-                }
-                biometricPromptInProgress = true;
-                manager.authenticate(null, new CancellationSignal(), 0, new FingerprintManager.AuthenticationCallback() {
-                    @Override public void onAuthenticationSucceeded(FingerprintManager.AuthenticationResult result) { onBiometricResult(true, enabling); }
-                    @Override public void onAuthenticationFailed() { showBrandedMessage("لم يتم التحقق من البصمة. حاول مرة أخرى."); }
-                    @Override public void onAuthenticationError(int errorCode, CharSequence errString) { onBiometricResult(false, enabling); }
-                }, new Handler(Looper.getMainLooper()));
-            } catch (Exception e) { onBiometricResult(false, enabling); }
-        } else onBiometricResult(false, enabling);
+        onBiometricResult(false, enabling);
     }
 
     private void onBiometricResult(boolean success, boolean enabling) {

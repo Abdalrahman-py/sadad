@@ -1,19 +1,5 @@
 plugins {
   alias(libs.plugins.android.application)
-  alias(libs.plugins.detekt)
-}
-
-detekt {
-  buildUponDefaultConfig = true
-  config.setFrom(rootProject.file("config/detekt/detekt.yml"))
-  source.setFrom(
-      "src/main/java",
-      "src/main/kotlin",
-      "src/test/java",
-      "src/test/kotlin",
-      "src/androidTest/java",
-      "src/androidTest/kotlin",
-  )
 }
 
 val releaseStoreFile = System.getenv("SADAD_KEYSTORE_FILE")
@@ -27,7 +13,10 @@ val releaseSigningReady =
 
 android {
   namespace = "com.sadad.app"
-  buildFeatures { buildConfig = true }
+  buildFeatures {
+    buildConfig = true
+    resValues = true
+  }
   // Live backend: the Supabase project's sadad-api edge function.
   // Origins are build-time settings; no account preference can redirect credentials.
   val apiBaseUrl =
@@ -48,7 +37,7 @@ android {
           .gradleProperty("SADAD_SUPABASE_PUBLISHABLE_KEY")
           .getOrElse("sb_publishable_dK7HuYY8TbO8ZiBPbOZ2cw_1ZRL_chh")
   compileSdk {
-    version = release(36)
+    version = release(37)
   }
   defaultConfig {
     applicationId =

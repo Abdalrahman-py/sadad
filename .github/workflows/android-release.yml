@@ -36,7 +36,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Install release verification tools
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"'
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
       - name: Require production signing credentials
         env:
           SADAD_KEYSTORE_BASE64: ${{ secrets.SADAD_KEYSTORE_BASE64 }}
