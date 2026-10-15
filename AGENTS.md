@@ -44,7 +44,7 @@
 ./tools/check.sh
 ```
 
-- `./tools/check.sh` هو البوابة الموحدة محليًا (الأقسام: `docs`، `dashboard`، `android`، `edge`، `database`)؛ يستدعي CI الأقسام الأربعة الأخيرة لكل وظيفة.
+- `./tools/check.sh` هو البوابة الموحدة محليًا (الأقسام: `docs`، `format`، `dashboard`، `android`، `edge`، `database`)؛ يستدعي CI الأقسام الأربعة الأخيرة لكل وظيفة، أما `docs` و`format` فمحلية فقط حتى الآن.
 - إصدار الإنتاج يتطلب `SADAD_KEYSTORE_FILE` و`SADAD_KEYSTORE_PASSWORD` و`SADAD_KEY_ALIAS` و`SADAD_KEY_PASSWORD` مع `assembleServerRelease`، ويرفض أي عنوان خادم غير المدمج وقت البناء (`-PSADAD_API_BASE_URL=...`).
 
 ## المفاتيح والبيانات الحساسة
