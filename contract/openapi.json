@@ -111,6 +111,248 @@
         "required": [
           "ok"
         ]
+      },
+      "Installation": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "active",
+              "revoked"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "staffName": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          }
+        },
+        "required": [
+          "installationId",
+          "generation",
+          "status",
+          "label",
+          "staffName",
+          "permissions"
+        ]
+      },
+      "InstallationPublicKey": {
+        "type": "object",
+        "properties": {
+          "kty": {
+            "type": "string",
+            "enum": [
+              "EC"
+            ]
+          },
+          "crv": {
+            "type": "string",
+            "enum": [
+              "P-256"
+            ]
+          },
+          "x": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43
+          },
+          "y": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43
+          }
+        },
+        "required": [
+          "kty",
+          "crv",
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      },
+      "Lease": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "string",
+            "description": "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, issuedAt, expiresAt, allowed"
+          },
+          "signature": {
+            "type": "string",
+            "description": "ECDSA P-256 SHA-256 over the payload bytes, raw r||s"
+          },
+          "publicKey": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "payload",
+          "signature",
+          "publicKey"
+        ]
+      },
+      "Changes": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "storeId": {
+            "type": "integer"
+          },
+          "epoch": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cursor": {
+            "type": "integer"
+          },
+          "nextCursor": {
+            "type": "integer"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChangeEvent"
+            }
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "storeId",
+          "epoch",
+          "cursor",
+          "nextCursor",
+          "hasMore",
+          "currency",
+          "events"
+        ]
+      },
+      "ChangeEvent": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "installationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "integer"
+          },
+          "command": {
+            "$ref": "#/components/schemas/LedgerCommand"
+          },
+          "result": {
+            "$ref": "#/components/schemas/Receipt"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "operationId",
+          "kind",
+          "entityId",
+          "userId",
+          "installationId",
+          "generation",
+          "command",
+          "result",
+          "createdAt"
+        ]
+      },
+      "LedgerCommand": {
+        "type": "object",
+        "additionalProperties": {
+          "nullable": true
+        },
+        "description": "One ledger command (schemaVersion 1); validated by sadid_private.apply_one."
+      },
+      "Receipt": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "sequence": {
+            "type": "integer"
+          },
+          "epoch": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serverTime": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "entityId",
+          "status",
+          "code",
+          "sequence",
+          "epoch",
+          "serverTime"
+        ]
       }
     },
     "parameters": {}
@@ -134,6 +376,494 @@
           },
           "500": {
             "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mobile/enroll": {
+      "post": {
+        "tags": [
+          "mobile"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Signed: send x-sadad-installation, x-sadad-time (13-digit epoch ms), x-sadad-nonce (UUID) and x-sadad-signature (raw r||s, base64url) over contract/fixtures/mobile/proof.json's text. The signed route is the path from /v1 plus the query string. Registers this installation as pending, signed by the key it registers. Call it only while the installation is not active.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "publicKey": {
+                    "$ref": "#/components/schemas/InstallationPublicKey"
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "staffName": {
+                    "type": "string",
+                    "maxLength": 80
+                  }
+                },
+                "required": [
+                  "publicKey"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The installation, pending until an admin approves it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "installation": {
+                      "$ref": "#/components/schemas/Installation"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "installation"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mobile/lease": {
+      "post": {
+        "tags": [
+          "mobile"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Signed: send x-sadad-installation, x-sadad-time (13-digit epoch ms), x-sadad-nonce (UUID) and x-sadad-signature (raw r||s, base64url) over contract/fixtures/mobile/proof.json's text. The signed route is the path from /v1 plus the query string. A 7-day server-signed offline lease. Renew only when under 24 hours remain. The body is empty.",
+        "responses": {
+          "200": {
+            "description": "The signed lease",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "lease": {
+                      "$ref": "#/components/schemas/Lease"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "lease"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mobile/changes": {
+      "get": {
+        "tags": [
+          "mobile"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Signed: send x-sadad-installation, x-sadad-time (13-digit epoch ms), x-sadad-nonce (UUID) and x-sadad-signature (raw r||s, base64url) over contract/fixtures/mobile/proof.json's text. The signed route is the path from /v1 plus the query string. Ledger events after the cursor, oldest first. Start from after=0 on first sync or after an epoch change; then pass nextCursor while hasMore.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "nullable": true,
+              "minimum": 0,
+              "default": 0
+            },
+            "required": false,
+            "name": "after",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "changes": {
+                      "$ref": "#/components/schemas/Changes"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "changes"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mobile/operations": {
+      "post": {
+        "tags": [
+          "mobile"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Signed: send x-sadad-installation, x-sadad-time (13-digit epoch ms), x-sadad-nonce (UUID) and x-sadad-signature (raw r||s, base64url) over contract/fixtures/mobile/proof.json's text. The signed route is the path from /v1 plus the query string. Applies up to 100 commands in one transaction and returns one receipt each, in order. Resending a command returns its first receipt. A replacement installation resending a revoked one's commands sends x-sadad-recovery with the admin-approved permit id.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "operations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LedgerCommand"
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "operations"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One receipt per command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "receipts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Receipt"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "receipts"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
             "content": {
               "application/json": {
                 "schema": {

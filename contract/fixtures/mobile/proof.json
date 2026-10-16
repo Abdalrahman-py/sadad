@@ -1,0 +1,18 @@
+{
+  "description": "One device proof. proofText is the exact UTF-8 text the installation key signs; signature is raw r||s (64 bytes), base64url without padding.",
+  "publicKey": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "xfhwIFYn1aN2KpgxiQspoDsARJLAMAqzBGitu5ozYVE",
+    "y": "XB_S8tlcMJd-xLuMLX4UMUyAJL4-emP-UoinQnvv-1Q"
+  },
+  "method": "POST",
+  "route": "/v1/mobile/operations",
+  "body": "{\"operations\":[{\"schemaVersion\":1,\"operationId\":\"0b6f3c1e-8a52-4d7e-9c41-5f2a7d3e9b10\",\"type\":\"contact.create\"}]}",
+  "bodySha256": "bd3438df195cbdac1f21382949f22f705aab40cb8e186d999459530438f70daf",
+  "time": "1760600000000",
+  "nonce": "5d0c2a9e-3f41-4b8a-a6e2-91c7d4f08b35",
+  "installationId": "8e4b1f72-6c3a-4d95-b0e8-2a7f5c19d463",
+  "proofText": "sadid-v3\nPOST\n/v1/mobile/operations\nbd3438df195cbdac1f21382949f22f705aab40cb8e186d999459530438f70daf\n1760600000000\n5d0c2a9e-3f41-4b8a-a6e2-91c7d4f08b35\n8e4b1f72-6c3a-4d95-b0e8-2a7f5c19d463",
+  "signature": "nQhFV3RXauYYbH58EMlqmFwLoH6YH7oLwyYGHwtOW3Bou_iJt1-q-kLimYLeUeFEiR2DmhAqSZ7y30EFgeEw7Q"
+}

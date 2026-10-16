@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@electric-sql/pglite@0.5.8": "0.5.8",
     "npm:@hono/zod-openapi@1.6.3": "1.6.3_hono@4.13.13_zod@4.6.7",
     "npm:@supabase/supabase-js@2.117.3": "2.117.3",
     "npm:hono@4.13.13": "4.13.13"
@@ -12,6 +13,9 @@
         "openapi3-ts",
         "zod"
       ]
+    },
+    "@electric-sql/pglite@0.5.8": {
+      "integrity": "sha512-n9tsbUOhwx2epK1V0ZG9Ar4SHWUju04dhmzZXiSBXwBoleOvIfals33NAaWgagQVAL4Rbvx/Ptsu3P+pA09f6Q=="
     },
     "@hono/zod-openapi@1.6.3_hono@4.13.13_zod@4.6.7": {
       "integrity": "sha512-VYR82Y60plu8g3pN60OUXMVKpmxh3R04Qs++3DY9vtwZ9/sA/BRY0PcRIR+Z37/3itWtM7pYwT9bKiH9JhqV6Q==",
@@ -100,6 +104,7 @@
   },
   "workspace": {
     "dependencies": [
+      "npm:@electric-sql/pglite@0.5.8",
       "npm:@hono/zod-openapi@1.6.3",
       "npm:@supabase/supabase-js@2.117.3",
       "npm:hono@4.13.13",

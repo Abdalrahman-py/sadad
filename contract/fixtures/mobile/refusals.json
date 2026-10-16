@@ -1,0 +1,11 @@
+{
+  "description": "How the mobile routes refuse. status is the HTTP status; body is { ok: false, code, message } with the Arabic message from contract/errors.json.",
+  "enrollReplayed": { "status": 409, "code": "proof_replayed" },
+  "enrollOverDeviceCap": { "status": 409, "code": "device_limit_reached" },
+  "batchOver100": { "status": 400, "code": "invalid_input" },
+  "unsigned": { "status": 401, "code": "invalid_proof" },
+  "wrongSignature": { "status": 401, "code": "invalid_proof" },
+  "installationNotActive": { "status": 401, "code": "installation_or_session_revoked" },
+  "notAStore": { "status": 403, "code": "store_permission_denied" },
+  "operationIdReused": { "status": 409, "code": "operation_id_reused" }
+}

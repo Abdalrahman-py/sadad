@@ -1,0 +1,27 @@
+{
+  "description": "GET /v1/mobile/changes?after=<cursor>&limit=<n> after operations.json was applied. The signed route includes the query string. Events carry the original command and its receipt.",
+  "route": "/v1/mobile/changes?after=1&limit=200",
+  "response": {
+    "cursor": 3,
+    "nextCursor": 3,
+    "hasMore": false,
+    "currency": "ILS",
+    "events": [
+      {
+        "sequence": 2,
+        "operationId": "7a2d3c4b-1e5f-4a6b-9c7d-8e9f0a1b2c3d",
+        "kind": "debt.create"
+      },
+      {
+        "sequence": 3,
+        "operationId": "8b3e4d5c-2f6a-4b7c-8d8e-9f0a1b2c3d4e",
+        "kind": "payment.create"
+      }
+    ]
+  },
+  "paged": {
+    "route": "/v1/mobile/changes?after=0&limit=2",
+    "nextCursor": 2,
+    "hasMore": true
+  }
+}
