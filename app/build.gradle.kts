@@ -1,5 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
   alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.compose)
 }
 
 val releaseStoreFile = System.getenv("SADAD_KEYSTORE_FILE")
@@ -15,6 +18,7 @@ android {
   namespace = "com.sadad.app"
   buildFeatures {
     buildConfig = true
+    compose = true
     resValues = true
   }
   // Live backend: the Supabase project's sadad-api edge function.
@@ -107,7 +111,13 @@ android {
   }
 }
 
+kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_11 } }
+
 dependencies {
+  implementation(platform(libs.compose.bom))
+  implementation(libs.compose.ui)
+  implementation(libs.compose.material3)
+  implementation(libs.activity.compose)
   // JVM tests only. The signed ledger is pure Java over org.json, and Android's unit-test runtime
   // stubs
   // org.json, so the real implementation has to be on the test classpath for it to run at all.
