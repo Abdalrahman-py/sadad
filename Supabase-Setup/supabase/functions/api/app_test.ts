@@ -1,90 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import { buildOpenApiDocument, createApp } from "./app.ts";
 import { requireAuth, requireRole } from "./auth.ts";
 import { errorMessages, fromDatabaseError } from "./errors.ts";
-
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function assertEqual(actual: unknown, expected: unknown): void {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-    );
-  }
-}
-
-const encoder = new TextEncoder();
-
-function base64Url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function makeSignedJwt(
-  privateKey: CryptoKey,
-  kid: string,
-  claims: Record<string, unknown>,
-): Promise<string> {
-  const header = base64Url(
-    encoder.encode(JSON.stringify({ alg: "ES256", typ: "JWT", kid })),
-  );
-  const now = Math.floor(Date.now() / 1000);
-  const payload = base64Url(
-    encoder.encode(
-      JSON.stringify({
-        iss: "https://test.invalid/auth/v1",
-        aud: "authenticated",
-        iat: now,
-        exp: now + 3600,
-        role: "authenticated",
-        ...claims,
-      }),
-    ),
-  );
-  const signature = new Uint8Array(
-    await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      privateKey,
-      encoder.encode(`${header}.${payload}`),
-    ),
-  );
-  return `${header}.${payload}.${base64Url(signature)}`;
-}
-
-async function createTestKeyPair() {
-  const pair = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"],
-  );
-  const kid = "test-signing-key-1";
-  const exported = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  const publicJwk = {
-    ...exported,
-    kty: "EC" as const,
-    crv: "P-256",
-    key_ops: ["verify"],
-    ext: true,
-    kid,
-    alg: "ES256",
-    use: "sig",
-  };
-  const supa = createClient("https://test.invalid", "sb_publishable_test", {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  return {
-    pair,
-    kid,
-    verifyClaims: (jwt: string) =>
-      supa.auth.getClaims(jwt, { jwks: { keys: [publicJwk] } }),
-  };
-}
+import {
+  assert,
+  assertEqual,
+  createTestKeyPair,
+  makeSignedJwt,
+} from "./test_support.ts";
 
 Deno.test("GET /v1/health returns 200 without auth and enforces CORS allow-list", async () => {
   const app = createApp({

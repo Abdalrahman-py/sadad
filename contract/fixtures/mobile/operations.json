@@ -1,0 +1,75 @@
+{
+  "description": "POST /v1/mobile/operations: one signed batch of up to 100 commands, one receipt each, in order. {installationId} and {epoch} are filled in by the test; receipts also carry epoch and serverTime.",
+  "request": {
+    "operations": [
+      {
+        "schemaVersion": 1,
+        "operationId": "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c",
+        "entityId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+        "type": "contact.create",
+        "originInstallationId": "{installationId}",
+        "originGeneration": 1,
+        "expectedEpoch": "{epoch}",
+        "createdAt": "2026-10-16T09:00:00Z",
+        "dependsOn": [],
+        "payload": { "name": "أبو خالد", "phone": "+970599123456" }
+      },
+      {
+        "schemaVersion": 1,
+        "operationId": "7a2d3c4b-1e5f-4a6b-9c7d-8e9f0a1b2c3d",
+        "entityId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+        "type": "debt.create",
+        "originInstallationId": "{installationId}",
+        "originGeneration": 1,
+        "expectedEpoch": "{epoch}",
+        "createdAt": "2026-10-16T09:01:00Z",
+        "dependsOn": ["6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c"],
+        "payload": {
+          "contactId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+          "direction": "receivable",
+          "amountCents": 15000,
+          "note": "بضاعة"
+        }
+      },
+      {
+        "schemaVersion": 1,
+        "operationId": "8b3e4d5c-2f6a-4b7c-8d8e-9f0a1b2c3d4e",
+        "entityId": "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f",
+        "type": "payment.create",
+        "originInstallationId": "{installationId}",
+        "originGeneration": 1,
+        "expectedEpoch": "{epoch}",
+        "createdAt": "2026-10-16T09:02:00Z",
+        "dependsOn": ["7a2d3c4b-1e5f-4a6b-9c7d-8e9f0a1b2c3d"],
+        "payload": {
+          "debtId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+          "amountCents": 5000,
+          "method": "cash"
+        }
+      }
+    ]
+  },
+  "receipts": [
+    {
+      "operationId": "6f1c2b3a-0d4e-4f5a-8b6c-7d8e9f0a1b2c",
+      "entityId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+      "status": "accepted",
+      "code": null,
+      "sequence": 1
+    },
+    {
+      "operationId": "7a2d3c4b-1e5f-4a6b-9c7d-8e9f0a1b2c3d",
+      "entityId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "status": "accepted",
+      "code": null,
+      "sequence": 2
+    },
+    {
+      "operationId": "8b3e4d5c-2f6a-4b7c-8d8e-9f0a1b2c3d4e",
+      "entityId": "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f",
+      "status": "accepted",
+      "code": null,
+      "sequence": 3
+    }
+  ]
+}

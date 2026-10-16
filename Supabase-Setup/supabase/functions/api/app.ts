@@ -8,6 +8,7 @@ import {
   errorMessages,
   handleError,
 } from "./errors.ts";
+import { type MobileDeps, registerMobileRoutes, routePath } from "./mobile.ts";
 
 export const DEFAULT_ALLOWED_ORIGINS: readonly string[] = [
   "https://abdalrahman-py.github.io",
@@ -64,11 +65,8 @@ export interface AppOptions {
   verifyClaims?: VerifyClaims;
   lookupStoreId?: LookupStoreId;
   logError?: ErrorLogger;
+  mobile?: MobileDeps;
 }
-
-const getPath = (req: Request): string =>
-  new URL(req.url).pathname.replace(/^(?:\/functions\/v1)?\/api(?=\/|$)/, "") ||
-  "/";
 
 const defaultVerifyClaims: VerifyClaims = () =>
   Promise.resolve({
@@ -86,7 +84,7 @@ export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
   const lookupStoreId = options.lookupStoreId ?? defaultLookupStoreId;
 
   const root = new OpenAPIHono<AppEnv>({
-    getPath,
+    getPath: routePath,
     defaultHook: (result, c) => {
       if (!result.success) {
         return handleError(
@@ -142,6 +140,7 @@ export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
   });
 
   app.openapi(healthRoute, (c) => c.json({ ok: true as const }, 200));
+  registerMobileRoutes(app, options.mobile);
 
   return app;
 }

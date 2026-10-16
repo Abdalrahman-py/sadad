@@ -29,6 +29,8 @@ export interface AppVariables {
   requestId: string;
   auth: AuthContext;
   authDeps: AuthDeps;
+  /** The request body exactly as received, read before validation parses it. */
+  rawBody?: string;
 }
 
 export interface AppEnv {
@@ -51,12 +53,17 @@ function resolveRole(claims: Record<string, unknown>): AuthRole {
   return "store";
 }
 
-async function resolveAuth(c: Context<AppEnv>): Promise<AuthContext> {
-  const existing = c.get("auth") as AuthContext | undefined;
-  if (existing) {
-    return existing;
-  }
+export interface VerifiedCaller {
+  jwt: string;
+  userId: string;
+  role: AuthRole;
+  claims: Record<string, unknown>;
+}
 
+/** The caller's verified JWT claims; no database round trip. */
+export async function verifyCaller(
+  c: Context<AppEnv>,
+): Promise<VerifiedCaller> {
   const jwt = parseBearer(c.req.header("authorization"));
   if (!jwt) {
     throw new ApiError("authorization_required", 401);
@@ -70,9 +77,17 @@ async function resolveAuth(c: Context<AppEnv>): Promise<AuthContext> {
   ) {
     throw new ApiError("authorization_required", 401);
   }
+  return { jwt, userId: claims.sub, role: resolveRole(claims), claims };
+}
 
-  const userId = claims.sub;
-  const role = resolveRole(claims);
+async function resolveAuth(c: Context<AppEnv>): Promise<AuthContext> {
+  const existing = c.get("auth") as AuthContext | undefined;
+  if (existing) {
+    return existing;
+  }
+
+  const { jwt, userId, role } = await verifyCaller(c);
+  const deps = c.get("authDeps");
 
   let storeId: number | undefined;
   if (role === "store") {

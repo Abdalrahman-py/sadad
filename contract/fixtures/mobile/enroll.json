@@ -1,0 +1,23 @@
+{
+  "description": "POST /v1/mobile/enroll. publicKey is the installation's own key; the proof is signed with it. {publicKey} is filled in by the test.",
+  "request": {
+    "publicKey": "{publicKey}",
+    "label": "Redmi M2101K7BI",
+    "staffName": "سامي"
+  },
+  "response": {
+    "ok": true,
+    "installation": {
+      "installationId": "{installationId}",
+      "generation": 1,
+      "status": "pending",
+      "label": "Redmi M2101K7BI",
+      "staffName": "سامي",
+      "permissions": {
+        "deleteRecords": true,
+        "deleteContacts": true,
+        "registerPayments": true
+      }
+    }
+  }
+}

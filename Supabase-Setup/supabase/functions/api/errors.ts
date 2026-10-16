@@ -8,6 +8,7 @@ export type ErrorCode = keyof typeof errorMessages;
 const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   authorization_required: 401,
   installation_or_session_revoked: 401,
+  invalid_proof: 401,
   admin_authorization_required: 403,
   store_permission_denied: 403,
   installation_revoked: 403,
@@ -15,7 +16,6 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   password_change_required: 403,
   recovery_not_authorized: 403,
   ledger_not_initialized: 403,
-  invalid_proof: 403,
   history_is_immutable: 403,
   not_found: 404,
   store_not_found: 404,
