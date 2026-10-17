@@ -49,6 +49,7 @@
           "admin_authorization_required",
           "store_suspended",
           "password_change_required",
+          "current_password_incorrect",
           "request_rate_limited",
           "enrollment_rate_limited",
           "proof_replayed",
@@ -3430,6 +3431,116 @@
                     "ok",
                     "events",
                     "nextCursor"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/password": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Proves the current password, sets a new one (12 to 128 characters, not the current one) and clears app_metadata.force_password_change. Every role; the Auth JWT only, no device proof. The caller's JWT keeps its old claims until it expires: after a 200 the client must refresh its session, and the refreshed JWT carries the cleared flag.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  }
+                },
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed; refresh the session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "forcePasswordChange": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "forcePasswordChange"
                   ]
                 }
               }

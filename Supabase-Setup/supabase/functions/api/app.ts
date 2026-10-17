@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
+import { type AccountDeps, registerAccountRoutes } from "./account.ts";
 import { type AdminDeps, registerAdminRoutes } from "./admin.ts";
 import { type AppEnv, type LookupStoreId, type VerifyClaims } from "./auth.ts";
 import {
@@ -73,6 +74,7 @@ export interface AppOptions {
   logRequest?: RequestLogger;
   mobile?: MobileDeps;
   admin?: AdminDeps;
+  account?: AccountDeps;
 }
 
 const defaultRequestLogger: RequestLogger = (line) => console.log(line);
@@ -163,6 +165,7 @@ export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
   app.openapi(healthRoute, (c) => c.json({ ok: true as const }, 200));
   registerMobileRoutes(app, options.mobile);
   registerAdminRoutes(app, options.admin);
+  registerAccountRoutes(app, options.account);
 
   return app;
 }

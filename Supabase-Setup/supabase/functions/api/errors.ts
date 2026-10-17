@@ -14,6 +14,7 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   installation_revoked: 403,
   store_suspended: 403,
   password_change_required: 403,
+  current_password_incorrect: 403,
   recovery_not_authorized: 403,
   ledger_not_initialized: 403,
   history_is_immutable: 403,

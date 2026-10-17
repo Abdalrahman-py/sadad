@@ -1,4 +1,5 @@
 // One app on the real baseline for an admin test file, with a recording Auth admin stand-in.
+import { type AccountDeps, defaultAccountDeps } from "../account.ts";
 import { createApp } from "../app.ts";
 import { errorMessages } from "../errors.ts";
 import { TestDatabase } from "../test_db.ts";
@@ -93,7 +94,9 @@ export class FakeAuthAdmin implements AuthAdmin {
   }
 }
 
-export async function adminHarness() {
+export async function adminHarness(
+  options: { verifyPassword?: AccountDeps["verifyPassword"] } = {},
+) {
   const database = await TestDatabase.create();
   const keys = await createTestKeyPair();
   const authAdmin = new FakeAuthAdmin(database);
@@ -111,12 +114,21 @@ export async function adminHarness() {
       serviceDb: database.serviceClient(),
       authAdmin,
     },
+    account: {
+      authAdmin,
+      verifyPassword: options.verifyPassword ??
+        defaultAccountDeps.verifyPassword,
+    },
   });
 
   /** A JWT for an Auth user with a live session; role admin, support or store. */
   async function jwtFor(
     role: "admin" | "support" | "store",
-    options: { userId?: string; forcePasswordChange?: boolean } = {},
+    options: {
+      userId?: string;
+      forcePasswordChange?: boolean;
+      email?: string | null;
+    } = {},
   ) {
     const userId = options.userId ?? crypto.randomUUID();
     const sessionId = crypto.randomUUID();
@@ -127,7 +139,9 @@ export async function adminHarness() {
     const jwt = await makeSignedJwt(keys.pair.privateKey, keys.kid, {
       sub: userId,
       session_id: sessionId,
-      email: `${role}-${userId.slice(0, 8)}@sadad.invalid`,
+      ...(options.email === null ? {} : {
+        email: options.email ?? `${role}-${userId.slice(0, 8)}@sadad.invalid`,
+      }),
       app_metadata: {
         role,
         ...(options.forcePasswordChange ? { force_password_change: true } : {}),
