@@ -31,6 +31,7 @@
 | الإسقاط المحلي للسجل | `LedgerProjection.java` | |
 | تصدير الكشوفات ومشاركتها | `LedgerTablePdf.java`، `LedgerTableExcel.java`، `PdfShareProvider.java` | |
 | تذكيرات الاستحقاق | `DueReminderManager.java` | |
+| قلب الدفتر بـKotlin (المرحلة 3) | `ledger-core/` (`com.sadad.ledger`) | `Commands`، `ProofText`، `Cents` |
 | وظيفة Edge الوحيدة `api` (Hono + zod) | `functions/api/app.ts` | `createApp()`، المسارات تحت `/v1` |
 | مسارات الهاتف: التسجيل والترخيص والعمليات الموقّعة | `functions/api/mobile.ts` + `proof.ts` | `registerMobileRoutes()`، `verifyProof()` |
 | مسارات الإدارة والحساب | `functions/api/admin.ts` + `admin/` + `account.ts` | `registerAdminRoutes()`، `registerAccountRoutes()` |
