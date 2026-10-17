@@ -268,6 +268,97 @@ try {
     );
   });
 
+  const pendingInstallation = async () => {
+    await db.exec('reset role');
+    return (await db.query("select id from sadid_private.installations where store_id = 1 and status = 'pending'")).rows[0].id;
+  };
+  // Inserts every nonce at now() before ageing any, so the rate guard's pruning cannot remove a row of the setup.
+  const agedNonces = async (...rows) => {
+    const nonces = rows.map(() => randomUUID());
+    for (const [i, [inst]] of rows.entries()) {
+      await db.query('insert into sadid_private.request_nonces(installation_id, nonce) values ($1, $2)', [inst, nonces[i]]);
+    }
+    for (const [i, [inst, minutes]] of rows.entries()) {
+      await db.query(
+        'update sadid_private.request_nonces set created_at = clock_timestamp() - make_interval(mins => $3) where installation_id = $1 and nonce = $2',
+        [inst, nonces[i], minutes],
+      );
+    }
+    return nonces;
+  };
+  const nonceExists = async (inst, nonce) =>
+    (await db.query('select count(*)::int n from sadid_private.request_nonces where installation_id = $1 and nonce = $2', [inst, nonce])).rows[0].n === 1;
+
+  await check('A signed request prunes its own installation nonces older than 15 minutes', async () => {
+    const pending = await pendingInstallation();
+    const [old, recent, otherOld] = await agedNonces([installation, 20], [installation, 5], [pending, 20]);
+    const nonces = async () =>
+      (await db.query('select count(*)::int n from sadid_private.request_nonces where installation_id = $1', [installation])).rows[0].n;
+    const before = await nonces();
+
+    await capability('read');
+    await db.exec('reset role');
+    assert.equal(await nonceExists(installation, old), false);
+    assert.equal(await nonceExists(installation, recent), true);
+    assert.equal(await nonceExists(pending, otherOld), true);
+    assert.equal(await nonces(), before, 'one old nonce gone, the nonce of this request stored');
+  });
+
+  await check('Enrollment prunes the installation nonces older than 15 minutes', async () => {
+    const pending = await pendingInstallation();
+    const [old] = await agedNonces([pending, 20]);
+    const fresh = randomUUID();
+    await asStore(storeUser, session);
+    await db.query('select public.sadid_enroll($1, $2, $3, $4, $5)', [pending, proofKey, fresh, 'هاتف ثان', 'سامي']);
+    await db.exec('reset role');
+    assert.equal(await nonceExists(pending, old), false);
+    assert.equal(await nonceExists(pending, fresh), true);
+  });
+
+  await check('A nonce used 9 minutes ago is still refused as replayed', async () => {
+    await db.exec('reset role');
+    const [used] = await agedNonces([installation, 9]);
+    await db.exec('reset role; set role service_role');
+    await assert.rejects(
+      db.query('select public.sadid_issue_capability($1,$2,$3,$4,$5,$6)', [storeUser, session, installation, used, 'read', null]),
+      /proof_replayed/,
+    );
+    await db.exec('reset role');
+    assert.equal(await nonceExists(installation, used), true);
+  });
+
+  await check('A capability request prunes its own installation expired capabilities', async () => {
+    const pending = await pendingInstallation();
+    const capabilityRow = async (inst, expiresIn) => {
+      const hash = randomUUID();
+      await db.query(
+        `insert into sadid_private.capabilities(token_hash, user_id, auth_session_id, store_id, installation_id, generation, scope, expires_at)
+         select pg_catalog.sha256(pg_catalog.convert_to($1, 'UTF8')), $2, $3, i.store_id, i.id, i.generation, 'read', clock_timestamp() + $4::interval
+         from sadid_private.installations i where i.id = $5`,
+        [hash, storeUser, session, expiresIn, inst],
+      );
+      return hash;
+    };
+    const capabilityExists = async hash =>
+      (await db.query("select count(*)::int n from sadid_private.capabilities where token_hash = pg_catalog.sha256(pg_catalog.convert_to($1, 'UTF8'))", [hash])).rows[0].n === 1;
+    const expired = await capabilityRow(installation, '-1 minute');
+    const live = await capabilityRow(installation, '1 minute');
+    const otherExpired = await capabilityRow(pending, '-1 minute');
+    const before = (await db.query('select count(*)::int n from sadid_private.capabilities where installation_id = $1', [installation])).rows[0].n;
+
+    await capability('read');
+    await db.exec('reset role');
+    assert.equal(await capabilityExists(expired), false);
+    assert.equal(await capabilityExists(live), true);
+    assert.equal(await capabilityExists(otherExpired), true);
+    const after = (await db.query('select count(*)::int n from sadid_private.capabilities where installation_id = $1', [installation])).rows[0].n;
+    assert.equal(after, before, 'one expired row gone, one new row issued');
+    assert.equal(
+      (await db.query('select count(*)::int n from sadid_private.capabilities where installation_id = $1 and expires_at < clock_timestamp()', [installation])).rows[0].n,
+      0,
+    );
+  });
+
   const contact = command('contact.create', { name: 'عميل تجربة', phone: '', externalReference: 'TEST-001' });
 
   await check('Refuses operation with wrong epoch', async () => {

@@ -32,6 +32,7 @@
   "admin_authorization_required": "يلزم حساب إدارة صالح.",
   "store_suspended": "المتجر موقوف؛ حُفظت الإدخالات المعلقة.",
   "password_change_required": "غيّر كلمة المرور المؤقتة أولًا.",
+  "current_password_incorrect": "كلمة المرور الحالية غير صحيحة.",
   "request_rate_limited": "طلبات كثيرة؛ الإدخالات محفوظة، انتظر دقيقة ثم حاول مجددًا.",
   "enrollment_rate_limited": "وصل عدد طلبات الأجهزة المعلقة إلى الحد. راجع الإدارة.",
   "proof_replayed": "رمز إثبات هوية الجهاز مستخدم مسبقًا؛ أعد إرسال الطلب من جديد.",

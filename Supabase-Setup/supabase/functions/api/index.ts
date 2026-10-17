@@ -70,6 +70,23 @@ async function leaseSigner(): Promise<LeaseSigner> {
   };
 }
 
+// Signs in on a client of its own, so no user session is ever held by the shared authClient,
+// then ends that session at once.
+async function verifyPassword(
+  email: string,
+  password: string,
+): Promise<boolean> {
+  const { data, error } = await createClient(url, publishableKey, {
+    auth: noSession,
+  }).auth.signInWithPassword({ email, password });
+  if (error) {
+    if (error.code === "invalid_credentials") return false;
+    throw error;
+  }
+  await serviceClient.auth.admin.signOut(data.session.access_token, "local");
+  return true;
+}
+
 const app = createApp({
   allowedOrigins,
   verifyClaims: (jwt) => authClient.auth.getClaims(jwt),
@@ -83,6 +100,10 @@ const app = createApp({
     userDb: (jwt) => userClient(jwt),
     serviceDb: serviceClient,
     authAdmin: serviceClient.auth.admin,
+  },
+  account: {
+    authAdmin: serviceClient.auth.admin,
+    verifyPassword,
   },
 });
 

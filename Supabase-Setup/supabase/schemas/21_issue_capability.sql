@@ -38,6 +38,9 @@ begin
     raise exception 'proof_replayed';
   end;
 
+  delete from sadid_private.capabilities
+  where store_id = i.store_id and installation_id = p_installation and expires_at < clock_timestamp();
+
   v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
   insert into sadid_private.capabilities(
     token_hash, user_id, auth_session_id, store_id, installation_id, generation, scope, request, expires_at
