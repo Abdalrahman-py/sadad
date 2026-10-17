@@ -45,6 +45,7 @@
 ```
 
 - `./tools/check.sh` هو البوابة الموحدة محليًا وفي CI، ويشغّل CI جميع أقسامه.
+- النشر يدوي عبر `.github/workflows/supabase-deploy.yml` (`workflow_dispatch` من `main`): يشغّل `./tools/check.sh`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`.
 - إصدار الإنتاج يتطلب `SADAD_KEYSTORE_FILE` و`SADAD_KEYSTORE_PASSWORD` و`SADAD_KEY_ALIAS` و`SADAD_KEY_PASSWORD` مع `assembleServerRelease`، ويرفض أي عنوان خادم غير المدمج وقت البناء (`-PSADAD_API_BASE_URL=...`).
 
 ## المفاتيح والبيانات الحساسة

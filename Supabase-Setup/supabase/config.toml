@@ -1,17 +1,5 @@
 project_id = "vhftjmiltqfwmrszdtgf"
 
-[functions.sadad-api]
-# The app uses Sadad's own short-lived bearer sessions, not Supabase Auth JWTs.
-verify_jwt = false
-
-[functions.sadad-auth]
-# Login/refresh are public; handler validates Supabase JWT plus bound device session on private routes.
-verify_jwt = false
-
-[functions.sadid-ledger]
-# Handler verifies the Supabase JWT itself; admin routes use X-Sadad-Admin, not a JWT.
-verify_jwt = false
-
 [functions.api]
 # Auth middleware verifies the Supabase JWT locally via auth.getClaims(); /v1/health is public.
 verify_jwt = false
