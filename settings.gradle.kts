@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "sadad-test"
 include(":app")
+include(":ledger-core")

@@ -70,7 +70,7 @@ run_dashboard() {
 
 run_android() {
   echo "== android =="
-  ./gradlew testServerDebugUnitTest assembleServerDebug assembleStandaloneDebug assembleServerDebugAndroidTest --console=plain
+  ./gradlew :ledger-core:test testServerDebugUnitTest assembleServerDebug assembleStandaloneDebug assembleServerDebugAndroidTest --console=plain
 }
 
 run_edge() {
