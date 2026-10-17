@@ -35,6 +35,22 @@ run_docs() {
     echo "$extra_functions" >&2
     return 1
   fi
+  # The old gateways and their tables are gone; only history, still-deployed state and the
+  # baseline test's check that those tables are absent may name them.
+  local old_backend migrations
+  old_backend=$(git grep -nE "sadad-api|sadad-auth|sadid-ledger|x-sadad-session|X-Sadad-Admin|sadad_auth_bindings|store_devices" -- . ':!app' ':!docs/CHANGELOG.md' ':!docs/ARCHITECTURE.md' ':!docs/CONTINUE_HERE.md' ':!docs/adr' ':!tools/check.sh' ':!.github/workflows/android-release.yml' ':!Supabase-Setup/scripts/test-baseline.mjs' || true)
+  if [[ -n "$old_backend" ]]; then
+    echo "Old backend still referenced:" >&2
+    echo "$old_backend" >&2
+    return 1
+  fi
+  # The cutover deploy runs `supabase db push`, which must apply exactly the baseline.
+  migrations=$(git ls-files Supabase-Setup/supabase/migrations)
+  if [[ $(wc -l <<< "$migrations") -ne 1 || "$migrations" != *_baseline.sql ]]; then
+    echo "Supabase-Setup/supabase/migrations/ must hold only one *_baseline.sql:" >&2
+    echo "$migrations" >&2
+    return 1
+  fi
 }
 
 run_dashboard() {
@@ -59,10 +75,7 @@ run_android() {
 
 run_edge() {
   echo "== edge =="
-  for dir in api sadad-api sadad-auth sadid-ledger; do
-    echo "=== $dir ==="
-    (cd "Supabase-Setup/supabase/functions/$dir" && deno test -A)
-  done
+  (cd Supabase-Setup/supabase/functions/api && deno test -A)
 }
 
 run_database() {
@@ -70,9 +83,6 @@ run_database() {
   if [[ ! -f .local-tools/node_modules/@electric-sql/pglite/dist/index.js ]]; then
     npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
   fi
-  node Supabase-Setup/scripts/test-v3-ledger.mjs
-  node Supabase-Setup/scripts/test-v3-authorization.mjs
-  node Supabase-Setup/scripts/test-admin-dashboard.mjs
   node Supabase-Setup/scripts/test-baseline.mjs
 }
 

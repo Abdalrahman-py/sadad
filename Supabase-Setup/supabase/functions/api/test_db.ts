@@ -59,7 +59,7 @@ export class TestDatabase {
 
   static async create(): Promise<TestDatabase> {
     const db = new PGlite();
-    const dir = new URL("../../baseline/", import.meta.url);
+    const dir = new URL("../../migrations/", import.meta.url);
     let baseline = "";
     for await (const entry of Deno.readDir(dir)) {
       if (entry.name.endsWith("_baseline.sql")) {

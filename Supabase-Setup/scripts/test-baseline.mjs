@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { PGlite } from '../../.local-tools/node_modules/@electric-sql/pglite/dist/index.js';
 
 const db = new PGlite();
-const baselineDir = new URL('../supabase/baseline/', import.meta.url);
+const baselineDir = new URL('../supabase/migrations/', import.meta.url);
 const schemasDir = new URL('../supabase/schemas/', import.meta.url);
 const tests = [];
 const storeUser = randomUUID();
