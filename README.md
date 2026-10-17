@@ -14,9 +14,9 @@
 | المكوّن | المسار |
 | --- | --- |
 | تطبيق Android (المصدر الوحيد) | `app/` — Java أصلي، نسختا `server` و`standalone` |
-| الخادم: وظائف Edge والترحيلات | `Supabase-Setup/supabase/` — مشروع `vhftjmiltqfwmrszdtgf` |
-| عقد العمليات | `Supabase-Setup/docs/V3_CONTRACT_AR.md` |
-| لوحة الإدارة (ملفات ثابتة) | `server/public/` + `tools/build-admin-pages.cjs` |
+| الخادم: وظيفة Edge `api` والمخطط الأساسي | `Supabase-Setup/supabase/` — مشروع `vhftjmiltqfwmrszdtgf` |
+| العقد (OpenAPI ورموز الأخطاء) | `contract/` |
+| لوحة الإدارة (Vite + TypeScript) | `server/public/` |
 | APK الرسمي (النسخة المتصلة) | GitHub Releases — ينشره `.github/workflows/android-release.yml` بعد إعداد التوقيع |
 | سجل الإصدارات | `docs/CHANGELOG.md` |
 | حالة العمل والمهام المتبقية | `docs/CONTINUE_HERE.md` |
@@ -41,11 +41,8 @@ sdk.dir=/path/to/Android/Sdk
 - `serverDebug`: `com.sadad.app` — نسخة تطوير متصلة بـ Supabase، لا تُنشر في الإصدارات الرسمية.
 - `standaloneDebug`: `com.sadad.app.test.offline` — محلي فقط، دخول أولي `123 / 123`.
 
-النسخة المتصلة تشير افتراضيًا إلى وظيفة Supabase:
-
-```
-https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api
-```
+النسخة المتصلة تشير افتراضيًا إلى وظائف Supabase القديمة المنشورة (العناوين في
+`app/build.gradle.kts`)؛ مصدرها حُذف من الشجرة، ويستبدلها تطبيق المرحلة 3 بوظيفة `api`.
 
 يمكن تغيير العنوان وقت البناء (للتطوير فقط):
 
@@ -74,16 +71,13 @@ adb -s emulator-5554 shell am instrument -w com.sadad.qa.offline.test/com.sadad.
   الأصناف في `app/src/androidTest`).
 - اختبارات قاعدة البيانات (pglite، بلا خادم حقيقي):
   ```sh
-  npm install --prefix .local-tools --no-save @electric-sql/pglite@0.5.8
-  node Supabase-Setup/scripts/test-v3-ledger.mjs
-  node Supabase-Setup/scripts/test-v3-authorization.mjs
-  node Supabase-Setup/scripts/test-admin-dashboard.mjs
+  ./tools/check.sh database # Supabase-Setup/scripts/test-baseline.mjs على المخطط الأساسي
   ```
 - اختبارات وحدة JVM بلا هاتف: `./gradlew testServerDebugUnitTest` — محرّك المزامنة وعميل
   الدفتر الموقّع. تُشغَّل تلقائيًا في CI (`.github/workflows/android-ci.yml`) مع بناء النسختين.
 - اختبار معاملات الطابور وKeystore على هاتف QA منفصل: راجع قسم التحقق الحالي في
   `docs/CONTINUE_HERE.md`؛ بناء الاختبار وحده لا يثبت نجاحه على الجهاز.
-- اختبارات وظائف Edge: `deno test` داخل كل مجلد في `Supabase-Setup/supabase/functions/`.
+- اختبارات وظيفة Edge: `./tools/check.sh edge` (`deno test -A` داخل `Supabase-Setup/supabase/functions/api/`).
 
 ## النشر الآلي: اللوحة وAPK الإنتاج
 
@@ -126,16 +120,14 @@ git push origin v2.5.12
 
 GitHub Pages deployment is configured in `.github/workflows/admin-pages.yml` and runs for both the
 upstream repo (`ibrahem57/sadad`) and the owner's mirror (`Abdalrahman-py/sadad`); any other fork
-stays quiet. The dashboard is published and was verified on 12 October 2026 at
-<https://abdalrahman-py.github.io/sadad/> (login with a bad password returns the live server's own
-message, and the page's content policy allows the `vhftjmiltqfwmrszdtgf` origin only). The hosted
-dashboard uses the same live Supabase admin account. It is rebuilt only when `server/public/**`,
-`tools/build-admin-pages.cjs` or the workflow itself change, so it can lag the tree.
+stays quiet. The dashboard is published at <https://abdalrahman-py.github.io/sadad/>; which build is
+live is recorded in `docs/CONTINUE_HERE.md`. It is rebuilt only when `server/public/**`,
+`contract/**`, `tools/check.sh` or the workflow itself change, so it can lag the tree.
 
-افتح [لوحة الإدارة المنشورة](https://abdalrahman-py.github.io/sadad/) وسجّل الدخول بحساب
-`admin_sadid`؛ اطلب كلمة المرور من مسؤول الفريق. اللوحة ملفات ثابتة وعملياتها تتصل بـ
-Supabase. لبناء ملفات النشر محليًا: `node tools/build-admin-pages.cjs`؛ الناتج في `_site/`.
-تفاصيل التشغيل في [دليل الفريق](docs/ADMIN_TEAM_SETUP.md).
+افتح [لوحة الإدارة المنشورة](https://abdalrahman-py.github.io/sadad/) وسجّل الدخول ببريد حساب
+Supabase Auth ذي دور الإدارة أو الدعم؛ اطلب الحساب من مسؤول الفريق. اللوحة ملفات ثابتة تتصل
+بـSupabase Auth ووظيفة `api`. لبناء ملفات النشر محليًا: `npm ci && npm run build` داخل
+`server/public/`؛ الناتج في `_site/`.
 
 ## نطاق التطبيق الحالي
 
@@ -146,6 +138,7 @@ Supabase. لبناء ملفات النشر محليًا: `node tools/build-admin
 
 حُذف خادم Node/SQLite القديم (`server/server.js`) وملفات تشغيله واختباراته، فلم يكن يشغّله أي
 عميل: التطبيق واللوحة يتصلان بـ Supabase. عميل Android المتصل يستخدم الدفتر الموقّع وحده. أكّد المستخدم أن كل المتاجر والبيانات تجريبية،
-فحُذف البروتوكول المالي القديم وواجهات استعادته من المصدر. بوابات الهوية والإدارة الحالية باقية.
-ترحيل حذف الجداول القديمة جاهز للمراجعة؛ لم يُطبَّق على السحابة. ترتيب النشر والحالة في
+فحُذف البروتوكول المالي القديم وواجهات استعادته من المصدر. حُذفت كذلك بوابات الهوية والإدارة
+القديمة وسلسلة ترحيلاتها: الخادم في الشجرة وظيفة `api` واحدة ومخطط أساسي واحد في
+`Supabase-Setup/supabase/migrations/`. الوظائف القديمة تبقى منشورة على السحابة حتى القطع؛ الحالة في
 `docs/CONTINUE_HERE.md`.

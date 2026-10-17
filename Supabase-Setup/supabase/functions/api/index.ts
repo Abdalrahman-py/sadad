@@ -34,8 +34,8 @@ const userClient = (jwt: string, capability?: string) =>
     auth: noSession,
   });
 
-// The lease key is derived from the service key and separated by purpose (ported from
-// sadid-ledger), so there is no extra secret to deploy. Only the public half leaves here.
+// The lease key is derived from the service key and separated by purpose, so there is no extra
+// secret to deploy. Only the public half leaves here.
 async function leaseSigner(): Promise<LeaseSigner> {
   const curve = createECDH("prime256v1");
   curve.setPrivateKey(

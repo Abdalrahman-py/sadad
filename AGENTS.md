@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | تطبيق Android | `app/` (Java حاليًا؛ يُستبدل بـKotlin/Compose في المرحلة 3) | عدّل المشروع المعتمد؛ لا تنشئ مشروعًا ثانيًا |
 | الخادم | `Supabase-Setup/supabase/` (مشروع `vhftjmiltqfwmrszdtgf`) | لا تنشئ خادمًا موازيًا؛ النشر والترحيل باعتماد بشري |
-| لوحة الإدارة | `server/public/` تُبنى عبر `tools/build-admin-pages.cjs` إلى `_site/` | مصدر واحد للوحة |
+| لوحة الإدارة | `server/public/` (Vite + TypeScript) تُبنى بـ`npm run build` إلى `_site/` | مصدر واحد للوحة |
 | خطة المعمارية | `docs/ARCHITECTURE.md` | المرجع لما يحلّ محلّ كل مكوّن في المراحل 1–4 |
 | سجل الإصدارات | `docs/CHANGELOG.md` | أضف سطرًا لكل إصدار أو مرحلة؛ لا تنشئ ملفات إصدار منفصلة |
 | حالة العمل | `docs/CONTINUE_HERE.md` | أقل من 80 سطرًا للحالة الحالية فقط |
@@ -31,11 +31,12 @@
 | الإسقاط المحلي للسجل | `LedgerProjection.java` | |
 | تصدير الكشوفات ومشاركتها | `LedgerTablePdf.java`، `LedgerTableExcel.java`، `PdfShareProvider.java` | |
 | تذكيرات الاستحقاق | `DueReminderManager.java` | |
-| بوابة الهوية (Auth envelope) | `sadad-auth/handler.ts` | `/mobile/login`، `/mobile/auth/refresh` |
-| بوابة الحسابات والإدارة | `sadad-api/handler.ts` | `route()` |
-| السجل الموقّع وإدارة التركيبات | `sadid-ledger/handler.ts` | `/mobile/v3/enroll`، `verifyProof`، `/admin/*` |
-| لوحة الإدارة | `server/public/admin.js` | تُبنى بـ`tools/build-admin-pages.cjs` |
-| الترحيلات | `Supabase-Setup/supabase/migrations/` | |
+| وظيفة Edge الوحيدة `api` (Hono + zod) | `functions/api/app.ts` | `createApp()`، المسارات تحت `/v1` |
+| مسارات الهاتف: التسجيل والترخيص والعمليات الموقّعة | `functions/api/mobile.ts` + `proof.ts` | `registerMobileRoutes()`، `verifyProof()` |
+| مسارات الإدارة والحساب | `functions/api/admin.ts` + `admin/` + `account.ts` | `registerAdminRoutes()`، `registerAccountRoutes()` |
+| العقد (OpenAPI ورموز الأخطاء) | `contract/` | `openapi.json` يولَّد بـ`functions/api/generate_openapi.ts` |
+| لوحة الإدارة | `server/public/src/main.ts` | `npm run build` داخل `server/public/` |
+| المخطط | `Supabase-Setup/supabase/schemas/*.sql` | الأساس `migrations/*_baseline.sql` = ملفات `schemas/` مدمجة بترتيب الاسم |
 
 ## البناء والفحص
 

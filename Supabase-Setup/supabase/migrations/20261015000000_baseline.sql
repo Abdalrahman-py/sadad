@@ -1,6 +1,6 @@
 -- Schema, internal roles, and stores + control-plane tables.
 -- The baseline is these files concatenated in name order:
---   cat Supabase-Setup/supabase/schemas/*.sql > Supabase-Setup/supabase/baseline/20261015000000_baseline.sql
+--   cat Supabase-Setup/supabase/schemas/*.sql > Supabase-Setup/supabase/migrations/20261015000000_baseline.sql
 -- Supabase's event-trigger helper, when the project has it, is not for API clients.
 do $$ begin
   if to_regprocedure('public.rls_auto_enable()') is not null then

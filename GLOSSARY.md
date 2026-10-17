@@ -58,9 +58,6 @@ the measured inventory and cutover gate are in `docs/CONTINUE_HERE.md`.
 Android Keystore plus a stable UUID (`InstallationKey`). Different stores on one phone have distinct
 identities. Old global test identities are never adopted by a store.
 
-**Store device** — a phone registered to a store (`store_devices`), with a staff name, identity metadata,
-and its own revocation state. Distinct from an installation.
-
 **Operation** — a single signed ledger change (`contact.create`, `debt.create`, `payment.create`),
 carrying an `operationId`, an `entityId`, and the operations it `dependsOn`.
 
