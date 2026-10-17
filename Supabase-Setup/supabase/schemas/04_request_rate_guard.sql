@@ -6,6 +6,8 @@ begin
   if (select count(*) from sadid_private.request_nonces where installation_id = new.installation_id and created_at > clock_timestamp() - interval '1 minute') >= 300 then
     raise exception 'request_rate_limited';
   end if;
+  -- A proof is accepted up to MAX_CLOCK_SKEW_MS (5 minutes, functions/api/proof.ts) either side of its time, so a nonce must outlive its first use by 10 minutes; 15 leaves a margin.
+  delete from sadid_private.request_nonces where installation_id = new.installation_id and created_at < clock_timestamp() - interval '15 minutes';
   return new;
 end $$;
 revoke all on function sadid_private.request_rate_guard() from public, anon, authenticated, service_role;

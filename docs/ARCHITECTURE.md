@@ -209,7 +209,7 @@ Rules:
 - **Schema hygiene:**
   - The migration chain is squashed into one baseline generated from `supabase/schemas/`; the test project is reset to it once.
   - One declarative file per routine (`supabase/schemas/` + `supabase db diff` generates migrations), so the deployed `apply()` is readable in one place.
-  - Rows get pruned by pg_cron: expired capabilities, nonces and sessions.
+  - Rows get pruned inline, per installation, by the routine that writes them: nonces after 15 minutes, capabilities once expired. Supabase Auth owns `auth.sessions`.
   - Missing indexes get added.
   - The per-store dashboard loop becomes a set-based query.
 - **Single contract source:**
@@ -275,7 +275,7 @@ Built and tested locally (pglite + Deno), then switched on in one cloud reset.
    - `stores` without password columns; `store_memberships(user_id → auth.users)`; `installations` as the only device registry (label, staff name, permissions, status), capped by `stores.allowed_devices`;
    - `apply()` in one readable definition, batch apply, `changes(after, limit)`, no `FOR UPDATE` on read paths;
    - status and subscription enforced in `current_capability`;
-   - B8 indexes; pg_cron pruning of capabilities and nonces; set-based admin summaries.
+   - B8 indexes; inline per-installation pruning of nonces (after 15 minutes) and capabilities (once expired); set-based admin summaries.
 2. **One identity (ADR-002):** Supabase Auth only. A store is the Auth user `<username>@stores.sadad.invalid`. An admin is an Auth user with `app_metadata.role` = `admin` or `support`; the JWT already carries `app_metadata`, so no hook. `force_password_change` lives in `app_metadata`. Supabase Auth rate limits replace `login_rate_limits`.
 3. **One function `api`:** Hono + zod + `auth.getClaims()`. One auth middleware, one CORS/error module, error codes from `contract/errors.json`.
    - `/v1/mobile/*`: enroll, lease, `changes`, batch `operations` (≤100, per-op receipts), recovery.
