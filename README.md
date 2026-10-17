@@ -121,8 +121,9 @@ git push origin v2.5.12
 GitHub Pages deployment is configured in `.github/workflows/admin-pages.yml` and runs for both the
 upstream repo (`ibrahem57/sadad`) and the owner's mirror (`Abdalrahman-py/sadad`); any other fork
 stays quiet. The dashboard is published at <https://abdalrahman-py.github.io/sadad/>; which build is
-live is recorded in `docs/CONTINUE_HERE.md`. It is rebuilt only when `server/public/**`,
-`contract/**`, `tools/check.sh` or the workflow itself change, so it can lag the tree.
+live is recorded in `docs/CONTINUE_HERE.md`. A push or pull request that changes `server/public/**`,
+`contract/**`, `tools/check.sh` or the workflow only runs the checks; the site is published only
+when someone runs the workflow by hand (`workflow_dispatch`), so it can lag the tree.
 
 افتح [لوحة الإدارة المنشورة](https://abdalrahman-py.github.io/sadad/) وسجّل الدخول ببريد حساب
 Supabase Auth ذي دور الإدارة أو الدعم؛ اطلب الحساب من مسؤول الفريق. اللوحة ملفات ثابتة تتصل
