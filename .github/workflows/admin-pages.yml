@@ -1,18 +1,18 @@
-name: Deploy admin dashboard to GitHub Pages
+name: Admin dashboard checks and GitHub Pages deploy
 
 on:
   push:
     branches: [main]
     paths:
       - 'server/public/**'
-      - 'tools/build-admin-pages.cjs'
-      - 'tools/admin-dashboard.test.cjs'
+      - 'contract/**'
+      - 'tools/check.sh'
       - '.github/workflows/admin-pages.yml'
   pull_request:
     paths:
       - 'server/public/**'
-      - 'tools/build-admin-pages.cjs'
-      - 'tools/admin-dashboard.test.cjs'
+      - 'contract/**'
+      - 'tools/check.sh'
       - '.github/workflows/admin-pages.yml'
   workflow_dispatch:
 
@@ -32,14 +32,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Dashboard regression checks
-        run: node tools/admin-dashboard.test.cjs
-      - name: Build dashboard assets
-        run: node tools/build-admin-pages.cjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Typecheck, lint, unit tests, build and Playwright smoke
+        run: ./tools/check.sh dashboard
   deploy:
     needs: checks
-    # Publish from the upstream repo and from the owner's mirror; any other fork stays quiet.
-    if: github.event_name != 'pull_request' && (github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad')
+    # Publishing is a human step (run this workflow by hand): a push to main only checks, so the
+    # live site never switches backends on a merge (docs/adr/003-dashboard-hosting.md). Publish from
+    # the upstream repo and from the owner's mirror; any other fork stays quiet.
+    if: github.event_name == 'workflow_dispatch' && (github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -54,8 +57,12 @@ jobs:
           # workflow token is not allowed to create the site, this step fails with the same
           # "repository has Pages enabled" error and an owner must enable it by hand.
           enablement: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Build dashboard assets
-        run: node tools/build-admin-pages.cjs
+        working-directory: server/public
+        run: npm ci --no-audit --no-fund && npm run build
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

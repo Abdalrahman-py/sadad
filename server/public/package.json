@@ -1,0 +1,28 @@
+{
+  "name": "sadad-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "gen:api": "openapi-typescript ../../contract/openapi.json -o src/generated/api.d.ts",
+    "typecheck": "npm run gen:api && tsc --noEmit",
+    "lint": "biome check .",
+    "test": "npm run gen:api && vitest run",
+    "build": "npm run gen:api && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@supabase/auth-js": "2.117.3",
+    "lit-html": "3.3.3",
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.56.1",
+    "happy-dom": "21.0.3",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  }
+}
