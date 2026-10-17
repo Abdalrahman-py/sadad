@@ -1,0 +1,18 @@
+{
+  "description": "POST /v1/admin/stores. The api creates the Auth user <username lowercased>@stores.sadad.invalid with a generated 24-character temporary password and app_metadata { role: store, force_password_change: true }. {storeId} and {password} are filled in by the test.",
+  "request": {
+    "name": "بقالة الزاوية",
+    "username": "corner-shop",
+    "subscriptionMode": "timed",
+    "subscriptionDays": 30,
+    "allowedDevices": 2,
+    "debtorLimit": 300,
+    "permissions": { "export": false }
+  },
+  "response": {
+    "ok": true,
+    "storeId": "{storeId}",
+    "username": "corner-shop",
+    "temporaryPassword": "{password}"
+  }
+}

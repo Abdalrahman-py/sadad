@@ -495,16 +495,30 @@ do $$ declare t text; begin
   end loop;
 end $$;
 -- The api creates the Auth user <username>@stores.sadad.invalid first, then links it here in one transaction.
-create function public.sadid_create_store(p_user uuid, p_name text, p_username text) returns bigint
+-- p_settings takes the keys of sadid_private.store_settings plus subscriptionMode and subscriptionDays.
+create function public.sadid_create_store(p_user uuid, p_name text, p_username text, p_settings jsonb default '{}'::jsonb) returns bigint
 language plpgsql security definer set search_path = '' as $$
-declare v_store bigint;
+declare s public.stores;
 begin
-  insert into public.stores(name, username) values (p_name, p_username) returning id into v_store;
-  insert into sadid_private.store_memberships(user_id, store_id) values (p_user, v_store);
-  return v_store;
+  if jsonb_typeof(p_settings) is distinct from 'object' then raise exception 'invalid_input'; end if;
+  begin
+    insert into public.stores(name, username) values (p_name, p_username) returning * into s;
+  exception when unique_violation then
+    raise exception 'username_taken';
+  end;
+  s := sadid_private.store_settings(
+    s,
+    (p_settings - 'subscriptionMode' - 'subscriptionDays') || jsonb_build_object('name', p_name, 'username', p_username)
+  );
+  if p_settings ? 'subscriptionMode' then
+    s := sadid_private.store_subscription(s, p_settings ->> 'subscriptionMode', (p_settings ->> 'subscriptionDays')::integer, false);
+  end if;
+  s := sadid_private.save_store(s);
+  insert into sadid_private.store_memberships(user_id, store_id) values (p_user, s.id);
+  return s.id;
 end $$;
-revoke all on function public.sadid_create_store(uuid, text, text) from public, anon, authenticated;
-grant execute on function public.sadid_create_store(uuid, text, text) to service_role;
+revoke all on function public.sadid_create_store(uuid, text, text, jsonb) from public, anon, authenticated;
+grant execute on function public.sadid_create_store(uuid, text, text, jsonb) to service_role;
 -- The public key the api verifies a device proof against.
 create function sadid_private.installation_key(p_user uuid, p_session uuid, p_installation uuid) returns jsonb
 language sql stable security definer set search_path = '' as $$
@@ -1147,35 +1161,70 @@ begin
 end $$;
 revoke all on function public.sadid_outcomes(uuid[]) from public, anon, service_role;
 grant execute on function public.sadid_outcomes(uuid[]) to authenticated;
--- Devices waiting for approval.
-create function sadid_private.pending_installations() returns jsonb
+-- Devices waiting for approval, newest first; q matches part of the label, staff name or store name.
+create function sadid_private.pending_installations(
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50
+) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 100);
+  v_query text := nullif(lower(trim(coalesce(p_query, ''))), '');
+  v_rows jsonb;
 begin
   if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
-  return coalesce((
-    select jsonb_agg(jsonb_build_object(
-      'installationId', i.id,
-      'storeId', i.store_id,
-      'generation', i.generation,
-      'label', i.label,
-      'staffName', i.staff_name,
-      'permissions', i.permissions,
-      'status', i.status,
-      'createdAt', i.created_at
-    ))
+  if p_after is not null and jsonb_typeof(p_after) <> 'object' then raise exception 'invalid_input'; end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'installationId', t.id,
+    'storeId', t.store_id,
+    'storeName', t.store_name,
+    'generation', t.generation,
+    'label', t.label,
+    'staffName', t.staff_name,
+    'permissions', t.permissions,
+    'status', t.status,
+    'createdAt', t.created_at
+  ) order by t.created_at desc, t.id desc), '[]'::jsonb) into v_rows
+  from (
+    select i.*, s.name as store_name
     from sadid_private.installations i
+    join public.stores s on s.id = i.store_id
     where i.status = 'pending'
-  ), '[]'::jsonb);
+      and (p_after is null or (i.created_at, i.id) < ((p_after ->> 'at')::timestamptz, (p_after ->> 'id')::uuid))
+      and (v_query is null
+        or strpos(lower(i.label), v_query) > 0
+        or strpos(lower(i.staff_name), v_query) > 0
+        or strpos(lower(s.name), v_query) > 0)
+    order by i.created_at desc, i.id desc
+    limit v_limit + 1
+  ) t;
+
+  if jsonb_array_length(v_rows) > v_limit then
+    return jsonb_build_object(
+      'installations', v_rows - v_limit,
+      'nextCursor', jsonb_build_object(
+        'at', v_rows -> (v_limit - 1) -> 'createdAt',
+        'id', v_rows -> (v_limit - 1) -> 'installationId'
+      )
+    );
+  end if;
+  return jsonb_build_object('installations', v_rows, 'nextCursor', null);
 end $$;
 
-create function public.sadid_pending_installations() returns jsonb
+create function public.sadid_pending_installations(
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50
+) returns jsonb
 language sql stable security invoker set search_path = '' as $$
-  select sadid_private.pending_installations()
+  select sadid_private.pending_installations(p_query, p_after, p_limit)
 $$;
-revoke all on function sadid_private.pending_installations() from public, anon, service_role;
-grant execute on function sadid_private.pending_installations() to authenticated;
-revoke all on function public.sadid_pending_installations() from public, anon, service_role;
-grant execute on function public.sadid_pending_installations() to authenticated;
+revoke all on function sadid_private.pending_installations(text, jsonb, integer) from public, anon, service_role;
+grant execute on function sadid_private.pending_installations(text, jsonb, integer) to authenticated;
+revoke all on function public.sadid_pending_installations(text, jsonb, integer) from public, anon, service_role;
+grant execute on function public.sadid_pending_installations(text, jsonb, integer) to authenticated;
 -- Activates a pending device, within the store's device cap.
 create function sadid_private.approve_installation(p_installation uuid, p_reason text) returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -1387,7 +1436,7 @@ revoke all on function sadid_private.support_snapshot(bigint, text) from public,
 grant execute on function sadid_private.support_snapshot(bigint, text) to authenticated;
 revoke all on function public.sadid_support_snapshot(bigint, text) from public, anon, service_role;
 grant execute on function public.sadid_support_snapshot(bigint, text) to authenticated;
--- Balances per store for the dashboard, with an audit row each.
+-- Balances in cents per store for the dashboard, with an audit row each.
 create function sadid_private.admin_summaries(p_stores bigint[]) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -1429,9 +1478,9 @@ begin
       'activeContacts', (select count(*) from public.sadid_contacts where store_id = store_number and not archived),
       'debts', count(*),
       'openDebts', count(*) filter (where remaining > 0),
-      'debtTotal', coalesce(sum(principal), 0) / 100.0,
-      'receivable', coalesce(sum(remaining) filter (where direction = 'receivable'), 0) / 100.0,
-      'payable', coalesce(sum(remaining) filter (where direction = 'payable'), 0) / 100.0,
+      'debtTotalCents', coalesce(sum(principal), 0),
+      'receivableCents', coalesce(sum(remaining) filter (where direction = 'receivable'), 0),
+      'payableCents', coalesce(sum(remaining) filter (where direction = 'payable'), 0),
       'payments', (select count(*) from public.sadid_payments where store_id = store_number)
     ) into summary from balances;
 
@@ -1454,14 +1503,24 @@ revoke all on function sadid_private.admin_summaries(bigint[]) from public, anon
 grant execute on function sadid_private.admin_summaries(bigint[]) to authenticated;
 revoke all on function public.sadid_admin_summaries(bigint[]) from public, anon, service_role;
 grant execute on function public.sadid_admin_summaries(bigint[]) to authenticated;
--- One store's devices, control events, audit reads and recovery permits.
+-- One store with its devices and recovery permits; the audit trail is paged by sadid_admin_audit.
 create function sadid_private.admin_controls(p_store bigint) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
+declare
+  s public.stores;
+  v_history boolean;
+  v_ledger boolean;
 begin
   if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
-  if not exists (select 1 from public.stores where id = p_store) then raise exception 'store_not_found'; end if;
+  select * into s from public.stores where id = p_store;
+  if not found then raise exception 'store_not_found'; end if;
+  v_history := exists (select 1 from sadid_private.installations where store_id = p_store);
+  v_ledger := exists (select 1 from public.sadid_ledger_state where store_id = p_store);
   return jsonb_build_object(
-    'hasDeviceHistory', exists (select 1 from sadid_private.installations where store_id = p_store),
+    'store', sadid_private.store_json(s),
+    'hasDeviceHistory', v_history,
+    'ledgerInitialized', v_ledger,
+    'canDelete', not v_history and not v_ledger,
     'installations', coalesce((
       select jsonb_agg(jsonb_build_object(
         'installationId', id,
@@ -1479,17 +1538,17 @@ begin
       ) order by generation desc)
       from sadid_private.installations where store_id = p_store
     ), '[]'::jsonb),
-    'controlEvents', coalesce((
-      select jsonb_agg(to_jsonb(t))
-      from (select id, actor, kind, reason, created_at from sadid_private.control_events where store_id = p_store order by id desc limit 100) t
-    ), '[]'::jsonb),
-    'accessEvents', coalesce((
-      select jsonb_agg(to_jsonb(t))
-      from (select id, actor, reason, record_counts, created_at from sadid_private.admin_access_events where store_id = p_store order by created_at desc limit 50) t
-    ), '[]'::jsonb),
     'recoveryPermits', coalesce((
-      select jsonb_agg(to_jsonb(t))
-      from (select id, old_installation_id, new_installation_id, approved_by, reason, expires_at, created_at from sadid_private.recovery_permits where store_id = p_store order by created_at desc limit 20) t
+      select jsonb_agg(jsonb_build_object(
+        'permitId', id,
+        'oldInstallationId', old_installation_id,
+        'newInstallationId', new_installation_id,
+        'approvedBy', approved_by,
+        'reason', reason,
+        'expiresAt', expires_at,
+        'createdAt', created_at
+      ) order by created_at desc)
+      from (select * from sadid_private.recovery_permits where store_id = p_store order by created_at desc limit 20) t
     ), '[]'::jsonb)
   );
 end $$;
@@ -1547,5 +1606,712 @@ revoke all on function sadid_private.admin_account_action(bigint, text, text) fr
 grant execute on function sadid_private.admin_account_action(bigint, text, text) to authenticated;
 revoke all on function public.sadid_admin_account_action(bigint, text, text) from public, anon, service_role;
 grant execute on function public.sadid_admin_account_action(bigint, text, text) to authenticated;
+-- Store helpers for the admin routines; none is callable through the Data API.
+create function sadid_private.now_ms() returns bigint
+language sql stable security invoker set search_path = '' as $$
+  select (extract(epoch from statement_timestamp()) * 1000)::bigint
+$$;
+
+create function sadid_private.subscription_active(s public.stores) returns boolean
+language sql stable security invoker set search_path = '' as $$
+  select case s.subscription_mode
+    when 'permanent' then true
+    when 'paused' then false
+    else coalesce(s.subscription_expires_at, 0) > sadid_private.now_ms()
+  end
+$$;
+
+-- One store as the dashboard shows it.
+create function sadid_private.store_json(s public.stores) returns jsonb
+language sql stable security invoker set search_path = '' as $$
+  select jsonb_build_object(
+    'id', s.id,
+    'name', s.name,
+    'username', s.username,
+    'status', s.status,
+    'archived', s.status = 'deleted',
+    'verified', s.verified,
+    'debtorLimit', s.debtor_limit,
+    'allowedDevices', s.allowed_devices,
+    'permissions', s.permissions,
+    'revision', s.revision,
+    'createdAt', s.created_at,
+    'subscriptionMode', s.subscription_mode,
+    'subscriptionActive', sadid_private.subscription_active(s),
+    'subscriptionStartedAt', s.subscription_started_at,
+    'subscriptionExpiresAt', s.subscription_expires_at,
+    'subscriptionRemainingMs', case s.subscription_mode
+      when 'paused' then greatest(coalesce(s.subscription_paused_remaining_ms, 0), 0)
+      when 'timed' then greatest(coalesce(s.subscription_expires_at, 0) - sadid_private.now_ms(), 0)
+    end,
+    'activeDevices', (select count(*) from sadid_private.installations where store_id = s.id and status = 'active'),
+    'pendingDevices', (select count(*) from sadid_private.installations where store_id = s.id and status = 'pending')
+  )
+$$;
+
+-- Applies dashboard settings to a store row; an unknown key or a bad value is invalid_input.
+create function sadid_private.store_settings(s public.stores, p_changes jsonb) returns public.stores
+language plpgsql stable security invoker set search_path = '' as $$
+declare
+  k text;
+  v jsonb;
+begin
+  if jsonb_typeof(p_changes) is distinct from 'object' then raise exception 'invalid_input'; end if;
+  for k, v in select key, value from jsonb_each(p_changes) loop
+    case k
+      when 'name' then
+        if jsonb_typeof(v) <> 'string' or length(trim(v #>> '{}')) not between 1 and 120 then raise exception 'invalid_input'; end if;
+        s.name := trim(v #>> '{}');
+      when 'username' then
+        -- The Auth email is <username>@stores.sadad.invalid, so ASCII only and at most 64 characters.
+        if jsonb_typeof(v) <> 'string' or (v #>> '{}') !~ '^[A-Za-z0-9._-]{3,64}$' then raise exception 'invalid_input'; end if;
+        s.username := v #>> '{}';
+      when 'verified' then
+        if jsonb_typeof(v) <> 'boolean' then raise exception 'invalid_input'; end if;
+        s.verified := (v #>> '{}')::boolean;
+      when 'debtorLimit' then
+        if jsonb_typeof(v) <> 'number' or (v #>> '{}')::numeric not between 0 and 1000000 or (v #>> '{}')::numeric % 1 <> 0 then
+          raise exception 'invalid_input';
+        end if;
+        s.debtor_limit := (v #>> '{}')::integer;
+      when 'allowedDevices' then
+        if jsonb_typeof(v) <> 'number' or (v #>> '{}')::numeric not between 1 and 50 or (v #>> '{}')::numeric % 1 <> 0 then
+          raise exception 'invalid_input';
+        end if;
+        s.allowed_devices := (v #>> '{}')::integer;
+      when 'permissions' then
+        if jsonb_typeof(v) <> 'object' or exists (
+          select 1 from jsonb_each(v) p
+          where p.key not in ('contacts', 'debts', 'payments', 'reports', 'analytics', 'export', 'whatsapp', 'appLock')
+             or jsonb_typeof(p.value) <> 'boolean'
+        ) then
+          raise exception 'invalid_input';
+        end if;
+        s.permissions := s.permissions || v;
+      else
+        raise exception 'invalid_input';
+    end case;
+  end loop;
+  return s;
+end $$;
+
+-- permanent and timed make the store active; paused suspends it and keeps a timed store's remaining time.
+create function sadid_private.store_subscription(s public.stores, p_mode text, p_days integer, p_extend boolean) returns public.stores
+language plpgsql stable security invoker set search_path = '' as $$
+declare
+  v_now bigint := sadid_private.now_ms();
+  v_base bigint;
+begin
+  if p_mode = 'permanent' then
+    s.subscription_started_at := null;
+    s.subscription_expires_at := null;
+    s.subscription_paused_remaining_ms := null;
+    s.status := 'active';
+  elsif p_mode = 'paused' then
+    if s.subscription_mode = 'timed' then
+      s.subscription_paused_remaining_ms := greatest(coalesce(s.subscription_expires_at, 0) - v_now, 0);
+    end if;
+    s.status := 'suspended';
+  elsif p_mode = 'timed' then
+    if p_days is null or p_days not between 1 and 36500 then raise exception 'invalid_input'; end if;
+    v_base := case
+      when not coalesce(p_extend, false) then v_now
+      when s.subscription_mode = 'paused' then v_now + greatest(coalesce(s.subscription_paused_remaining_ms, 0), 0)
+      else greatest(v_now, coalesce(s.subscription_expires_at, 0))
+    end;
+    s.subscription_expires_at := v_base + p_days::bigint * 86400000;
+    s.subscription_started_at := coalesce(s.subscription_started_at, v_now);
+    s.subscription_paused_remaining_ms := null;
+    s.status := 'active';
+  else
+    raise exception 'invalid_input';
+  end if;
+  s.subscription_mode := p_mode;
+  s.suspend_until := null;
+  return s;
+end $$;
+
+-- Writes a changed store row back and bumps its revision.
+create function sadid_private.save_store(s public.stores) returns public.stores
+language plpgsql security invoker set search_path = '' as $$
+begin
+  update public.stores set
+    name = s.name,
+    username = s.username,
+    status = s.status,
+    suspend_until = s.suspend_until,
+    verified = s.verified,
+    debtor_limit = s.debtor_limit,
+    allowed_devices = s.allowed_devices,
+    permissions = s.permissions,
+    subscription_mode = s.subscription_mode,
+    subscription_started_at = s.subscription_started_at,
+    subscription_expires_at = s.subscription_expires_at,
+    subscription_paused_remaining_ms = s.subscription_paused_remaining_ms,
+    revision = revision + 1
+  where id = s.id
+  returning * into s;
+  return s;
+exception when unique_violation then
+  raise exception 'username_taken';
+end $$;
+
+-- Ends the store's Auth sessions; its capabilities go with them.
+create function sadid_private.end_store_sessions(p_store bigint) returns void
+language sql security invoker set search_path = '' as $$
+  delete from auth.sessions where user_id in (select user_id from sadid_private.store_memberships where store_id = p_store);
+  delete from sadid_private.capabilities where store_id = p_store;
+$$;
+
+revoke all on function
+  sadid_private.now_ms(),
+  sadid_private.subscription_active(public.stores),
+  sadid_private.store_json(public.stores),
+  sadid_private.store_settings(public.stores, jsonb),
+  sadid_private.store_subscription(public.stores, text, integer, boolean),
+  sadid_private.save_store(public.stores),
+  sadid_private.end_store_sessions(bigint)
+from public, anon, authenticated, service_role;
+-- Store accounts for the dashboard: list, settings, subscription, password reset and permanent delete.
+-- The api calls these with the admin's JWT; Auth users are changed through the Auth admin API.
+
+-- admin, support or null; the api checks it before an Auth admin call that no routine guards.
+create function public.sadid_admin_role() returns text
+language sql stable security definer set search_path = '' as $$
+  select sadid_private.jwt_admin_role()
+$$;
+revoke all on function public.sadid_admin_role() from public, anon, service_role;
+grant execute on function public.sadid_admin_role() to authenticated;
+
+create function sadid_private.admin_overview() returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
+  return jsonb_build_object(
+    'stores', (select count(*) from public.stores where status <> 'deleted'),
+    'active', (select count(*) from public.stores where status = 'active'),
+    'suspended', (select count(*) from public.stores where status = 'suspended'),
+    'archived', (select count(*) from public.stores where status = 'deleted'),
+    'verified', (select count(*) from public.stores where status <> 'deleted' and verified),
+    'pendingDevices', (select count(*) from sadid_private.installations where status = 'pending')
+  );
+end $$;
+
+-- Newest first; q matches part of the name or username; p_after is the previous page's nextCursor.
+create function sadid_private.admin_stores(
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50,
+  p_include_archived boolean default false
+) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 100);
+  v_query text := nullif(lower(trim(coalesce(p_query, ''))), '');
+  v_after bigint;
+  v_rows jsonb;
+begin
+  if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
+  if p_after is not null and jsonb_typeof(p_after) <> 'object' then raise exception 'invalid_input'; end if;
+  v_after := (p_after ->> 'id')::bigint;
+
+  select coalesce(jsonb_agg(sadid_private.store_json(t.s) order by (t.s).id desc), '[]'::jsonb) into v_rows
+  from (
+    select s from public.stores s
+    where (coalesce(p_include_archived, false) or s.status <> 'deleted')
+      and (v_after is null or s.id < v_after)
+      and (v_query is null or strpos(lower(s.name), v_query) > 0 or strpos(lower(s.username), v_query) > 0)
+    order by s.id desc
+    limit v_limit + 1
+  ) t;
+
+  if jsonb_array_length(v_rows) > v_limit then
+    return jsonb_build_object(
+      'stores', v_rows - v_limit,
+      'nextCursor', jsonb_build_object('id', v_rows -> (v_limit - 1) -> 'id')
+    );
+  end if;
+  return jsonb_build_object('stores', v_rows, 'nextCursor', null);
+end $$;
+
+-- p_changes: name, username, verified, debtorLimit, allowedDevices, permissions, status (active or suspended).
+create function sadid_private.admin_update_store(p_store bigint, p_changes jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_actor text;
+  v_old public.stores;
+  s public.stores;
+begin
+  if sadid_private.jwt_admin_role() is distinct from 'admin' then raise exception 'admin_authorization_required'; end if;
+  v_actor := sadid_private.jwt_admin_actor();
+  if jsonb_typeof(p_changes) is distinct from 'object' or p_changes = '{}'::jsonb then raise exception 'invalid_input'; end if;
+
+  select * into v_old from public.stores where id = p_store for update;
+  if not found then raise exception 'store_not_found'; end if;
+  if v_old.status = 'deleted' then raise exception 'store_archived'; end if;
+
+  s := sadid_private.store_settings(v_old, p_changes - 'status');
+  if p_changes ? 'status' then
+    if p_changes ->> 'status' = 'active' then
+      if not sadid_private.subscription_active(s) then raise exception 'subscription_inactive'; end if;
+    elsif p_changes ->> 'status' is distinct from 'suspended' then
+      raise exception 'invalid_input';
+    end if;
+    s.status := p_changes ->> 'status';
+    s.suspend_until := null;
+  end if;
+
+  -- Lowering the cap never revokes a device; the admin revokes one first.
+  if s.allowed_devices < (select count(*) from sadid_private.installations where store_id = p_store and status = 'active') then
+    raise exception 'device_limit_reached';
+  end if;
+
+  s := sadid_private.save_store(s);
+  if v_old.status = 'active' and s.status <> 'active' then
+    perform sadid_private.end_store_sessions(p_store);
+  end if;
+
+  insert into sadid_private.control_events(store_id, actor, kind, reason, details)
+  values (p_store, v_actor, 'store.updated', 'Store settings changed in the admin dashboard', p_changes);
+  return jsonb_build_object(
+    'store', sadid_private.store_json(s),
+    'userId', (select user_id from sadid_private.store_memberships where store_id = p_store),
+    'previousUsername', v_old.username
+  );
+end $$;
+
+create function sadid_private.admin_subscription(p_store bigint, p_mode text, p_days integer default null, p_extend boolean default false) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_actor text;
+  v_old public.stores;
+  s public.stores;
+begin
+  if sadid_private.jwt_admin_role() is distinct from 'admin' then raise exception 'admin_authorization_required'; end if;
+  v_actor := sadid_private.jwt_admin_actor();
+
+  select * into v_old from public.stores where id = p_store for update;
+  if not found then raise exception 'store_not_found'; end if;
+  if v_old.status = 'deleted' then raise exception 'store_archived'; end if;
+
+  s := sadid_private.save_store(sadid_private.store_subscription(v_old, p_mode, p_days, p_extend));
+  if v_old.status = 'active' and s.status <> 'active' then
+    perform sadid_private.end_store_sessions(p_store);
+  end if;
+
+  insert into sadid_private.control_events(store_id, actor, kind, reason, details)
+  values (
+    p_store, v_actor, 'store.subscription', 'Subscription changed in the admin dashboard',
+    jsonb_build_object('mode', p_mode, 'days', p_days, 'extend', coalesce(p_extend, false))
+  );
+  return sadid_private.store_json(s);
+end $$;
+
+-- Ends the store's sessions; the api then sets the new password through the Auth admin API.
+create function sadid_private.admin_reset_password(p_store bigint, p_reason text) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_actor text;
+  s public.stores;
+  v_user uuid;
+begin
+  if sadid_private.jwt_admin_role() is distinct from 'admin' then raise exception 'admin_authorization_required'; end if;
+  v_actor := sadid_private.jwt_admin_actor();
+  if length(trim(coalesce(p_reason, ''))) not between 1 and 2000 then raise exception 'reason_required'; end if;
+
+  select * into s from public.stores where id = p_store for update;
+  if not found then raise exception 'store_not_found'; end if;
+  if s.status = 'deleted' then raise exception 'store_archived'; end if;
+  select user_id into v_user from sadid_private.store_memberships where store_id = p_store;
+  if v_user is null then raise exception 'store_not_found'; end if;
+
+  perform sadid_private.end_store_sessions(p_store);
+  insert into sadid_private.control_events(store_id, actor, kind, reason, details)
+  values (p_store, v_actor, 'account.password-reset', p_reason, '{}');
+  return jsonb_build_object('userId', v_user, 'username', s.username);
+end $$;
+
+-- Only a store with no devices and no ledger; p_confirm is its username. The api then deletes the Auth user.
+create function sadid_private.admin_delete_store(p_store bigint, p_confirm text) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_actor text;
+  s public.stores;
+  v_user uuid;
+begin
+  if sadid_private.jwt_admin_role() is distinct from 'admin' then raise exception 'admin_authorization_required'; end if;
+  v_actor := sadid_private.jwt_admin_actor();
+
+  select * into s from public.stores where id = p_store for update;
+  if not found then raise exception 'store_not_found'; end if;
+  if p_confirm is distinct from s.username then raise exception 'delete_confirmation_required'; end if;
+  if exists (select 1 from sadid_private.installations where store_id = p_store)
+     or exists (select 1 from public.sadid_ledger_state where store_id = p_store) then
+    raise exception 'store_has_history';
+  end if;
+
+  select user_id into v_user from sadid_private.store_memberships where store_id = p_store;
+  delete from public.stores where id = p_store;
+  insert into sadid_private.control_events(store_id, actor, kind, reason, details)
+  values (p_store, v_actor, 'account.deleted', 'Permanent delete in the admin dashboard', jsonb_build_object('username', s.username));
+  return jsonb_build_object('storeId', p_store, 'userId', v_user);
+end $$;
+
+create function public.sadid_admin_overview() returns jsonb
+language sql stable security invoker set search_path = '' as $$
+  select sadid_private.admin_overview()
+$$;
+create function public.sadid_admin_stores(
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50,
+  p_include_archived boolean default false
+) returns jsonb
+language sql stable security invoker set search_path = '' as $$
+  select sadid_private.admin_stores(p_query, p_after, p_limit, p_include_archived)
+$$;
+create function public.sadid_admin_update_store(p_store bigint, p_changes jsonb) returns jsonb
+language sql security invoker set search_path = '' as $$
+  select sadid_private.admin_update_store(p_store, p_changes)
+$$;
+create function public.sadid_admin_subscription(p_store bigint, p_mode text, p_days integer default null, p_extend boolean default false) returns jsonb
+language sql security invoker set search_path = '' as $$
+  select sadid_private.admin_subscription(p_store, p_mode, p_days, p_extend)
+$$;
+create function public.sadid_admin_reset_password(p_store bigint, p_reason text) returns jsonb
+language sql security invoker set search_path = '' as $$
+  select sadid_private.admin_reset_password(p_store, p_reason)
+$$;
+create function public.sadid_admin_delete_store(p_store bigint, p_confirm text) returns jsonb
+language sql security invoker set search_path = '' as $$
+  select sadid_private.admin_delete_store(p_store, p_confirm)
+$$;
+
+revoke all on function
+  sadid_private.admin_overview(),
+  sadid_private.admin_stores(text, jsonb, integer, boolean),
+  sadid_private.admin_update_store(bigint, jsonb),
+  sadid_private.admin_subscription(bigint, text, integer, boolean),
+  sadid_private.admin_reset_password(bigint, text),
+  sadid_private.admin_delete_store(bigint, text),
+  public.sadid_admin_overview(),
+  public.sadid_admin_stores(text, jsonb, integer, boolean),
+  public.sadid_admin_update_store(bigint, jsonb),
+  public.sadid_admin_subscription(bigint, text, integer, boolean),
+  public.sadid_admin_reset_password(bigint, text),
+  public.sadid_admin_delete_store(bigint, text)
+from public, anon, service_role;
+grant execute on function
+  sadid_private.admin_overview(),
+  sadid_private.admin_stores(text, jsonb, integer, boolean),
+  sadid_private.admin_update_store(bigint, jsonb),
+  sadid_private.admin_subscription(bigint, text, integer, boolean),
+  sadid_private.admin_reset_password(bigint, text),
+  sadid_private.admin_delete_store(bigint, text),
+  public.sadid_admin_overview(),
+  public.sadid_admin_stores(text, jsonb, integer, boolean),
+  public.sadid_admin_update_store(bigint, jsonb),
+  public.sadid_admin_subscription(bigint, text, integer, boolean),
+  public.sadid_admin_reset_password(bigint, text),
+  public.sadid_admin_delete_store(bigint, text)
+to authenticated;
+-- Each debt's principal after its latest correction, and what was paid on it net of reversals.
+create function sadid_private.debt_balances(p_store bigint)
+returns table (id uuid, contact_id uuid, direction text, amount_cents bigint, principal bigint, paid bigint)
+language sql stable security invoker set search_path = '' as $$
+  select d.id, d.contact_id, d.direction, d.amount_cents,
+         coalesce(a.amount_cents, d.amount_cents),
+         coalesce(p.paid, 0)::bigint
+  from public.sadid_debts d
+  left join lateral (
+    select x.amount_cents from public.sadid_adjustments x
+    where x.store_id = d.store_id and x.debt_id = d.id order by x.version desc limit 1
+  ) a on true
+  left join lateral (
+    select sum(x.amount_cents) as paid from public.sadid_payments x
+    where x.store_id = d.store_id and x.debt_id = d.id
+      and not exists (select 1 from public.sadid_reversals r where r.store_id = x.store_id and r.payment_id = x.id)
+  ) p on true
+  where d.store_id = p_store
+$$;
+revoke all on function sadid_private.debt_balances(bigint) from public, anon, authenticated, service_role;
+grant execute on function sadid_private.debt_balances(bigint) to sadid_support_reader;
+
+-- One page of a store's ledger for admin and support, with an audit row per read. Money is in cents.
+-- p_kind: contacts, debts, payments (newest first) or events (latest sequence first).
+create function sadid_private.admin_ledger(
+  p_store bigint,
+  p_kind text,
+  p_reason text,
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  actor_name text;
+  st public.sadid_ledger_state;
+  v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 200);
+  v_query text := nullif(lower(trim(coalesce(p_query, ''))), '');
+  v_at timestamptz;
+  v_id uuid;
+  v_sequence bigint;
+  v_rows jsonb;
+  v_next jsonb;
+  v_totals jsonb;
+begin
+  if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
+  actor_name := sadid_private.jwt_admin_actor();
+  if length(trim(coalesce(p_reason, ''))) not between 1 and 2000 then raise exception 'reason_required'; end if;
+  if p_kind not in ('contacts', 'debts', 'payments', 'events') then raise exception 'invalid_input'; end if;
+  if p_after is not null and jsonb_typeof(p_after) <> 'object' then raise exception 'invalid_input'; end if;
+  if p_kind = 'events' then
+    v_sequence := (p_after ->> 'sequence')::bigint;
+  else
+    v_at := (p_after ->> 'at')::timestamptz;
+    v_id := (p_after ->> 'id')::uuid;
+  end if;
+
+  perform set_config('sadid.support.store', p_store::text, true);
+  select * into st from public.sadid_ledger_state where store_id = p_store;
+  if not found then raise exception 'ledger_not_initialized'; end if;
+
+  select jsonb_build_object(
+    'receivableCents', coalesce(sum(principal - paid) filter (where direction = 'receivable'), 0),
+    'payableCents', coalesce(sum(principal - paid) filter (where direction = 'payable'), 0)
+  ) into v_totals from sadid_private.debt_balances(p_store);
+  v_totals := v_totals || jsonb_build_object('netCents', (v_totals ->> 'receivableCents')::bigint - (v_totals ->> 'payableCents')::bigint);
+
+  if p_kind = 'contacts' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id', t.id,
+      'name', t.name,
+      'phone', t.phone,
+      'category', t.category,
+      'note', t.note,
+      'archived', t.archived,
+      'receivableCents', t.receivable,
+      'payableCents', t.payable,
+      'createdAt', t.created_at
+    ) order by t.created_at desc, t.id desc), '[]'::jsonb) into v_rows
+    from (
+      with page as (
+        select c.id, c.name, c.phone, c.category, c.note, c.archived, c.created_at
+        from public.sadid_contacts c
+        where c.store_id = p_store
+          and (v_at is null or (c.created_at, c.id) < (v_at, v_id))
+          and (v_query is null or strpos(lower(c.name), v_query) > 0 or strpos(c.phone, v_query) > 0)
+        order by c.created_at desc, c.id desc
+        limit v_limit + 1
+      ),
+      balances as (
+        select b.contact_id,
+               sum(b.principal - b.paid) filter (where b.direction = 'receivable') as receivable,
+               sum(b.principal - b.paid) filter (where b.direction = 'payable') as payable
+        from sadid_private.debt_balances(p_store) b
+        where b.contact_id in (select id from page)
+        group by b.contact_id
+      )
+      select page.*, coalesce(balances.receivable, 0) as receivable, coalesce(balances.payable, 0) as payable
+      from page left join balances on balances.contact_id = page.id
+    ) t;
+  elsif p_kind = 'debts' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id', t.id,
+      'contactId', t.contact_id,
+      'contactName', t.contact_name,
+      'direction', t.direction,
+      'originalCents', t.amount_cents,
+      'amountCents', t.principal,
+      'paidCents', t.paid,
+      'remainingCents', t.principal - t.paid,
+      'note', t.note,
+      'dueDate', t.due_date,
+      'createdAt', t.created_at
+    ) order by t.created_at desc, t.id desc), '[]'::jsonb) into v_rows
+    from (
+      select d.id, d.contact_id, c.name as contact_name, d.direction, d.amount_cents, b.principal, b.paid,
+             d.note, d.due_date, d.created_at
+      from public.sadid_debts d
+      join sadid_private.debt_balances(p_store) b on b.id = d.id
+      join public.sadid_contacts c on c.store_id = d.store_id and c.id = d.contact_id
+      where d.store_id = p_store
+        and (v_at is null or (d.created_at, d.id) < (v_at, v_id))
+        and (v_query is null or strpos(lower(c.name), v_query) > 0 or strpos(lower(d.note), v_query) > 0)
+      order by d.created_at desc, d.id desc
+      limit v_limit + 1
+    ) t;
+  elsif p_kind = 'payments' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id', t.id,
+      'debtId', t.debt_id,
+      'contactId', t.contact_id,
+      'contactName', t.contact_name,
+      'direction', t.direction,
+      'amountCents', t.amount_cents,
+      'method', t.method,
+      'note', t.note,
+      'reversed', t.reversed,
+      'createdAt', t.created_at
+    ) order by t.created_at desc, t.id desc), '[]'::jsonb) into v_rows
+    from (
+      select x.id, x.debt_id, d.contact_id, c.name as contact_name, d.direction, x.amount_cents, x.method, x.note,
+             exists (select 1 from public.sadid_reversals r where r.store_id = x.store_id and r.payment_id = x.id) as reversed,
+             x.created_at
+      from public.sadid_payments x
+      join public.sadid_debts d on d.store_id = x.store_id and d.id = x.debt_id
+      join public.sadid_contacts c on c.store_id = d.store_id and c.id = d.contact_id
+      where x.store_id = p_store
+        and (v_at is null or (x.created_at, x.id) < (v_at, v_id))
+        and (v_query is null or strpos(lower(c.name), v_query) > 0 or strpos(lower(x.note), v_query) > 0)
+      order by x.created_at desc, x.id desc
+      limit v_limit + 1
+    ) t;
+  else
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'sequence', t.sequence,
+      'operationId', t.operation_id,
+      'kind', t.kind,
+      'entityId', t.entity_id,
+      'userId', t.user_id,
+      'installationId', t.installation_id,
+      'generation', t.generation,
+      'command', t.command,
+      'createdAt', t.created_at
+    ) order by t.sequence desc), '[]'::jsonb) into v_rows
+    from (
+      select * from public.sadid_events e
+      where e.store_id = p_store
+        and (v_sequence is null or e.sequence < v_sequence)
+        and (v_query is null or strpos(e.kind, v_query) > 0)
+      order by e.sequence desc
+      limit v_limit + 1
+    ) t;
+  end if;
+
+  if jsonb_array_length(v_rows) > v_limit then
+    v_rows := v_rows - v_limit;
+    v_next := case p_kind
+      when 'events' then jsonb_build_object('sequence', v_rows -> (v_limit - 1) -> 'sequence')
+      else jsonb_build_object('at', v_rows -> (v_limit - 1) -> 'createdAt', 'id', v_rows -> (v_limit - 1) -> 'id')
+    end;
+  end if;
+
+  insert into sadid_private.admin_access_events(store_id, actor, reason, outcome, record_counts)
+  values (p_store, actor_name, p_reason, 'allowed', jsonb_build_object(p_kind, jsonb_array_length(v_rows)));
+
+  return jsonb_build_object(
+    'storeId', p_store,
+    'kind', p_kind,
+    'epoch', st.epoch,
+    'latestSequence', st.cursor,
+    'totals', v_totals,
+    'rows', v_rows,
+    'nextCursor', v_next
+  );
+end $$;
+alter function sadid_private.admin_ledger(bigint, text, text, text, jsonb, integer) owner to sadid_support_reader;
+
+create function public.sadid_admin_ledger(
+  p_store bigint,
+  p_kind text,
+  p_reason text,
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50
+) returns jsonb
+language sql security invoker set search_path = '' as $$
+  select sadid_private.admin_ledger(p_store, p_kind, p_reason, p_query, p_after, p_limit)
+$$;
+revoke all on function sadid_private.admin_ledger(bigint, text, text, text, jsonb, integer) from public, anon, service_role;
+grant execute on function sadid_private.admin_ledger(bigint, text, text, text, jsonb, integer) to authenticated;
+revoke all on function public.sadid_admin_ledger(bigint, text, text, text, jsonb, integer) from public, anon, service_role;
+grant execute on function public.sadid_admin_ledger(bigint, text, text, text, jsonb, integer) to authenticated;
+-- The admin audit trail, newest first. p_source: control (admin actions) or access (audited ledger reads).
+-- p_store narrows it to one store; q matches part of the actor, kind or reason.
+create function sadid_private.admin_audit(
+  p_source text,
+  p_store bigint default null,
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50
+) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 200);
+  v_query text := nullif(lower(trim(coalesce(p_query, ''))), '');
+  v_rows jsonb;
+  v_next jsonb;
+begin
+  if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
+  if p_after is not null and jsonb_typeof(p_after) <> 'object' then raise exception 'invalid_input'; end if;
+
+  if p_source = 'control' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id', t.id,
+      'storeId', t.store_id,
+      'actor', t.actor,
+      'kind', t.kind,
+      'reason', t.reason,
+      'details', t.details,
+      'createdAt', t.created_at
+    ) order by t.id desc), '[]'::jsonb) into v_rows
+    from (
+      select * from sadid_private.control_events e
+      where (p_store is null or e.store_id = p_store)
+        and (p_after is null or e.id < (p_after ->> 'id')::bigint)
+        and (v_query is null
+          or strpos(lower(e.actor), v_query) > 0
+          or strpos(lower(e.kind), v_query) > 0
+          or strpos(lower(e.reason), v_query) > 0)
+      order by e.id desc
+      limit v_limit + 1
+    ) t;
+  elsif p_source = 'access' then
+    select coalesce(jsonb_agg(jsonb_build_object(
+      'id', t.id,
+      'storeId', t.store_id,
+      'actor', t.actor,
+      'reason', t.reason,
+      'outcome', t.outcome,
+      'recordCounts', t.record_counts,
+      'createdAt', t.created_at
+    ) order by t.created_at desc, t.id desc), '[]'::jsonb) into v_rows
+    from (
+      select * from sadid_private.admin_access_events e
+      where (p_store is null or e.store_id = p_store)
+        and (p_after is null or (e.created_at, e.id) < ((p_after ->> 'at')::timestamptz, (p_after ->> 'id')::uuid))
+        and (v_query is null or strpos(lower(e.actor), v_query) > 0 or strpos(lower(e.reason), v_query) > 0)
+      order by e.created_at desc, e.id desc
+      limit v_limit + 1
+    ) t;
+  else
+    raise exception 'invalid_input';
+  end if;
+
+  if jsonb_array_length(v_rows) > v_limit then
+    v_rows := v_rows - v_limit;
+    v_next := case p_source
+      when 'control' then jsonb_build_object('id', v_rows -> (v_limit - 1) -> 'id')
+      else jsonb_build_object('at', v_rows -> (v_limit - 1) -> 'createdAt', 'id', v_rows -> (v_limit - 1) -> 'id')
+    end;
+  end if;
+  return jsonb_build_object('events', v_rows, 'nextCursor', v_next);
+end $$;
+
+create function public.sadid_admin_audit(
+  p_source text,
+  p_store bigint default null,
+  p_query text default null,
+  p_after jsonb default null,
+  p_limit integer default 50
+) returns jsonb
+language sql stable security invoker set search_path = '' as $$
+  select sadid_private.admin_audit(p_source, p_store, p_query, p_after, p_limit)
+$$;
+revoke all on function sadid_private.admin_audit(text, bigint, text, jsonb, integer) from public, anon, service_role;
+grant execute on function sadid_private.admin_audit(text, bigint, text, jsonb, integer) to authenticated;
+revoke all on function public.sadid_admin_audit(text, bigint, text, jsonb, integer) from public, anon, service_role;
+grant execute on function public.sadid_admin_audit(text, bigint, text, jsonb, integer) to authenticated;
 -- Last file: the internal roles needed CREATE only to own their routines.
 revoke create on schema sadid_private from sadid_ledger_executor, sadid_auth_reader, sadid_support_reader;

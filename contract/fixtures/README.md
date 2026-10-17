@@ -1,5 +1,14 @@
 Shared JSON fixtures loaded by both the Edge (`api`) Deno tests and the Kotlin `:ledger-core` tests.
 
+## `admin/`
+
+The `/v1/admin/*` contract, used by `functions/api/admin_test.ts` and `functions/api/admin/*_test.ts`.
+
+- `create-store.json`: `POST /v1/admin/stores` request and response. `{storeId}` and `{password}` are filled in by the test.
+- `refusals.json`: HTTP status and contract code for each refusal.
+
+Lists take `q`, `cursor` and `limit` and return `nextCursor` (null on the last page). Money is in integer cents.
+
 ## `mobile/`
 
 The `/v1/mobile/*` contract, used by `functions/api/mobile_test.ts` and `proof_test.ts`.

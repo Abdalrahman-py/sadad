@@ -1,11 +1,21 @@
--- One store's devices, control events, audit reads and recovery permits.
+-- One store with its devices and recovery permits; the audit trail is paged by sadid_admin_audit.
 create function sadid_private.admin_controls(p_store bigint) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
+declare
+  s public.stores;
+  v_history boolean;
+  v_ledger boolean;
 begin
   if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
-  if not exists (select 1 from public.stores where id = p_store) then raise exception 'store_not_found'; end if;
+  select * into s from public.stores where id = p_store;
+  if not found then raise exception 'store_not_found'; end if;
+  v_history := exists (select 1 from sadid_private.installations where store_id = p_store);
+  v_ledger := exists (select 1 from public.sadid_ledger_state where store_id = p_store);
   return jsonb_build_object(
-    'hasDeviceHistory', exists (select 1 from sadid_private.installations where store_id = p_store),
+    'store', sadid_private.store_json(s),
+    'hasDeviceHistory', v_history,
+    'ledgerInitialized', v_ledger,
+    'canDelete', not v_history and not v_ledger,
     'installations', coalesce((
       select jsonb_agg(jsonb_build_object(
         'installationId', id,
@@ -23,17 +33,17 @@ begin
       ) order by generation desc)
       from sadid_private.installations where store_id = p_store
     ), '[]'::jsonb),
-    'controlEvents', coalesce((
-      select jsonb_agg(to_jsonb(t))
-      from (select id, actor, kind, reason, created_at from sadid_private.control_events where store_id = p_store order by id desc limit 100) t
-    ), '[]'::jsonb),
-    'accessEvents', coalesce((
-      select jsonb_agg(to_jsonb(t))
-      from (select id, actor, reason, record_counts, created_at from sadid_private.admin_access_events where store_id = p_store order by created_at desc limit 50) t
-    ), '[]'::jsonb),
     'recoveryPermits', coalesce((
-      select jsonb_agg(to_jsonb(t))
-      from (select id, old_installation_id, new_installation_id, approved_by, reason, expires_at, created_at from sadid_private.recovery_permits where store_id = p_store order by created_at desc limit 20) t
+      select jsonb_agg(jsonb_build_object(
+        'permitId', id,
+        'oldInstallationId', old_installation_id,
+        'newInstallationId', new_installation_id,
+        'approvedBy', approved_by,
+        'reason', reason,
+        'expiresAt', expires_at,
+        'createdAt', created_at
+      ) order by created_at desc)
+      from (select * from sadid_private.recovery_permits where store_id = p_store order by created_at desc limit 20) t
     ), '[]'::jsonb)
   );
 end $$;

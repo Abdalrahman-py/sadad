@@ -1,5 +1,6 @@
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
+import { type AdminDeps, registerAdminRoutes } from "./admin.ts";
 import { type AppEnv, type LookupStoreId, type VerifyClaims } from "./auth.ts";
 import {
   ApiError,
@@ -7,6 +8,7 @@ import {
   type ErrorLogger,
   errorMessages,
   handleError,
+  redact,
 } from "./errors.ts";
 import { type MobileDeps, registerMobileRoutes, routePath } from "./mobile.ts";
 
@@ -60,13 +62,20 @@ const healthRoute = createRoute({
   },
 });
 
+/** One line per request: never a body or a header, and secrets are redacted. */
+export type RequestLogger = (line: string) => void;
+
 export interface AppOptions {
   allowedOrigins?: readonly string[];
   verifyClaims?: VerifyClaims;
   lookupStoreId?: LookupStoreId;
   logError?: ErrorLogger;
+  logRequest?: RequestLogger;
   mobile?: MobileDeps;
+  admin?: AdminDeps;
 }
+
+const defaultRequestLogger: RequestLogger = (line) => console.log(line);
 
 const defaultVerifyClaims: VerifyClaims = () =>
   Promise.resolve({
@@ -81,6 +90,7 @@ export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
     options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS,
   );
   const verifyClaims = options.verifyClaims ?? defaultVerifyClaims;
+  const logRequest = options.logRequest ?? defaultRequestLogger;
   const lookupStoreId = options.lookupStoreId ?? defaultLookupStoreId;
 
   const root = new OpenAPIHono<AppEnv>({
@@ -131,16 +141,28 @@ export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
   );
 
   app.use("*", async (c, next) => {
+    const started = performance.now();
     const requestId = c.req.header("x-request-id") || crypto.randomUUID();
     c.set("requestId", requestId);
     c.set("authDeps", { verifyClaims, lookupStoreId });
     c.header("Cache-Control", "no-store");
     c.header("X-Content-Type-Options", "nosniff");
     await next();
+    logRequest(redact(
+      c,
+      JSON.stringify({
+        requestId,
+        method: c.req.method,
+        path: routePath(c.req.raw),
+        status: c.res.status,
+        ms: Math.round(performance.now() - started),
+      }),
+    ));
   });
 
   app.openapi(healthRoute, (c) => c.json({ ok: true as const }, 200));
   registerMobileRoutes(app, options.mobile);
+  registerAdminRoutes(app, options.admin);
 
   return app;
 }

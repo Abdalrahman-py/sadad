@@ -40,8 +40,11 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
   ));
 }
 
-function toParam(value: unknown): unknown {
+function toParam(value: unknown, type = ""): unknown {
   if (value === null || value === undefined) return null;
+  if (Array.isArray(value) && type.endsWith("[]")) {
+    return `{${value.join(",")}}`;
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -116,7 +119,7 @@ export class TestDatabase {
           status: 404,
         });
       }
-      params.push(toParam(value));
+      params.push(toParam(value, signature.types[index]));
       named.push(`${name} => $${params.length}::${signature.types[index]}`);
     }
 
@@ -212,7 +215,7 @@ export class TestDatabase {
     return { userId, sessionId, storeId: Number(id) };
   }
 
-  /** An admin-only routine, called the way ticket 24's dashboard routes will call it. */
+  /** An admin-only routine, called directly with an admin JWT's claims. */
   async asAdmin<T>(fn: string, args: unknown[]): Promise<T> {
     const adminId = crypto.randomUUID();
     const sessionId = crypto.randomUUID();
@@ -233,7 +236,7 @@ export class TestDatabase {
       const placeholders = args.map((_, i) => `$${i + 1}`).join(", ");
       const rows = await tx.query<{ result: T }>(
         `select public.${fn}(${placeholders}) as result`,
-        args.map(toParam),
+        args.map((arg) => toParam(arg)),
       );
       return rows.rows[0].result;
     });

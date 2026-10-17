@@ -41,6 +41,10 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   contact_limit_reached: 409,
   device_limit_reached: 409,
   store_not_archived: 409,
+  store_archived: 409,
+  store_has_history: 409,
+  username_taken: 409,
+  subscription_inactive: 409,
   payload_too_large: 413,
   request_rate_limited: 429,
   enrollment_rate_limited: 429,
@@ -59,6 +63,7 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   invalid_ids: 400,
   invalid_transfer: 400,
   invalid_scope: 400,
+  delete_confirmation_required: 400,
   internal_error: 500,
   temporary_service_failure: 503,
 };
@@ -104,6 +109,27 @@ const defaultLogger: ErrorLogger = (entry) => {
   console.error(JSON.stringify(entry));
 };
 
+const ErrorRef = { $ref: "#/components/schemas/ErrorResponse" } as const;
+
+/** OpenAPI responses for the contract errors a route can return. */
+export function errorResponses(...statuses: number[]) {
+  return Object.fromEntries(
+    statuses.map((status) => [status, {
+      description: "Contract error; code is listed in contract/errors.json",
+      content: { "application/json": { schema: ErrorRef } },
+    }]),
+  );
+}
+
+/** The text with every secret this request registered (c.var.secrets) replaced. */
+export function redact(c: Context, text: string): string {
+  const secrets = (c.get("secrets") as string[] | undefined) ?? [];
+  return secrets.reduce(
+    (out, secret) => secret ? out.replaceAll(secret, "[redacted]") : out,
+    text,
+  );
+}
+
 export function handleError(
   err: unknown,
   c: Context,
@@ -126,7 +152,7 @@ export function handleError(
     crypto.randomUUID();
   logError({
     requestId,
-    error: err instanceof Error ? err.message : String(err),
+    error: redact(c, err instanceof Error ? err.message : String(err)),
   });
   return c.json(
     {

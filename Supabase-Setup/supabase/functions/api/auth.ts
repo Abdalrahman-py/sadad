@@ -31,6 +31,10 @@ export interface AppVariables {
   authDeps: AuthDeps;
   /** The request body exactly as received, read before validation parses it. */
   rawBody?: string;
+  /** Values no log line may contain, such as a temporary password. */
+  secrets?: string[];
+  /** The admin or support caller, set by the admin routes' role check. */
+  admin?: VerifiedCaller;
 }
 
 export interface AppEnv {
