@@ -11,7 +11,7 @@ run_format() {
 
 run_docs() {
   echo "== docs =="
-  local continue_lines agents_lines pruned_files
+  local continue_lines agents_lines pruned_files extra_functions
   continue_lines=$(wc -l < docs/CONTINUE_HERE.md)
   if (( continue_lines > 80 )); then
     echo "docs/CONTINUE_HERE.md has $continue_lines lines (max 80)" >&2
@@ -26,6 +26,13 @@ run_docs() {
   if [[ -n "$pruned_files" ]]; then
     echo "delivery/, docs/archive/ or docs/plans/ still tracked:" >&2
     echo "$pruned_files" >&2
+    return 1
+  fi
+  # The deploy workflow ships only `api`; any other function table means config drifted from it.
+  extra_functions=$(grep -E '^\[functions\.' Supabase-Setup/supabase/config.toml | grep -vE '^\[functions\.api(\..+)?\]' || true)
+  if [[ -n "$extra_functions" ]]; then
+    echo "Supabase-Setup/supabase/config.toml declares functions other than api:" >&2
+    echo "$extra_functions" >&2
     return 1
   fi
 }
