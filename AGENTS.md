@@ -66,7 +66,7 @@
 ## الحفظ والاسترجاع
 
 - الأوسمة `pre-consolidation-2026-10-11` (الشجرة قبل التنظيف شاملة `archive/Sadad-Flutter`)، و`pre-supabase-ledger-correctness-2026-10-12` (نقطة بداية تدقيق الدفتر)، و`pre-prune-2026-10` (الشجرة قبل حذف `delivery/` و`docs/archive/` و`docs/plans/` التي حلّ محلّها `docs/ARCHITECTURE.md`) تحفظ التاريخ في Git.
-- حزمة فروع الأرشيف الخاصة خارج المستودع في `~/sadad-private/sadad-archives-2026-10-14.bundle` (غير محقّق حتى ينفّذ الإنسان التذكرة 01)؛ تُسترجع عند الحاجة بالأمر:
+- حزمة فروع الأرشيف الخاصة خارج المستودع في `~/sadad-private/sadad-archives-2026-10-14.bundle` (تحقّق في 17 أكتوبر 2026 بالأمر `git bundle verify` وباسترجاع تجريبي في مستودع فارغ)؛ تُسترجع عند الحاجة بالأمر:
   `git fetch ~/sadad-private/sadad-archives-2026-10-14.bundle 'refs/heads/archive/*:refs/heads/archive/*'`
 
 ## Agent skills
