@@ -39,10 +39,17 @@ run_docs() {
 
 run_dashboard() {
   echo "== dashboard =="
-  node --check server/public/admin.js
-  node tools/test-admin-recovery.cjs
-  node tools/admin-dashboard.test.cjs
-  node tools/build-admin-pages.cjs
+  (
+    cd server/public
+    npm ci --no-audit --no-fund
+    npm run typecheck
+    npm run lint
+    npm test
+    npm run build # -> _site/
+    # A no-op when the pinned Chromium is already installed.
+    npx playwright install chromium
+    npm run e2e
+  )
 }
 
 run_android() {
