@@ -18,7 +18,11 @@ enum class CommandType(
   @SerialName("debt.create") DEBT_CREATE(true, DebtCreate.serializer()),
   @SerialName("debt.correct") DEBT_CORRECT(false, DebtCorrect.serializer()),
   @SerialName("payment.create") PAYMENT_CREATE(true, PaymentCreate.serializer()),
-  @SerialName("payment.reverse") PAYMENT_REVERSE(false, PaymentReverse.serializer()),
+  @SerialName("payment.reverse") PAYMENT_REVERSE(false, PaymentReverse.serializer());
+
+  /** The name on the wire, e.g. `contact.create`. */
+  val wireName: String
+    get() = serializer().descriptor.getElementName(ordinal)
 }
 
 @Serializable

@@ -19,13 +19,11 @@ dependencies {
   testImplementation(libs.junit)
 }
 
-// The tests read the shared contract fixtures straight from the repository.
-val fixtures = rootProject.layout.projectDirectory.dir("contract/fixtures")
+// The tests read the shared contract (fixtures and openapi.json) straight from the repository.
+val contract = rootProject.layout.projectDirectory.dir("contract")
+val fixtures = contract.dir("fixtures")
 
 tasks.test {
-  inputs
-      .dir(fixtures)
-      .withPropertyName("contractFixtures")
-      .withPathSensitivity(PathSensitivity.RELATIVE)
+  inputs.dir(contract).withPropertyName("contract").withPathSensitivity(PathSensitivity.RELATIVE)
   systemProperty("sadad.fixtures", fixtures.asFile.absolutePath)
 }

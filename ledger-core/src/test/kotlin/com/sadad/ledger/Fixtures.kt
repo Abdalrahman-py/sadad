@@ -24,4 +24,8 @@ object Fixtures {
             .replace("{epoch}", EPOCH)
     return Json.parseToJsonElement(text).jsonObject
   }
+
+  /** A contract file relative to the fixtures directory, read as is (`../openapi.json`). */
+  fun readFile(name: String): JsonObject =
+      Json.parseToJsonElement(File(root, name).readText()).jsonObject
 }
