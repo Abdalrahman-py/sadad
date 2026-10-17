@@ -4,14 +4,9 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { type AppEnv, verifyCaller } from "./auth.ts";
-import { ApiError, fromDatabaseError } from "./errors.ts";
+import { ApiError, errorResponses } from "./errors.ts";
+import { call, type RpcClient, unavailable } from "./rpc.ts";
 import { readProofHeaders, verifyProof } from "./proof.ts";
-
-export type RpcResult = { data: unknown; error: unknown };
-
-export interface RpcClient {
-  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<RpcResult>;
-}
 
 /** The server key that signs offline leases; the app verifies leases with publicKey. */
 export interface LeaseSigner {
@@ -44,32 +39,10 @@ export const routePath = (req: Request): string =>
 const signedRoute = (req: Request): string =>
   routePath(req) + new URL(req.url).search;
 
-const unavailable: RpcClient = {
-  rpc: () =>
-    Promise.resolve({
-      data: null,
-      error: new ApiError("temporary_service_failure"),
-    }),
-};
-
 const defaultDeps: MobileDeps = {
   serviceDb: unavailable,
   userDb: () => unavailable,
 };
-
-async function call<T>(
-  client: RpcClient,
-  fn: string,
-  args: Record<string, unknown> = {},
-): Promise<T> {
-  const { data, error } = await client.rpc(fn, args);
-  if (error) {
-    if (error instanceof ApiError) throw error;
-    const message = (error as { message?: unknown }).message;
-    throw fromDatabaseError(error) ?? new Error(`${fn}: ${String(message)}`);
-  }
-  return data as T;
-}
 
 interface StoreCaller {
   jwt: string;
@@ -185,17 +158,6 @@ const keepRawBody: MiddlewareHandler<AppEnv> = async (c, next) => {
   c.set("rawBody", await c.req.text());
   await next();
 };
-
-const ErrorRef = { $ref: "#/components/schemas/ErrorResponse" } as const;
-
-function errors(...statuses: number[]) {
-  return Object.fromEntries(
-    statuses.map((status) => [status, {
-      description: "Contract error; code is listed in contract/errors.json",
-      content: { "application/json": { schema: ErrorRef } },
-    }]),
-  );
-}
 
 const signedDescription =
   "Signed: send x-sadad-installation, x-sadad-time (13-digit epoch ms), x-sadad-nonce (UUID) and x-sadad-signature (raw r||s, base64url) over contract/fixtures/mobile/proof.json's text. The signed route is the path from /v1 plus the query string.";
@@ -314,7 +276,7 @@ const enrollRoute = createRoute({
         },
       },
     },
-    ...errors(400, 401, 403, 409, 413, 429, 500),
+    ...errorResponses(400, 401, 403, 409, 413, 429, 500),
   },
 });
 
@@ -335,7 +297,7 @@ const leaseRoute = createRoute({
         },
       },
     },
-    ...errors(401, 403, 409, 429, 500),
+    ...errorResponses(401, 403, 409, 429, 500),
   },
 });
 
@@ -361,7 +323,7 @@ const changesRoute = createRoute({
         },
       },
     },
-    ...errors(400, 401, 403, 409, 429, 500),
+    ...errorResponses(400, 401, 403, 409, 429, 500),
   },
 });
 
@@ -397,7 +359,7 @@ const operationsRoute = createRoute({
         },
       },
     },
-    ...errors(400, 401, 403, 409, 413, 429, 500),
+    ...errorResponses(400, 401, 403, 409, 413, 429, 500),
   },
 });
 

@@ -6,7 +6,8 @@ import type { LeaseSigner } from "./mobile.ts";
 
 const url = Deno.env.get("SUPABASE_URL")!;
 const publishableKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-// Service role stays in this function: installation keys and capabilities only.
+// Service role stays in this function: installation keys, capabilities, sadid_create_store and
+// the Auth admin API (store users), each after the caller was checked.
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const rawOrigins = Deno.env.get("SADAD_ALLOWED_ORIGINS");
@@ -77,6 +78,11 @@ const app = createApp({
     serviceDb: serviceClient,
     userDb: userClient,
     lease: await leaseSigner(),
+  },
+  admin: {
+    userDb: (jwt) => userClient(jwt),
+    serviceDb: serviceClient,
+    authAdmin: serviceClient.auth.admin,
   },
 });
 

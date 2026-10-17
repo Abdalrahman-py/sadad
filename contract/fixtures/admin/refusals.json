@@ -1,0 +1,17 @@
+{
+  "description": "How the admin routes refuse. status is the HTTP status; body is { ok: false, code, message } with the Arabic message from contract/errors.json.",
+  "noJwt": { "status": 401, "code": "authorization_required" },
+  "notAdmin": { "status": 403, "code": "admin_authorization_required" },
+  "passwordChange": { "status": 403, "code": "password_change_required" },
+  "invalidInput": { "status": 400, "code": "invalid_input" },
+  "usernameTaken": { "status": 409, "code": "username_taken" },
+  "storeArchived": { "status": 409, "code": "store_archived" },
+  "subscriptionInactive": { "status": 409, "code": "subscription_inactive" },
+  "belowActiveDevices": { "status": 409, "code": "device_limit_reached" },
+  "deleteNotConfirmed": { "status": 400, "code": "delete_confirmation_required" },
+  "deleteWithHistory": { "status": 409, "code": "store_has_history" },
+  "storeNotFound": { "status": 404, "code": "store_not_found" },
+  "reasonRequired": { "status": 400, "code": "reason_required" },
+  "ledgerNotInitialized": { "status": 403, "code": "ledger_not_initialized" },
+  "invalidTransfer": { "status": 400, "code": "invalid_transfer" }
+}

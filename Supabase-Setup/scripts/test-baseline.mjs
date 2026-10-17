@@ -504,7 +504,7 @@ try {
       db.query("select public.sadid_approve_recovery($1, $2, '[]'::jsonb, 'محاولة دعم')", [installation, installation]),
       /admin_authorization_required/,
     );
-    const pending = (await db.query('select public.sadid_pending_installations() as result')).rows[0].result;
+    const pending = (await db.query('select public.sadid_pending_installations() as result')).rows[0].result.installations;
     assert.ok(pending.length > 0 && pending.every(i => i.status === 'pending'), 'pending list holds only pending devices');
 
     // Admin user reaches both read and write admin routines
@@ -618,7 +618,7 @@ try {
 
     await db.exec('reset role; set role service_role');
     const id = (await db.query("select public.sadid_create_store($1, 'متجر جديد', 'new')::int as id", [owner])).rows[0].id;
-    await assert.rejects(db.query("select public.sadid_create_store($1, 'نسخة', 'NEW')", [owner]), /duplicate key/);
+    await assert.rejects(db.query("select public.sadid_create_store($1, 'نسخة', 'NEW')", [owner]), /username_taken/);
 
     await db.exec('reset role');
     assert.equal((await db.query('select store_id::int from sadid_private.store_memberships where user_id = $1', [owner])).rows[0].store_id, id);

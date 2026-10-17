@@ -17,8 +17,9 @@ Supabase Auth is the only identity:
 - Omitted from the baseline: `public.sessions`, `admins`, `login_rate_limits`, `sadad_auth_bindings`, `store_devices`, `sadid_private.installation_sessions`, the password columns of `stores`, the full-store `snapshot()` and the old helpers that read them.
 - Ledger rules (idempotent `operationId`, receipts, epochs, immutable history, recovery permits) are unchanged; `sadid_apply_batch` applies up to 100 commands in one transaction and returns one receipt each. A command that raises (e.g. `dependency_pending`, `epoch_changed`) aborts the whole batch; the client resends it.
 - Read routines (`sadid_changes`, `sadid_activity`, `sadid_outcomes`) take no row locks on `public.stores`.
-- Store status, subscription, limits and permissions are columns of `public.stores` that the `api` updates with `service_role`. Lowering `allowed_devices` below the active count does not revoke devices; the `api` must refuse it or revoke first.
-- A store row can be deleted only while it has no installations and no ledger (foreign keys restrict); its membership goes with it.
+- Store status, subscription, limits and permissions are columns of `public.stores`. The admin routines change them under the admin's JWT, so SQL checks the role and the live session (decided 2026-10-17 with ticket 24, replacing `service_role` writes from the `api`). Lowering `allowed_devices` below the active count is refused with `device_limit_reached`; it never revokes a device.
+- A store row can be deleted only while it has no installations and no ledger (foreign keys restrict); its membership goes with it. `sadid_admin_delete_store` also requires the username as confirmation; the `api` then deletes the Auth user.
+- Admin money is in integer cents (`…Cents` fields). Every list routine pages with a `p_after` cursor (the previous page's `nextCursor`) and searches with `strpos`, so `_` and `%` are plain characters.
 - The baseline is tested on pglite with a stubbed `auth` schema; that it loads and behaves the same on the reset cloud project is «غير محقّق» until ticket 27.
 
 ## Routines callable by `authenticated`
@@ -35,17 +36,26 @@ Store (caller's JWT; the ledger routines also need the `x-sadad-capability` head
 - `public.sadid_outcomes(p_ids uuid[]) returns jsonb`
 
 Admin and support (refuse every other caller with `admin_authorization_required`):
-- `public.sadid_pending_installations() returns jsonb` (admin, support; devices with status `pending`)
+- `public.sadid_admin_role() returns text` (any JWT; `admin`, `support` or null; the `api` checks it before creating an Auth user)
+- `public.sadid_admin_overview() returns jsonb` (admin, support)
+- `public.sadid_admin_stores(p_query text default null, p_after jsonb default null, p_limit integer default 50, p_include_archived boolean default false) returns jsonb` (admin, support)
+- `public.sadid_pending_installations(p_query text default null, p_after jsonb default null, p_limit integer default 50) returns jsonb` (admin, support; devices with status `pending`)
 - `public.sadid_admin_summaries(p_stores bigint[]) returns jsonb` (admin, support)
-- `public.sadid_admin_controls(p_store bigint) returns jsonb` (admin, support)
+- `public.sadid_admin_controls(p_store bigint) returns jsonb` (admin, support; the store, its devices and recovery permits)
+- `public.sadid_admin_ledger(p_store bigint, p_kind text, p_reason text, p_query text default null, p_after jsonb default null, p_limit integer default 50) returns jsonb` (admin, support; one audited page of `contacts`, `debts`, `payments` or `events`)
+- `public.sadid_admin_audit(p_source text, p_store bigint default null, p_query text default null, p_after jsonb default null, p_limit integer default 50) returns jsonb` (admin, support; `control` or `access`)
 - `public.sadid_support_snapshot(p_store bigint, p_reason text) returns jsonb` (admin, support)
+- `public.sadid_admin_update_store(p_store bigint, p_changes jsonb) returns jsonb` (admin)
+- `public.sadid_admin_subscription(p_store bigint, p_mode text, p_days integer default null, p_extend boolean default false) returns jsonb` (admin)
+- `public.sadid_admin_reset_password(p_store bigint, p_reason text) returns jsonb` (admin; ends sessions, returns the Auth user id)
+- `public.sadid_admin_delete_store(p_store bigint, p_confirm text) returns jsonb` (admin; returns the Auth user id)
 - `public.sadid_approve_installation(p_installation uuid, p_reason text) returns jsonb` (admin)
 - `public.sadid_revoke_installation(p_installation uuid, p_reason text) returns jsonb` (admin)
 - `public.sadid_approve_recovery(p_old uuid, p_new uuid, p_manifest jsonb, p_reason text) returns jsonb` (admin)
 - `public.sadid_admin_account_action(p_store bigint, p_action text, p_reason text) returns jsonb` (admin; `archive`, `unarchive`, `end-sessions`, `revoke-all`)
 
 `service_role` only (the `api`, after it verifies the device proof or the admin role):
-- `public.sadid_create_store(p_user uuid, p_name text, p_username text) returns bigint`
+- `public.sadid_create_store(p_user uuid, p_name text, p_username text, p_settings jsonb default '{}') returns bigint`
 - `public.sadid_installation_key(p_user uuid, p_session uuid, p_installation uuid) returns jsonb`
 - `public.sadid_issue_capability(p_user uuid, p_session uuid, p_installation uuid, p_nonce uuid, p_scope text, p_request jsonb default null) returns jsonb`
 - `public.sadid_issue_recovery_capability(p_user uuid, p_session uuid, p_installation uuid, p_nonce uuid, p_request jsonb, p_permit uuid) returns jsonb`

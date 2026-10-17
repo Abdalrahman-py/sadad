@@ -1,4 +1,4 @@
--- Balances per store for the dashboard, with an audit row each.
+-- Balances in cents per store for the dashboard, with an audit row each.
 create function sadid_private.admin_summaries(p_stores bigint[]) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -40,9 +40,9 @@ begin
       'activeContacts', (select count(*) from public.sadid_contacts where store_id = store_number and not archived),
       'debts', count(*),
       'openDebts', count(*) filter (where remaining > 0),
-      'debtTotal', coalesce(sum(principal), 0) / 100.0,
-      'receivable', coalesce(sum(remaining) filter (where direction = 'receivable'), 0) / 100.0,
-      'payable', coalesce(sum(remaining) filter (where direction = 'payable'), 0) / 100.0,
+      'debtTotalCents', coalesce(sum(principal), 0),
+      'receivableCents', coalesce(sum(remaining) filter (where direction = 'receivable'), 0),
+      'payableCents', coalesce(sum(remaining) filter (where direction = 'payable'), 0),
       'payments', (select count(*) from public.sadid_payments where store_id = store_number)
     ) into summary from balances;
 
