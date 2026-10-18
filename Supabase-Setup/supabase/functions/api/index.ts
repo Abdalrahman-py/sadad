@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createECDH, createHash } from "node:crypto";
 import { createApp, DEFAULT_ALLOWED_ORIGINS } from "./app.ts";
+import { authSignInError } from "./account.ts";
 import { makeSupabaseLookupStoreId } from "./auth.ts";
 import type { LeaseSigner } from "./mobile.ts";
 
@@ -75,15 +76,23 @@ async function leaseSigner(): Promise<LeaseSigner> {
 async function verifyPassword(
   email: string,
   password: string,
+  requestId: string,
 ): Promise<boolean> {
   const { data, error } = await createClient(url, publishableKey, {
     auth: noSession,
   }).auth.signInWithPassword({ email, password });
   if (error) {
     if (error.code === "invalid_credentials") return false;
-    throw error;
+    throw authSignInError(error.code ?? "") ?? error;
   }
-  await serviceClient.auth.admin.signOut(data.session.access_token, "local");
+  const ended = await serviceClient.auth.admin.signOut(
+    data.session.access_token,
+    "local",
+  );
+  if (ended.error) {
+    // The throwaway session may stay live; the password was still correct, so let the caller in.
+    console.error(JSON.stringify({ requestId, error: "signOut failed" }));
+  }
   return true;
 }
 

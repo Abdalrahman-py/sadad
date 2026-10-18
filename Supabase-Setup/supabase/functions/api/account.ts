@@ -8,8 +8,13 @@ import { ApiError, errorResponses } from "./errors.ts";
 export interface AccountDeps {
   /** Service role: clears force_password_change, which the user's own updateUser cannot touch. */
   authAdmin: AuthAdmin;
-  /** True when email and password sign in to Supabase Auth; the session it opens is ended at once. */
-  verifyPassword(email: string, password: string): Promise<boolean>;
+  /** True when email and password sign in to Supabase Auth; the session it opens is ended at once.
+   * requestId is only for the one log line when ending that session fails. */
+  verifyPassword(
+    email: string,
+    password: string,
+    requestId: string,
+  ): Promise<boolean>;
 }
 
 const unavailable = () =>
@@ -27,6 +32,20 @@ export const defaultAccountDeps: AccountDeps = {
 const json = <T extends z.ZodType>(schema: T) => ({
   content: { "application/json": { schema } },
 });
+
+/**
+ * The contract refusal for an Auth sign-in error code. `null` means the code is not mapped here:
+ * index.ts answers invalid_credentials as a wrong password, and rethrows anything else through.
+ */
+export function authSignInError(code: string): ApiError | null {
+  if (code === "over_request_rate_limit") {
+    return new ApiError("request_rate_limited", 429);
+  }
+  if (code === "user_banned") {
+    return new ApiError("store_permission_denied", 403);
+  }
+  return null;
+}
 
 const passwordRoute = createRoute({
   method: "post",
@@ -54,7 +73,7 @@ const passwordRoute = createRoute({
         forcePasswordChange: z.literal(false),
       })),
     },
-    ...errorResponses(400, 401, 403, 500),
+    ...errorResponses(400, 401, 403, 429, 500),
   },
 });
 
@@ -72,7 +91,13 @@ export function registerAccountRoutes(
     if (typeof email !== "string" || !email) {
       throw new ApiError("authorization_required", 401);
     }
-    if (!(await deps.verifyPassword(email, currentPassword))) {
+    if (
+      !(await deps.verifyPassword(
+        email,
+        currentPassword,
+        c.get("requestId"),
+      ))
+    ) {
       throw new ApiError("current_password_incorrect", 403);
     }
 
@@ -82,7 +107,10 @@ export function registerAccountRoutes(
       app_metadata: { force_password_change: false },
     });
     if (updated.error) {
-      const record = updated.error as { message?: unknown };
+      const record = updated.error as { code?: unknown; message?: unknown };
+      if (record.code === "weak_password") {
+        throw new ApiError("weak_password", 400);
+      }
       throw new Error(
         `auth admin: ${String(record.message ?? updated.error)}`,
       );

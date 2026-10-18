@@ -50,6 +50,7 @@
           "store_suspended",
           "password_change_required",
           "current_password_incorrect",
+          "weak_password",
           "request_rate_limited",
           "enrollment_rate_limited",
           "proof_replayed",
@@ -3567,6 +3568,16 @@
             }
           },
           "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
             "description": "Contract error; code is listed in contract/errors.json",
             "content": {
               "application/json": {

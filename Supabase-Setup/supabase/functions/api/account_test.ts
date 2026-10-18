@@ -1,3 +1,5 @@
+import { authSignInError } from "./account.ts";
+import { ApiError } from "./errors.ts";
 import { assert, assertEqual } from "./test_support.ts";
 import { adminHarness, assertRefusal, dbTest } from "./admin/test_admin.ts";
 
@@ -5,8 +7,11 @@ const CURRENT = "Temp-Pass-0001";
 const NEW_PASSWORD = "New-Secure-Pass-2026";
 
 const checked: { email: string; password: string }[] = [];
+/** Set by a test to make the next sign-in check fail the way index.ts would. */
+let signInFailure: Error | null = null;
 const h = await adminHarness({
   verifyPassword: (email, password) => {
+    if (signInFailure) return Promise.reject(signInFailure);
     checked.push({ email, password });
     return Promise.resolve(password === CURRENT);
   },
@@ -138,6 +143,46 @@ dbTest(
   },
 );
 
+dbTest(
+  "an Auth rate limit on the sign-in check is a 429, not a 500",
+  async () => {
+    const store = await flaggedStore();
+    signInFailure = new ApiError("request_rate_limited", 429);
+    try {
+      await assertRefusal(
+        await change(store.jwt, {
+          currentPassword: CURRENT,
+          newPassword: NEW_PASSWORD,
+        }),
+        { status: 429, code: "request_rate_limited" },
+      );
+    } finally {
+      signInFailure = null;
+    }
+    assertEqual((await appMetadata(store.userId)).force_password_change, true);
+  },
+);
+
+dbTest(
+  "a weak new password from Auth is a 400 with the contract message",
+  async () => {
+    const store = await flaggedStore();
+    // The Auth error echoes the password; a refusal must still not log it.
+    h.authAdmin.failNext = {
+      code: "weak_password",
+      message: `weak ${NEW_PASSWORD}`,
+    };
+    await assertRefusal(
+      await change(store.jwt, {
+        currentPassword: CURRENT,
+        newPassword: NEW_PASSWORD,
+      }),
+      { status: 400, code: "weak_password" },
+    );
+    assertEqual((await appMetadata(store.userId)).force_password_change, true);
+  },
+);
+
 dbTest("no JWT, or a JWT without an email claim, is refused", async () => {
   const body = { currentPassword: CURRENT, newPassword: NEW_PASSWORD };
   const store = await h.seedStore();
@@ -181,6 +226,26 @@ dbTest("an Auth failure is a 500 and the flag stays set", async () => {
   assertEqual((await res.json()).code, "internal_error");
   assertEqual((await appMetadata(store.userId)).force_password_change, true);
 });
+
+dbTest(
+  "Auth sign-in error codes map to refusals; other codes stay unmapped",
+  () => {
+    assertEqual(authSignInError("invalid_credentials"), null);
+    const limited = authSignInError("over_request_rate_limit");
+    assertEqual({ status: limited?.status, code: limited?.code }, {
+      status: 429,
+      code: "request_rate_limited",
+    });
+    const banned = authSignInError("user_banned");
+    assertEqual({ status: banned?.status, code: banned?.code }, {
+      status: 403,
+      code: "store_permission_denied",
+    });
+    // Not mapped: index.ts rethrows the original Auth error through.
+    assertEqual(authSignInError("other"), null);
+    return Promise.resolve();
+  },
+);
 
 dbTest("no request or error log line holds a password", () => {
   assert(h.logs.length > 0, "the routes above were logged");
