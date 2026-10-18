@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="undo">تراجع</string>
+    <string name="voice_draft">إملاء صوتي كمسودة</string>
+    <string name="voice_prompt">أمْلِ تفاصيل الحركة لمراجعتها</string>
+    <string name="pending_badge">بانتظار التأكيد</string>
+</resources>

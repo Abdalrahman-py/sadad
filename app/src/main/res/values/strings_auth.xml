@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="title_welcome">أهلاً بك في سدد</string>
+    <string name="title_login">تسجيل الدخول</string>
+    <string name="title_password_change">غيّر كلمة المرور المؤقتة</string>
+    <string name="title_awaiting_approval">بانتظار الموافقة</string>
+</resources>
