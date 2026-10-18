@@ -16,7 +16,7 @@ Supabase Auth is the only identity:
 
 - Omitted from the baseline: `public.sessions`, `admins`, `login_rate_limits`, `sadad_auth_bindings`, `store_devices`, `sadid_private.installation_sessions`, the password columns of `stores`, the full-store `snapshot()` and the old helpers that read them.
 - Ledger rules (idempotent `operationId`, receipts, epochs, immutable history, recovery permits) are unchanged; `sadid_apply_batch` applies up to 100 commands in one transaction and returns one receipt each. Per-command refusals (`store_permission_denied`, `invalid_dependencies`, `invalid_timestamp`, `dependency_rejected`, and per-type business rules like `overpayment`) become `rejected` receipts and `operation.rejected` events without blocking the rest of the batch; caller- or request-level refusals (`unsupported_schema`, `invalid_input` on command identity/type/payload, `installation_revoked`, `ledger_not_initialized`, `operation_id_reused`, `epoch_changed`, `dependency_pending`) raise and abort the whole batch so the client resends or refreshes.
-- Read routines (`sadid_changes`, `sadid_activity`, `sadid_outcomes`) take no row locks on `public.stores`.
+- The read routine (`sadid_changes`) takes no row locks on `public.stores`.
 - Store status, subscription, limits and permissions are columns of `public.stores`. The admin routines change them under the admin's JWT, so SQL checks the role and the live session (decided 2026-10-17 with ticket 24, replacing `service_role` writes from the `api`). Lowering `allowed_devices` below the active count is refused with `device_limit_reached`; it never revokes a device.
 - A store row can be deleted only while it has no installations and no ledger (foreign keys restrict); its membership goes with it. `sadid_admin_delete_store` also requires the username as confirmation; the `api` then deletes the Auth user.
 - Admin money is in integer cents (`…Cents` fields). Every list routine pages with a `p_after` cursor (the previous page's `nextCursor`) and searches with `strpos`, so `_` and `%` are plain characters.
@@ -32,8 +32,6 @@ Store (caller's JWT; the ledger routines also need the `x-sadad-capability` head
 - `public.sadid_apply(p_command jsonb) returns jsonb`
 - `public.sadid_apply_batch(p_commands jsonb) returns jsonb`
 - `public.sadid_changes(p_after bigint default 0, p_limit integer default 200) returns jsonb`
-- `public.sadid_activity() returns jsonb`
-- `public.sadid_outcomes(p_ids uuid[]) returns jsonb`
 
 Admin and support (refuse every other caller with `admin_authorization_required`):
 - `public.sadid_admin_role() returns text` (any JWT; `admin`, `support` or null; the `api` checks it before creating an Auth user)

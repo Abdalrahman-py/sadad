@@ -178,6 +178,12 @@ try {
     }
   });
 
+  await check('activity and outcomes routines are gone', async () => {
+    for (const fn of ['public.sadid_activity()', 'public.sadid_outcomes(uuid[])', 'sadid_private.activity()']) {
+      assert.equal((await db.query('select to_regprocedure($1) as reg', [fn])).rows[0].reg, null, `${fn} must not exist`);
+    }
+  });
+
   await check('Internal roles have no CREATE privilege on sadid_private', async () => {
     for (const role of ['sadid_ledger_executor', 'sadid_auth_reader', 'sadid_support_reader']) {
       assert.equal(
@@ -623,7 +629,7 @@ try {
     }
   });
 
-  await check('changes(after, limit) returns events after cursor in order and read routines take no row locks on stores', async () => {
+  await check('changes(after, limit) returns events after cursor in order and the read routine takes no row locks on stores', async () => {
     await db.exec('reset role; begin');
     try {
       await capability('read');
@@ -639,15 +645,13 @@ try {
       assert.ok(page2.events[0].sequence > 3);
       assert.equal(page2.hasMore, false);
 
-      await db.query('select public.sadid_activity()');
-
       await db.exec('reset role');
       const locks = (
         await db.query(
           "select mode from pg_locks where relation = 'public.stores'::regclass and mode in ('RowExclusiveLock', 'RowShareLock', 'ShareUpdateExclusiveLock', 'ExclusiveLock')",
         )
       ).rows;
-      assert.equal(locks.length, 0, 'read routines must not take row locks on public.stores');
+      assert.equal(locks.length, 0, 'the read routine must not take row locks on public.stores');
     } finally {
       await db.exec('rollback; reset role');
     }
