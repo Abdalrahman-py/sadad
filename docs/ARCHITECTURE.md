@@ -168,7 +168,7 @@ D7. CI: actions pinned by tag in `android-ci.yml`, SHA in `admin-pages.yml`; no 
     AppGraph.kt   manual DI container held by Application
 ```
 Rules:
-- UI reads Room `Flow`s. A sync writes Room and Compose recomposes only what changed: no `refreshCurrentScreen`, no wiped forms.
+- Screens read one `StateFlow<LedgerView>` computed from an in-memory `LedgerState` saved as Room rows plus the outbox, and the read model is plaintext in Room (only outbox payloads and the refresh token are encrypted). Compose recomposes only what changed: no `refreshCurrentScreen`, no wiped forms.
 - Form state lives in `SavedStateHandle`, so it survives process death.
 - Navigation Compose with type-safe routes; predictive back for free.
 - Money is `Cents(Long)` everywhere; it is formatted only in UI.
@@ -185,7 +185,7 @@ Rules:
 - DataStore (Preferences) replaces the scattered `getPreferences(0)` keys.
 - androidx.biometric replaces platform `BiometricPrompt` + `FingerprintManager`.
 - `ActivityResultContracts` (CreateDocument/OpenDocument/PickVisualMedia) replace request codes. androidx.exifinterface.
-- Baseline Profile + Macrobenchmark; a crash reporter (Sentry, with PII scrubbing; one tool across app, Edge and dashboard).
+- Baseline Profile + Macrobenchmark; a crash reporter (Sentry, with PII scrubbing; one tool across app, Edge and dashboard — Phase 4, per `docs/versions.md`).
 - **Deliberately not added:**
   - Hilt: one container, a few consumers; add when manual graph hurts.
   - Retrofit: about 10 endpoints, and signing needs body bytes anyway.
@@ -202,7 +202,7 @@ Rules:
 - **One Edge function** `api`: Hono router + zod schemas. Routes are `/v1/mobile/*` and `/v1/admin/*`. JWT is verified with `auth.getClaims()` (asymmetric signing keys, local JWKS; Context7-confirmed as Supabase's recommended faster path). This cuts per-request round trips from 4 to 2.
 - **Delta sync:**
   - `GET /v1/mobile/changes?after=<cursor>` returns `sadid_events` rows after the cursor; the table already exists with PK `(store_id, sequence)`.
-  - Full snapshot only on first sync or epoch change.
+  - First sync pages `changes` from 0 (or on epoch change).
   - `POST /v1/mobile/operations` takes a batch (≤100) in one signed request and returns per-op receipts.
   - Lease renewal happens only when under 24 h remain; enroll only when the installation is not active.
 - **Read paths:** no `FOR UPDATE` on `stores`; a read-only consistent query is enough.
@@ -256,7 +256,7 @@ Each phase ends green on the check commands (see Verification), with a CHANGELOG
 
 Security fixes (exact username match, enroll nonce, function config, duplicate admin routes), off-main writes, sync keeps open forms, `removeUnseen` without per-row binds, dead code. Deployed: `sadad-api` v10, `sadid-ledger` v9, migration `20261014121200`. Verified on a phone; the defects found there only matter until the Phase 2 cutover.
 
-### Phase 1 — Foundation (S)
+### Phase 1 — Foundation (S) — done 2026-10-16
 
 Tooling for the code that will be written, not for the code that will be deleted.
 
@@ -266,7 +266,7 @@ Tooling for the code that will be written, not for the code that will be deleted
 4. Docs reset: `CONTINUE_HERE.md` under 80 lines of current state, `AGENTS.md` trimmed, `CLAUDE.md` pointer, `delivery/` and release archives pruned (tag first).
    - Exit: `check.sh` green locally and in CI; a Kotlin smoke test compiles.
 
-### Phase 2 — New backend and dashboard, then cutover (L)
+### Phase 2 — New backend and dashboard, then cutover (L) — merged 2026-10-17; cutover (ticket 27) pending
 
 Built and tested locally (pglite + Deno), then switched on in one cloud reset.
 
@@ -278,7 +278,7 @@ Built and tested locally (pglite + Deno), then switched on in one cloud reset.
    - B8 indexes; inline per-installation pruning of nonces (after 15 minutes) and capabilities (once expired); set-based admin summaries.
 2. **One identity (ADR-002):** Supabase Auth only. A store is the Auth user `<username>@stores.sadad.invalid`. An admin is an Auth user with `app_metadata.role` = `admin` or `support`; the JWT already carries `app_metadata`, so no hook. `force_password_change` lives in `app_metadata`. Supabase Auth rate limits replace `login_rate_limits`.
 3. **One function `api`:** Hono + zod + `auth.getClaims()`. One auth middleware, one CORS/error module, error codes from `contract/errors.json`.
-   - `/v1/mobile/*`: enroll, lease, `changes`, batch `operations` (≤100, per-op receipts), recovery.
+   - `/v1/mobile/*`: enroll, lease, `changes` (first sync pages `changes` from 0), batch `operations` (≤100, per-op receipts), recovery.
    - `/v1/admin/*`: stores (create and reset password through the Auth admin API), subscription, installations approve/revoke, recovery approve, ledger view, summaries, audit. Role checks from claims; `support` is read-only.
    - `contract/`: zod schemas → OpenAPI (`@hono/zod-openapi`) → `openapi-typescript` types; JSON fixtures that the Deno tests and later the Kotlin tests both load.
 4. **Dashboard:** Vite + TypeScript + lit-html in `server/public/`, Supabase Auth sign-in, generated API types, server-side paging and search, role-aware UI, Biome + Vitest + one Playwright smoke. `tools/build-admin-pages.cjs` becomes `vite build` → `_site/`.
@@ -288,12 +288,22 @@ Built and tested locally (pglite + Deno), then switched on in one cloud reset.
 
 ### Phase 3 — New Android app (L)
 
-Written directly in Kotlin inside `app/` against the Phase 2 contract. The Java app stays untouched until the switch, then is deleted in one change.
+Written directly in Kotlin inside `app/` against the Phase 2 contract.
 
-1. `:ledger-core` (pure Kotlin/JVM): `Cents(Long)`, typed commands, projection over `changes` events, payment allocation, proof text. The behaviour of today's `LedgerProjectionTest`/`LedgerCommandTest`/`LedgerQueueTest` is rewritten as Kotlin tests against the new API; they never call Java.
+**Phase 3 decisions (user, 2026-10-17):**
+- The Java app is deleted first (ticket 39), not at the end.
+- Screens read one `StateFlow<LedgerView>` computed from an in-memory `LedgerState` saved as Room rows, and the read model is plaintext in Room (only outbox payloads and the refresh token are encrypted).
+- `minSdk` 26, so no core library desugaring.
+- Server fixes land before the cutover (tickets 34–36).
+- Room and Compose tests run on Robolectric.
+- Performance is measured on a store seeded in the test project through the API (5,000 Contacts, 50,000 operations).
+- The offline lease is checked against a pinned public key and does not survive a reboot.
+- Phase 3 is a rewrite with the Java app's features, with no new features (store-permission flags and device limits stay as they are).
+
+1. `:ledger-core` (pure Kotlin/JVM) — done (tickets 16, 17): `Cents(Long)`, typed commands, projection over `changes` events, payment allocation, proof text. The behaviour of today's `LedgerProjectionTest`/`LedgerCommandTest`/`LedgerQueueTest` is rewritten as Kotlin tests against the new API; they never call Java.
 2. Data layer: Room (read model + outbox), the outbox payload encrypted with one Keystore-wrapped AES key, DataStore, OkHttp `AuthApi` (`/auth/v1/token`) and `LedgerApi` with a signing interceptor, `SyncWorker` on WorkManager, `AppGraph`.
-3. Compose UI: `ComponentActivity` + `NavHost` + ViewModels reading Room `Flow`s; screens in order: login/unlock → home → contacts → contact detail → contact/debt/payment forms → history/reports → settings/recovery. Each screen has a Compose UI test. PDF/Excel exporters ported to Kotlin on IO.
-4. **Switch:** the manifest launches the new activity; delete every Java class, the `standalone` flavor, `STANDALONE_MODE`, the `"123"` login, the old `androidTest` runners and `res` leftovers. Enable R8 + `shrinkResources` with tested keep rules. Testers reinstall.
+3. Compose UI: `ComponentActivity` + `NavHost` + ViewModels reading `StateFlow<LedgerView>`; screens in order: login/unlock → home → contacts → contact detail → contact/debt/payment forms → history/reports → settings/recovery. Each screen has a Compose UI test. PDF/Excel exporters ported to Kotlin on IO.
+4. **Release hardening:** enable R8 + `shrinkResources` with tested keep rules (the Java app, the `standalone` flavor, `STANDALONE_MODE`, the `"123"` login, the old `androidTest` runners and `res` leftovers are deleted first in ticket 39). Testers reinstall.
 5. Baseline Profile + Macrobenchmark module (the one allowed extra module, test-only); StrictMode `penaltyDeath` in debug.
    - Exit: on a phone, login → add contact/debt/payment offline → sync → switch account A→B→A → logout; no StrictMode violations; Part 2 UI-thread, scroll, start and write-latency targets met; no `.java` file left under `app/src/main`.
 
