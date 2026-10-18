@@ -1,7 +1,7 @@
 package com.sadad.ledger
 
+import java.time.DateTimeException
 import java.time.Instant
-import kotlinx.serialization.SerializationException
 
 data class ContactRow(
     val id: String,
@@ -104,21 +104,25 @@ private class Fold(
     val payments: MutableMap<String, PaymentRow>,
 ) {
   fun accept(event: ChangeEvent) {
-    val command =
-        try {
-          LedgerJson.decodeFromJsonElement(LedgerCommand.serializer(), event.command)
-        } catch (e: SerializationException) {
-          throw IllegalStateException("event ${event.sequence}: unreadable command", e)
-        } catch (e: IllegalArgumentException) {
-          throw IllegalStateException("event ${event.sequence}: unreadable command", e)
-        }
+    val command: LedgerCommand
+    val at: Instant
+    val payload: CommandPayload
+    try {
+      command = LedgerJson.decodeFromJsonElement(LedgerCommand.serializer(), event.command)
+      at = ServerTime.parse(command.createdAt)
+      payload = command.payload()
+    } catch (e: IllegalArgumentException) {
+      // Includes SerializationException; a DateTimeException is not one.
+      throw IllegalStateException("event ${event.sequence}: unreadable command", e)
+    } catch (e: DateTimeException) {
+      throw IllegalStateException("event ${event.sequence}: unreadable command", e)
+    }
     check(event.kind == command.type.wireName) {
       "event ${event.sequence} is ${event.kind} but carries ${command.type.wireName}"
     }
-    val at = Instant.parse(command.createdAt)
     val id = command.entityId
     val origin = command.originInstallationId
-    when (val payload = command.payload()) {
+    when (payload) {
       is ContactCreate -> {
         fresh(id, contacts, event)
         contacts[id] =

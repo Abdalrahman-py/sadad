@@ -62,8 +62,15 @@ class LedgerStateTest {
     val state = LedgerState.EMPTY.apply(page(fixture.take(2), nextCursor = 2))
     val before = state.copy()
     val unknownDebt =
-        Commands.paymentCreate(origin, at(5), "missing-debt", Cents(10), PaymentMethod.CASH)
-    val unknownPayment = Commands.paymentReverse(origin, at(5), "missing-payment", "خطأ")
+        Commands.paymentCreate(
+            origin,
+            at(5),
+            "d0000000-0000-4000-8000-0000000000de",
+            Cents(10),
+            PaymentMethod.CASH,
+        )
+    val unknownPayment =
+        Commands.paymentReverse(origin, at(5), "d0000000-0000-4000-8000-0000000000df", "خطأ")
     val refused =
         listOf(
             page(fixture.drop(2), schemaVersion = 2),
@@ -185,6 +192,39 @@ class LedgerStateTest {
     assertEquals(Cents(700), view.confirmedPayable)
     assertEquals(Cents.ZERO, view.receivable)
     assertEquals(Cents.ZERO, view.confirmedReceivable)
+  }
+
+  @Test
+  fun foldsACommandTimeThatCarriesAnOffset() {
+    val shifted = contact.copy(createdAt = "2026-10-16T12:00:00.000+03:00")
+    val state = Events.stateOf(shifted)
+    assertEquals(Instant.parse("2026-10-16T09:00:00Z"), state.contacts.values.single().createdAt)
+  }
+
+  @Test
+  fun unreadableEventsAreIllegalStateAndKeepTheReceiver() {
+    val state = LedgerState.EMPTY.apply(page(fixture))
+    val before = state.copy()
+    val badAmount =
+        debt.copy(
+            entityId = "f0000000-0000-4000-8000-000000000001",
+            payload =
+                JsonObject(
+                    mapOf(
+                        "contactId" to JsonPrimitive(fixture[0].entityId),
+                        "direction" to JsonPrimitive("receivable"),
+                        "amountCents" to JsonPrimitive("abc"),
+                    )
+                ),
+        )
+    val badTime =
+        debt.copy(entityId = "f0000000-0000-4000-8000-000000000002", createdAt = "not a time")
+    for (bad in listOf(badAmount, badTime)) {
+      assertThrows(IllegalStateException::class.java) {
+        state.apply(page(listOf(accepted(bad, 4))))
+      }
+      assertEquals(before, state)
+    }
   }
 
   @Test
