@@ -522,6 +522,107 @@ try {
     assert.deepEqual(receipts2, receipts1);
   });
 
+  await check('Per-command refusals become rejected receipts while caller-level refusals still abort the batch', async () => {
+    await db.exec('reset role');
+    await db.query("update sadid_private.installations set permissions = '{\"registerPayments\": false}'::jsonb where id = $1", [activeInstallation]);
+    try {
+      const c = command('contact.create', { name: 'عميل صلاحيات', phone: '' });
+      const d = command('debt.create', { contactId: c.entityId, amountCents: 1000, direction: 'receivable' }, { dependsOn: [c.operationId] });
+      const p = command('payment.create', { debtId: d.entityId, amountCents: 500, method: 'cash' }, { dependsOn: [d.operationId] });
+
+      const r1 = await applyBatch([c, d, p]);
+      assert.deepEqual(r1.map(r => [r.status, r.code]), [
+        ['accepted', null],
+        ['accepted', null],
+        ['rejected', 'store_permission_denied'],
+      ]);
+      await db.exec('reset role');
+      assert.equal((await db.query('select count(*)::int n from public.sadid_contacts where id = $1', [c.entityId])).rows[0].n, 1);
+      assert.equal((await db.query('select count(*)::int n from public.sadid_debts where id = $1', [d.entityId])).rows[0].n, 1);
+      assert.equal((await db.query('select count(*)::int n from public.sadid_payments where id = $1', [p.entityId])).rows[0].n, 0);
+      assert.equal((await db.query("select count(*)::int n from public.sadid_events where operation_id = $1 and kind = 'operation.rejected'", [p.operationId])).rows[0].n, 1);
+      const eventsBefore = (await db.query('select count(*)::int n from public.sadid_events')).rows[0].n;
+      assert.deepEqual(await applyBatch([c, d, p]), r1);
+      await db.exec('reset role');
+      assert.equal((await db.query('select count(*)::int n from public.sadid_events')).rows[0].n, eventsBefore);
+
+      const tsBad = await applyBatch([
+        command('contact.create', { name: 'وقت سليم', phone: '' }),
+        command('contact.create', { name: 'وقت تالف', phone: '' }, { createdAt: 'not a time' }),
+      ]);
+      assert.deepEqual(tsBad.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_timestamp']]);
+
+      const tsMissing = command('contact.create', { name: 'بلا وقت', phone: '' });
+      delete tsMissing.createdAt;
+      const tsNone = await applyBatch([command('contact.create', { name: 'وقت موجود', phone: '' }), tsMissing]);
+      assert.deepEqual(tsNone.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_timestamp']]);
+
+      const depNotArray = await applyBatch([
+        command('contact.create', { name: 'اعتماد سليم ١', phone: '' }),
+        command('contact.create', { name: 'اعتماد نص', phone: '' }, { dependsOn: 'x' }),
+      ]);
+      assert.deepEqual(depNotArray.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_dependencies']]);
+
+      const depBadUuid = await applyBatch([
+        command('contact.create', { name: 'اعتماد سليم ٢', phone: '' }),
+        command('contact.create', { name: 'اعتماد غير معرف', phone: '' }, { dependsOn: ['not-a-uuid'] }),
+      ]);
+      assert.deepEqual(depBadUuid.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_dependencies']]);
+
+      for (const createdAt of ['2026-01-01 00:00 Foo/Bar', '2026-01-01T00:00:00+99:00', 'infinity']) {
+        const tz = await applyBatch([
+          command('contact.create', { name: `وقت سليم ${createdAt}`, phone: '' }),
+          command('contact.create', { name: `وقت غريب ${createdAt}`, phone: '' }, { createdAt }),
+        ]);
+        assert.deepEqual(tz.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_timestamp']], createdAt);
+      }
+
+      for (const dependsOn of [[randomUUID(), 'not-a-uuid'], [null], [5]]) {
+        const deps = await applyBatch([
+          command('contact.create', { name: `اعتماد سليم ${JSON.stringify(dependsOn)}`, phone: '' }),
+          command('contact.create', { name: `اعتماد تالف ${JSON.stringify(dependsOn)}`, phone: '' }, { dependsOn }),
+        ]);
+        assert.deepEqual(deps.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_dependencies']], JSON.stringify(dependsOn));
+      }
+
+      await db.exec('reset role');
+      const opsBefore = (await db.query('select count(*)::int n from public.sadid_operations')).rows[0].n;
+      await assert.rejects(
+        applyBatch([
+          command('contact.create', { name: 'لن يطبق ١', phone: '' }),
+          command('contact.create', { name: 'حقبة خاطئة', phone: '' }, { expectedEpoch: randomUUID() }),
+        ]),
+        /epoch_changed/,
+      );
+      await assert.rejects(
+        applyBatch([
+          command('contact.create', { name: 'لن يطبق ٢', phone: '' }),
+          command('contact.create', { name: 'عملية خاطئة', phone: '' }, { operationId: 'x' }),
+        ]),
+        /invalid_input/,
+      );
+      await assert.rejects(
+        applyBatch([
+          command('contact.create', { name: 'لن يطبق ٣', phone: '' }),
+          command('contact.create', { name: 'كيان خاطئ', phone: '' }, { entityId: 'x' }),
+        ]),
+        /invalid_input/,
+      );
+      await assert.rejects(
+        applyBatch([
+          command('contact.create', { name: 'لن يطبق ٤', phone: '' }),
+          command('contact.create', { name: 'اعتماد معلق', phone: '' }, { dependsOn: [randomUUID()] }),
+        ]),
+        /dependency_pending/,
+      );
+      await db.exec('reset role');
+      assert.equal((await db.query('select count(*)::int n from public.sadid_operations')).rows[0].n, opsBefore);
+    } finally {
+      await db.exec('reset role');
+      await db.query("update sadid_private.installations set permissions = '{}'::jsonb where id = $1", [activeInstallation]);
+    }
+  });
+
   await check('changes(after, limit) returns events after cursor in order and read routines take no row locks on stores', async () => {
     await db.exec('reset role; begin');
     try {
