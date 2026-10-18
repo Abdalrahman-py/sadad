@@ -97,6 +97,19 @@ function before(seed: string, kind: string, index: number): number {
     (number(seed, `${kind}-ms`, index) % DAY_MS);
 }
 
+/** A time between `after` and the anchor, so a Debt never predates its Contact nor a Payment its Debt. */
+function later(
+  seed: string,
+  kind: string,
+  index: number,
+  after: number,
+): number {
+  return after +
+    Math.floor(
+      (number(seed, `${kind}-later`, index) / 2 ** 32) * (ANCHOR_MS - after),
+    );
+}
+
 /**
  * Builds the whole command list from the seed and the origin: same inputs, same bytes, on any
  * day. Contacts come first, then Debts (each on an earlier Contact), then Payments (each on an
@@ -109,6 +122,8 @@ export function buildCommands(seed: string, origin: Origin): SeedCommand[] {
   const debtOps: string[] = [];
   const debtIds: string[] = [];
   const debtAmounts: number[] = [];
+  const contactTimes: number[] = [];
+  const debtTimes: number[] = [];
   const base = {
     schemaVersion: 1,
     originInstallationId: origin.installationId,
@@ -121,9 +136,11 @@ export function buildCommands(seed: string, origin: Origin): SeedCommand[] {
     const entityId = id(seed, "contact", index);
     contactOps.push(operationId);
     contactIds.push(entityId);
+    const createdAt = ANCHOR_MS - before(seed, "contact", index);
+    contactTimes.push(createdAt);
     commands.push({
       ...base,
-      createdAt: at(ANCHOR_MS - before(seed, "contact", index)),
+      createdAt: at(createdAt),
       operationId,
       entityId,
       type: "contact.create",
@@ -140,7 +157,8 @@ export function buildCommands(seed: string, origin: Origin): SeedCommand[] {
     const entityId = id(seed, "debt", index);
     const amountCents = 1 + (number(seed, "debt-amount", index) % 50_000);
     const contact = index % CONTACTS;
-    const createdAt = ANCHOR_MS - before(seed, "debt", index);
+    const createdAt = later(seed, "debt", index, contactTimes[contact]);
+    debtTimes.push(createdAt);
     debtOps.push(operationId);
     debtIds.push(entityId);
     debtAmounts.push(amountCents);
@@ -166,7 +184,7 @@ export function buildCommands(seed: string, origin: Origin): SeedCommand[] {
     const debt = index % DEBTS;
     commands.push({
       ...base,
-      createdAt: at(ANCHOR_MS - before(seed, "payment", index)),
+      createdAt: at(later(seed, "payment", index, debtTimes[debt])),
       operationId: id(seed, "op-payment", index),
       entityId: id(seed, "payment", index),
       type: "payment.create",

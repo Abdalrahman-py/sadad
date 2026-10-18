@@ -45,6 +45,23 @@ Deno.test("the builder is deterministic and anchored, never clock-bound", () => 
   assert(days.size >= 300, `debts only span ${days.size} days, not the year`);
 });
 
+Deno.test("a Debt never predates its Contact, nor a Payment its Debt", () => {
+  const commands = buildCommands("t", origin);
+  const times = new Map(
+    commands.map((
+      command,
+    ) => [command.operationId, Date.parse(command.createdAt)]),
+  );
+  for (const command of commands) {
+    for (const dependency of command.dependsOn) {
+      assert(
+        times.get(command.operationId)! >= times.get(dependency)!,
+        `${command.type} ${command.operationId} predates ${dependency}`,
+      );
+    }
+  }
+});
+
 Deno.test("the list holds 5,000 contacts, 30,000 debts and 15,000 payments", () => {
   const commands = buildCommands("t", origin);
   assertEqual(commands.length, 50_000);
