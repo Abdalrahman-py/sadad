@@ -54,7 +54,7 @@ changes it (`02_ledger_tables.sql`), so a change only means "pull again from 0".
 installation to queue offline commands (`CommandType.offline`).
 
 **Recovery** — the sealed export of a device's unsettled commands, and its admin-approved restoration
-onto another installation (`sadid_recovery_claims`). Sealed with PBKDF2-HMAC-SHA256 then AES-256-GCM;
+onto another installation (`sadid_private.recovery_permits`). Sealed with PBKDF2-HMAC-SHA256 then AES-256-GCM;
 the installation private key is never exported.
 
 **Activity** — the latest 200 change events (`ChangeEvent` from `sadid_events`) kept on the device (no
