@@ -69,7 +69,10 @@ data class Receipt(
   fun serverTimeInstant(): Instant = ServerTime.parse(serverTime)
 }
 
-/** Server times are `timestamptz` text with an offset, e.g. `2026-10-16T09:00:00.123456+00:00`. */
+/**
+ * Server times are `timestamptz` text with an offset, e.g. `2026-10-16T09:00:00.123456+00:00`. It
+ * also reads a command's `createdAt`: `Z` as `Commands` writes it, or a `+hh:mm` offset.
+ */
 object ServerTime {
   fun parse(text: String): Instant = OffsetDateTime.parse(text).toInstant()
 }

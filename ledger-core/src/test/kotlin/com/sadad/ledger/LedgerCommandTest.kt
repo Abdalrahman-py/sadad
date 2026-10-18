@@ -20,6 +20,9 @@ import org.junit.Test
 class LedgerCommandTest {
   private val origin = Origin(Fixtures.INSTALLATION_ID, generation = 1, epoch = Fixtures.EPOCH)
   private val at = Instant.parse("2026-10-16T09:00:00Z")
+  private val contactId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+  private val debtId = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"
+  private val paymentId = "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f"
   private val fixture = Fixtures.read("mobile/operations.json")
   private val fixtureCommands =
       fixture.getValue("request").jsonObject.getValue("operations").jsonArray
@@ -74,18 +77,18 @@ class LedgerCommandTest {
       mapOf(
           CommandType.CONTACT_CREATE to Commands.contactCreate(origin, at, name = "سامي"),
           CommandType.CONTACT_UPDATE to
-              Commands.contactUpdate(origin, at, "c1", expectedVersion = 1, name = "سامي"),
+              Commands.contactUpdate(origin, at, contactId, expectedVersion = 1, name = "سامي"),
           CommandType.CONTACT_ARCHIVE to
-              Commands.contactArchive(origin, at, "c1", expectedVersion = 2, reason = "انتقل"),
+              Commands.contactArchive(origin, at, contactId, expectedVersion = 2, reason = "انتقل"),
           CommandType.CONTACT_RESTORE to
-              Commands.contactRestore(origin, at, "c1", expectedVersion = 3, reason = "عاد"),
+              Commands.contactRestore(origin, at, contactId, expectedVersion = 3, reason = "عاد"),
           CommandType.DEBT_CREATE to
-              Commands.debtCreate(origin, at, "c1", Direction.PAYABLE, Cents(100)),
+              Commands.debtCreate(origin, at, contactId, Direction.PAYABLE, Cents(100)),
           CommandType.DEBT_CORRECT to
-              Commands.debtCorrect(origin, at, "d1", expectedVersion = 1, Cents(90), "خطأ"),
+              Commands.debtCorrect(origin, at, debtId, expectedVersion = 1, Cents(90), "خطأ"),
           CommandType.PAYMENT_CREATE to
-              Commands.paymentCreate(origin, at, "d1", Cents(10), PaymentMethod.WALLET_PALPAY),
-          CommandType.PAYMENT_REVERSE to Commands.paymentReverse(origin, at, "p1", "مكررة"),
+              Commands.paymentCreate(origin, at, debtId, Cents(10), PaymentMethod.WALLET_PALPAY),
+          CommandType.PAYMENT_REVERSE to Commands.paymentReverse(origin, at, paymentId, "مكررة"),
       )
 
   @Test
@@ -138,7 +141,7 @@ class LedgerCommandTest {
         Commands.contactUpdate(
             origin,
             at,
-            "c1",
+            contactId,
             1,
             name = "سامي",
             phone = " +970599000000 ",
@@ -147,7 +150,7 @@ class LedgerCommandTest {
     assertEquals(
         JsonObject(
             mapOf(
-                "contactId" to JsonPrimitive("c1"),
+                "contactId" to JsonPrimitive(contactId),
                 "name" to JsonPrimitive("سامي"),
                 "phone" to JsonPrimitive("+970599000000"),
                 "note" to JsonPrimitive("زبون"),
@@ -160,7 +163,7 @@ class LedgerCommandTest {
         Commands.debtCreate(
             origin,
             at,
-            "c1",
+            contactId,
             Direction.RECEIVABLE,
             Cents(5),
             note = "  ",
@@ -172,15 +175,23 @@ class LedgerCommandTest {
     assertFalse(
         "dueDate" in
             payloadOf(
-                Commands.debtCreate(origin, at, "c1", Direction.RECEIVABLE, Cents(5), dueDate = " ")
+                Commands.debtCreate(
+                    origin,
+                    at,
+                    contactId,
+                    Direction.RECEIVABLE,
+                    Cents(5),
+                    dueDate = " ",
+                )
             )
     )
 
-    val payment = Commands.paymentCreate(origin, at, "d1", Cents(5), PaymentMethod.CASH, note = "")
+    val payment =
+        Commands.paymentCreate(origin, at, debtId, Cents(5), PaymentMethod.CASH, note = "")
     assertFalse("note" in payloadOf(payment))
     assertEquals(
         "خطأ",
-        payloadOf(Commands.paymentReverse(origin, at, "p1", "  خطأ ")).text("reason"),
+        payloadOf(Commands.paymentReverse(origin, at, paymentId, "  خطأ ")).text("reason"),
     )
   }
 
@@ -220,9 +231,9 @@ class LedgerCommandTest {
   fun moneyMustBeWithinTheWireRange() {
     val builders: List<(Cents) -> LedgerCommand> =
         listOf(
-            { Commands.debtCreate(origin, at, "c1", Direction.RECEIVABLE, it) },
-            { Commands.debtCorrect(origin, at, "d1", 1, it, "تصحيح") },
-            { Commands.paymentCreate(origin, at, "d1", it, PaymentMethod.CASH) },
+            { Commands.debtCreate(origin, at, contactId, Direction.RECEIVABLE, it) },
+            { Commands.debtCorrect(origin, at, debtId, 1, it, "تصحيح") },
+            { Commands.paymentCreate(origin, at, debtId, it, PaymentMethod.CASH) },
         )
     for (build in builders) {
       for (bad in listOf(Cents(0), Cents(-1), Cents.MAX_WIRE + Cents(1))) {
@@ -245,23 +256,69 @@ class LedgerCommandTest {
       Commands.contactCreate(origin, at, name121)
     }
     assertThrows(IllegalArgumentException::class.java) {
-      Commands.contactUpdate(origin, at, "c1", 1, name = "")
+      Commands.contactUpdate(origin, at, contactId, 1, name = "")
     }
     assertThrows(IllegalArgumentException::class.java) {
-      Commands.contactArchive(origin, at, "c1", 1, reason = " ")
+      Commands.contactArchive(origin, at, contactId, 1, reason = " ")
     }
     assertThrows(IllegalArgumentException::class.java) {
-      Commands.contactRestore(origin, at, "c1", 1, reason = reason2001)
+      Commands.contactRestore(origin, at, contactId, 1, reason = reason2001)
     }
     assertThrows(IllegalArgumentException::class.java) {
-      Commands.debtCorrect(origin, at, "d1", 1, Cents(5), reason = "")
+      Commands.debtCorrect(origin, at, debtId, 1, Cents(5), reason = "")
     }
     assertThrows(IllegalArgumentException::class.java) {
-      Commands.paymentReverse(origin, at, "p1", reason = reason2001)
+      Commands.paymentReverse(origin, at, paymentId, reason = reason2001)
     }
     // The limits themselves are allowed; an emoji counts as one character, as in Postgres.
     Commands.contactCreate(origin, at, "ا".repeat(119) + "😀")
-    Commands.paymentReverse(origin, at, "p1", "ب".repeat(2000))
+    Commands.paymentReverse(origin, at, paymentId, "ب".repeat(2000))
+  }
+
+  @Test
+  fun idsMustBeLowercaseUuids() {
+    val goodId = "0f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a"
+    val payloadIds: Map<String, (String) -> LedgerCommand> =
+        mapOf(
+            "contactUpdate" to { id -> Commands.contactUpdate(origin, at, id, 1, "سامي") },
+            "contactArchive" to { id -> Commands.contactArchive(origin, at, id, 1, "انتقل") },
+            "contactRestore" to { id -> Commands.contactRestore(origin, at, id, 1, "عاد") },
+            "debtCreate" to
+                { id ->
+                  Commands.debtCreate(origin, at, id, Direction.RECEIVABLE, Cents(1))
+                },
+            "debtCorrect" to { id -> Commands.debtCorrect(origin, at, id, 1, Cents(1), "خطأ") },
+            "paymentCreate" to
+                { id ->
+                  Commands.paymentCreate(origin, at, id, Cents(1), PaymentMethod.CASH)
+                },
+            "paymentReverse" to { id -> Commands.paymentReverse(origin, at, id, "مكررة") },
+        )
+    for ((name, build) in payloadIds) {
+      for (bad in listOf("x", "A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D")) {
+        assertThrows("$name $bad", IllegalArgumentException::class.java) { build(bad) }
+      }
+      build(goodId) // A lowercase canonical UUID passes.
+    }
+    for (bad in listOf("x", "A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D")) {
+      assertThrows(IllegalArgumentException::class.java) {
+        Commands.contactCreate(origin, at, "سامي", entityId = bad)
+      }
+      assertThrows(IllegalArgumentException::class.java) {
+        Commands.contactCreate(origin, at, "سامي", operationId = bad)
+      }
+      assertThrows(IllegalArgumentException::class.java) {
+        Commands.contactCreate(origin, at, "سامي", dependsOn = listOf(bad))
+      }
+    }
+    Commands.contactCreate(
+        origin,
+        at,
+        "سامي",
+        entityId = goodId,
+        operationId = contactId,
+        dependsOn = listOf(paymentId),
+    )
   }
 
   @Test
@@ -329,9 +386,10 @@ class LedgerCommandTest {
 
   @Test
   fun dependsOnKeepsOrderAndIsAnEmptyArrayByDefault() {
-    val command = Commands.contactCreate(origin, at, "سامي", dependsOn = listOf("b", "a", "c"))
+    val dependencies = listOf(paymentId, contactId, debtId)
+    val command = Commands.contactCreate(origin, at, "سامي", dependsOn = dependencies)
     assertEquals(
-        JsonArray(listOf("b", "a", "c").map(::JsonPrimitive)),
+        JsonArray(dependencies.map(::JsonPrimitive)),
         encode(command).getValue("dependsOn"),
     )
     assertEquals(
@@ -342,7 +400,7 @@ class LedgerCommandTest {
 
   @Test
   fun envelopeCarriesTheOrigin() {
-    val json = encode(Commands.paymentReverse(Origin("i-9", 4, "e-2"), at, "p1", "خطأ"))
+    val json = encode(Commands.paymentReverse(Origin("i-9", 4, "e-2"), at, paymentId, "خطأ"))
     assertEquals(1L, json.getValue("schemaVersion").jsonPrimitive.long)
     assertEquals("i-9", json.text("originInstallationId"))
     assertEquals(4L, json.getValue("originGeneration").jsonPrimitive.long)

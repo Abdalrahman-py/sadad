@@ -8,10 +8,10 @@ import kotlinx.serialization.json.jsonObject
 
 /**
  * Builders for every command type. Text is trimmed and blank optional text dropped. They throw
- * [IllegalArgumentException] only for what the server would always refuse and the UI must catch
- * before queueing: an amount outside 1..[Cents.MAX_WIRE], a contact name that is blank or over 120
- * characters, a reason that is blank or over 2000 characters. Everything else (phone format,
- * duplicates, versions) the server judges.
+ * [IllegalArgumentException] for what the UI must catch before queueing: an amount outside
+ * 1..[Cents.MAX_WIRE], a contact name that is blank or over 120 characters, a reason that is blank
+ * or over 2000 characters, and an id or `dependsOn` entry that is not a lowercase canonical UUID.
+ * Everything else (phone format, duplicates, versions) the server judges.
  */
 object Commands {
   private const val MAX_NAME = 120
@@ -60,7 +60,13 @@ object Commands {
           operationId,
           dependsOn,
           ContactUpdate.serializer(),
-          ContactUpdate(contactId, name(name), optional(phone), optional(category), optional(note)),
+          ContactUpdate(
+              uuid("contactId", contactId),
+              name(name),
+              optional(phone),
+              optional(category),
+              optional(note),
+          ),
           expectedVersion = expectedVersion,
       )
 
@@ -82,7 +88,7 @@ object Commands {
           operationId,
           dependsOn,
           ContactArchive.serializer(),
-          ContactArchive(contactId, reason(reason)),
+          ContactArchive(uuid("contactId", contactId), reason(reason)),
           expectedVersion = expectedVersion,
       )
 
@@ -104,7 +110,7 @@ object Commands {
           operationId,
           dependsOn,
           ContactRestore.serializer(),
-          ContactRestore(contactId, reason(reason)),
+          ContactRestore(uuid("contactId", contactId), reason(reason)),
           expectedVersion = expectedVersion,
       )
 
@@ -129,7 +135,13 @@ object Commands {
           operationId,
           dependsOn,
           DebtCreate.serializer(),
-          DebtCreate(contactId, direction, amount(amount), optional(note), optional(dueDate)),
+          DebtCreate(
+              uuid("contactId", contactId),
+              direction,
+              amount(amount),
+              optional(note),
+              optional(dueDate),
+          ),
       )
 
   fun debtCorrect(
@@ -151,7 +163,7 @@ object Commands {
           operationId,
           dependsOn,
           DebtCorrect.serializer(),
-          DebtCorrect(debtId, amount(amount), reason(reason)),
+          DebtCorrect(uuid("debtId", debtId), amount(amount), reason(reason)),
           expectedVersion = expectedVersion,
       )
 
@@ -174,7 +186,7 @@ object Commands {
           operationId,
           dependsOn,
           PaymentCreate.serializer(),
-          PaymentCreate(debtId, amount(amount), method, optional(note)),
+          PaymentCreate(uuid("debtId", debtId), amount(amount), method, optional(note)),
       )
 
   fun paymentReverse(
@@ -194,7 +206,7 @@ object Commands {
           operationId,
           dependsOn,
           PaymentReverse.serializer(),
-          PaymentReverse(paymentId, reason(reason)),
+          PaymentReverse(uuid("paymentId", paymentId), reason(reason)),
       )
 
   private fun newId(): String = UUID.randomUUID().toString()
@@ -211,18 +223,29 @@ object Commands {
       expectedVersion: Long? = null,
   ) =
       LedgerCommand(
-          operationId = operationId,
-          entityId = entityId,
+          operationId = uuid("operationId", operationId),
+          entityId = uuid("entityId", entityId),
           type = type,
           originInstallationId = origin.installationId,
           originGeneration = origin.generation,
           expectedEpoch = origin.epoch,
           // Instant.toString is ISO-8601 in UTC with Z, whatever the device's zone.
           createdAt = at.truncatedTo(ChronoUnit.MILLIS).toString(),
-          dependsOn = dependsOn.toList(),
+          dependsOn = dependsOn.map { uuid("dependsOn", it) },
           expectedVersion = expectedVersion,
           payload = LedgerJson.encodeToJsonElement(serializer, payload).jsonObject,
       )
+
+  /**
+   * The server casts every id to `uuid` outside its per-command handling, so one id it cannot read
+   * fails the whole batch. Uppercase is refused here as well, stricter than the cast, so every id
+   * the app queues is the canonical lowercase text Postgres stores and the ledger compares.
+   */
+  private fun uuid(name: String, value: String): String = value.also {
+    require(it == runCatching { UUID.fromString(it) }.getOrNull()?.toString()) {
+      "$name is not a UUID"
+    }
+  }
 
   private fun optional(text: String?): String? = text?.trim()?.ifEmpty { null }
 

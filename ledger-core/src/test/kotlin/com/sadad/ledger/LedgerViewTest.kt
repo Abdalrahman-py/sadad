@@ -3,6 +3,7 @@ package com.sadad.ledger
 import com.sadad.ledger.Events.at
 import com.sadad.ledger.Events.origin
 import com.sadad.ledger.Events.otherOrigin
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -20,6 +21,13 @@ class LedgerViewTest {
   private val contact = Commands.contactCreate(origin, at(0), "سامي")
   private val debt =
       Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(10000))
+
+  @Test
+  fun projectsAQueuedCommandTimeThatCarriesAnOffset() {
+    val shifted = contact.copy(createdAt = "2026-10-16T12:00:00.000+03:00")
+    val view = LedgerState.EMPTY.viewWith(listOf(shifted))
+    assertEquals(Instant.parse("2026-10-16T09:00:00Z"), view.contacts.single().createdAt)
+  }
 
   @Test
   fun emptyStateHasNothing() {

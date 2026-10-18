@@ -166,7 +166,7 @@ fun LedgerState.view(
       excluded += command.operationId
       continue
     }
-    val at = Instant.parse(command.createdAt)
+    val at = ServerTime.parse(command.createdAt)
     val by = author(command.originInstallationId)
     when (val payload = command.payload()) {
       is ContactCreate -> {
