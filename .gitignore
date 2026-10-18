@@ -50,5 +50,8 @@ Supabase-Setup/supabase/.temp/
 /.hermes/
 /.scratch/
 
+# graphify knowledge graph: built per clone/worktree (see AGENTS.md)
+graphify-out/
+
 .DS_Store
 *.log

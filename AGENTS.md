@@ -88,4 +88,12 @@ Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
 
 ### Implementation skills
 
-Use only: tdd, diagnosing-bugs, code-review, ponytail, supabase skills, writing-for-agents (doc tickets). The ticket prompt replaces `implement`, which OpenCode cannot load (`disable-model-invocation`). Never use speckit-* or to-spec/to-tickets during implementation. In OpenCode, the repo `opencode.json` denies those skills and denies `git push`, destructive git and Supabase cloud commands; a human pushes and deploys.
+Use only: tdd, diagnosing-bugs, code-review, ponytail, supabase skills, writing-for-agents (doc tickets), graphify (queries). The ticket prompt replaces `implement`, which OpenCode cannot load (`disable-model-invocation`). Never use speckit-* or to-spec/to-tickets during implementation. In OpenCode, the repo `opencode.json` denies those skills and denies `git push`, destructive git and Supabase cloud commands; a human pushes and deploys.
+
+### Code graph (graphify)
+
+The `graphify` skill (`.claude/skills/graphify`, `.opencode/skills/graphify`) maps the codebase into a knowledge graph in `graphify-out/`, gitignored and built per clone or worktree.
+
+- Setup, once per developer: `uv tool install "graphifyy[sql]"` (or `pipx install "graphifyy[sql]"`; the `sql` extra parses `schemas/*.sql`). Then build the graph offline: `graphify extract . --code-only`.
+- When `graphify-out/graph.json` exists, start a codebase question with `graphify query "<question>"`, `graphify path "<A>" "<B>"` or `graphify explain "<symbol>"`, then read only the files it names. After code edits, run `graphify update .`.
+- Upgrade: `uv tool upgrade graphifyy`, then `./tools/graphify-skills.sh`, and commit both skill directories. The script replaces `graphify install`, which also rewrites `CLAUDE.md`, `AGENTS.md` and hook settings.
