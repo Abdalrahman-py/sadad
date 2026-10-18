@@ -34,7 +34,8 @@ Decided 2026-10-15 by a version audit: the newest stable versions on Google Mave
 | kotlinx-coroutines (+ test) | 1.11.0 | |
 | Spotless / ktfmt | 8.10.4 / 0.64 | |
 | junit4 | 4.13.2 | |
-| Turbine | 1.2.1 | not build-proven |
+| Robolectric | 4.17 | user approved 2026-10-17; build-proven by ticket 40 |
+| Turbine | 1.2.1 | build-proven by ticket 40 |
 | benchmark-macro-junit4 / baselineprofile plugin | 1.5.0 | Phase 4, not build-proven |
 | profileinstaller | 1.4.1 | Phase 4, not build-proven |
 | sentry-android / sentry gradle plugin | 8.61.0 / 6.23.0 | Phase 4, not build-proven |

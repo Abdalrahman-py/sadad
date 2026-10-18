@@ -1,9 +1,20 @@
 import com.android.build.api.variant.HostTestBuilder
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
+  alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.ksp)
+  alias(libs.plugins.room)
 }
 
 val releaseStoreFile = System.getenv("SADAD_KEYSTORE_FILE")
@@ -16,6 +27,10 @@ val releaseSigningReady =
     }
 
 fun quoted(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+// The pinned offline-lease key; empty means no offline write is allowed (ticket 47).
+val leaseKeyX = providers.gradleProperty("SADAD_LEASE_KEY_X").getOrElse("")
+val leaseKeyY = providers.gradleProperty("SADAD_LEASE_KEY_Y").getOrElse("")
 
 android {
   namespace = "com.sadad.app"
@@ -46,6 +61,8 @@ android {
     buildConfigField("String", "SUPABASE_URL", quoted(supabaseUrl))
     buildConfigField("String", "API_BASE_URL", quoted("$supabaseUrl/functions/v1/api"))
     buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", quoted(supabasePublishableKey))
+    buildConfigField("String", "LEASE_PUBLIC_KEY_X", quoted(leaseKeyX))
+    buildConfigField("String", "LEASE_PUBLIC_KEY_Y", quoted(leaseKeyY))
     manifestPlaceholders["allowCleartextTraffic"] = "false"
   }
   signingConfigs {
@@ -73,9 +90,34 @@ android {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
+  testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
+// Exported Room schemas are committed once ticket 42 adds the database.
+room { schemaDirectory("$projectDir/schemas") }
+
+// The unit tests read the shared contract fixtures straight from the repository.
+val contract = rootProject.layout.projectDirectory.dir("contract")
+
+tasks.withType<Test>().configureEach {
+  inputs.dir(contract).withPropertyName("contract").withPathSensitivity(PathSensitivity.RELATIVE)
+  systemProperty("sadad.fixtures", contract.dir("fixtures").asFile.absolutePath)
+}
+
+// `contract/errors.json` is the one source; the app reads it as the `errors.json` asset.
+val generateErrorsAsset =
+    tasks.register<ErrorsAssetTask>("generateErrorsAsset") {
+      source.set(contract.file("errors.json"))
+      outputDirectory.set(layout.buildDirectory.dir("generated/errorsAsset"))
+    }
+
 androidComponents {
+  onVariants { variant ->
+    variant.sources.assets?.addGeneratedSourceDirectory(
+        generateErrorsAsset,
+        ErrorsAssetTask::outputDirectory,
+    )
+  }
   // The release workflow also verifies the minified variant's BuildConfig.
   beforeVariants(selector().withBuildType("release")) {
     it.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
@@ -88,7 +130,52 @@ dependencies {
   implementation(platform(libs.compose.bom))
   implementation(libs.compose.ui)
   implementation(libs.compose.material3)
+  implementation(libs.compose.ui.tooling.preview)
   implementation(libs.activity.compose)
+  implementation(libs.core.ktx)
+  implementation(libs.biometric)
+  implementation(libs.datastore.preferences)
+  implementation(libs.lifecycle.viewmodel.compose)
+  implementation(libs.lifecycle.runtime.compose)
+  implementation(libs.navigation.compose)
+  implementation(libs.room.runtime)
+  implementation(libs.room.ktx)
+  implementation(libs.work.runtime.ktx)
+  implementation(libs.okhttp)
+  implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.serialization.json)
   implementation(project(":ledger-core"))
+
+  ksp(libs.room.compiler)
+
+  debugImplementation(libs.compose.ui.tooling)
+  debugImplementation(libs.compose.ui.test.manifest)
+
   testImplementation(libs.junit)
+  testImplementation(libs.ext.junit)
+  testImplementation(libs.robolectric)
+  testImplementation(libs.turbine)
+  testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.mockwebserver3)
+  testImplementation(libs.work.testing)
+  testImplementation(platform(libs.compose.bom))
+  testImplementation(libs.compose.ui.test.junit4)
+
+  androidTestImplementation(libs.ext.junit)
+  androidTestImplementation(libs.test.runner)
+  androidTestImplementation(platform(libs.compose.bom))
+  androidTestImplementation(libs.compose.ui.test.junit4)
+}
+
+abstract class ErrorsAssetTask : DefaultTask() {
+  @get:InputFile abstract val source: RegularFileProperty
+
+  @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+
+  @TaskAction
+  fun copyAsset() {
+    val target = outputDirectory.get().asFile.resolve(source.get().asFile.name)
+    target.parentFile.mkdirs()
+    source.get().asFile.copyTo(target, overwrite = true)
+  }
 }
