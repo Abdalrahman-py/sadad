@@ -13,7 +13,7 @@ declare
   s public.stores;
   v_token text;
 begin
-  if p_scope not in ('read', 'write', 'outcomes', 'lease') then raise exception 'invalid_scope'; end if;
+  if p_scope not in ('read', 'write', 'lease') then raise exception 'invalid_scope'; end if;
   select inst.* into i
   from sadid_private.installations inst
   join sadid_private.store_memberships m on m.store_id = inst.store_id and m.user_id = p_user

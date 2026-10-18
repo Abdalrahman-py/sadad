@@ -76,7 +76,7 @@ create table sadid_private.capabilities (
   store_id bigint not null,
   installation_id uuid not null,
   generation integer not null,
-  scope text not null check (scope in ('read', 'write', 'outcomes', 'lease')),
+  scope text not null check (scope in ('read', 'write', 'lease')),
   request jsonb,
   recovery_permit_id uuid,
   issued_at timestamptz not null default clock_timestamp(),

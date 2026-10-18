@@ -76,7 +76,7 @@ create table sadid_private.capabilities (
   store_id bigint not null,
   installation_id uuid not null,
   generation integer not null,
-  scope text not null check (scope in ('read', 'write', 'outcomes', 'lease')),
+  scope text not null check (scope in ('read', 'write', 'lease')),
   request jsonb,
   recovery_permit_id uuid,
   issued_at timestamptz not null default clock_timestamp(),
@@ -560,7 +560,7 @@ declare
   s public.stores;
   v_token text;
 begin
-  if p_scope not in ('read', 'write', 'outcomes', 'lease') then raise exception 'invalid_scope'; end if;
+  if p_scope not in ('read', 'write', 'lease') then raise exception 'invalid_scope'; end if;
   select inst.* into i
   from sadid_private.installations inst
   join sadid_private.store_memberships m on m.store_id = inst.store_id and m.user_id = p_user
