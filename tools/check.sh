@@ -3,6 +3,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# One check at a time across every worktree: parallel runs froze the laptop.
+if command -v flock >/dev/null; then
+  exec 9>"${TMPDIR:-/tmp}/sadad-check.lock"
+  if ! flock -n 9; then
+    echo "Another check.sh is running; waiting for it to finish..." >&2
+    flock 9
+  fi
+fi
+
 run_format() {
   echo "== format =="
   ./gradlew spotlessCheck --console=plain
