@@ -5,9 +5,26 @@
 إصدار والذي يسبقه.
 
 كل الأرقام والحقول هنا مستخرجة من ملفات تلك الإصدارات ومن رسائل الالتزامات في Git،
-لا من الذاكرة. حزم الإصدار على GitHub: `https://github.com/ibrahem57/sadad/releases/tag/v2.5.X`
+لا من الذاكرة. حزم الإصدار على GitHub: `https://github.com/Abdalrahman-py/sadad/releases`
 
 ---
+
+## 17 أكتوبر 2026 — إكمال المرحلة 2 في الشجرة وبداية المرحلة 3 (لم تُصدَر حزمة)
+
+- مسارات الإدارة في وظيفة `api` على أدوار Supabase Auth (`admin` و`support`): إدارة المتاجر والاشتراكات واعتماد التثبيتات والاسترداد وعرض الدفتر والملخصات وسجل التدقيق (التذكرة 24، PR #17).
+- سير عمل نشر محمي في GitHub Actions (`.github/workflows/supabase-deploy.yml`) يطبّق المخطط الأساسي وينشر `api` بعد موافقة بيئة `production` (التذكرة 26، PR #16).
+- إعادة بناء لوحة الإدارة في `server/public/` بـVite + TypeScript + `lit-html` على Supabase Auth وأنواع OpenAPI المولَّدة وفحوص Biome وVitest وPlaywright (التذكرة 25، PR #20).
+- مسار تغيير كلمة المرور `POST /v1/me/password` الذي يمسح `force_password_change`، وتقليم الخزعات القديمة والتصاريح المنتهية تلقائيًا عند الكتابة (التذكرتان 31 و32، PR #21).
+- حذف الخادم القديم (`sadad-api` و`sadad-auth` و`sadid-ledger` والترحيلات وفحوص pglite القديمة) واللوحة القديمة (`admin.js`) من الشجرة (التذكرة 28، PR #22).
+- وحدة `:ledger-core` الصرفة بـKotlin/JVM: `Cents`، وبنّاؤو الأوامر الثمانية `Commands`، و`ProofText`، وطيّ أحداث `changes` في `LedgerState` وإسقاط `LedgerView` وتوزيع الدفعات `PaymentAllocation` (التذكرتان 16 و17، PR #23).
+
+## 16 أكتوبر 2026 — ترقية البناء وسلسلة Kotlin وأساس المرحلة 2 (لم تُصدَر حزمة)
+
+- ترقية البناء إلى AGP `9.3.3` وGradle `9.7.1` و`compileSdk 37` مع حذف detekt لعدم توفر إصدار مستقر لها (التذكرة 30، التزام 443d783).
+- إضافة سلسلة أدوات Kotlin `2.4.21` المدمجة في AGP وإضافة `org.jetbrains.kotlin.plugin.compose` وCompose BOM `2026.09.00` وحذف مداخل الفهرس غير المستخدمة (التذكرة 14، PR #14).
+- دمج مخطط قاعدة البيانات في أساس واحد `Supabase-Setup/supabase/schemas/` وترحيل `20261015000000_baseline.sql` على هوية Supabase Auth وفق ADR-002 (التذكرة 21، التزام 0b00898).
+- هيكل وظيفة Edge الموحدة `api` (Hono + zod-openapi) مع التحقق من الجلسة بـ`auth.getClaims()` وتوليد عقد `contract/openapi.json` وجدول الأخطاء الموحّد `contract/errors.json` (التذكرة 22، التزام 9506c3d).
+- مسارات الهاتف الموقّعة في `api`: التسجيل والترخيص وسحب التغييرات `changes` والعمليات المجمّعة `operations` والاسترداد (التذكرة 23، PR #15).
 
 ## 15 أكتوبر 2026 — إصلاحات ما بعد تحقق الهاتف (لم تُصدَر حزمة)
 
