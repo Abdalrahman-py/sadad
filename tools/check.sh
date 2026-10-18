@@ -3,19 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# One check at a time across every worktree: parallel runs froze the laptop.
-if command -v flock >/dev/null; then
-  exec 9>"${TMPDIR:-/tmp}/sadad-check.lock"
-  if ! flock -n 9; then
-    echo "Another check.sh is running; waiting for it to finish..." >&2
-    flock 9
-  fi
-fi
-
 run_format() {
   echo "== format =="
   ./gradlew spotlessCheck --console=plain
   (cd Supabase-Setup/supabase/functions && deno fmt --check && deno lint)
+  (cd tools && deno fmt --check && deno lint)
 }
 
 run_docs() {
@@ -85,6 +77,7 @@ run_android() {
 run_edge() {
   echo "== edge =="
   (cd Supabase-Setup/supabase/functions/api && deno test -A)
+  (cd tools && deno test -A)
 }
 
 run_database() {
@@ -105,7 +98,8 @@ changed_sections() {
     case "$f" in
       '') ;;
       tools/check.sh) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
-      # Only the docs gate reads these; check.sh tests nothing else under tools/.
+      tools/*.ts) want[format]=1 want[edge]=1 ;;
+      # Only the docs gate reads these.
       *.md | docs/* | .claude/* | .opencode/* | .github/* | tools/* | opencode.json | .gitignore | .editorconfig | Supabase-Setup/supabase/config.toml) ;;
       contract/*) want[android]=1 want[dashboard]=1 want[edge]=1 ;;
       server/public/*) want[dashboard]=1 ;;
@@ -123,12 +117,23 @@ changed_sections() {
 if [[ $# -eq 0 ]]; then
   sections=("${all_sections[@]}")
 elif [[ $1 == --changed ]]; then
-  [[ $# -eq 2 ]] || { echo "usage: tools/check.sh --changed <base>" >&2; exit 1; }
+  [[ $# -eq 2 || ($# -eq 3 && $3 == --list) ]] || { echo "usage: tools/check.sh --changed <base> [--list]" >&2; exit 1; }
   git rev-parse --verify -q "$2^{commit}" >/dev/null || { echo "Unknown base: $2" >&2; exit 1; }
   mapfile -t sections < <(changed_sections "$2")
+  # --list prints the sections and runs nothing.
+  if [[ ${3:-} == --list ]]; then echo "${sections[*]}"; exit 0; fi
   echo "Sections for changes since $2: ${sections[*]}"
 else
   sections=("$@")
+fi
+
+# One check at a time across every worktree: parallel runs froze the laptop.
+if command -v flock >/dev/null; then
+  exec 9>"${TMPDIR:-/tmp}/sadad-check.lock"
+  if ! flock -n 9; then
+    echo "Another check.sh is running; waiting for it to finish..." >&2
+    flock 9
+  fi
 fi
 
 for section in "${sections[@]}"; do
