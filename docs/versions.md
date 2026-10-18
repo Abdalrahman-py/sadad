@@ -8,7 +8,6 @@ Decided 2026-10-15 by a version audit: the newest stable versions on Google Mave
 - AGP 9.0: max API 36.1. AGP 9.2: max API 37, Gradle ≥ 9.4.1. AGP 9.3: max API 37, Gradle ≥ 9.5.0. AGP 9.4: max API 37, Gradle ≥ 9.6.0.
 - Kotlin 2.4.21 fully supports AGP only up to 9.3.1, so AGP 9.4.x is outside the tested range.
 - AGP 9 has built-in Kotlin: never apply `org.jetbrains.kotlin.android`.
-- AGP 9 turns `resValues` off by default; the `server` and `standalone` flavors use `resValue`, so `buildFeatures { resValues = true }` is needed until Phase 3 deletes them.
 - SDK package for API 37 is `platforms;android-37.0`. AGP installs build-tools 36.0.0 itself.
 
 ## Versions
@@ -17,7 +16,7 @@ Decided 2026-10-15 by a version audit: the newest stable versions on Google Mave
 | --- | --- | --- |
 | Gradle | 9.7.1 | AGP 9.3 needs ≥ 9.5.0; KGP max tested 9.7.0 (patch above) |
 | AGP | 9.3.3 | newest with API 37 inside Kotlin's tested range (9.3.1 + patches); 9.4.1 is newest overall |
-| compileSdk / targetSdk / minSdk | 37 / 34 / 24 | targetSdk moves in Phase 4 |
+| compileSdk / targetSdk / minSdk | 37 / 34 / 26 | targetSdk moves in Phase 4 |
 | JDK | 21 | AGP 9 needs ≥ 17 |
 | Kotlin (compose, serialization, jvm plugins) | 2.4.21 | |
 | KSP | 2.3.12 | |

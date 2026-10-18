@@ -8,7 +8,7 @@
 
 | المكوّن | المسار المعتمد | القاعدة |
 | --- | --- | --- |
-| تطبيق Android | `app/` (Java حاليًا؛ يُستبدل بـKotlin/Compose في المرحلة 3) | عدّل المشروع المعتمد؛ لا تنشئ مشروعًا ثانيًا |
+| تطبيق Android | `app/` (Kotlin + Compose، المرحلة 3) | عدّل المشروع المعتمد؛ لا تنشئ مشروعًا ثانيًا |
 | الخادم | `Supabase-Setup/supabase/` (مشروع `vhftjmiltqfwmrszdtgf`) | لا تنشئ خادمًا موازيًا؛ النشر والترحيل باعتماد بشري |
 | لوحة الإدارة | `server/public/` (Vite + TypeScript) تُبنى بـ`npm run build` إلى `_site/` | مصدر واحد للوحة |
 | خطة المعمارية | `docs/ARCHITECTURE.md` | المرجع لما يحلّ محلّ كل مكوّن في المراحل 1–4 |
@@ -23,14 +23,7 @@
 
 | الميزة | الملف | نقطة البداية |
 | --- | --- | --- |
-| التنقّل وحالة المسار | `MainActivity.java` | `show(String route)`، `currentRoute()`، `refreshCurrentScreen()` |
-| بناء الشاشات (برمجي بلا XML) | `NativeScreens.java` | `show(String page)`، `addPage(String page)` |
-| قاعدة البيانات المحلية | `SadadDatabase.java` | `saveContact`، `saveDebt`، `savePayment`، `importLedgerView` |
-| الجلسة والدخول | `MainActivity.java` + `SessionStore.java` | |
-| طابور العمليات ومزامنة السجل الموقّع (v3) | `LedgerQueue.java` → `SignedLedgerSync.java` + `LedgerClient.java` | `LedgerCommand.now()` |
-| الإسقاط المحلي للسجل | `LedgerProjection.java` | |
-| تصدير الكشوفات ومشاركتها | `LedgerTablePdf.java`، `LedgerTableExcel.java`، `PdfShareProvider.java` | |
-| تذكيرات الاستحقاق | `DueReminderManager.java` | |
+| تطبيق Android (Kotlin، المرحلة 3) | `app/src/main/kotlin/com/sadad/app/` | `MainActivity`، `SadadApplication` |
 | قلب الدفتر بـKotlin (المرحلة 3) | `ledger-core/` (`com.sadad.ledger`) | `Commands`، `ProofText`، `Cents`، `LedgerState`، `PaymentAllocation` |
 | وظيفة Edge الوحيدة `api` (Hono + zod) | `functions/api/app.ts` | `createApp()`، المسارات تحت `/v1` |
 | مسارات الهاتف: التسجيل والترخيص والعمليات الموقّعة | `functions/api/mobile.ts` + `proof.ts` | `registerMobileRoutes()`، `verifyProof()` |
@@ -48,7 +41,7 @@
 
 - `./tools/check.sh` هو البوابة الموحدة محليًا وفي CI، ويشغّل CI جميع أقسامه.
 - النشر يدوي عبر `.github/workflows/supabase-deploy.yml` (`workflow_dispatch` من `main`): يشغّل `./tools/check.sh`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`.
-- إصدار الإنتاج يتطلب `SADAD_KEYSTORE_FILE` و`SADAD_KEYSTORE_PASSWORD` و`SADAD_KEY_ALIAS` و`SADAD_KEY_PASSWORD` مع `assembleServerRelease`، ويرفض أي عنوان خادم غير المدمج وقت البناء (`-PSADAD_API_BASE_URL=...`).
+- إصدار الإنتاج يتطلب `SADAD_KEYSTORE_FILE` و`SADAD_KEYSTORE_PASSWORD` و`SADAD_KEY_ALIAS` و`SADAD_KEY_PASSWORD` مع `assembleRelease`؛ عنوان Supabase يحدد وقت البناء (`-PSADAD_SUPABASE_URL=...`).
 
 ## المفاتيح والبيانات الحساسة
 
@@ -58,7 +51,7 @@
 ## الاختبارات
 
 - كل الفحوص تعمل عبر `./tools/check.sh` (أو `./tools/check.sh <section>`).
-- اختبارات الجهاز (`app/src/androidTest`) تُشغَّل بمعرّف QA منفصل (`com.sadad.qa`) وتحتاج هاتفًا متصلًا.
+- معرّف نسخة التطوير `com.sadad.app.debug` منفصل عن الإصدار `com.sadad.app`؛ اختبارات الجهاز الجديدة تضاف في تذاكر المرحلة 3.
 
 ## الكتابة والتوثيق
 
@@ -66,6 +59,8 @@
 - وثّق الحقائق المتحققة فقط؛ كل ما لم يُتحقق منه يُوسم صراحةً بعبارة «غير محقّق».
 
 ## الحفظ والاسترجاع
+
+- الوسم `pre-kotlin-app-2026-10` يحفظ تطبيق Java واختباراته قبل بدء هيكل Kotlin؛ تستعاد الملفات للقراءة عبر `git show pre-kotlin-app-2026-10:app/src/main/java/com/sadad/app/<Class>.java`.
 
 - الأوسمة `pre-consolidation-2026-10-11` (الشجرة قبل التنظيف شاملة `archive/Sadad-Flutter`)، و`pre-supabase-ledger-correctness-2026-10-12` (نقطة بداية تدقيق الدفتر)، و`pre-prune-2026-10` (الشجرة قبل حذف `delivery/` و`docs/archive/` و`docs/plans/` التي حلّ محلّها `docs/ARCHITECTURE.md`) تحفظ التاريخ في Git.
 - حزمة فروع الأرشيف الخاصة خارج المستودع في `~/sadad-private/sadad-archives-2026-10-14.bundle` (تحقّق في 17 أكتوبر 2026 بالأمر `git bundle verify` وباسترجاع تجريبي في مستودع فارغ)؛ تُسترجع عند الحاجة بالأمر:

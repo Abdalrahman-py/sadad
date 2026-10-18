@@ -1,13 +1,15 @@
 name: Android, admin site and edge-function checks
 
 # App, dashboard, Edge, database, formatting, status page and AGENTS.md changes run checks; other docs-only changes do not.
-# Debug builds are checks only; android-release.yml publishes serverRelease.
+# Debug builds are checks only; android-release.yml publishes release.
 
 on:
   push:
     branches: [main]
     paths:
       - 'app/**'
+      - 'ledger-core/**'
+      - 'contract/**'
       - 'gradle/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
@@ -23,13 +25,12 @@ on:
       - '.github/workflows/admin-pages.yml'
       - 'AGENTS.md'
       - 'docs/CONTINUE_HERE.md'
-      - 'delivery/**'
-      - 'docs/archive/**'
-      - 'docs/plans/**'
       - '.editorconfig'
   pull_request:
     paths:
       - 'app/**'
+      - 'ledger-core/**'
+      - 'contract/**'
       - 'gradle/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
@@ -45,9 +46,6 @@ on:
       - '.github/workflows/admin-pages.yml'
       - 'AGENTS.md'
       - 'docs/CONTINUE_HERE.md'
-      - 'delivery/**'
-      - 'docs/archive/**'
-      - 'docs/plans/**'
       - '.editorconfig'
   workflow_dispatch:
   workflow_call:
@@ -112,7 +110,7 @@ jobs:
       # different createdAt shape ("Z") than a device at +03:00, and only the runner's zone exposed
       # it. Running the suite in a non-UTC zone as well keeps that class of bug visible.
       - name: JVM unit tests under a non-UTC device zone
-        run: ./gradlew testServerDebugUnitTest --rerun-tasks --console=plain
+        run: ./gradlew :ledger-core:test testDebugUnitTest --rerun-tasks --console=plain
         env:
           TZ: Asia/Gaza
 
@@ -121,7 +119,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-unit-test-results
-          path: app/build/test-results/testServerDebugUnitTest/*.xml
+          path: app/build/test-results/testDebugUnitTest/*.xml
           if-no-files-found: warn
 
   edge-functions:
