@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="title_contacts">الزبائن</string>
+    <string name="title_contact_detail">تفاصيل الشخص</string>
+    <string name="contact_detail_id">المعرّف: %1$s</string>
+</resources>
