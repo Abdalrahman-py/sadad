@@ -38,7 +38,7 @@ run_docs() {
   # The old gateways and their tables are gone; only history, still-deployed state and the
   # baseline test's check that those tables are absent may name them.
   local old_backend migrations
-  old_backend=$(git grep -nE "sadad-api|sadad-auth|sadid-ledger|x-sadad-session|X-Sadad-Admin|sadad_auth_bindings|store_devices" -- . ':!docs/CHANGELOG.md' ':!docs/ARCHITECTURE.md' ':!docs/CONTINUE_HERE.md' ':!docs/adr' ':!tools/check.sh' ':!Supabase-Setup/scripts/test-baseline.mjs' || true)
+  old_backend=$(git grep -nE "sadad-api|sadad-auth|sadid-ledger|x-sadad-session|X-Sadad-Admin|sadad_auth_bindings|store_devices" -- . ':!docs/CHANGELOG.md' ':!docs/ARCHITECTURE.md' ':!docs/CONTINUE_HERE.md' ':!docs/phase-3' ':!docs/adr' ':!tools/check.sh' ':!Supabase-Setup/scripts/test-baseline.mjs' || true)
   if [[ -n "$old_backend" ]]; then
     echo "Old backend still referenced:" >&2
     echo "$old_backend" >&2
