@@ -41,8 +41,8 @@ jobs:
     needs: checks
     # Publishing is a human step (run this workflow by hand): a push to main only checks, so the
     # live site never switches backends on a merge (docs/adr/003-dashboard-hosting.md). Publish from
-    # the upstream repo and from the owner's mirror; any other fork stays quiet.
-    if: github.event_name == 'workflow_dispatch' && (github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad')
+    # the project repository only; any other fork stays quiet.
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'Abdalrahman-py/sadad'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

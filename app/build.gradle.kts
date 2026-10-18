@@ -1,3 +1,4 @@
+import com.android.build.api.variant.HostTestBuilder
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -14,27 +15,19 @@ val releaseSigningReady =
       !it.isNullOrBlank()
     }
 
+fun quoted(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 android {
   namespace = "com.sadad.app"
   buildFeatures {
     buildConfig = true
     compose = true
-    resValues = true
   }
-  // Live backend: the Supabase project's sadad-api edge function.
-  // Origins are build-time settings; no account preference can redirect credentials.
-  val apiBaseUrl =
+  val supabaseUrl =
       providers
-          .gradleProperty("SADAD_API_BASE_URL")
-          .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api")
-  // The gateway that issues the Auth envelope the signed ledger requires. Login and token refresh
-  // go here; account and administration routes still go to apiBaseUrl. Both are pinned into the
-  // build so
-  // a released app cannot be pointed at another origin.
-  val authBaseUrl =
-      providers
-          .gradleProperty("SADAD_AUTH_BASE_URL")
-          .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-auth")
+          .gradleProperty("SADAD_SUPABASE_URL")
+          .getOrElse("https://vhftjmiltqfwmrszdtgf.supabase.co")
+          .trimEnd('/')
   // Publishable key only. The service-role key must never reach the app.
   val supabasePublishableKey =
       providers
@@ -44,46 +37,16 @@ android {
     version = release(37)
   }
   defaultConfig {
-    applicationId =
-        providers.gradleProperty("SADAD_TEST_APPLICATION_ID").getOrElse("com.sadad.app.test")
-    testInstrumentationRunner =
-        providers.gradleProperty("SADAD_TEST_RUNNER").getOrElse("com.sadad.app.QaInstrumentation")
-    minSdk = 24
+    applicationId = "com.sadad.app"
+    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    minSdk = 26
     targetSdk = 34
-    versionCode = 39
-    versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("2.5.13")
-    buildConfigField(
-        "String",
-        "API_BASE_URL",
-        "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
-    )
-    buildConfigField(
-        "String",
-        "AUTH_BASE_URL",
-        "\"${authBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
-    )
-    buildConfigField(
-        "String",
-        "SUPABASE_PUBLISHABLE_KEY",
-        "\"${supabasePublishableKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
-    )
+    versionCode = 40
+    versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("3.0.0")
+    buildConfigField("String", "SUPABASE_URL", quoted(supabaseUrl))
+    buildConfigField("String", "API_BASE_URL", quoted("$supabaseUrl/functions/v1/api"))
+    buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", quoted(supabasePublishableKey))
     manifestPlaceholders["allowCleartextTraffic"] = "false"
-  }
-  flavorDimensions += "edition"
-  productFlavors {
-    create("server") {
-      dimension = "edition"
-      applicationId = providers.gradleProperty("SADAD_APPLICATION_ID").getOrElse("com.sadad.app")
-      if (applicationId == "com.sadad.qa") resValue("string", "app_name", "سدد - فحص الجهاز")
-      buildConfigField("boolean", "STANDALONE_MODE", "false")
-    }
-    create("standalone") {
-      dimension = "edition"
-      applicationIdSuffix = ".offline"
-      versionNameSuffix = "-offline"
-      resValue("string", "app_name", "سدد - مستقل")
-      buildConfigField("boolean", "STANDALONE_MODE", "true")
-    }
   }
   signingConfigs {
     if (releaseSigningReady)
@@ -96,11 +59,12 @@ android {
   }
   buildTypes {
     debug {
-      manifestPlaceholders["allowCleartextTraffic"] = "true"
+      applicationIdSuffix = ".debug"
     }
     release {
       manifestPlaceholders["allowCleartextTraffic"] = "false"
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
@@ -111,6 +75,13 @@ android {
   }
 }
 
+androidComponents {
+  // The release workflow also verifies the minified variant's BuildConfig.
+  beforeVariants(selector().withBuildType("release")) {
+    it.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
+  }
+}
+
 kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_11 } }
 
 dependencies {
@@ -118,19 +89,6 @@ dependencies {
   implementation(libs.compose.ui)
   implementation(libs.compose.material3)
   implementation(libs.activity.compose)
-  // JVM tests only. The signed ledger is pure Java over org.json, and Android's unit-test runtime
-  // stubs
-  // org.json, so the real implementation has to be on the test classpath for it to run at all.
+  implementation(project(":ledger-core"))
   testImplementation(libs.junit)
-  testImplementation(libs.json)
-}
-
-tasks.withType<Test>().configureEach {
-  // The live harness talks to the deployed backend, but only when told where the store login is:
-  // no path, no run. The password itself never enters the repository or the build file.
-  systemProperty(
-      "sadad.live.credentials",
-      providers.systemProperty("sadad.live.credentials").getOrElse(""),
-  )
-  testLogging { showStandardStreams = true }
 }

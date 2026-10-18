@@ -17,7 +17,7 @@ jobs:
 
   release:
     needs: checks
-    if: github.repository == 'ibrahem57/sadad' || github.repository == 'Abdalrahman-py/sadad'
+    if: github.repository == 'Abdalrahman-py/sadad'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -50,22 +50,19 @@ jobs:
               exit 1
             fi
           done
-          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Use a tag such as v2.5.12'; exit 1; }
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Use a tag such as v3.0.0'; exit 1; }
           umask 077
           printf '%s' "$SADAD_KEYSTORE_BASE64" | base64 --decode > "$SADAD_KEYSTORE_FILE"
-      - name: Build signed server release against live Supabase
+      - name: Build signed release
         env:
           SADAD_KEYSTORE_PASSWORD: ${{ secrets.SADAD_KEYSTORE_PASSWORD }}
           SADAD_KEY_ALIAS: ${{ secrets.SADAD_KEY_ALIAS }}
           SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
         run: |
-          ./gradlew testServerReleaseUnitTest assembleServerRelease --console=plain \
-            -PSADAD_APPLICATION_ID=com.sadad.app \
-            -PSADAD_API_BASE_URL=https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-api \
-            -PSADAD_AUTH_BASE_URL=https://vhftjmiltqfwmrszdtgf.supabase.co/functions/v1/sadad-auth
+          ./gradlew testReleaseUnitTest assembleRelease --console=plain
       - name: Verify production APK and create checksum
         run: |
-          apk=app/build/outputs/apk/server/release/app-server-release.apk
+          apk=app/build/outputs/apk/release/app-release.apk
           tools="$ANDROID_HOME/build-tools/36.0.0"
           "$tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
           if grep -qi 'CN=Android Debug' "$RUNNER_TEMP/apk-signature.txt"; then
@@ -82,7 +79,7 @@ jobs:
           "$tools/aapt" dump xmltree "$apk" AndroidManifest.xml > "$RUNNER_TEMP/apk-manifest.txt"
           grep -q 'usesCleartextTraffic.*=(type 0x12)0x0' "$RUNNER_TEMP/apk-manifest.txt"
           mkdir -p release
-          cp "$apk" "release/Sadad-${GITHUB_REF_NAME#v}-server-release.apk"
+          cp "$apk" "release/Sadad-${GITHUB_REF_NAME#v}-release.apk"
           cd release
           sha256sum ./*.apk > SHA256SUMS
       - name: Publish APK and checksum to GitHub Releases
