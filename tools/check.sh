@@ -95,8 +95,38 @@ run_database() {
   node Supabase-Setup/scripts/test-baseline.mjs
 }
 
+all_sections=(docs format dashboard android edge database)
+
+# Sections that the files changed since $1 (committed, staged, unstaged or untracked) can affect.
+changed_sections() {
+  local f s
+  local -A want=([docs]=1)
+  while IFS= read -r f; do
+    case "$f" in
+      '') ;;
+      tools/check.sh) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
+      # Only the docs gate reads these; check.sh tests nothing else under tools/.
+      *.md | docs/* | .claude/* | .opencode/* | .github/* | tools/* | opencode.json | .gitignore | .editorconfig | Supabase-Setup/supabase/config.toml) ;;
+      contract/*) want[android]=1 want[dashboard]=1 want[edge]=1 ;;
+      server/public/*) want[dashboard]=1 ;;
+      Supabase-Setup/supabase/functions/*) want[format]=1 want[edge]=1 ;;
+      Supabase-Setup/supabase/schemas/* | Supabase-Setup/supabase/migrations/* | Supabase-Setup/scripts/*) want[database]=1 ;;
+      app/* | ledger-core/* | gradle/* | *.kts | gradle.properties | gradlew*) want[format]=1 want[android]=1 ;;
+      *) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
+    esac
+  done < <({ git diff --name-only "$1"; git ls-files --others --exclude-standard; } | sort -u)
+  for s in "${all_sections[@]}"; do
+    if [[ -n ${want[$s]:-} ]]; then echo "$s"; fi
+  done
+}
+
 if [[ $# -eq 0 ]]; then
-  sections=(docs format dashboard android edge database)
+  sections=("${all_sections[@]}")
+elif [[ $1 == --changed ]]; then
+  [[ $# -eq 2 ]] || { echo "usage: tools/check.sh --changed <base>" >&2; exit 1; }
+  git rev-parse --verify -q "$2^{commit}" >/dev/null || { echo "Unknown base: $2" >&2; exit 1; }
+  mapfile -t sections < <(changed_sections "$2")
+  echo "Sections for changes since $2: ${sections[*]}"
 else
   sections=("$@")
 fi
