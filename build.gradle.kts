@@ -10,12 +10,12 @@ plugins {
 spotless {
   kotlin {
     target("**/*.kt")
-    targetExclude("**/build/**", ".claude/**")
+    targetExclude("**/build/**", ".claude/**", ".scratch/**")
     ktfmt(libs.versions.ktfmt.get())
   }
   kotlinGradle {
     target("**/*.gradle.kts")
-    targetExclude("**/build/**", ".claude/**", "settings.gradle.kts")
+    targetExclude("**/build/**", ".claude/**", ".scratch/**", "settings.gradle.kts")
     ktfmt(libs.versions.ktfmt.get())
   }
 }
