@@ -11,127 +11,14 @@
 // (SADAD_SMOKE_APPROVAL_SECONDS, default 600), takes a lease, pushes one batch (contact, debt,
 // payment) and reads it back through changes. It writes test data.
 import {
-  proofText,
-  sha256,
-} from "../Supabase-Setup/supabase/functions/api/proof.ts";
-
-function env(name: string): string {
-  const value = Deno.env.get(name);
-  if (!value) {
-    console.error(`Set ${name}.`);
-    Deno.exit(2);
-  }
-  return value;
-}
-
-const projectUrl = env("SADAD_SMOKE_URL").replace(/\/+$/, "");
-const publishableKey = env("SADAD_SMOKE_PUBLISHABLE_KEY");
-const username = env("SADAD_SMOKE_USERNAME");
-const password = env("SADAD_SMOKE_PASSWORD");
-const approvalSeconds = Number(
-  Deno.env.get("SADAD_SMOKE_APPROVAL_SECONDS") ?? "600",
-);
-const apiBase = `${projectUrl}/functions/v1/api`;
-const encoder = new TextEncoder();
-
-function base64Url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function fail(step: string, detail: unknown): never {
-  console.error(`FAIL ${step}: ${JSON.stringify(detail)}`);
-  Deno.exit(1);
-}
-
-async function signIn(secret = password): Promise<string> {
-  const res = await fetch(`${projectUrl}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: { apikey: publishableKey, "content-type": "application/json" },
-    body: JSON.stringify({
-      email: `${username}@stores.sadad.invalid`,
-      password: secret,
-    }),
-  });
-  const body = await res.json();
-  if (!res.ok || typeof body.access_token !== "string") {
-    fail("sign in", { status: res.status, body });
-  }
-  return body.access_token;
-}
-
-function forcePasswordChange(jwt: string): boolean {
-  const payload = jwt.split(".")[1] ?? "";
-  const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-  const claims = JSON.parse(
-    new TextDecoder().decode(Uint8Array.from(json, (ch) => ch.charCodeAt(0))),
-  );
-  return claims?.app_metadata?.force_password_change === true;
-}
-
-interface Device {
-  installationId: string;
-  privateKey: CryptoKey;
-  publicKey: { kty: string; crv: string; x: string; y: string };
-}
-
-async function newDevice(): Promise<Device> {
-  const pair = await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"],
-  );
-  const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  return {
-    installationId: crypto.randomUUID(),
-    privateKey: pair.privateKey,
-    publicKey: { kty: "EC", crv: "P-256", x: jwk.x!, y: jwk.y! },
-  };
-}
-
-async function signed(
-  jwt: string,
-  device: Device,
-  method: "GET" | "POST",
-  route: string,
-  body?: unknown,
-  // deno-lint-ignore no-explicit-any
-): Promise<{ status: number; body: any }> {
-  const raw = body === undefined ? "" : JSON.stringify(body);
-  const time = String(Date.now());
-  const nonce = crypto.randomUUID();
-  const text = proofText(
-    method,
-    route,
-    await sha256(raw),
-    time,
-    nonce,
-    device.installationId,
-  );
-  const signature = new Uint8Array(
-    await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      device.privateKey,
-      encoder.encode(text),
-    ),
-  );
-  const res = await fetch(`${apiBase}${route}`, {
-    method,
-    headers: {
-      apikey: publishableKey,
-      Authorization: `Bearer ${jwt}`,
-      "content-type": "application/json",
-      "x-sadad-installation": device.installationId,
-      "x-sadad-time": time,
-      "x-sadad-nonce": nonce,
-      "x-sadad-signature": base64Url(signature),
-    },
-    ...(method === "POST" ? { body: raw } : {}),
-  });
-  return { status: res.status, body: await res.json() };
-}
+  authenticate,
+  type Device,
+  enroll,
+  fail,
+  newDevice,
+  signed,
+  waitForApproval,
+} from "./api-client.ts";
 
 function batch(device: Device, epoch: string, generation: number) {
   const contactOp = crypto.randomUUID();
@@ -173,50 +60,15 @@ function batch(device: Device, epoch: string, generation: number) {
   ];
 }
 
-let jwt = await signIn();
-console.log("signed in");
-
-if (forcePasswordChange(jwt)) {
-  const newPassword = env("SADAD_SMOKE_NEW_PASSWORD");
-  const changed = await fetch(`${apiBase}/v1/me/password`, {
-    method: "POST",
-    headers: {
-      apikey: publishableKey,
-      Authorization: `Bearer ${jwt}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ currentPassword: password, newPassword }),
-  });
-  const body = await changed.json();
-  if (changed.status !== 200) {
-    fail("change password", { status: changed.status, body });
-  }
-  jwt = await signIn(newPassword);
-  console.log("password changed");
-}
+const jwt = await authenticate();
 
 const device = await newDevice();
-const enrolled = await signed(jwt, device, "POST", "/v1/mobile/enroll", {
-  publicKey: device.publicKey,
-  label: "smoke-api",
-});
-if (enrolled.status !== 200) fail("enroll", enrolled);
-const generation: number = enrolled.body.installation.generation;
+const installation = await enroll(jwt, device, "smoke-api");
 console.log(
-  `enrolled ${device.installationId} (generation ${generation}, ${enrolled.body.installation.status}); approve it in the dashboard`,
+  `enrolled ${device.installationId} (generation ${installation.generation}, ${installation.status}); approve it in the dashboard`,
 );
 
-let first = await signed(jwt, device, "GET", "/v1/mobile/changes?after=0");
-const deadline = Date.now() + approvalSeconds * 1000;
-while (
-  first.status === 401 && first.body.code === "installation_or_session_revoked"
-) {
-  if (Date.now() > deadline) fail("waiting for approval", first);
-  await new Promise((resolve) => setTimeout(resolve, 5000));
-  first = await signed(jwt, device, "GET", "/v1/mobile/changes?after=0");
-}
-if (first.status !== 200) fail("changes after=0", first);
-const { epoch, cursor } = first.body.changes;
+const { epoch, cursor } = await waitForApproval(jwt, device);
 console.log(`approved; epoch ${epoch}, cursor ${cursor}`);
 
 const lease = await signed(jwt, device, "POST", "/v1/mobile/lease");
@@ -225,7 +77,7 @@ const { x, y } = lease.body.lease.publicKey;
 console.log("lease issued");
 console.log(`lease public key: ${JSON.stringify({ x, y })}`);
 
-const operations = batch(device, epoch, generation);
+const operations = batch(device, epoch, installation.generation);
 const pushed = await signed(jwt, device, "POST", "/v1/mobile/operations", {
   operations,
 });
