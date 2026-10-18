@@ -1,6 +1,6 @@
-# Working on tickets in Claude Code cloud sessions
+# Working on tickets from GitHub issues (cloud sessions and teammates)
 
-Cloud sessions (claude.ai/code) clone `Abdalrahman-py/sadad` from GitHub. They do not have `.scratch/`, the `.scratch/ticket` runner, OpenCode, a phone, or the human's local memory. This page replaces those for cloud work.
+Cloud sessions (claude.ai/code) and teammates clone `Abdalrahman-py/sadad` from GitHub. They do not have `.scratch/`, the `.scratch/ticket` runner, OpenCode's ticket prompt, the maintainer's phone, or the maintainer's local memory. This page replaces those.
 
 ## One-time environment setup (human, on claude.ai/code)
 
@@ -12,11 +12,16 @@ Cloud sessions (claude.ai/code) clone `Abdalrahman-py/sadad` from GitHub. They d
 ## The ticket is a GitHub issue
 
 - Each open ticket is an issue on `Abdalrahman-py/sadad`, labelled with its status (`ready-for-agent`, `ready-for-human`, `needs-triage`, `claimed`). The issue body is the ticket.
-- Start only an issue labelled `ready-for-agent` whose `Blocked by` tickets are closed or merged. Mark it `claimed` when you start.
+- Labels: `ready-for-agent` = every `Blocked by` ticket is merged into `main`; `blocked` = at least one is not; `claimed` = someone is on it; `ready-for-human` = the maintainer does it (cutover, phone runs).
+- Start an issue labelled `ready-for-agent`. Claim it before any edit: assign yourself, remove `ready-for-agent`, add `claimed`.
+- Stacking: you may also start a `blocked` issue whose only missing blockers are your own open PRs. Branch from that PR's branch, and name the base PR in your PR body ("Stacked on #<pr>"). Never stack on someone else's unmerged branch.
+- Do not merge your own PR. The maintainer reviews and merges it, then marks the next tickets `ready-for-agent`.
+- `./tools/check.sh` is heavy (Gradle, Playwright, PGlite): run one at a time on a machine, never in parallel worktrees.
 - Work on a branch named `ticket-NN`, and keep to the ticket's "Files you may edit".
 - Deliver a pull request into `main` that says `Closes #<issue>`. Put the ticket's proofs (red and green output, `./tools/check.sh` result, sizes) in the PR body.
 - Where a ticket says to write in its Comments or Status, comment on the issue instead.
-- Paths like `/home/jade/...`, `.scratch/...` and `ticket start/merge` in a ticket are local-only; ignore them.
+- Paths like `/home/jade/...`, `.scratch/...` and `ticket start/merge` in a ticket are local-only; ignore them. The Phase 3 planning notes that tickets cite (`decisions.md` Q1–Q11, `gap.md` §0–§8) are in `docs/phase-3/`.
+- A teammate on their own clone uses `gh issue ...` and `gh pr ...` normally; the proxy limits below apply only to cloud sessions.
 
 ## GitHub from a cloud session
 

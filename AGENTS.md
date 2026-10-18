@@ -71,7 +71,7 @@
 ### Issue tracker
 
 Issues and specs live as local markdown under `.scratch/` (gitignored, not pushed). See `docs/agents/issue-tracker.md`.
-In Claude Code cloud sessions there is no `.scratch/`: the ticket is a GitHub issue on `Abdalrahman-py/sadad`. See `docs/agents/cloud-sessions.md`.
+Without `.scratch/` (a Claude Code cloud session, or a teammate's clone) the ticket is a GitHub issue on `Abdalrahman-py/sadad`. See `docs/agents/cloud-sessions.md`.
 
 ### Triage labels
 
