@@ -26,7 +26,7 @@
       "git grep*": "allow",
       "git ls-files*": "allow",
       "git tag -l*": "allow",
-      "./tools/check.sh*": "allow",
+      "./tools/check.sh*": "ask",
       "graphify query*": "allow",
       "graphify path*": "allow",
       "graphify explain*": "allow",

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(./tools/check.sh:*)",
+      "Bash(tools/check.sh:*)",
+      "Bash(bash tools/check.sh:*)"
+    ]
+  }
+}

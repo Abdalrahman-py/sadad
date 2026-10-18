@@ -16,7 +16,7 @@ Cloud sessions (claude.ai/code) and teammates clone `Abdalrahman-py/sadad` from 
 - Start an issue labelled `ready-for-agent`. Claim it before any edit: assign yourself, remove `ready-for-agent`, add `claimed`.
 - Stacking: you may also start a `blocked` issue whose only missing blockers are your own open PRs. Branch from that PR's branch, and name the base PR in your PR body ("Stacked on #<pr>"). Never stack on someone else's unmerged branch.
 - Do not merge your own PR. The maintainer reviews and merges it, then marks the next tickets `ready-for-agent`.
-- `./tools/check.sh` is heavy (Gradle, Playwright, PGlite): run one at a time on a machine, never in parallel worktrees.
+- `./tools/check.sh` is heavy (Gradle, Playwright, PGlite) and has frozen the maintainer's laptop. **Ask the human and wait for a clear yes before every run of `./tools/check.sh` or any of its sections**, even when the ticket's Steps or Done when name it. If the answer is no, say in the PR that it was not run. Never run two at once. A single test file (`deno test <file>`, `./gradlew … --tests …`) needs no approval.
 - Work on a branch named `ticket-NN`, and keep to the ticket's "Files you may edit".
 - Deliver a pull request into `main` that says `Closes #<issue>`. Put the ticket's proofs (red and green output, `./tools/check.sh` result, sizes) in the PR body.
 - Where a ticket says to write in its Comments or Status, comment on the issue instead.
@@ -42,7 +42,7 @@ gh api -X POST $R/pulls -f title='...' -f head=ticket-23 -f base=main -f body='C
 
 ## Rules that also apply locally
 
-- `./tools/check.sh` is the gate. Run it before every PR.
+- `./tools/check.sh` is the gate before every PR, run only after the human approves that run.
 - Never run `supabase db push`, `supabase functions deploy`, or anything that changes project `vhftjmiltqfwmrszdtgf`. The human deploys. Cloud migration versions differ from local file names, so `db push` would re-run old migrations.
 - All stores, users and rows are test data. Never add upgrade paths, fallbacks, compatibility shims or legacy handling (`docs/ARCHITECTURE.md` Part 3, the clean-cut rule). Delete legacy handling you touch.
 - Device checks (`app/src/androidTest`) need the human's phone; list them in the PR as "not run".
