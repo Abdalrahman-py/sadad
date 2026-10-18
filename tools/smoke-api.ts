@@ -3,11 +3,13 @@
 //   SADAD_SMOKE_URL=https://<ref>.supabase.co \
 //   SADAD_SMOKE_PUBLISHABLE_KEY=sb_publishable_... \
 //   SADAD_SMOKE_USERNAME=<store username> SADAD_SMOKE_PASSWORD=... \
+//   SADAD_SMOKE_NEW_PASSWORD=... \
 //   deno run --allow-env --allow-net tools/smoke-api.ts
 //
-// It signs in as the store, enrolls a fresh P-256 installation, waits until an admin approves
-// it in the dashboard (SADAD_SMOKE_APPROVAL_SECONDS, default 600), takes a lease, pushes one
-// batch (contact, debt, payment) and reads it back through changes. It writes test data.
+// It signs in as the store (changing a temporary password first when force_password_change is
+// set), enrolls a fresh P-256 installation, waits until an admin approves it in the dashboard
+// (SADAD_SMOKE_APPROVAL_SECONDS, default 600), takes a lease, pushes one batch (contact, debt,
+// payment) and reads it back through changes. It writes test data.
 import {
   proofText,
   sha256,
@@ -44,13 +46,13 @@ function fail(step: string, detail: unknown): never {
   Deno.exit(1);
 }
 
-async function signIn(): Promise<string> {
+async function signIn(secret = password): Promise<string> {
   const res = await fetch(`${projectUrl}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { apikey: publishableKey, "content-type": "application/json" },
     body: JSON.stringify({
       email: `${username}@stores.sadad.invalid`,
-      password,
+      password: secret,
     }),
   });
   const body = await res.json();
@@ -58,6 +60,15 @@ async function signIn(): Promise<string> {
     fail("sign in", { status: res.status, body });
   }
   return body.access_token;
+}
+
+function forcePasswordChange(jwt: string): boolean {
+  const payload = jwt.split(".")[1] ?? "";
+  const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+  const claims = JSON.parse(
+    new TextDecoder().decode(Uint8Array.from(json, (ch) => ch.charCodeAt(0))),
+  );
+  return claims?.app_metadata?.force_password_change === true;
 }
 
 interface Device {
@@ -162,8 +173,27 @@ function batch(device: Device, epoch: string, generation: number) {
   ];
 }
 
-const jwt = await signIn();
+let jwt = await signIn();
 console.log("signed in");
+
+if (forcePasswordChange(jwt)) {
+  const newPassword = env("SADAD_SMOKE_NEW_PASSWORD");
+  const changed = await fetch(`${apiBase}/v1/me/password`, {
+    method: "POST",
+    headers: {
+      apikey: publishableKey,
+      Authorization: `Bearer ${jwt}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ currentPassword: password, newPassword }),
+  });
+  const body = await changed.json();
+  if (changed.status !== 200) {
+    fail("change password", { status: changed.status, body });
+  }
+  jwt = await signIn(newPassword);
+  console.log("password changed");
+}
 
 const device = await newDevice();
 const enrolled = await signed(jwt, device, "POST", "/v1/mobile/enroll", {
@@ -191,7 +221,9 @@ console.log(`approved; epoch ${epoch}, cursor ${cursor}`);
 
 const lease = await signed(jwt, device, "POST", "/v1/mobile/lease");
 if (lease.status !== 200) fail("lease", lease);
+const { x, y } = lease.body.lease.publicKey;
 console.log("lease issued");
+console.log(`lease public key: ${JSON.stringify({ x, y })}`);
 
 const operations = batch(device, epoch, generation);
 const pushed = await signed(jwt, device, "POST", "/v1/mobile/operations", {
