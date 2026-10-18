@@ -23,12 +23,15 @@ declare
   reason text;
   seq bigint;
 begin
-  if not sadid_private.operation_allowed(p_command ->> 'type') then raise exception 'store_permission_denied'; end if;
   if jsonb_typeof(p_command) <> 'object' or p_command ->> 'schemaVersion' is distinct from '1' or octet_length(p_command::text) > 65536 then
     raise exception 'unsupported_schema';
   end if;
-  op := (p_command ->> 'operationId')::uuid;
-  entity := (p_command ->> 'entityId')::uuid;
+  begin
+    op := (p_command ->> 'operationId')::uuid;
+    entity := (p_command ->> 'entityId')::uuid;
+  exception when invalid_text_representation then
+    raise exception 'invalid_input';
+  end;
   kind := p_command ->> 'type';
   payload := p_command -> 'payload';
   if op is null or entity is null or kind is null or jsonb_typeof(payload) is distinct from 'object' then
@@ -50,18 +53,37 @@ begin
     raise exception 'epoch_changed';
   end if;
 
-  if jsonb_typeof(coalesce(p_command -> 'dependsOn', '[]')) <> 'array' or jsonb_array_length(coalesce(p_command -> 'dependsOn', '[]')) > 100 then
-    raise exception 'invalid_dependencies';
+  -- per-command refusals become receipts; caller-level ones raise
+  if not sadid_private.operation_allowed(kind) then
+    code := 'store_permission_denied';
+  elsif jsonb_typeof(coalesce(p_command -> 'dependsOn', '[]')) <> 'array' or jsonb_array_length(coalesce(p_command -> 'dependsOn', '[]')) > 100 then
+    code := 'invalid_dependencies';
+  else
+    begin
+      if exists (select 1 from jsonb_array_elements_text(p_command -> 'dependsOn') e where e::uuid is null) then
+        code := 'invalid_dependencies';
+      end if;
+    exception when data_exception then
+      code := 'invalid_dependencies';
+    end;
   end if;
 
-  for dependency in select jsonb_array_elements_text(coalesce(p_command -> 'dependsOn', '[]')) loop
-    select * into oldop from public.sadid_operations where store_id = c.store_id and operation_id = dependency::uuid;
-    if not found then raise exception 'dependency_pending'; end if;
-    if oldop.result ->> 'status' <> 'accepted' then code := 'dependency_rejected'; exit; end if;
-  end loop;
+  if code is null then
+    for dependency in select jsonb_array_elements_text(coalesce(p_command -> 'dependsOn', '[]')) loop
+      select * into oldop from public.sadid_operations where store_id = c.store_id and operation_id = dependency::uuid;
+      if not found then raise exception 'dependency_pending'; end if;
+      if oldop.result ->> 'status' <> 'accepted' then code := 'dependency_rejected'; exit; end if;
+    end loop;
+  end if;
 
-  occurred := (p_command ->> 'createdAt')::timestamptz;
-  if occurred is null then raise exception 'invalid_timestamp'; end if;
+  if code is null then
+    begin
+      occurred := (p_command ->> 'createdAt')::timestamptz;
+      if occurred is null or not isfinite(occurred) then code := 'invalid_timestamp'; end if;
+    exception when data_exception then
+      code := 'invalid_timestamp';
+    end;
+  end if;
 
   if code is null then
     begin
