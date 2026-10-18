@@ -629,6 +629,55 @@ try {
     }
   });
 
+  await check('createdAt must be ISO-8601 with an explicit offset', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const accepted = [
+        '2026-10-16T12:00:00Z',
+        '2026-10-16T12:00:00+03:00',
+        '2026-10-16T12:00:00-05:30',
+        '2026-10-16T12:00:00.123456Z',
+        '2026-10-16T12:00:00.123+03:00',
+        '2026-10-16T12:00Z',
+      ];
+      for (const createdAt of accepted) {
+        const receipts = await applyBatch([
+          command('contact.create', { name: `وقت سليم ${createdAt}`, phone: '' }),
+          command('contact.create', { name: `وقت مقبول ${createdAt}`, phone: '' }, { createdAt }),
+        ]);
+        assert.deepEqual(receipts.map(r => [r.status, r.code]), [['accepted', null], ['accepted', null]], createdAt);
+      }
+
+      const rejected = [
+        '2026-10-16 12:00',
+        '2026-10-16T12:00:00',
+        '2026-10-16',
+        'now',
+        'epoch',
+        'Oct 16 2026',
+        '2026-10-16 12:00:00Z',
+        '2026-10-16T12:00:00+0300',
+        '2026-10-16T24:00:00Z',
+        '2026-10-16T23:59:60Z',
+        '2026-02-30T12:00:00Z',
+        1760616000,
+      ];
+      for (const createdAt of rejected) {
+        const receipts = await applyBatch([
+          command('contact.create', { name: `وقت سليم ${createdAt}`, phone: '' }),
+          command('contact.create', { name: `وقت مرفوض ${createdAt}`, phone: '' }, { createdAt }),
+        ]);
+        assert.deepEqual(
+          receipts.map(r => [r.status, r.code]),
+          [['accepted', null], ['rejected', 'invalid_timestamp']],
+          String(createdAt),
+        );
+      }
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
   await check('changes(after, limit) returns events after cursor in order and the read routine takes no row locks on stores', async () => {
     await db.exec('reset role; begin');
     try {

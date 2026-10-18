@@ -852,8 +852,13 @@ begin
 
   if code is null then
     begin
-      occurred := (p_command ->> 'createdAt')::timestamptz;
-      if occurred is null or not isfinite(occurred) then code := 'invalid_timestamp'; end if;
+      -- match strict ISO-8601 with an offset; ledger-core reads createdAt with OffsetDateTime.parse
+      if p_command ->> 'createdAt' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\.[0-9]{1,9})?)?(Z|[+-][0-9]{2}:[0-9]{2})$' then
+        code := 'invalid_timestamp';
+      else
+        occurred := (p_command ->> 'createdAt')::timestamptz;
+        if occurred is null or not isfinite(occurred) then code := 'invalid_timestamp'; end if;
+      end if;
     exception when data_exception then
       code := 'invalid_timestamp';
     end;
