@@ -65,6 +65,7 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   invalid_transfer: 400,
   invalid_scope: 400,
   delete_confirmation_required: 400,
+  weak_password: 400,
   internal_error: 500,
   temporary_service_failure: 503,
 };
