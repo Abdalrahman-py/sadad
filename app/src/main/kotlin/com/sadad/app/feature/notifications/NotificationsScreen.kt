@@ -37,7 +37,8 @@ fun NotificationsScreen(
 ) {
   val context = LocalContext.current
   val inbox = remember(reminders, storeUserId) { reminders.inbox(storeUserId) }
-  val events by inbox.collectAsState(initial = emptyList())
+  val collected by inbox.collectAsState(initial = emptyList())
+  val events = collected.filter { it.storeUserId == storeUserId }
   val snackbar = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val dismissed = stringResource(R.string.reminder_dismissed)
