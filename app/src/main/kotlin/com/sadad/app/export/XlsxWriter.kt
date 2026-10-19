@@ -136,6 +136,7 @@ class XlsxWriter(private val labels: ExportLabels) {
     return names.map { original ->
       val base =
           cleanXml(original)
+              .replace(Regex("[\t\r\n]"), " ")
               .replace(Regex("[\\\\/\\[\\]:*?]"), "-")
               .replace("'", "")
               .trim()
