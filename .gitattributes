@@ -1,0 +1,4 @@
+# Every text file keeps LF on every OS (Windows clones too), so bash scripts, deno fmt and
+# spotless see the same bytes as CI. Windows batch files need CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf

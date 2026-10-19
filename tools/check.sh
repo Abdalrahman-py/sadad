@@ -45,6 +45,15 @@ run_docs() {
     echo "$old_backend" >&2
     return 1
   fi
+  # Codex reads .agents/skills, Claude Code reads .claude/skills: the shared skills are copies
+  # (symlinks break on Windows clones), so the copies must stay identical.
+  local s
+  for s in tdd diagnosing-bugs code-review LICENSE-mattpocock-skills; do
+    if ! diff -r ".claude/skills/$s" ".agents/skills/$s" >&2; then
+      echo ".agents/skills/$s differs from .claude/skills/$s; copy the edited one over the other" >&2
+      return 1
+    fi
+  done
   # The cutover deploy runs `supabase db push`, which must apply exactly the baseline.
   migrations=$(git ls-files Supabase-Setup/supabase/migrations)
   if [[ $(wc -l <<< "$migrations") -ne 1 || "$migrations" != *_baseline.sql ]]; then
@@ -100,7 +109,7 @@ changed_sections() {
       tools/check.sh) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
       tools/*.ts) want[format]=1 want[edge]=1 ;;
       # Only the docs gate reads these.
-      *.md | docs/* | .claude/* | .opencode/* | .github/* | tools/* | opencode.json | .gitignore | .editorconfig | Supabase-Setup/supabase/config.toml) ;;
+      *.md | docs/* | .claude/* | .agents/* | .opencode/* | .github/* | tools/* | opencode.json | .gitignore | .gitattributes | .editorconfig | Supabase-Setup/supabase/config.toml) ;;
       contract/*) want[android]=1 want[dashboard]=1 want[edge]=1 ;;
       server/public/*) want[dashboard]=1 ;;
       Supabase-Setup/supabase/functions/*) want[format]=1 want[edge]=1 ;;

@@ -24,9 +24,9 @@ Cloud sessions (claude.ai/code) and teammates clone `Abdalrahman-py/sadad` from 
 
 ## One-time setup for a teammate on Codex
 
-- Codex CLI; `gh` signed in with push access to `Abdalrahman-py/sadad`; JDK 21, the Android SDK and Deno for single-file tests.
-- Codex code review on GitHub: in Codex settings, connect GitHub and turn on code review for `Abdalrahman-py/sadad`, so `@codex review` on a PR gets an answer.
-- Then ask Codex in the clone to "take the next ticket".
+- Install Git, the GitHub CLI (`gh auth login` with push access to `Abdalrahman-py/sadad`) and Codex. Windows works as is, no WSL; `.gitattributes` keeps LF line endings in every clone.
+- Nothing else: no JDK, Android SDK, Deno or Node. CI runs every test and `./tools/check.sh` on the PR (`ci-ok`), and `take-ticket` reads its results.
+- Clone the repo, open Codex in it, and ask it to "take the next ticket".
 
 ## GitHub from a cloud session
 
@@ -43,11 +43,11 @@ gh api -X POST $R/pulls -f title='...' -f head=ticket-23 -f base=main -f body='C
 
 ## Skills
 
-`.claude/skills/` holds `tdd`, `diagnosing-bugs` and `code-review` (from mattpocock/skills, MIT; see `LICENSE-mattpocock-skills`). Codex reads `.agents/skills/` instead, where those three are symlinks to `.claude/skills/` (on Windows, clone with `core.symlinks=true` and Developer Mode on, or use WSL), next to Codex's `graphify` variant and `take-ticket`. The human's other skills and plugins (ponytail, supabase, Context7) are not in the cloud. Library versions are fixed in `docs/versions.md`, so no docs lookup is needed to pick them.
+`.claude/skills/` holds `tdd`, `diagnosing-bugs` and `code-review` (from mattpocock/skills, MIT; see `LICENSE-mattpocock-skills`). Codex reads `.agents/skills/` instead: copies of those three (`./tools/check.sh docs` fails when a copy drifts), Codex's `graphify` variant, and `take-ticket`. The human's other skills and plugins (ponytail, supabase, Context7) are not in the cloud. Library versions are fixed in `docs/versions.md`, so no docs lookup is needed to pick them.
 
 ## Rules that also apply locally
 
-- `./tools/check.sh` is the gate before every PR. Ask the human before every run of it or any section (AGENTS.md, الاختبارات); if the answer is no, say in the PR that it was not run. `./tools/check.sh --changed main` runs only the sections your branch can affect.
+- `./tools/check.sh` is the gate before every PR. Ask the human before every run of it or any section (AGENTS.md, الاختبارات); if the answer is no, say in the PR that it was not run. `./tools/check.sh --changed main` runs only the sections your branch can affect. A teammate on Codex runs none of it locally: the PR's `ci-ok` check is that gate.
 - Never run `supabase db push`, `supabase functions deploy`, or anything that changes project `vhftjmiltqfwmrszdtgf`. The human deploys. Cloud migration versions differ from local file names, so `db push` would re-run old migrations.
 - All stores, users and rows are test data. Never add upgrade paths, fallbacks, compatibility shims or legacy handling (`docs/ARCHITECTURE.md` Part 3, the clean-cut rule). Delete legacy handling you touch.
 - Device checks (`app/src/androidTest`) need the human's phone; list them in the PR as "not run".
