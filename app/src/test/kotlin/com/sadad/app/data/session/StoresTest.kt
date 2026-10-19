@@ -1,14 +1,19 @@
 package com.sadad.app.data.session
 
+import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.Home
 import com.sadad.app.ui.Login
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -72,6 +77,32 @@ class StoresTest {
       assertEquals(Home, fixture.graph.startRoute())
 
       assertNotNull(fixture.graph.current.value)
+    }
+  }
+
+  @Test
+  fun anInstallationSavedAfterOpeningReachesTheOpenStoresOrigin() = runTest {
+    TestGraph.unsigned().use { fixture ->
+      val scope = fixture.signIn(STORE_A)
+      scope.setEpoch(Events.EPOCH)
+      assertNull(scope.origin())
+
+      fixture.graph.accounts.update(STORE_A) {
+        it.copy(installation = StoredInstallation("active", generation = 2))
+      }
+
+      val origin =
+          withContext(Dispatchers.Default) {
+            withTimeout(5_000) {
+              var origin = scope.origin()
+              while (origin == null) {
+                delay(10)
+                origin = scope.origin()
+              }
+              origin
+            }
+          }
+      assertEquals(2, origin.generation)
     }
   }
 

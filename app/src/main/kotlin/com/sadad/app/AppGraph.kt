@@ -85,13 +85,13 @@ internal constructor(
   /** Closes the open store, then opens [account]'s database, outbox and repository. */
   suspend fun openStore(account: Account): StoreScope {
     closeStore()
-    val database = openDatabase(account.storeUserId)
-    val store = LedgerStore(database)
-    val outbox = Outbox(database.outboxDao(), dataKey.key)
     val signer =
         checkNotNull(installations.load(account.keyAlias, account.installationId)) {
           "the installation key for store ${account.storeUserId} is missing"
         }
+    val database = openDatabase(account.storeUserId)
+    val store = LedgerStore(database)
+    val outbox = Outbox(database.outboxDao(), dataKey.key)
     val storeJobs =
         CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
     val storeScope =

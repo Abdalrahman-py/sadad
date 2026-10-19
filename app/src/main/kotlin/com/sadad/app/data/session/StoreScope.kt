@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -40,12 +41,23 @@ class StoreScope(
 
   @Volatile private var closed = false
 
+  // Enroll and session refresh save the installation after the store opened; follow the file.
+  @Volatile private var installation: StoredInstallation? = account.installation
+
+  init {
+    scope.launch {
+      accounts.accounts.collect { list ->
+        installation = list.firstOrNull { it.storeUserId == account.storeUserId }?.installation
+      }
+    }
+  }
+
   override val selfInstallationId: String
     get() = account.installationId
 
   /** The epoch of the Ledger state this store loaded or last applied; sync keeps it current. */
   override fun origin(): Origin? {
-    val installation = account.installation ?: return null
+    val installation = installation ?: return null
     if (installation.status != "active") return null
     val currentEpoch = epoch ?: return null
     return Origin(account.installationId, installation.generation, currentEpoch)
