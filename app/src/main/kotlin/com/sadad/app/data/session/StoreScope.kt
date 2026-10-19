@@ -6,10 +6,12 @@ import com.sadad.app.data.db.LedgerStore
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.Outbox
 import com.sadad.app.data.ledger.RepositorySession
+import com.sadad.app.data.sync.LeaseStore
 import com.sadad.ledger.Origin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -29,6 +31,8 @@ class StoreScope(
     private val accounts: Accounts,
     private val online: () -> Boolean,
     private val scope: CoroutineScope,
+    private val lease: LeaseStore? = null,
+    private val queueSync: () -> Unit = {},
 ) : RepositorySession {
   override val staffName: Flow<String> =
       accounts.accounts.map { list ->
@@ -58,6 +62,7 @@ class StoreScope(
 
   /** The epoch of the Ledger state this store loaded or last applied; sync keeps it current. */
   override fun origin(): Origin? {
+    if (closed) return null
     val installation = installation ?: return null
     if (installation.status != "active") return null
     val currentEpoch = epoch ?: return null
@@ -66,9 +71,24 @@ class StoreScope(
 
   override fun isOnline(): Boolean = online()
 
-  override fun offlineAllowed(): Boolean = false
+  override fun offlineAllowed(): Boolean =
+      !closed && lease?.allows(account.copy(installation = installation)) == true
 
-  override fun onQueued() = Unit
+  override fun onQueued() = queueSync()
+
+  fun updateInstallation(value: StoredInstallation) {
+    installation = value
+  }
+
+  suspend fun <T> runWhileOpen(block: suspend () -> T): T {
+    check(!closed) { "store scope is closed" }
+    val task = scope.async(Dispatchers.IO) { block() }
+    return try {
+      task.await()
+    } finally {
+      task.cancel()
+    }
+  }
 
   fun setEpoch(value: String?) {
     epoch = value
