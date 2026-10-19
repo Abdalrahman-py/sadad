@@ -135,12 +135,18 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
 
   /** Deletes the accepted rows whose entity the confirmed [state] now holds. */
   suspend fun compact(state: LedgerState) {
-    val ids = buildSet {
-      addAll(state.contacts.keys)
-      addAll(state.debts.keys)
-      addAll(state.payments.keys)
-    }
-    if (ids.isNotEmpty()) dao.deleteAccepted(ids.toList())
+    // Match in Kotlin: binding every id in the state would pass SQLite's 999-variable limit
+    // (API < 30) once a store holds that many rows.
+    val done =
+        dao.all()
+            .filter {
+              it.state == OutboxState.ACCEPTED.column &&
+                  (it.entityId in state.contacts ||
+                      it.entityId in state.debts ||
+                      it.entityId in state.payments)
+            }
+            .map { it.operationId }
+    for (chunk in done.chunked(500)) dao.deleteAccepted(chunk)
   }
 
   private fun OutboxEntity.toRow(): OutboxRow {

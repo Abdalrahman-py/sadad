@@ -100,6 +100,6 @@ interface OutboxDao {
   )
   suspend fun deleteDismissed(operationId: String)
 
-  @Query("DELETE FROM outbox WHERE state = 'accepted' AND entityId IN (:entityIds)")
-  suspend fun deleteAccepted(entityIds: List<String>)
+  @Query("DELETE FROM outbox WHERE state = 'accepted' AND operationId IN (:operationIds)")
+  suspend fun deleteAccepted(operationIds: List<String>)
 }
