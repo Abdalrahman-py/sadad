@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import java.io.File
@@ -16,8 +17,10 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(application = UiTestApplication::class)
 class NotificationsScreenTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val temporary = TemporaryFolder()
