@@ -1,8 +1,6 @@
 package com.sadad.app.data.sync
 
 import com.sadad.app.data.db.Events
-import com.sadad.app.data.net.Lease
-import com.sadad.ledger.LedgerJson
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.SocketEffect
@@ -59,7 +57,7 @@ class SyncPullTest {
       val signed = signedLease(f.signer, f.scope.account, f.now)
       f.server.enqueue(
           MockResponse.Builder()
-              .body("""{"lease":${LedgerJson.encodeToString(Lease.serializer(), signed)}}""")
+              .body("""{"lease":{"payload":"${signed.raw}","signature":"${signed.signature}"}}""")
               .build()
       )
       f.page()

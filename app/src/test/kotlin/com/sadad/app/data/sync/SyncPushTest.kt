@@ -96,18 +96,21 @@ class SyncPushTest {
   }
 
   @Test
-  fun callerRefusalsLeaveQueuedRowsUntouched() = runTest {
-    for ((code, expected) in
-        listOf(
-            "request_rate_limited" to SyncStatus.Retry,
-            "installation_or_session_revoked" to SyncStatus.Revoked,
-        )) {
-      SyncFixture.create().use { f ->
-        val commands = f.queue(2)
-        f.server.enqueue(refusalResponse(code))
-        assertEquals(expected, f.engine.pass(f.scope))
-        assertEquals(commands, f.scope.outbox.queued())
-      }
+  fun aRateLimitedBatchGivesRetryAndLeavesQueuedRowsUntouched() = runTest {
+    refusalLeavesRowsQueued("request_rate_limited", SyncStatus.Retry)
+  }
+
+  @Test
+  fun aRevokedBatchGivesRevokedAndLeavesQueuedRowsUntouched() = runTest {
+    refusalLeavesRowsQueued("installation_or_session_revoked", SyncStatus.Revoked)
+  }
+
+  private suspend fun refusalLeavesRowsQueued(code: String, expected: SyncStatus) {
+    SyncFixture.create().use { f ->
+      val commands = f.queue(2)
+      f.server.enqueue(refusalResponse(code))
+      assertEquals(expected, f.engine.pass(f.scope))
+      assertEquals(commands, f.scope.outbox.queued())
     }
   }
 
