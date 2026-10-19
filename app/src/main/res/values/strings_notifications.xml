@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_notifications">الإشعارات</string>
+    <string name="reminder_channel">مواعيد الاستحقاق</string>
+    <string name="reminder_today">يستحق اليوم: %1$s · المتجر: %2$s</string>
+    <string name="reminder_tomorrow">يستحق غداً: %1$s · المتجر: %2$s</string>
+    <string name="reminders_title">الإشعارات</string>
+    <string name="reminders_subtitle">مواعيد الاستحقاق قبل يوم وفي يومها</string>
+    <string name="reminders_empty">لا توجد إشعارات استحقاق حالياً</string>
+    <string name="reminder_mark_done">تحديد الإشعار كمكتمل</string>
+    <string name="reminder_dismissed">تم حذف الإشعار ونقله إلى سلة المحذوفات.</string>
+    <string name="reminder_undo">تراجع</string>
 </resources>

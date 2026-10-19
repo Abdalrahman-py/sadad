@@ -36,31 +36,93 @@ class DueReminderWorkerTest {
     try {
       val context = fixture.context
       shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
-      val reminders = DueReminders(File(context.cacheDir, "reminders-${System.nanoTime()}.preferences_pb"), scope)
+      val reminders =
+          DueReminders(
+              File(context.cacheDir, "reminders-${System.nanoTime()}.preferences_pb"),
+              scope,
+          )
       val store = fixture.graph.current.value!!
       val contact = Commands.contactCreate(Events.origin, Events.at(0), "سامي")
-      fun debt(amount: Long, date: String) = Commands.debtCreate(Events.origin, Events.at(1), contact.entityId, Direction.RECEIVABLE, Cents(amount), dueDate = date)
+      fun debt(amount: Long, date: String) =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              contact.entityId,
+              Direction.RECEIVABLE,
+              Cents(amount),
+              dueDate = date,
+          )
       val today = debt(12000, "2026-10-17")
       val tomorrow = debt(5000, "2026-10-18")
       val later = debt(3000, "2026-10-19")
       val paid = debt(100, "2026-10-17")
-      val payment = Commands.paymentCreate(Events.origin, Events.at(2), paid.entityId, Cents(100), PaymentMethod.CASH)
+      val payment =
+          Commands.paymentCreate(
+              Events.origin,
+              Events.at(2),
+              paid.entityId,
+              Cents(100),
+              PaymentMethod.CASH,
+          )
       val archived = Commands.contactCreate(Events.origin, Events.at(0), "مؤرشف")
-      val hidden = Commands.debtCreate(Events.origin, Events.at(1), archived.entityId, Direction.RECEIVABLE, Cents(100), dueDate = "2026-10-17")
-      val archive = Commands.contactArchive(Events.origin, Events.at(2), archived.entityId, 1, "أرشفة", entityId = archived.entityId)
-      val commands = listOf(contact, today, tomorrow, later, paid, payment, archived, hidden, archive)
-      store.repository.applyPage(Events.page(commands.mapIndexed { i, c -> Events.accepted(c, i + 1L) }))
+      val hidden =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              archived.entityId,
+              Direction.RECEIVABLE,
+              Cents(100),
+              dueDate = "2026-10-17",
+          )
+      val archive =
+          Commands.contactArchive(
+              Events.origin,
+              Events.at(2),
+              archived.entityId,
+              1,
+              "أرشفة",
+              entityId = archived.entityId,
+          )
+      val commands =
+          listOf(contact, today, tomorrow, later, paid, payment, archived, hidden, archive)
+      store.repository.applyPage(
+          Events.page(commands.mapIndexed { i, c -> Events.accepted(c, i + 1L) })
+      )
       fixture.signIn(STORE_B)
       val second = fixture.activate(STORE_B)
       val otherContact = Commands.contactCreate(Events.origin, Events.at(0), "خالد")
-      val otherDebt = Commands.debtCreate(Events.origin, Events.at(1), otherContact.entityId, Direction.RECEIVABLE, Cents(700), dueDate = "2026-10-17")
-      second.repository.applyPage(Events.page(listOf(Events.accepted(otherContact, 1), Events.accepted(otherDebt, 2))))
+      val otherDebt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              otherContact.entityId,
+              Direction.RECEIVABLE,
+              Cents(700),
+              dueDate = "2026-10-17",
+          )
+      second.repository.applyPage(
+          Events.page(listOf(Events.accepted(otherContact, 1), Events.accepted(otherDebt, 2)))
+      )
       val clock = Clock.fixed(Instant.parse("2026-10-17T05:00:00Z"), ZoneId.of("Asia/Gaza"))
-      fun worker(): DueReminderWorker = TestListenableWorkerBuilder<DueReminderWorker>(context)
-        .setWorkerFactory(object : WorkerFactory() {
-          override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
-            DueReminderWorker(appContext, workerParameters, fixture.graph, reminders, clock)
-        }).build()
+      fun worker(): DueReminderWorker =
+          TestListenableWorkerBuilder<DueReminderWorker>(context)
+              .setWorkerFactory(
+                  object : WorkerFactory() {
+                    override fun createWorker(
+                        appContext: Context,
+                        workerClassName: String,
+                        workerParameters: WorkerParameters,
+                    ): ListenableWorker =
+                        DueReminderWorker(
+                            appContext,
+                            workerParameters,
+                            fixture.graph,
+                            reminders,
+                            clock,
+                        )
+                  }
+              )
+              .build()
       assertEquals(ListenableWorker.Result.success(), worker().doWork())
       val manager = context.getSystemService(NotificationManager::class.java)
       val notifications = shadowOf(manager).allNotifications
