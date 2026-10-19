@@ -41,9 +41,24 @@ class PdfWriterTest {
   fun longArabicNotesContinueAcrossPages() {
     val at = Instant.EPOCH
     val contact = Commands.contactCreate(Events.origin, at, "سامي")
-    val debt = Commands.debtCreate(Events.origin, at, contact.entityId, Direction.RECEIVABLE, Cents(100), "تفاصيل البضاعة المشتراة ".repeat(500))
+    val debt =
+        Commands.debtCreate(
+            Events.origin,
+            at,
+            contact.entityId,
+            Direction.RECEIVABLE,
+            Cents(100),
+            "تفاصيل البضاعة المشتراة ".repeat(500),
+        )
     val out = ByteArrayOutputStream()
-    PdfWriter(ExportLabels.from(context)).write(Statement.build(exportView(contact, debt), null, null, null), "متجر", "مالك", "الفترة", out)
+    PdfWriter(ExportLabels.from(context))
+        .write(
+            Statement.build(exportView(contact, debt), null, null, null),
+            "متجر",
+            "مالك",
+            "الفترة",
+            out,
+        )
     assertTrue(pageCount(out.toByteArray()) > 1)
   }
 
@@ -51,7 +66,11 @@ class PdfWriterTest {
     val file = File.createTempFile("statement-test", ".pdf", context.cacheDir)
     try {
       file.writeBytes(bytes)
-      return PdfRenderer(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)).use { it.pageCount }
-    } finally { file.delete() }
+      return PdfRenderer(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)).use {
+        it.pageCount
+      }
+    } finally {
+      file.delete()
+    }
   }
 }

@@ -42,9 +42,20 @@ class StatementExportTest {
   fun savesXlsxToTheSelectedDocument() = runBlocking {
     val file = File.createTempFile("statement-save", ".xlsx", context.cacheDir)
     try {
-      StatementExport.save(context, Uri.fromFile(file), StatementFormat.XLSX, header, view, null, null, null)
+      StatementExport.save(
+          context,
+          Uri.fromFile(file),
+          StatementFormat.XLSX,
+          header,
+          view,
+          null,
+          null,
+          null,
+      )
       assertTrue(unzip(file.readBytes()).containsKey("xl/workbook.xml"))
-    } finally { file.delete() }
+    } finally {
+      file.delete()
+    }
   }
 
   @Test
@@ -53,10 +64,21 @@ class StatementExportTest {
     try {
       file.writeText("keep this document")
       val result = runCatching {
-        StatementExport.save(context, Uri.fromFile(file), StatementFormat.XLSX, header, view, "missing", null, null)
+        StatementExport.save(
+            context,
+            Uri.fromFile(file),
+            StatementFormat.XLSX,
+            header,
+            view,
+            "missing",
+            null,
+            null,
+        )
       }
       assertTrue(result.exceptionOrNull() is IllegalArgumentException)
       assertEquals("keep this document", file.readText())
-    } finally { file.delete() }
+    } finally {
+      file.delete()
+    }
   }
 }

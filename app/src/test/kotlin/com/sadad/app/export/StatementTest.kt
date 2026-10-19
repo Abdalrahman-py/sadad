@@ -23,17 +23,29 @@ class StatementTest {
   private val newDebt = debt(from, 5000)
   private val payment =
       Commands.paymentCreate(
-          Events.origin, from.plusSeconds(1), oldDebt.entityId, Cents(3000), PaymentMethod.CASH,
+          Events.origin,
+          from.plusSeconds(1),
+          oldDebt.entityId,
+          Cents(3000),
+          PaymentMethod.CASH,
       )
 
   private fun debt(at: Instant, cents: Long, direction: Direction = Direction.RECEIVABLE) =
       Commands.debtCreate(
-          Events.origin, at, contact.entityId, direction, Cents(cents), "بضاعة", "2026-11-01",
+          Events.origin,
+          at,
+          contact.entityId,
+          direction,
+          Cents(cents),
+          "بضاعة",
+          "2026-11-01",
       )
 
   @Test
   fun octoberCarriesOpeningBalanceAndEveryMovement() {
-    val statement = Statement.build(exportView(contact, oldDebt, newDebt, payment), contact.entityId, from, to).single()
+    val statement =
+        Statement.build(exportView(contact, oldDebt, newDebt, payment), contact.entityId, from, to)
+            .single()
     assertEquals(Cents(10000), statement.opening)
     assertEquals(listOf(Cents(5000), Cents.ZERO), statement.rows.map { it.debt })
     assertEquals(listOf(Cents.ZERO, Cents(3000)), statement.rows.map { it.payment })
@@ -78,23 +90,41 @@ class StatementTest {
     val second = newDebt.copy(entityId = "00000000-0000-4000-8000-000000000002")
     val last = debt(to, 200)
     val outside = debt(to.plusNanos(1), 900).copy(createdAt = to.plusNanos(1).toString())
-    val statement = Statement.build(exportView(contact, second, first, last, outside), null, from, to).single()
-    assertEquals(listOf(first.entityId, second.entityId, last.entityId), statement.rows.map { it.id })
+    val statement =
+        Statement.build(exportView(contact, second, first, last, outside), null, from, to).single()
+    assertEquals(
+        listOf(first.entityId, second.entityId, last.entityId),
+        statement.rows.map { it.id },
+    )
     assertEquals(Cents(10200), statement.closing)
   }
 
   @Test
   fun excludesPayableDebtsAndTheirPayments() {
     val payable = debt(september, 9000, Direction.PAYABLE)
-    val paid = Commands.paymentCreate(Events.origin, from, payable.entityId, Cents(4000), PaymentMethod.CASH)
-    val statement = Statement.build(exportView(contact, oldDebt, payable, paid), null, null, null).single()
+    val paid =
+        Commands.paymentCreate(
+            Events.origin,
+            from,
+            payable.entityId,
+            Cents(4000),
+            PaymentMethod.CASH,
+        )
+    val statement =
+        Statement.build(exportView(contact, oldDebt, payable, paid), null, null, null).single()
     assertEquals(1, statement.rows.size)
     assertEquals(Cents(10000), statement.closing)
   }
 
   @Test
   fun includesQueuedMovementsFromTheViewOnce() {
-    val view = LedgerState.EMPTY.view(listOf(contact, oldDebt, payment), emptySet(), Events.INSTALLATION_ID, "أحمد")
+    val view =
+        LedgerState.EMPTY.view(
+            listOf(contact, oldDebt, payment),
+            emptySet(),
+            Events.INSTALLATION_ID,
+            "أحمد",
+        )
     val statement = Statement.build(view, null, null, null).single()
     assertEquals(Cents(7000), statement.closing)
     assertEquals(2, statement.rows.size)
@@ -112,5 +142,7 @@ class StatementTest {
 }
 
 internal fun exportView(vararg commands: LedgerCommand): LedgerView =
-    LedgerState.EMPTY.apply(Events.page(commands.mapIndexed { i, command -> Events.accepted(command, i + 1L) }))
+    LedgerState.EMPTY.apply(
+            Events.page(commands.mapIndexed { i, command -> Events.accepted(command, i + 1L) })
+        )
         .view(emptyList(), emptySet(), Events.INSTALLATION_ID, "أحمد")

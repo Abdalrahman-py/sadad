@@ -38,7 +38,17 @@ class ExportLabels(private val text: (ExportLabel) -> String) {
   operator fun get(key: ExportLabel): String = text(key)
 
   val columns: List<String>
-    get() = listOf(ExportLabel.DATE, ExportLabel.MOVEMENT, ExportLabel.DEBT_COLUMN, ExportLabel.PAYMENT_COLUMN, ExportLabel.BALANCE_COLUMN, ExportLabel.DUE_DATE, ExportLabel.DESCRIPTION).map { get(it) }
+    get() =
+        listOf(
+                ExportLabel.DATE,
+                ExportLabel.MOVEMENT,
+                ExportLabel.DEBT_COLUMN,
+                ExportLabel.PAYMENT_COLUMN,
+                ExportLabel.BALANCE_COLUMN,
+                ExportLabel.DUE_DATE,
+                ExportLabel.DESCRIPTION,
+            )
+            .map { get(it) }
 
   companion object {
     fun from(context: Context): ExportLabels {

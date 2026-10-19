@@ -10,7 +10,10 @@ class PdfLayoutTest {
     val layout = PdfLayout()
     val pages = layout.paginate(listOf(List(120) { 28 }, listOf(28, 28)))
     assertEquals(7, pages.count { it.contactIndex == 0 })
-    assertEquals((0 until 120).toList(), pages.filter { it.contactIndex == 0 }.flatMap { it.rows.toList() })
+    assertEquals(
+        (0 until 120).toList(),
+        pages.filter { it.contactIndex == 0 }.flatMap { it.rows.toList() },
+    )
     assertEquals(1, pages.count { it.contactIndex == 1 })
     assertEquals(listOf(0, 1), pages.last().rows.toList())
     assertTrue(pages.all { it.repeatHeader && it.rows.count() <= layout.capacity / 28 })

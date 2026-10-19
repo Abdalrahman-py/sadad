@@ -1,6 +1,10 @@
 package com.sadad.app.export
 
-data class StatementPage(val contactIndex: Int, val rows: IntRange, val repeatHeader: Boolean = true)
+data class StatementPage(
+    val contactIndex: Int,
+    val rows: IntRange,
+    val repeatHeader: Boolean = true,
+)
 
 /** Geometry in A4 points shared by the renderer and JVM pagination tests. */
 class PdfLayout {
