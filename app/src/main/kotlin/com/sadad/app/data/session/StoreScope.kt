@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -63,6 +62,7 @@ class StoreScope(
 
   /** The epoch of the Ledger state this store loaded or last applied; sync keeps it current. */
   override fun origin(): Origin? {
+    if (closed) return null
     val installation = installation ?: return null
     if (installation.status != "active") return null
     val currentEpoch = epoch ?: return null
