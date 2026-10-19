@@ -28,7 +28,7 @@ class SyncEngineTest {
           }
 
       assertEquals(SyncStatus.AwaitingApproval, engine.pass(scope))
-      assertEquals("/v1/mobile/enroll", fixture.server.takeRequest().url.encodedPath)
+      assertEquals("/v1/mobile/enroll", fixture.server.takeRequest().target)
       assertEquals(2, fixture.server.requestCount)
       assertEquals(
           "pending",
