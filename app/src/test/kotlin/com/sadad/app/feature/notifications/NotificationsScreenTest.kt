@@ -22,17 +22,31 @@ class NotificationsScreenTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val temporary = TemporaryFolder()
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
   @After fun close() = scope.cancel()
 
-  @Test fun emptyInboxExplainsThatThereAreNoDueReminders() {
+  @Test
+  fun emptyInboxExplainsThatThereAreNoDueReminders() {
     val reminders = DueReminders(File(temporary.root, "reminders.preferences_pb"), scope)
     compose.setContent { SadadTheme { NotificationsScreen(reminders, "store") } }
     compose.onNodeWithText("لا توجد إشعارات استحقاق حالياً").assertIsDisplayed()
   }
 
-  @Test fun markDoneOffersUndoBeforeMovingTheReminderToTrash() {
+  @Test
+  fun markDoneOffersUndoBeforeMovingTheReminderToTrash() {
     val reminders = DueReminders(File(temporary.root, "reminders.preferences_pb"), scope)
-    val reminder = Reminder("store", "debt", "contact", "سامي", "المتجر", Cents(12000), "2026-10-17", "today", 1)
+    val reminder =
+        Reminder(
+            "store",
+            "debt",
+            "contact",
+            "سامي",
+            "المتجر",
+            Cents(12000),
+            "2026-10-17",
+            "today",
+            1,
+        )
     runBlocking { reminders.record(reminder) }
     compose.setContent { SadadTheme { NotificationsScreen(reminders, "store") } }
     compose.waitUntil { compose.onAllNodesWithText("سامي").fetchSemanticsNodes().isNotEmpty() }
