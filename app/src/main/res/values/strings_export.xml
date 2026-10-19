@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="export_title">سدد | كشف حساب شخصي</string>
+    <string name="export_store">المتجر</string>
+    <string name="export_owner">صاحب المتجر</string>
+    <string name="export_contact">اسم الشخص</string>
+    <string name="export_phone">الهاتف</string>
+    <string name="export_category">التصنيف</string>
+    <string name="export_contact_note">ملاحظات الشخص</string>
+    <string name="export_period">الفترة</string>
+    <string name="export_date">التاريخ</string>
+    <string name="export_movement">الحركة</string>
+    <string name="export_debt_column">دين ₪</string>
+    <string name="export_payment_column">دفعة ₪</string>
+    <string name="export_balance_column">الرصيد ₪</string>
+    <string name="export_due_date">الاستحقاق</string>
+    <string name="export_description">البيان</string>
+    <string name="export_opening">افتتاحي</string>
+    <string name="export_opening_description">رصيد ما قبل الفترة المحددة</string>
+    <string name="export_closing_description">رصيد نهاية الفترة</string>
+    <string name="export_debt">دين</string>
+    <string name="export_payment">دفعة</string>
+    <string name="export_total">الإجمالي</string>
+    <string name="export_empty">لا توجد حركات ضمن الفترة المحددة</string>
+    <string name="export_continued">تابع</string>
+    <string name="export_registered_by">سجّلها</string>
+    <string name="export_page">صفحة</string>
+    <string name="export_share">مشاركة كشف الحساب</string>
+</resources>
