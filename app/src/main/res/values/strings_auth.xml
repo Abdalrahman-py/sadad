@@ -4,4 +4,42 @@
     <string name="title_login">تسجيل الدخول</string>
     <string name="title_password_change">غيّر كلمة المرور المؤقتة</string>
     <string name="title_awaiting_approval">بانتظار الموافقة</string>
+
+    <string name="welcome_eyebrow">إدارة أسهل لمتجرك</string>
+    <string name="welcome_subtitle">حسابات واضحة، وسجل مرتب، ومتابعة أسرع</string>
+    <string name="welcome_start">ابدأ استخدام التطبيق</string>
+    <string name="welcome_footer">أدخل حساب المتجر الذي أنشأه الأدمن</string>
+
+    <string name="login_eyebrow">إدارة حسابات المتجر</string>
+    <string name="login_subtitle">أدخل بيانات حسابك للمتابعة</string>
+    <string name="login_username">اسم المستخدم</string>
+    <string name="login_password">كلمة المرور</string>
+    <string name="login_submit">دخول آمن</string>
+    <string name="login_support">تواصل معنا لتفعيل حسابك</string>
+    <string name="support_unavailable">تعذر فتح WhatsApp. تحقق من تثبيته أو اتصال الإنترنت.</string>
+    <string name="support_whatsapp_number" translatable="false">970599562401</string>
+
+    <string name="password_change_hint">يجب تعيين كلمة مرور جديدة للمتابعة إلى التطبيق.</string>
+    <string name="password_current">كلمة المرور المؤقتة</string>
+    <string name="password_new">كلمة المرور الجديدة (12 خانة على الأقل)</string>
+    <string name="password_confirm">تأكيد كلمة المرور الجديدة</string>
+    <string name="password_save">حفظ ومتابعة</string>
+
+    <string name="approval_details_hint">اكتب اسم الشخص الذي يستخدم هذا الجهاز، ثم انتظر موافقة الإدارة.</string>
+    <string name="approval_staff_name">اسم الشخص على هذا الجهاز</string>
+    <string name="approval_device_label">اسم الجهاز</string>
+    <string name="approval_save">حفظ ومتابعة</string>
+    <string name="approval_check_again">تحقق مرة أخرى</string>
+    <string name="approval_awaiting">بانتظار موافقة الإدارة على هذا الجهاز</string>
+    <string name="approval_running">جارٍ التحقق من الجهاز…</string>
+    <string name="approval_offline">لا يوجد اتصال؛ تحقق من الشبكة وحاول مجددًا.</string>
+    <string name="approval_retry">تعذر الآن؛ حاول مجددًا بعد قليل.</string>
+
+    <string name="error_invalid_credentials">اسم المستخدم أو كلمة المرور غير صحيحة.</string>
+    <string name="error_password_length">استخدم 12 إلى 128 خانة لكلمة المرور.</string>
+    <string name="error_password_mismatch">كلمتا المرور غير متطابقتين.</string>
+    <string name="error_password_same">كلمة المرور الجديدة مطابقة للحالية.</string>
+    <string name="error_staff_name_required">اكتب اسم الشخص على هذا الجهاز.</string>
+    <string name="error_staff_name_long">اسم الشخص أطول من 80 حرفًا.</string>
+    <string name="error_device_label_long">اسم الجهاز أطول من 120 حرفًا.</string>
 </resources>
