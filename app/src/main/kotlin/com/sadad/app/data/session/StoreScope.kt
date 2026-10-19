@@ -9,7 +9,8 @@ import com.sadad.app.data.ledger.RepositorySession
 import com.sadad.ledger.Origin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -76,7 +77,7 @@ class StoreScope(
   suspend fun close() {
     if (closed) return
     closed = true
-    scope.cancel()
+    scope.coroutineContext[Job]?.cancelAndJoin()
     withContext(Dispatchers.IO) { database.close() }
   }
 }
