@@ -23,7 +23,18 @@ class DueRemindersTest {
   @Test
   fun sentKeysStayUniqueWhileRemindersMoveBetweenInboxAndTrash() = runTest {
     val reminders = DueReminders(File(temporary.root, "reminders.preferences_pb"), scope)
-    val event = Reminder("store", "debt", "contact", "سامي", "المتجر", Cents(12000), "2026-10-17", "today", 1)
+    val event =
+        Reminder(
+            "store",
+            "debt",
+            "contact",
+            "سامي",
+            "المتجر",
+            Cents(12000),
+            "2026-10-17",
+            "today",
+            1,
+        )
     assertTrue(reminders.record(event))
     assertFalse(reminders.record(event))
     assertEquals(1, reminders.unreadCount("store").first())
