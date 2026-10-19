@@ -9,7 +9,6 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import com.sadad.app.AppGraph
 import com.sadad.app.SadadApplication
@@ -32,7 +31,7 @@ internal inline fun <reified VM : ViewModel> authViewModel(
 /** Auth steps are one-way: the finished step leaves no entry to return to. */
 fun NavHostController.navigateAuth(destination: Any) {
   navigate(destination) {
-    popUpTo(graph.findStartDestination().id) { inclusive = true }
+    popUpTo(graph.id) { inclusive = true }
     launchSingleTop = true
   }
 }

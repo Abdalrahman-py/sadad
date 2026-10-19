@@ -14,6 +14,7 @@ import com.sadad.app.ui.PasswordChange
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.Welcome
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -43,19 +44,19 @@ class AuthNavigationTest {
     compose.runOnIdle { nav.navigateAuth(Login) }
     compose.runOnIdle {
       assertTrue(nav.currentDestination!!.hasRoute(Login::class))
-      assertFalse(nav.popBackStack())
+      assertNull(nav.previousBackStackEntry)
     }
 
     compose.runOnIdle { nav.navigateAuth(PasswordChange) }
     compose.runOnIdle {
       assertTrue(nav.currentDestination!!.hasRoute(PasswordChange::class))
-      assertFalse(nav.popBackStack())
+      assertNull(nav.previousBackStackEntry)
     }
 
     compose.runOnIdle { nav.navigateAuth(AwaitingApproval) }
     compose.runOnIdle {
       assertTrue(nav.currentDestination!!.hasRoute(AwaitingApproval::class))
-      assertFalse(nav.popBackStack())
+      assertNull(nav.previousBackStackEntry)
     }
 
     compose.runOnIdle { nav.navigateAuth(Home) }
