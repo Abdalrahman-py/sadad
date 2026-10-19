@@ -32,6 +32,7 @@ import com.sadad.app.feature.auth.AwaitingApprovalScreen
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.PasswordChangeScreen
 import com.sadad.app.feature.auth.WelcomeScreen
+import com.sadad.app.feature.auth.navigateAuth
 import com.sadad.app.feature.contactform.ContactFormScreen
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactsScreen
@@ -64,10 +65,14 @@ fun SadadApp(
               startDestination = startDestination,
               modifier = Modifier.padding(insets),
           ) {
-            composable<Welcome> { WelcomeScreen() }
-            composable<Login> { LoginScreen() }
-            composable<PasswordChange> { PasswordChangeScreen() }
-            composable<AwaitingApproval> { AwaitingApprovalScreen() }
+            composable<Welcome> { WelcomeScreen(onNavigate = navController::navigateAuth) }
+            composable<Login> { LoginScreen(onNavigate = navController::navigateAuth) }
+            composable<PasswordChange> {
+              PasswordChangeScreen(onNavigate = navController::navigateAuth)
+            }
+            composable<AwaitingApproval> {
+              AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
+            }
             composable<Home> { HomeScreen() }
             composable<Contacts> { ContactsScreen() }
             composable<ContactDetail> { ContactDetailScreen(it.toRoute<ContactDetail>().contactId) }
