@@ -20,7 +20,8 @@ class PdfWriter(private val labels: ExportLabels) {
 
   fun write(statements: List<ContactStatement>, store: String, owner: String, period: String, out: OutputStream) {
     require(statements.isNotEmpty()) { "No contacts to export" }
-    PdfDocument().use { document ->
+    val document = PdfDocument()
+    try {
       var pageNumber = 0
       for (statement in statements) {
         val rows = statement.tableRows(labels).flatMap { splitRow(it).asSequence() }.toList()
@@ -43,6 +44,8 @@ class PdfWriter(private val labels: ExportLabels) {
         }
       }
       document.writeTo(out)
+    } finally {
+      document.close()
     }
   }
 
