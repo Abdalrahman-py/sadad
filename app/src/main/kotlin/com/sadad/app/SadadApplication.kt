@@ -5,6 +5,11 @@ import android.os.Build
 import android.os.StrictMode
 
 class SadadApplication : Application() {
+  /**
+   * One graph for the process; the first access may touch the Keystore, so callers do it off main.
+   */
+  val graph: AppGraph by lazy { AppGraph.create(this) }
+
   override fun onCreate() {
     super.onCreate()
     if (BuildConfig.DEBUG) {
