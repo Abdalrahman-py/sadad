@@ -3,7 +3,9 @@ package com.sadad.app.data.db
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ContactDao {
@@ -62,9 +64,42 @@ interface EventDao {
   @Query("DELETE FROM events") suspend fun clear()
 }
 
+/** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */
+data class OutboxAnswer(val operationId: String, val state: String, val code: String?)
+
 @Dao
 interface OutboxDao {
   @Insert suspend fun insert(row: OutboxEntity): Long
 
+  @Insert suspend fun insertAll(rows: List<OutboxEntity>)
+
   @Query("SELECT * FROM outbox ORDER BY seq") suspend fun all(): List<OutboxEntity>
+
+  @Query("SELECT * FROM outbox ORDER BY seq") fun observe(): Flow<List<OutboxEntity>>
+
+  @Query("SELECT * FROM outbox WHERE state = 'queued' ORDER BY seq LIMIT :limit")
+  suspend fun queued(limit: Int): List<OutboxEntity>
+
+  @Query(
+      "UPDATE outbox SET state = :state, code = :code WHERE operationId = :operationId AND state = 'queued'"
+  )
+  suspend fun markAnswered(operationId: String, state: String, code: String?)
+
+  @Transaction
+  suspend fun settle(answers: List<OutboxAnswer>) {
+    for (answer in answers) markAnswered(answer.operationId, answer.state, answer.code)
+  }
+
+  @Query(
+      "UPDATE outbox SET state = 'cancelled' WHERE operationId IN (:operationIds) AND state = 'queued'"
+  )
+  suspend fun cancel(operationIds: List<String>)
+
+  @Query(
+      "DELETE FROM outbox WHERE operationId = :operationId AND state IN ('rejected', 'cancelled')"
+  )
+  suspend fun deleteDismissed(operationId: String)
+
+  @Query("DELETE FROM outbox WHERE state = 'accepted' AND entityId IN (:entityIds)")
+  suspend fun deleteAccepted(entityIds: List<String>)
 }
