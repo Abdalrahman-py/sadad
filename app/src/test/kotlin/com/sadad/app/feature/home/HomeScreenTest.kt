@@ -12,6 +12,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.sadad.app.export.MovementKind
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
@@ -19,8 +23,10 @@ import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
@@ -156,5 +162,108 @@ class HomeScreenTest {
           }
           compose.onNodeWithTag(HomeTags.TOTAL).assertTextEquals("1,234.56 ₪")
         }
+  }
+
+  @Test
+  fun aPayablePaymentIsShownAsMoneyPaid() {
+    runBlocking { TestGraph.signedIn() }
+        .use { fixture ->
+          runBlocking {
+            lateinit var contactId: String
+            lateinit var debtId: String
+            fixture.seed { contactId = addContact("المورد", null, null, null, null).getOrThrow() }
+            fixture.seed {
+              debtId = addDebt(contactId, Direction.PAYABLE, Cents(3_000), null, null).getOrThrow()
+              payDebt(debtId, Cents(1_000), PaymentMethod.CASH, null).getOrThrow()
+            }
+          }
+          val model = HomeViewModel(fixture.graph)
+          compose.setContent { SadadTheme { HomeScreen(viewModel = model) } }
+          compose.waitUntil(5_000) {
+            model.state.value.recent.any { it.kind == MovementKind.PAYMENT }
+          }
+
+          compose.onNodeWithText("عرض سجل الحركات").performClick()
+
+          compose
+              .onNodeWithText("دفعة مدفوعة", substring = true)
+              .performScrollTo()
+              .assertIsDisplayed()
+          compose.onNodeWithText("−10 ₪").assertIsDisplayed()
+        }
+  }
+
+  @Test
+  fun returningHomeRefreshesTheMonthWithoutLedgerChanges() {
+    withMonthBoundary { clock, model, owner ->
+      compose.runOnUiThread { owner.send(Lifecycle.Event.ON_STOP) }
+      clock.now = clock.now.plusSeconds(2)
+      compose.runOnUiThread { owner.send(Lifecycle.Event.ON_START) }
+
+      compose.waitUntil(5_000) { model.state.value.month == YearMonth.of(2026, 11) }
+    }
+  }
+
+  @Test
+  fun anOpenHomeRefreshesAtTheMonthBoundary() {
+    withMonthBoundary { clock, model, _ ->
+      clock.now = clock.now.plusSeconds(2)
+      compose.mainClock.advanceTimeBy(2_000)
+
+      compose.waitUntil(5_000) { model.state.value.month == YearMonth.of(2026, 11) }
+    }
+  }
+
+  private fun withMonthBoundary(check: (AdvancingClock, HomeViewModel, TestOwner) -> Unit) {
+    val zone = ZoneId.of("Asia/Jerusalem")
+    val clock =
+        AdvancingClock(LocalDate.of(2026, 10, 31).atTime(23, 59, 59).atZone(zone).toInstant(), zone)
+    val owner = TestOwner()
+    runBlocking { TestGraph.signedIn() }
+        .use { fixture ->
+          runBlocking {
+            lateinit var contactId: String
+            fixture.seed { contactId = addContact("سامي", null, null, null, null).getOrThrow() }
+            fixture.seed {
+              addDebt(contactId, Direction.RECEIVABLE, Cents(1_000), null, null).getOrThrow()
+            }
+          }
+          val model = HomeViewModel(fixture.graph, clock)
+          compose.setContent {
+            SadadTheme {
+              CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                HomeScreen(viewModel = model)
+              }
+            }
+          }
+          compose.waitUntil(5_000) { model.state.value.totalReceivable == Cents(1_000) }
+          assertEquals(YearMonth.of(2026, 10), model.state.value.month)
+          try {
+            check(clock, model, owner)
+          } finally {
+            compose.runOnUiThread { owner.send(Lifecycle.Event.ON_DESTROY) }
+          }
+        }
+  }
+
+  private class AdvancingClock(var now: Instant, private val zone: ZoneId) : Clock() {
+    override fun instant(): Instant = now
+
+    override fun getZone(): ZoneId = zone
+
+    override fun withZone(zone: ZoneId): Clock = Clock.fixed(now, zone)
+  }
+
+  private class TestOwner : LifecycleOwner {
+    private val registry = LifecycleRegistry.createUnsafe(this)
+    override val lifecycle: Lifecycle
+      get() = registry
+
+    init {
+      send(Lifecycle.Event.ON_CREATE)
+      send(Lifecycle.Event.ON_START)
+    }
+
+    fun send(event: Lifecycle.Event) = registry.handleLifecycleEvent(event)
   }
 }
