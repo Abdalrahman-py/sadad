@@ -308,6 +308,8 @@ class SettingsViewModel(
 
   /** Runs an account action; a failure ends the dialog with a message instead of crashing. */
   private fun act(block: suspend () -> Unit) {
+    // A failure from an earlier action must not outlive the retry.
+    ui.update { it.copy(error = null) }
     viewModelScope.launch {
       try {
         block()

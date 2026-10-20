@@ -314,6 +314,10 @@ class SettingsViewModelTest {
         val state = model.state.first { it.error != null }
         assertEquals(SettingsError.ACTION_FAILED, state.error)
         assertFalse(state.busy)
+
+        // A later action that works clears the old failure.
+        model.setTheme(ThemeChoice.DARK)
+        assertNull(model.state.first { it.theme == ThemeChoice.DARK }.error)
       }
     }
   }
