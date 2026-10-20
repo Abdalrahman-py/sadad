@@ -15,8 +15,12 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +77,7 @@ data class ContactDetailState(
 class ContactDetailViewModel(
     private val graph: AppGraph,
     private val contactId: String,
+    private val appContext: Context,
 ) : ViewModel() {
   private data class Dialogs(
       val newestFirst: Boolean = true,
@@ -86,6 +91,14 @@ class ContactDetailViewModel(
   private val dialogs = MutableStateFlow(Dialogs())
   private val mutable = MutableStateFlow(ContactDetailState())
   val state: StateFlow<ContactDetailState> = mutable.asStateFlow()
+
+  /**
+   * The undo window runs here, not in the screen's composition, like the Java banner on the
+   * Activity: leaving the Contact during the five seconds must not drop a delete the dialog already
+   * promised. Nothing else uses this scope, and the job ends within [UNDO_WINDOW_MS].
+   */
+  private val undoScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+  private var undoJob: Job? = null
 
   @Volatile private var currentView: LedgerView? = null
 
@@ -126,22 +139,38 @@ class ContactDetailViewModel(
   fun confirmDelete() {
     if (!dialogs.value.confirmDelete || !mutable.value.canDeleteContacts) return
     dialogs.update { it.copy(confirmDelete = false, undoName = mutable.value.name) }
+    undoJob?.cancel()
+    undoJob = undoScope.launch {
+      delay(UNDO_WINDOW_MS)
+      commitDelete()
+    }
   }
 
-  fun undoDelete() = dialogs.update { it.copy(undoName = null) }
+  fun undoDelete() {
+    undoJob?.cancel()
+    undoJob = null
+    dialogs.update { it.copy(undoName = null) }
+  }
+
+  /** The banner is gone without an undo: nothing is queued. */
+  fun clearUndo() = dialogs.update { it.copy(undoName = null) }
 
   /** The undo window ended: queue the archive now, keeping the rows if the server refuses it. */
-  fun commitDelete(context: Context) {
+  fun commitDelete() {
+    undoJob?.cancel()
+    undoJob = null
     if (dialogs.value.undoName == null) return
     dialogs.update { it.copy(undoName = null) }
     val repository = graph.current.value?.repository
     if (repository == null) {
       dialogs.update {
-        it.copy(undoName = null, error = context.getString(R.string.contacts_session_closed))
+        it.copy(undoName = null, error = appContext.getString(R.string.contacts_session_closed))
       }
       return
     }
-    viewModelScope.launch {
+    // The outbox write is not cancelled with this screen: it is one short write, not background
+    // work, and the dialog the user confirmed already promised it.
+    undoScope.launch {
       repository
           .archiveContact(contactId, ARCHIVE_REASON)
           .fold(
@@ -150,7 +179,7 @@ class ContactDetailViewModel(
               },
               onFailure = { failure ->
                 dialogs.update { current ->
-                  current.copy(undoName = null, error = refusalText(context, failure))
+                  current.copy(undoName = null, error = refusalText(failure))
                 }
               },
           )
@@ -161,8 +190,12 @@ class ContactDetailViewModel(
 
   fun reportError(text: String) = dialogs.update { it.copy(error = text) }
 
-  /** The digits WhatsApp needs, or null when the Contact has no usable phone. */
-  fun whatsAppNumber(): String? = mutable.value.phone.filter(Char::isDigit).ifEmpty { null }
+  /**
+   * The digits WhatsApp needs, or null when the Contact's phone is not a full international number;
+   * opening `wa.me` with a partial number sends the message nowhere.
+   */
+  fun whatsAppNumber(): String? =
+      mutable.value.phone.filter(Char::isDigit).takeIf { it.length in 7..15 }
 
   suspend fun share(context: Context) {
     val view = currentView ?: return
@@ -286,15 +319,19 @@ class ContactDetailViewModel(
     )
   }
 
-  private fun refusalText(context: Context, error: Throwable): String =
+  private fun refusalText(error: Throwable): String =
       when (error) {
+        // Archiving needs a connection, and an offline write without a lease means the same fix.
         is Refusal.OnlineOnly,
-        is Refusal.OfflineNotAllowed -> context.getString(R.string.contacts_delete_offline)
+        is Refusal.OfflineNotAllowed -> appContext.getString(R.string.contacts_delete_offline)
         is Refusal.Invalid -> error.message
-        else -> context.getString(R.string.contacts_delete_failed)
+        else -> appContext.getString(R.string.contacts_delete_failed)
       }
 
   private companion object {
     const val ARCHIVE_REASON = "حذف الزبون من التطبيق"
+
+    /** The Java banner's undo window. */
+    const val UNDO_WINDOW_MS = 5_000L
   }
 }

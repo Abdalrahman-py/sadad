@@ -96,24 +96,29 @@ internal fun ContactsScreen(
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
       OutlinedTextField(
-          value = state.query,
+          value = state.queryInput,
           onValueChange = viewModel::onQueryChange,
           singleLine = true,
           placeholder = { Text(stringResource(R.string.contacts_search)) },
           modifier = Modifier.fillMaxWidth().testTag(ContactsTag.SEARCH),
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SortChip(ContactSort.NAME, R.string.contacts_sort_name, state.sort, viewModel::onSortChange)
+        SortChip(
+            ContactSort.NAME,
+            R.string.contacts_sort_name,
+            state.sortChoice,
+            viewModel::onSortChange,
+        )
         SortChip(
             ContactSort.HIGHEST_DEBT,
             R.string.contacts_sort_debt,
-            state.sort,
+            state.sortChoice,
             viewModel::onSortChange,
         )
         SortChip(
             ContactSort.NEWEST,
             R.string.contacts_sort_newest,
-            state.sort,
+            state.sortChoice,
             viewModel::onSortChange,
         )
       }
@@ -236,6 +241,7 @@ internal fun ContactDetailScreen(
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$number"))
                 )
+                // Armed only after a successful launch: a failed one must not bypass the PIN.
                 AppLock.get(context).skipNextLock()
               } catch (_: ActivityNotFoundException) {
                 viewModel.reportError(context.getString(R.string.contacts_whatsapp_missing))
@@ -315,14 +321,14 @@ internal fun ContactDetailScreen(
     state.error?.let { message ->
       Snackbar(modifier = Modifier.align(Alignment.BottomCenter)) { Text(message) }
     }
-    // shortcut: leaving this screen cancels the undo timer; move it into the ViewModel if deletion
-    // must finish after navigation.
+    // The five-second window lives in the ViewModel, so leaving this screen still queues the
+    // archive the confirm dialog promised.
     state.undoName?.let { name ->
       UndoSnackbar(
           message = stringResource(R.string.contacts_delete_undo, name),
           onUndo = viewModel::undoDelete,
-          onCommit = { viewModel.commitDelete(context) },
-          onDismiss = {},
+          onCommit = viewModel::commitDelete,
+          onDismiss = viewModel::clearUndo,
           modifier = Modifier.align(Alignment.BottomCenter),
       )
     }
@@ -521,7 +527,7 @@ private fun contactDetailViewModel(contactId: String): ContactDetailViewModel {
   return viewModel(
       factory =
           viewModelFactory {
-            initializer { ContactDetailViewModel(app.graph, contactId) }
+            initializer { ContactDetailViewModel(app.graph, contactId, app.applicationContext) }
           }
   )
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class ContactSort {
@@ -43,8 +44,14 @@ data class ContactsState(
     val loaded: Boolean = false,
     val rows: List<ContactRow> = emptyList(),
     val registered: Int = 0,
+    /** The text the last projection filtered on. */
     val query: String = "",
+    /** The order the last projection sorted by. */
     val sort: ContactSort = ContactSort.NAME,
+    /** What the search field shows: updated on the keystroke, before the projection catches up. */
+    val queryInput: String = "",
+    /** What the sort chips show, for the same reason. */
+    val sortChoice: ContactSort = ContactSort.NAME,
 )
 
 /**
@@ -59,7 +66,15 @@ class ContactsViewModel(
 ) : ViewModel() {
   private val query = MutableStateFlow(saved.get<String>(QUERY).orEmpty())
   private val sort = MutableStateFlow(savedSort())
-  private val mutable = MutableStateFlow(ContactsState(query = query.value, sort = sort.value))
+  private val mutable =
+      MutableStateFlow(
+          ContactsState(
+              query = query.value,
+              sort = sort.value,
+              queryInput = query.value,
+              sortChoice = sort.value,
+          )
+      )
   val state: StateFlow<ContactsState> = mutable.asStateFlow()
 
   init {
@@ -73,11 +88,15 @@ class ContactsViewModel(
   fun onQueryChange(value: String) {
     saved[QUERY] = value
     query.value = value
+    // The field reads this value; waiting for the projection on Dispatchers.Default would drop
+    // characters typed faster than one round trip.
+    mutable.update { it.copy(queryInput = value) }
   }
 
   fun onSortChange(value: ContactSort) {
     saved[SORT] = value.name
     sort.value = value
+    mutable.update { it.copy(sortChoice = value) }
   }
 
   private fun savedSort(): ContactSort =

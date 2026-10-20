@@ -86,9 +86,10 @@ fun SadadApp(
               ContactDetailScreen(
                   contactId = contactId,
                   onBack = {
-                    navController.navigate(Contacts) {
-                      popUpTo(navController.graph.id)
-                      launchSingleTop = true
+                    // One entry back to the list the Contact was opened from; clearing the whole
+                    // graph here would drop the start destination.
+                    if (!navController.popBackStack()) {
+                      navController.navigate(Contacts) { launchSingleTop = true }
                     }
                   },
                   onRecordDebt = { navController.navigate(DebtForm(contactId)) },

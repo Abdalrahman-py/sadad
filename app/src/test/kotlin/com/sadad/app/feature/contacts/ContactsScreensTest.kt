@@ -49,6 +49,8 @@ class ContactsScreensTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val main = MainDispatcherRule()
 
+  private val context: Context = ApplicationProvider.getApplicationContext()
+
   @Test
   fun theListScrollsToTheLastOfFiveThousandRows() {
     runBlocking {
@@ -95,7 +97,7 @@ class ContactsScreensTest {
     }
         .use { fixture ->
           val model =
-              ContactDetailViewModel(fixture.graph, person.entityId).also {
+              ContactDetailViewModel(fixture.graph, person.entityId, context).also {
                 fixture.closeWithStore(it.viewModelScope)
               }
           compose.setContent {
@@ -141,7 +143,7 @@ class ContactsScreensTest {
     }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId).also {
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
@@ -170,7 +172,7 @@ class ContactsScreensTest {
             fixture.closeWithStore(it.viewModelScope)
           }
       val detail =
-          ContactDetailViewModel(fixture.graph, person.entityId).also {
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent {
@@ -202,7 +204,7 @@ class ContactsScreensTest {
     }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId).also {
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
@@ -229,7 +231,7 @@ class ContactsScreensTest {
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId).also {
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       val lock = AppLock.get(base)
@@ -272,7 +274,7 @@ class ContactsScreensTest {
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId).also {
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       val lock = AppLock.get(base)
