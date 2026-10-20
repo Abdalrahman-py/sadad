@@ -2,6 +2,7 @@ package com.sadad.app.data.ledger
 
 import com.sadad.app.data.crypto.Sealed
 import com.sadad.app.data.db.Events
+import com.sadad.ledger.Commands
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
@@ -117,5 +118,53 @@ class OutboxTest : LedgerTestCase() {
     outbox.settle(listOf(receiptOf(command, ReceiptStatus.ACCEPTED)))
 
     assertEquals("cancelled", db.outboxDao().all().single().state)
+  }
+
+  @Test
+  fun anAcceptedRestoreStaysUntilItsEventIsFolded() = runTest {
+    val contact = contactCommand()
+    val archive =
+        Commands.contactArchive(
+            Events.origin,
+            Events.at(1),
+            contact.entityId,
+            1,
+            "حذف",
+            entityId = contact.entityId,
+        )
+    val archived =
+        LedgerState.EMPTY.apply(
+            Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
+        )
+    val restore =
+        Commands.contactRestore(
+            Events.origin,
+            Events.at(3),
+            contact.entityId,
+            2,
+            "استعادة",
+            entityId = contact.entityId,
+        )
+    outbox.append(listOf(restore))
+    outbox.settle(listOf(receiptOf(restore, ReceiptStatus.ACCEPTED, sequence = 4)))
+
+    outbox.compact(archived)
+    assertEquals(restore.operationId, outbox.snapshot().single().operationId)
+
+    val unrelated = contactCommand(id = OTHER_CONTACT_ID)
+    val earlierPage =
+        archived.apply(
+            Events.page(
+                listOf(Events.accepted(unrelated, 3)),
+                cursor = 4,
+                nextCursor = 3,
+            )
+        )
+    outbox.compact(earlierPage)
+    assertEquals(restore.operationId, outbox.snapshot().single().operationId)
+
+    val restored = earlierPage.apply(Events.page(listOf(Events.accepted(restore, 4))))
+    outbox.compact(restored)
+    assertTrue(outbox.snapshot().isEmpty())
   }
 }
