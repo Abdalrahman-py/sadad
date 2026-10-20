@@ -16,7 +16,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewModelScope
 import com.sadad.app.export.MovementKind
+import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
@@ -41,6 +43,7 @@ import org.robolectric.annotation.Config
 @Config(application = UiTestApplication::class)
 class HomeScreenTest {
   @get:Rule val compose = createComposeRule()
+  @get:Rule val main = MainDispatcherRule()
 
   private val state =
       HomeUiState(
@@ -157,6 +160,7 @@ class HomeScreenTest {
                   ),
               )
 
+          fixture.closeWithStore(model.viewModelScope)
           compose.setContent { SadadTheme { HomeScreen(viewModel = model) } }
 
           compose.waitUntil(5_000) {
@@ -180,6 +184,7 @@ class HomeScreenTest {
             }
           }
           val model = HomeViewModel(fixture.graph)
+          fixture.closeWithStore(model.viewModelScope)
           compose.setContent { SadadTheme { HomeScreen(viewModel = model) } }
           compose.waitUntil(5_000) {
             model.state.value.recent.any { it.kind == MovementKind.PAYMENT }
@@ -236,6 +241,7 @@ class HomeScreenTest {
             }
           }
           val model = HomeViewModel(fixture.graph, clock)
+          fixture.closeWithStore(model.viewModelScope)
           compose.setContent {
             SadadTheme {
               CompositionLocalProvider(LocalLifecycleOwner provides owner) {
