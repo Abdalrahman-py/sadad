@@ -15,8 +15,10 @@
     <string name="home_empty_detail">تظهر هنا جميع الديون والدفعات من الأحدث.</string>
     <string name="home_debt_kind">دين مسجل</string>
     <string name="home_payment_kind">دفعة مستلمة</string>
+    <string name="home_payment_sent_kind">دفعة مدفوعة</string>
+    <string name="home_debt_payable_kind">دين علينا</string>
     <string name="home_unknown_contact">شخص</string>
     <string name="home_movement_meta">%1$s · %2$s</string>
-    <string name="home_debt_amount">−%1$s</string>
-    <string name="home_payment_amount">+%1$s</string>
+    <string name="home_outgoing_amount">−%1$s</string>
+    <string name="home_incoming_amount">+%1$s</string>
 </resources>

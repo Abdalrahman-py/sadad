@@ -8,10 +8,13 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -29,6 +32,7 @@ data class HomeMovement(
     val kind: MovementKind,
     val pending: Boolean,
     val createdAt: Instant,
+    val direction: Direction,
 )
 
 data class HomeUiState(
@@ -71,6 +75,7 @@ fun homeUiState(
   val total = monthDebts + monthPayments
 
   val names = view.contacts.associate { it.id to it.name }
+  val directions = view.debts.associate { it.id to it.direction }
   val recent = buildList {
     for (debt in view.debts) {
       add(
@@ -81,6 +86,7 @@ fun homeUiState(
               MovementKind.DEBT,
               debt.pending,
               debt.createdAt,
+              debt.direction,
           )
       )
     }
@@ -93,6 +99,7 @@ fun homeUiState(
               MovementKind.PAYMENT,
               payment.pending,
               payment.createdAt,
+              directions.getValue(payment.debtId),
           )
       )
     }
@@ -115,8 +122,23 @@ fun homeUiState(
 }
 
 /** Follows the open store's [LedgerView] and the account's local store name. */
-class HomeViewModel(graph: AppGraph, private val clock: Clock = Clock.systemDefaultZone()) :
-    ViewModel() {
+class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewModel() {
+  private fun currentClock(): Clock = clock ?: Clock.systemDefaultZone()
+
+  private val period = MutableStateFlow(currentClock().let { YearMonth.now(it) to it.zone })
+
+  /** The screen cancels this wait when hidden and restarts it on return. */
+  suspend fun followMonth() {
+    while (true) {
+      val current = currentClock()
+      val now = current.instant().atZone(current.zone)
+      val month = YearMonth.from(now)
+      period.value = month to now.zone
+      val next = month.plusMonths(1).atDay(1).atStartOfDay(now.zone)
+      delay(Duration.between(now, next).toMillis().coerceAtLeast(1))
+    }
+  }
+
   private val views =
       graph.current.flatMapLatest { scope ->
         val storeId = scope?.account?.storeUserId
@@ -124,16 +146,15 @@ class HomeViewModel(graph: AppGraph, private val clock: Clock = Clock.systemDefa
       }
 
   val state: StateFlow<HomeUiState> =
-      combine(views, graph.accounts.accounts) { (storeId, view), accounts ->
+      combine(views, graph.accounts.accounts, period) { (storeId, view), accounts, (month, zone) ->
             val storeName = accounts.firstOrNull { it.storeUserId == storeId }?.storeName.orEmpty()
-            val month = YearMonth.now(clock)
             if (view == null) HomeUiState(storeName = storeName, month = month)
-            else homeUiState(view, month, clock.zone, storeName)
+            else homeUiState(view, month, zone, storeName)
           }
           .flowOn(Dispatchers.Default)
           .stateIn(
               viewModelScope,
               SharingStarted.Eagerly,
-              HomeUiState(month = YearMonth.now(clock)),
+              HomeUiState(month = period.value.first),
           )
 }

@@ -39,8 +39,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -52,6 +55,7 @@ import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.formatCents
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -66,6 +70,10 @@ fun HomeScreen(
     viewModel: HomeViewModel = homeViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(viewModel, lifecycle) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.followMonth() }
+  }
   HomeContent(state = state, onOpenContact = onOpenContact, modifier = modifier)
 }
 
@@ -264,7 +272,16 @@ private fun MovementRow(
     onOpenContact: (String) -> Unit,
 ) {
   val payment = movement.kind == MovementKind.PAYMENT
-  val color = if (payment) paymentColor else debtColor
+  val receivable = movement.direction == Direction.RECEIVABLE
+  val incoming = if (receivable) payment else !payment
+  val color = if (incoming) paymentColor else debtColor
+  val kind =
+      when {
+        payment && !receivable -> R.string.home_payment_sent_kind
+        payment -> R.string.home_payment_kind
+        !receivable -> R.string.home_debt_payable_kind
+        else -> R.string.home_debt_kind
+      }
   Card(
       onClick = { onOpenContact(movement.contactId) },
       modifier = Modifier.fillMaxWidth(),
@@ -285,10 +302,8 @@ private fun MovementRow(
             text =
                 stringResource(
                     R.string.home_movement_meta,
-                    stringResource(
-                        if (payment) R.string.home_payment_kind else R.string.home_debt_kind
-                    ),
-                    TIME_FORMAT.format(movement.createdAt),
+                    stringResource(kind),
+                    TIME_FORMAT.withZone(ZoneId.systemDefault()).format(movement.createdAt),
                 ),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -297,7 +312,7 @@ private fun MovementRow(
       Text(
           text =
               stringResource(
-                  if (payment) R.string.home_payment_amount else R.string.home_debt_amount,
+                  if (incoming) R.string.home_incoming_amount else R.string.home_outgoing_amount,
                   formatCents(movement.amount),
               ),
           style = MaterialTheme.typography.titleMedium,
@@ -313,8 +328,7 @@ private val DECELERATE = Easing { fraction -> 1f - (1f - fraction) * (1f - fract
 
 private val MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLanguageTag("ar"))
 
-private val TIME_FORMAT =
-    DateTimeFormatter.ofPattern("HH:mm", Locale.US).withZone(ZoneId.systemDefault())
+private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
 object HomeTags {
   const val TOTAL = "home:total"

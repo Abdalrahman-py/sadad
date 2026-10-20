@@ -77,6 +77,7 @@ class HomeUiStateTest {
 
     assertEquals(Cents.ZERO, state.monthPayments)
     assertEquals(1, state.recent.count { it.kind == MovementKind.PAYMENT })
+    assertTrue(state.recent.all { it.direction == Direction.PAYABLE })
   }
 
   @Test

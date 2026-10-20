@@ -60,6 +60,7 @@ class HomeScreenTest {
                       MovementKind.PAYMENT,
                       pending = false,
                       createdAt = Instant.parse("2026-10-05T10:00:00Z"),
+                      direction = Direction.RECEIVABLE,
                   ),
                   HomeMovement(
                       "c2",
@@ -68,6 +69,7 @@ class HomeScreenTest {
                       MovementKind.DEBT,
                       pending = true,
                       createdAt = Instant.parse("2026-10-04T10:00:00Z"),
+                      direction = Direction.RECEIVABLE,
                   ),
               ),
       )
@@ -190,6 +192,11 @@ class HomeScreenTest {
               .performScrollTo()
               .assertIsDisplayed()
           compose.onNodeWithText("−10 ₪").assertIsDisplayed()
+          compose
+              .onNodeWithText("دين علينا", substring = true)
+              .performScrollTo()
+              .assertIsDisplayed()
+          compose.onNodeWithText("+30 ₪").assertIsDisplayed()
         }
   }
 
