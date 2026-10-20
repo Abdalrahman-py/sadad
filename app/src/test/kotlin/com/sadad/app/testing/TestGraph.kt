@@ -55,6 +55,13 @@ private constructor(
     private val graphScope: CoroutineScope,
     private val dataStoreScope: CoroutineScope,
 ) : AutoCloseable {
+  private val testJobs = mutableListOf<Job>()
+
+  /** Stop test-owned collectors before closing the store's Room database. */
+  fun closeWithStore(scope: CoroutineScope) {
+    testJobs += checkNotNull(scope.coroutineContext[Job])
+  }
+
   val context: Context
     get() = ApplicationProvider.getApplicationContext()
 
@@ -135,6 +142,7 @@ private constructor(
 
   override fun close() {
     runBlocking {
+      for (job in testJobs.asReversed()) job.cancelAndJoin()
       graph.closeStore()
       graphScope.cancel()
       dataStoreScope.coroutineContext[Job]?.cancelAndJoin()

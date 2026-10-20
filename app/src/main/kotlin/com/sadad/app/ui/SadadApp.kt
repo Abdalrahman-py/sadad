@@ -73,7 +73,9 @@ fun SadadApp(
             composable<AwaitingApproval> {
               AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
             }
-            composable<Home> { HomeScreen() }
+            composable<Home> {
+              HomeScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
+            }
             composable<Contacts> {
               ContactsScreen(
                   onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) }

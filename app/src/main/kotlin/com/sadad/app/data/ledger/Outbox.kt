@@ -143,7 +143,11 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
               it.state == OutboxState.ACCEPTED.column &&
                   (it.entityId in state.contacts ||
                       it.entityId in state.debts ||
-                      it.entityId in state.payments)
+                      it.entityId in state.payments) &&
+                  // The archived Contact already exists before its restore event is pulled.
+                  (it.type != CommandType.CONTACT_RESTORE.wireName ||
+                      checkNotNull(state.contacts[it.entityId]).version >
+                          checkNotNull(commandOf(it).expectedVersion))
             }
             .map { it.operationId }
     for (chunk in done.chunked(500)) dao.deleteAccepted(chunk)
