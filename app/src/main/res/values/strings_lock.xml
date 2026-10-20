@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lock_title">التطبيق مقفل</string>
+    <string name="lock_hint">أدخل رمز القفل للعودة إلى الصفحة الرئيسية</string>
+    <string name="lock_pin_label">رمز القفل</string>
+    <string name="lock_open">فتح التطبيق</string>
+    <string name="lock_wrong">رمز القفل غير صحيح</string>
+    <string name="lock_wait">محاولات كثيرة؛ انتظر %1$d ثانية.</string>
+    <string name="lock_use_biometric">استخدام البصمة أو الوجه</string>
+    <string name="lock_biometric_title">فتح سدد</string>
+    <string name="lock_use_pin">استخدام رمز التطبيق</string>
+</resources>
