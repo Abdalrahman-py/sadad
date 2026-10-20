@@ -40,6 +40,7 @@ data class OutboxRow(
     val state: OutboxState,
     val code: String?,
     val createdAt: Instant,
+    val recoveryPermit: String?,
     val command: LedgerCommand,
 )
 
@@ -75,6 +76,19 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
   /** The next queued commands, oldest first, decoded for a sync batch. */
   suspend fun queued(limit: Int = OperationsRequest.MAX_BATCH): List<LedgerCommand> =
       dao.queued(limit).map { commandOf(it) }
+
+  /** Puts [permit] on every queued row that [origin] added, so a recovery batch can carry them. */
+  suspend fun setPermit(origin: String, permit: String) {
+    val ids =
+        snapshot()
+            .filter {
+              it.state == OutboxState.QUEUED &&
+                  it.command.type.offline &&
+                  it.command.originInstallationId == origin
+            }
+            .map { it.operationId }
+    if (ids.isNotEmpty()) for (chunk in ids.chunked(500)) dao.setRecoveryPermit(chunk, permit)
+  }
 
   /** Marks the queued rows accepted or rejected in one transaction; a cancelled row stays so. */
   suspend fun settle(receipts: List<Receipt>) {
@@ -163,6 +177,7 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
         OutboxState.of(state),
         code,
         Instant.ofEpochMilli(createdAt),
+        recoveryPermit,
         command,
     )
   }

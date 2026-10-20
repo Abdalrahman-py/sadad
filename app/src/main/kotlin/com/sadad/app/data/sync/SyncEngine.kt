@@ -1,10 +1,12 @@
 package com.sadad.app.data.sync
 
 import com.sadad.app.data.ledger.LedgerReset
+import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.net.ApiException
 import com.sadad.app.data.net.AuthSession
 import com.sadad.app.data.net.LedgerApi
+import com.sadad.app.data.session.Account
 import com.sadad.app.data.session.Accounts
 import com.sadad.app.data.session.Sessions
 import com.sadad.app.data.session.StoreScope
@@ -85,9 +87,22 @@ class SyncEngine(
       if (session.forcePasswordChange) return SyncStatus.PasswordChangeRequired
       var account = accounts.account(id) ?: return SyncStatus.SignedOut
       if (account.installation?.status != "active") {
-        val installation = call {
-          api.enroll(it, scope.signer, scope.signer.publicKey, account.label, account.staffName)
-        }
+        val installation =
+            try {
+              call {
+                api.enroll(
+                    it,
+                    scope.signer,
+                    scope.signer.publicKey,
+                    account.label,
+                    account.staffName,
+                )
+              }
+            } catch (refused: ApiException) {
+              if (refused.code != "installation_revoked") throw refused
+              markRevoked()
+              return SyncStatus.Revoked
+            }
         if (installation.installationId != account.installationId)
             return SyncStatus.Failed("invalid_input")
         accounts.update(id) {
@@ -122,9 +137,52 @@ class SyncEngine(
           if (refusal(refused) !is SyncStatus.Failed) throw refused
         }
       }
-      push()
-      pull()
-      return SyncStatus.Idle
+      try {
+        push()
+        pull()
+      } catch (refused: ApiException) {
+        if (refused.code in REVOKED_CODES) confirmRevoked(account)
+        throw refused
+      }
+      return deferred ?: SyncStatus.Idle
+    }
+
+    /** Set when a refused recovery permit must not stop the rest of the pass. */
+    private var deferred: SyncStatus? = null
+
+    /**
+     * `installation_or_session_revoked` can mean only the session. Enrolling asks the server which:
+     * `installation_revoked` (or a revoked status) is the installation itself, and only then is it
+     * stored, so "register as a new device" appears for a phone that really was revoked.
+     */
+    private suspend fun confirmRevoked(account: Account) {
+      val revoked =
+          try {
+            call {
+              api.enroll(
+                  it,
+                  scope.signer,
+                  scope.signer.publicKey,
+                  account.label,
+                  account.staffName,
+              )
+            }
+                .status == "revoked"
+          } catch (refused: ApiException) {
+            refused.code == "installation_revoked"
+          } catch (_: IOException) {
+            false
+          } catch (_: Stopped) {
+            false
+          }
+      if (revoked) markRevoked()
+    }
+
+    private suspend fun markRevoked() {
+      val current = accounts.account(id)?.installation ?: StoredInstallation("revoked", 0)
+      val revoked = current.copy(status = "revoked")
+      accounts.update(id) { it.copy(installation = revoked) }
+      scope.updateInstallation(revoked)
     }
 
     private suspend fun <T> call(request: suspend (AuthSession) -> T): T {
@@ -153,32 +211,53 @@ class SyncEngine(
     }
 
     private suspend fun push() {
-      while (true) {
-        val eligible =
-            scope.database
-                .outboxDao()
-                .all()
-                .filter { it.state == "queued" && it.recoveryPermit == null }
-                .mapTo(HashSet()) { it.operationId }
-        val queued =
-            scope.outbox
-                .snapshot()
-                .filter { it.state == OutboxState.QUEUED && it.operationId in eligible }
-                .take(OperationsRequest.MAX_BATCH)
-                .map { it.command }
-        if (queued.isEmpty()) return
-        val batch = batchWithinLimit(queued)
-        if (batch.isEmpty()) throw Stopped(SyncStatus.Failed("invalid_input"))
-        val receipts = call { api.operations(it, scope.signer, batch) }
-        // Never settle an unrelated row or loop forever on a partial/malformed answer.
-        if (
-            receipts.map { it.operationId }.toSet() != batch.map { it.operationId }.toSet() ||
-                receipts.size != batch.size
-        ) {
-          throw Stopped(SyncStatus.Failed("temporary_service_failure"))
+      // A batch never mixes origins or a permit: the server refuses a batch whose origin is not the
+      // caller's, or whose commands are not exactly the permit's manifest. The permit batches go
+      // first so rows that depend on a recovered row find it on the server.
+      try {
+        while (true) {
+          val rows = scope.outbox.snapshot().filter { it.state == OutboxState.QUEUED }
+          val permit = rows.firstNotNullOfOrNull { it.recoveryPermit } ?: break
+          val batch = rows.filter { it.recoveryPermit == permit }.take(OperationsRequest.MAX_BATCH)
+          send(batch.map { it.command }, permit)
         }
-        scope.outbox.settle(receipts)
+      } catch (refused: ApiException) {
+        // A refused or expired permit leaves its rows queued; it must not stop the other rows or
+        // the download, so the pass reports it at the end.
+        if (refused.code != "recovery_not_authorized") throw refused
+        deferred = SyncStatus.Failed(refused.code)
       }
+      while (true) {
+        val queued = scope.outbox.snapshot().filter { it.state == OutboxState.QUEUED }
+        val waiting = queued.mapTo(HashSet()) { it.operationId }
+        val batch = mutableListOf<OutboxRow>()
+        val inBatch = HashSet<String>()
+        for (row in queued) {
+          if (batch.size == OperationsRequest.MAX_BATCH) break
+          if (row.recoveryPermit != null) continue
+          if (row.command.originInstallationId != scope.account.installationId) continue
+          // A row that depends on a recovered row not yet on the server waits for its permit.
+          if (row.command.dependsOn.any { it in waiting && it !in inBatch }) continue
+          batch += row
+          inBatch += row.operationId
+        }
+        if (batch.isEmpty()) break
+        send(batch.map { it.command }, null)
+      }
+    }
+
+    private suspend fun send(commands: List<LedgerCommand>, recoveryPermit: String?) {
+      val batch = batchWithinLimit(commands)
+      if (batch.isEmpty()) throw Stopped(SyncStatus.Failed("invalid_input"))
+      val receipts = call { api.operations(it, scope.signer, batch, recoveryPermit) }
+      // Never settle an unrelated row or loop forever on a partial/malformed answer.
+      if (
+          receipts.map { it.operationId }.toSet() != batch.map { it.operationId }.toSet() ||
+              receipts.size != batch.size
+      ) {
+        throw Stopped(SyncStatus.Failed("temporary_service_failure"))
+      }
+      scope.outbox.settle(receipts)
     }
 
     private suspend fun pull() {
@@ -216,6 +295,11 @@ class SyncEngine(
   }
 
   private class Stopped(val status: SyncStatus) : Exception()
+
+  private companion object {
+    /** A refusal that may mean this installation was revoked; the server decides which. */
+    val REVOKED_CODES = setOf("installation_or_session_revoked", "installation_revoked")
+  }
 
   private fun refusal(error: ApiException): SyncStatus =
       when (error.code) {
