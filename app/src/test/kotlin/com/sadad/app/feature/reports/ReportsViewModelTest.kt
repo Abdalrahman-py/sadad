@@ -254,6 +254,41 @@ class ReportsViewModelTest {
   }
 
   @Test
+  fun aContactThatVanishedIsRefusedWithoutLeavingTheScreenBusy() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.seedOctober()
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.loaded && it.people.isNotEmpty() }
+
+      model.openStatement(fixture.context, "no-such-contact")
+      val opened = model.state.first { it.error != null }
+      model.shareStatement(fixture.context, "no-such-contact")
+
+      val nothing = fixture.context.getString(com.sadad.app.R.string.reports_nothing_to_export)
+      assertEquals(nothing, opened.error)
+      assertFalse(opened.busy)
+      assertEquals(nothing, model.state.value.error)
+      assertFalse(model.state.value.busy)
+    }
+  }
+
+  @Test
+  fun theNothingToExportMessageClearsWhenTheFirstContactArrives() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.loaded }
+      assertFalse(model.canExport(fixture.context))
+      model.state.first { it.error != null }
+
+      fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
+
+      assertEquals(null, model.state.first { it.registered == 1 }.error)
+    }
+  }
+
+  @Test
   fun anEmptyStoreHasNothingToExport() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)

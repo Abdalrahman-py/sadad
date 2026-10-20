@@ -200,7 +200,8 @@ class ReportsViewModel(
               queryInput = it.queryInput,
               busy = it.busy,
               saved = it.saved,
-              error = it.error,
+              // «nothing to export» is stale once the first Contact arrives.
+              error = it.error.takeUnless { _ -> it.registered == 0 && projected.registered > 0 },
           )
         }
       }
@@ -236,7 +237,10 @@ class ReportsViewModel(
         when {
           view == null -> R.string.reports_export_failed
           view.contacts.isEmpty() -> R.string.reports_nothing_to_export
-          else -> return true
+          else -> {
+            mutable.update { it.copy(error = null, saved = false) }
+            return true
+          }
         }
     mutable.update { it.copy(error = context.getString(message), saved = false) }
     return false

@@ -2,6 +2,7 @@ package com.sadad.app.feature.reports
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +59,8 @@ object ReportsTags {
   const val SEARCH = "reports:search"
   const val SAVE = "reports:save"
   const val LIST = "reports:list"
+  const val ERROR = "reports:error"
+  const val SAVED = "reports:saved"
 
   fun personOpen(contactId: String) = "reports:open:$contactId"
 
@@ -125,142 +128,140 @@ fun ReportsContent(
 ) {
   var choosingFormat by rememberSaveable { mutableStateOf(false) }
   val context = LocalContext.current
-  LazyColumn(
-      modifier = modifier.fillMaxSize().testTag(ReportsTags.LIST),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    item {
-      Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text(
-            text = stringResource(R.string.reports_heading),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = stringResource(R.string.reports_subtitle),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      }
-    }
-    item { PeriodFilter(period = state.period, onPreset = onPreset, onCustom = onCustom) }
-    item {
-      Text(
-          text = stringResource(R.string.reports_period, periodLabel(context, state.period)),
-          style = MaterialTheme.typography.labelLarge,
-          color = MaterialTheme.colorScheme.secondary,
-          fontWeight = FontWeight.Bold,
-          modifier = Modifier.padding(horizontal = 16.dp),
-      )
-    }
-    item {
-      Metric(
-          tag = ReportsTags.TOTAL_CONTACTS,
-          title = stringResource(R.string.reports_contacts_title),
-          value = state.totals.contacts.toString(),
-          detail = stringResource(R.string.reports_contacts_detail),
-      )
-    }
-    item {
-      Metric(
-          tag = ReportsTags.TOTAL_DEBTS,
-          title = stringResource(R.string.reports_debts_title),
-          value = formatCents(state.totals.debtTotal),
-          detail = stringResource(R.string.reports_debts_count, state.totals.debtCount.toString()),
-      )
-    }
-    item {
-      Metric(
-          tag = ReportsTags.TOTAL_PAYMENTS,
-          title = stringResource(R.string.reports_payments_title),
-          value = formatCents(state.totals.paymentTotal),
-          detail =
-              stringResource(R.string.reports_payments_count, state.totals.paymentCount.toString()),
-      )
-    }
-    item {
-      Text(
-          text =
-              stringResource(R.string.reports_open_balance, formatCents(state.totals.openBalance)),
-          style = MaterialTheme.typography.labelLarge,
-          fontWeight = FontWeight.Bold,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          modifier = Modifier.padding(horizontal = 16.dp).testTag(ReportsTags.OPEN_BALANCE),
-      )
-    }
-    item {
-      Column(
-          Modifier.padding(horizontal = 16.dp),
-          verticalArrangement = Arrangement.spacedBy(6.dp),
-      ) {
-        Text(
-            text = stringResource(R.string.reports_people_heading),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = stringResource(R.string.reports_people_detail),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(
-            value = state.queryInput,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            placeholder = { Text(stringResource(R.string.reports_search)) },
-            modifier = Modifier.fillMaxWidth().testTag(ReportsTags.SEARCH),
-        )
-      }
-    }
-    if (state.people.isEmpty()) {
+  Column(modifier.fillMaxSize()) {
+    // Pinned above the list: a row action can fail while the list is scrolled anywhere.
+    state.error?.let { Banner(it, error = true) }
+    if (state.saved) Banner(stringResource(R.string.reports_saved), error = false)
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().weight(1f).testTag(ReportsTags.LIST),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
       item {
-        val (title, detail) =
-            when {
-              state.query.isNotBlank() ->
-                  R.string.reports_no_results_title to R.string.reports_no_results_detail
-              state.registered > 0 ->
-                  R.string.reports_period_empty_title to R.string.reports_period_empty_detail
-              else -> R.string.reports_empty_title to R.string.reports_empty_detail
-            }
-        EmptyState(title = stringResource(title), detail = stringResource(detail))
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+          Text(
+              text = stringResource(R.string.reports_heading),
+              style = MaterialTheme.typography.titleLarge,
+              fontWeight = FontWeight.Bold,
+          )
+          Text(
+              text = stringResource(R.string.reports_subtitle),
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
       }
-    } else {
-      items(state.people, key = { "person:${it.contactId}" }) { person ->
-        PersonRow(person = person, enabled = !state.busy, onOpen = onOpen, onShare = onShare)
-      }
-    }
-    item {
-      Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      item { PeriodFilter(period = state.period, onPreset = onPreset, onCustom = onCustom) }
+      item {
         Text(
-            text = stringResource(R.string.reports_export_heading),
-            style = MaterialTheme.typography.titleMedium,
+            text = stringResource(R.string.reports_period, periodLabel(context, state.period)),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.secondary,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
+      }
+      item {
+        Metric(
+            tag = ReportsTags.TOTAL_CONTACTS,
+            title = stringResource(R.string.reports_contacts_title),
+            value = state.totals.contacts.toString(),
+            detail = stringResource(R.string.reports_contacts_detail),
+        )
+      }
+      item {
+        Metric(
+            tag = ReportsTags.TOTAL_DEBTS,
+            title = stringResource(R.string.reports_debts_title),
+            value = formatCents(state.totals.debtTotal),
+            detail =
+                stringResource(R.string.reports_debts_count, state.totals.debtCount.toString()),
+        )
+      }
+      item {
+        Metric(
+            tag = ReportsTags.TOTAL_PAYMENTS,
+            title = stringResource(R.string.reports_payments_title),
+            value = formatCents(state.totals.paymentTotal),
+            detail =
+                stringResource(
+                    R.string.reports_payments_count,
+                    state.totals.paymentCount.toString(),
+                ),
+        )
+      }
+      item {
         Text(
-            text = stringResource(R.string.reports_export_detail),
-            style = MaterialTheme.typography.labelSmall,
+            text =
+                stringResource(
+                    R.string.reports_open_balance,
+                    formatCents(state.totals.openBalance),
+                ),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp).testTag(ReportsTags.OPEN_BALANCE),
         )
-        TextButton(
-            onClick = { choosingFormat = true },
-            enabled = !state.busy,
-            modifier = Modifier.testTag(ReportsTags.SAVE),
+      }
+      item {
+        Column(
+            Modifier.padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-          Text(stringResource(R.string.reports_save_statement))
-        }
-        state.error?.let {
           Text(
-              text = it,
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.error,
+              text = stringResource(R.string.reports_people_heading),
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+          )
+          Text(
+              text = stringResource(R.string.reports_people_detail),
+              style = MaterialTheme.typography.labelSmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          OutlinedTextField(
+              value = state.queryInput,
+              onValueChange = onQueryChange,
+              singleLine = true,
+              placeholder = { Text(stringResource(R.string.reports_search)) },
+              modifier = Modifier.fillMaxWidth().testTag(ReportsTags.SEARCH),
           )
         }
-        if (state.saved) {
+      }
+      if (state.people.isEmpty()) {
+        item {
+          val (title, detail) =
+              when {
+                state.query.isNotBlank() ->
+                    R.string.reports_no_results_title to R.string.reports_no_results_detail
+                state.registered > 0 ->
+                    R.string.reports_period_empty_title to R.string.reports_period_empty_detail
+                else -> R.string.reports_empty_title to R.string.reports_empty_detail
+              }
+          EmptyState(title = stringResource(title), detail = stringResource(detail))
+        }
+      } else {
+        items(state.people, key = { "person:${it.contactId}" }) { person ->
+          PersonRow(person = person, enabled = !state.busy, onOpen = onOpen, onShare = onShare)
+        }
+      }
+      item {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
           Text(
-              text = stringResource(R.string.reports_saved),
-              style = MaterialTheme.typography.labelMedium,
-              color = MaterialTheme.colorScheme.secondary,
+              text = stringResource(R.string.reports_export_heading),
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
           )
+          Text(
+              text = stringResource(R.string.reports_export_detail),
+              style = MaterialTheme.typography.labelSmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          TextButton(
+              onClick = { choosingFormat = true },
+              enabled = !state.busy,
+              modifier = Modifier.testTag(ReportsTags.SAVE),
+          ) {
+            Text(stringResource(R.string.reports_save_statement))
+          }
         }
       }
     }
@@ -274,6 +275,25 @@ fun ReportsContent(
         },
     )
   }
+}
+
+@Composable
+private fun Banner(text: String, error: Boolean) {
+  Text(
+      text = text,
+      style = MaterialTheme.typography.labelLarge,
+      color =
+          if (error) MaterialTheme.colorScheme.onErrorContainer
+          else MaterialTheme.colorScheme.onSecondaryContainer,
+      modifier =
+          Modifier.fillMaxWidth()
+              .background(
+                  if (error) MaterialTheme.colorScheme.errorContainer
+                  else MaterialTheme.colorScheme.secondaryContainer
+              )
+              .padding(horizontal = 16.dp, vertical = 10.dp)
+              .testTag(if (error) ReportsTags.ERROR else ReportsTags.SAVED),
+  )
 }
 
 @Composable

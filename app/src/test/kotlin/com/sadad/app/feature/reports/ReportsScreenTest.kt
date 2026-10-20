@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -67,7 +68,14 @@ class ReportsScreenTest {
   fun changingThePeriodUpdatesTheTotals() {
     show {
       compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).performClick()
-      compose.waitForIdle()
+      // The projection runs on Dispatchers.Default, so idle can come before the new totals.
+      compose.waitUntil(timeoutMillis = 10_000) {
+        runCatching {
+          shown(ReportsTags.TOTAL_CONTACTS)
+              .assertTextEquals("الأشخاص ذوو الحركة", "2", "ضمن الفترة المحددة")
+        }
+            .isSuccess
+      }
 
       shown(ReportsTags.TOTAL_CONTACTS)
           .assertTextEquals("الأشخاص ذوو الحركة", "2", "ضمن الفترة المحددة")
@@ -86,7 +94,9 @@ class ReportsScreenTest {
   fun searchingNarrowsTheContactStatements() {
     show {
       shown(ReportsTags.SEARCH).performTextInput("ليلى")
-      compose.waitForIdle()
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose.onAllNodesWithTag(ReportsTags.personOpen(sami)).fetchSemanticsNodes().isEmpty()
+      }
 
       shown(ReportsTags.personOpen(laila)).assertIsDisplayed()
       compose.onNodeWithTag(ReportsTags.personOpen(sami)).assertDoesNotExist()
@@ -116,6 +126,37 @@ class ReportsScreenTest {
   private fun shown(tag: String): SemanticsNodeInteraction {
     compose.onNodeWithTag(ReportsTags.LIST).performScrollToNode(hasTestTag(tag))
     return compose.onNodeWithTag(tag)
+  }
+
+  @Test
+  fun anExportErrorShowsOverTheListWhereverItIsScrolled() {
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+          ReportsContent(
+              state =
+                  ReportsState(
+                      loaded = true,
+                      people =
+                          (1..40).map { ReportPerson("c$it", "شخص $it", "", Cents(100L * it)) },
+                      registered = 40,
+                      error = "تعذر فتح الكشف. حاول مرة أخرى.",
+                  ),
+              onPreset = {},
+              onCustom = { _, _ -> },
+              onQueryChange = {},
+              onOpen = {},
+              onShare = {},
+              onSave = {},
+          )
+        }
+      }
+    }
+    compose
+        .onNodeWithTag(ReportsTags.LIST)
+        .performScrollToNode(hasTestTag(ReportsTags.personOpen("c30")))
+
+    compose.onNodeWithText("تعذر فتح الكشف. حاول مرة أخرى.").assertIsDisplayed()
   }
 
   private val sami = "00000000-0000-4000-8000-000000000001"
