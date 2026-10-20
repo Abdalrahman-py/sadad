@@ -11,11 +11,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
+import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
@@ -35,42 +36,38 @@ class HistoryScreenTest {
 
   @Test
   fun anEmptyStoreShowsTheArabicEmptyState() {
-    show(seed = false) { history, activity ->
-      history.state.first { it.loaded }
-      activity.state.first { it.loaded }
+    show(seed = false) {
+      compose.onNodeWithText("السجل فارغ").assertIsDisplayed()
     }
-
-    compose.onNodeWithText("السجل فارغ").assertIsDisplayed()
   }
 
   @Test
   fun switchingTabsKeepsThePeriod() {
-    show(seed = true) { history, _ -> history.state.first { it.loaded } }
+    show(seed = true) {
+      compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).performClick()
+      compose.waitForIdle()
+      compose.onNodeWithTag(HistoryTags.TAB_ACTIVITY).performClick()
+      compose.waitForIdle()
+      compose.onNodeWithTag(HistoryTags.TAB_PEOPLE).performClick()
+      compose.waitForIdle()
 
-    compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).performClick()
-    compose.onNodeWithTag(HistoryTags.TAB_ACTIVITY).performClick()
-    compose.onNodeWithTag(HistoryTags.TAB_PEOPLE).performClick()
-
-    compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).assertIsSelected()
+      compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).assertIsSelected()
+    }
   }
 
   @Test
   fun theActivityTabShowsTheLedgerActions() {
-    show(seed = true) { history, activity ->
-      history.state.first { it.loaded }
-      activity.state.first { it.entries.isNotEmpty() }
+    show(seed = true) {
+      compose.onNodeWithTag(HistoryTags.TAB_ACTIVITY).performClick()
+      compose.waitForIdle()
+
+      compose.onNodeWithText("إضافة شخص").assertIsDisplayed()
+      compose.onNodeWithText("تسجيل دين").assertIsDisplayed()
     }
-
-    compose.onNodeWithTag(HistoryTags.TAB_ACTIVITY).performClick()
-
-    compose.onNodeWithText("إضافة شخص").assertIsDisplayed()
-    compose.onNodeWithText("تسجيل دين").assertIsDisplayed()
   }
 
-  private fun show(
-      seed: Boolean,
-      ready: suspend (HistoryViewModel, ActivityLogViewModel) -> Unit,
-  ) {
+  /** Asserts inside the fixture's lifetime: closing the store empties every state flow. */
+  private fun show(seed: Boolean, check: () -> Unit) {
     runBlocking { TestGraph.signedIn() }
         .use { fixture ->
           if (seed) {
@@ -79,8 +76,8 @@ class HistoryScreenTest {
               val contactId = repository.addContact("سامي", null, null, null, null).getOrThrow()
               repository.addDebt(
                   contactId,
-                  com.sadad.ledger.Direction.RECEIVABLE,
-                  com.sadad.ledger.Cents(10_000),
+                  Direction.RECEIVABLE,
+                  Cents(10_000),
                   null,
                   null,
               )
@@ -91,7 +88,10 @@ class HistoryScreenTest {
           val activity = ActivityLogViewModel(fixture.graph)
           fixture.closeWithStore(history.viewModelScope)
           fixture.closeWithStore(activity.viewModelScope)
-          runBlocking { ready(history, activity) }
+          runBlocking {
+            history.state.first { it.loaded }
+            activity.state.first { it.loaded }
+          }
 
           compose.setContent {
             SadadTheme {
@@ -101,6 +101,7 @@ class HistoryScreenTest {
             }
           }
           compose.waitForIdle()
+          check()
         }
   }
 

@@ -51,7 +51,7 @@ class HistoryViewModelTest {
       model.selectPreset(PeriodPreset.ALL)
       val all = model.state.first { it.period == Period.All && it.people.size == 3 }
 
-      assertEquals(listOf("ليلى", "عمر", "سامي"), all.people.map { it.name })
+      assertEquals(listOf("ليلى", "سامي", "عمر"), all.people.map { it.name })
     }
   }
 

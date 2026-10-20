@@ -43,8 +43,7 @@ class PeriodTest {
 
   @Test
   fun aCustomRangeEndsAtTheDayAfterItsLastDay() {
-    val bounds =
-        Period.Custom(LocalDate.of(2026, 10, 5), LocalDate.of(2026, 10, 17)).bounds(zone)
+    val bounds = Period.Custom(LocalDate.of(2026, 10, 5), LocalDate.of(2026, 10, 17)).bounds(zone)
 
     assertEquals(startOf(LocalDate.of(2026, 10, 5)), bounds.from)
     assertEquals(startOf(LocalDate.of(2026, 10, 18)), bounds.to)

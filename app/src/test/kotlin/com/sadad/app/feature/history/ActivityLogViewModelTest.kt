@@ -13,6 +13,7 @@ import com.sadad.ledger.ChangeEvent
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.Receipt
 import com.sadad.ledger.ReceiptStatus
 import java.time.Instant
@@ -59,7 +60,7 @@ class ActivityLogViewModelTest {
               at("2026-10-04T09:00:00Z"),
               debtId = debt.entityId,
               amount = Cents(20_000),
-              method = com.sadad.ledger.PaymentMethod.CASH,
+              method = PaymentMethod.CASH,
               entityId = UUID.randomUUID().toString(),
           )
       val rejected =
@@ -101,7 +102,13 @@ class ActivityLogViewModelTest {
       )
       assertEquals("الدفعة تتجاوز المتبقي على الدين.", state.entries.first().refused)
       assertEquals(null, state.entries[1].refused)
-      assertEquals(at("2026-10-04T09:00:00Z"), state.entries.first().at)
+      // The event carries the server time of the page, not the command's own createdAt.
+      assertEquals(
+          java.time.OffsetDateTime.parse(Events.SERVER_TIME)
+              .toInstant()
+              .truncatedTo(java.time.temporal.ChronoUnit.MILLIS),
+          state.entries.first().at,
+      )
       assertEquals(Events.INSTALLATION_ID, state.entries.first().installationId)
       assertFalse(state.entries.first().mine)
     }
@@ -111,8 +118,7 @@ class ActivityLogViewModelTest {
   fun aRejectedOutboxRowAppearsInTheGroupAndDismissRemovesIt() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
-      val contactId =
-          store.repository.addContact("سامي", null, null, null, null).getOrThrow()
+      val contactId = store.repository.addContact("سامي", null, null, null, null).getOrThrow()
       fixture.settleAll()
       val debtId =
           store.repository
