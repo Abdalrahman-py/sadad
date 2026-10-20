@@ -255,10 +255,11 @@ class ReportsExportTest {
               .people
               .first { it.name == "سامي" }
       model.selectPreset(PeriodPreset.MONTH)
+      drainLockSkip(fixture.context)
 
       model.openStatement(fixture.context, sami.contactId)
 
-      val launched = awaitStartedActivity { model.state.value.error }
+      val launched = startedActivity { model.state.value.error }
       model.state.first { !it.busy }
       assertEquals(Intent.ACTION_VIEW, launched.action)
       assertEquals("application/pdf", launched.type)
@@ -291,14 +292,10 @@ class ReportsExportTest {
     return lock.locked.value
   }
 
-  private fun awaitStartedActivity(failure: () -> String?): Intent {
+  /** The fake writer answers at once and the test dispatcher is unconfined: no waiting needed. */
+  private fun startedActivity(failure: () -> String?): Intent {
     val application = shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
-    repeat(200) {
-      application.nextStartedActivity?.let {
-        return it
-      }
-      Thread.sleep(25)
-    }
-    error("no activity was started; state error: ${failure()}")
+    return application.nextStartedActivity
+        ?: error("no activity was started; state error: ${failure()}")
   }
 }

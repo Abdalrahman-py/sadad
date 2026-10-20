@@ -15,6 +15,7 @@ import java.time.YearMonth
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -163,6 +164,7 @@ class ReportsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val saved = SavedStateHandle()
       val first = ReportsViewModel(fixture.graph, saved, clock)
+      fixture.closeWithStore(first.viewModelScope)
       first.selectPreset(PeriodPreset.YEAR)
       first.onQueryChange("سا")
 
@@ -173,6 +175,21 @@ class ReportsViewModelTest {
       assertEquals(Period.Year(2026), state.period)
       assertEquals("سا", state.query)
       assertEquals("سا", state.queryInput)
+    }
+  }
+
+  @Test
+  fun aCustomRangeThatEndsBeforeItStartsIsRefused() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+
+      val failure = runCatching {
+        model.selectCustom(LocalDate.of(2026, 10, 17), LocalDate.of(2026, 10, 1))
+      }
+
+      assertTrue(failure.exceptionOrNull() is IllegalArgumentException)
+      assertEquals(Period.All, model.state.value.period)
     }
   }
 

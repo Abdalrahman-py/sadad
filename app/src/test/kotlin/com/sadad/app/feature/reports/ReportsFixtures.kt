@@ -30,9 +30,12 @@ private val sequences = java.util.WeakHashMap<TestGraph, LongArray>()
 internal suspend fun TestGraph.view(): LedgerView =
     checkNotNull(checkNotNull(graph.current.value).repository.view.first { it != null })
 
+/** Folds one accepted command and waits until the repository's view, projected apart, shows it. */
 internal suspend fun TestGraph.fold(command: LedgerCommand) {
   val repository = checkNotNull(graph.current.value).repository
+  val before = repository.view.value
   repository.applyPage(Events.page(listOf(Events.accepted(command, nextSequence()))))
+  repository.view.first { it != null && it != before }
 }
 
 internal suspend fun TestGraph.confirmedContact(

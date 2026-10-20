@@ -4,12 +4,14 @@ import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -19,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -53,6 +56,7 @@ object ReportsTags {
   const val SEARCH = "reports:search"
   const val SAVE = "reports:save"
   const val LIST = "reports:list"
+  const val LOADING = "reports:loading"
   const val ERROR = "reports:error"
   const val SAVED = "reports:saved"
 
@@ -128,6 +132,13 @@ fun ReportsContent(
 ) {
   var choosingFormat by rememberSaveable { mutableStateOf(false) }
   val context = LocalContext.current
+  if (!state.loaded) {
+    // The Ledger is not here yet; an empty store would look the same as zero totals.
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      CircularProgressIndicator(Modifier.testTag(ReportsTags.LOADING))
+    }
+    return
+  }
   Column(modifier.fillMaxSize()) {
     // Pinned above the list: a row action can fail while the list is scrolled anywhere.
     state.error?.let { Banner(it, error = true) }

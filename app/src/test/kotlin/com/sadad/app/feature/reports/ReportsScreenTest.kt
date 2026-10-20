@@ -159,6 +159,26 @@ class ReportsScreenTest {
     compose.onNodeWithText("تعذر فتح الكشف. حاول مرة أخرى.").assertIsDisplayed()
   }
 
+  @Test
+  fun beforeTheLedgerLoadsTheScreenShowsProgressNotZeroTotals() {
+    compose.setContent {
+      SadadTheme {
+        ReportsContent(
+            state = ReportsState(),
+            onPreset = {},
+            onCustom = { _, _ -> },
+            onQueryChange = {},
+            onOpen = {},
+            onShare = {},
+            onSave = {},
+        )
+      }
+    }
+
+    compose.onNodeWithTag(ReportsTags.LOADING).assertIsDisplayed()
+    compose.onNodeWithTag(ReportsTags.TOTAL_DEBTS).assertDoesNotExist()
+  }
+
   private val sami = "00000000-0000-4000-8000-000000000001"
   private val laila = "00000000-0000-4000-8000-000000000002"
   private val omar = "00000000-0000-4000-8000-000000000003"
@@ -170,8 +190,12 @@ class ReportsScreenTest {
           runBlocking {
             val repository = checkNotNull(fixture.graph.current.value).repository
             var sequence = 0L
-            suspend fun fold(command: LedgerCommand) =
-                repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
+            suspend fun fold(command: LedgerCommand) {
+              val before = repository.view.value
+              repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
+              // The view is projected apart; wait until it shows the command.
+              repository.view.first { it != null && it != before }
+            }
             suspend fun contact(id: String, name: String) =
                 fold(
                     Commands.contactCreate(
