@@ -74,8 +74,21 @@ fun SadadApp(
               AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
             }
             composable<Home> { HomeScreen() }
-            composable<Contacts> { ContactsScreen() }
-            composable<ContactDetail> { ContactDetailScreen(it.toRoute<ContactDetail>().contactId) }
+            composable<Contacts> {
+              ContactsScreen(
+                  onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) }
+              )
+            }
+            composable<ContactDetail> {
+              val contactId = it.toRoute<ContactDetail>().contactId
+              ContactDetailScreen(
+                  contactId = contactId,
+                  onBack = { navController.popBackStack() },
+                  onRecordDebt = { navController.navigate(DebtForm(contactId)) },
+                  onRecordPayment = { navController.navigate(PaymentForm(contactId)) },
+                  onEdit = { navController.navigate(ContactForm(contactId)) },
+              )
+            }
             composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
             composable<DebtForm> { DebtFormScreen(it.toRoute<DebtForm>().contactId) }
             composable<PaymentForm> {

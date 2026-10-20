@@ -1,27 +1,540 @@
 package com.sadad.app.feature.contacts
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
+import com.sadad.app.SadadApplication
+import com.sadad.app.export.MovementKind
+import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.ui.ScreenTag
+import com.sadad.app.ui.components.ConfirmDialog
+import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.PlaceholderScreen
+import com.sadad.app.ui.components.UndoSnackbar
+import com.sadad.app.ui.components.formatCents
+import com.sadad.app.ui.components.formatDate
+import com.sadad.ledger.Cents
+import com.sadad.ledger.PaymentMethod
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+internal object ContactsTag {
+  const val LIST = "contacts:list"
+  const val SEARCH = "contacts:search"
+  const val MOVEMENTS = "contact:movements"
+
+  fun row(id: String) = "contacts:row:$id"
+}
 
 @Composable
-fun ContactsScreen(modifier: Modifier = Modifier) {
-  PlaceholderScreen(
-      title = stringResource(R.string.title_contacts),
-      modifier = modifier,
-      tag = ScreenTag.CONTACTS,
+fun ContactsScreen(modifier: Modifier = Modifier, onOpenContact: (String) -> Unit = {}) {
+  val viewModel = contactsViewModel()
+  if (viewModel == null) {
+    // No graph (Compose tests that never sign in): the shell's placeholder is all there is.
+    PlaceholderScreen(
+        title = stringResource(R.string.title_contacts),
+        modifier = modifier,
+        tag = ScreenTag.CONTACTS,
+    )
+    return
+  }
+  ContactsScreen(viewModel, onOpenContact, modifier)
+}
+
+@Composable
+internal fun ContactsScreen(
+    viewModel: ContactsViewModel,
+    onOpenContact: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val state by viewModel.state.collectAsState()
+  Column(modifier.fillMaxSize()) {
+    Column(
+        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Text(
+          text = stringResource(R.string.title_contacts),
+          style = MaterialTheme.typography.headlineSmall,
+          modifier = Modifier.testTag(ScreenTag.CONTACTS),
+      )
+      Text(
+          text = stringResource(R.string.contacts_registered, state.registered),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      OutlinedTextField(
+          value = state.query,
+          onValueChange = viewModel::onQueryChange,
+          singleLine = true,
+          placeholder = { Text(stringResource(R.string.contacts_search)) },
+          modifier = Modifier.fillMaxWidth().testTag(ContactsTag.SEARCH),
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SortChip(ContactSort.NAME, R.string.contacts_sort_name, state.sort, viewModel::onSortChange)
+        SortChip(
+            ContactSort.HIGHEST_DEBT,
+            R.string.contacts_sort_debt,
+            state.sort,
+            viewModel::onSortChange,
+        )
+        SortChip(
+            ContactSort.NEWEST,
+            R.string.contacts_sort_newest,
+            state.sort,
+            viewModel::onSortChange,
+        )
+      }
+    }
+    LazyColumn(Modifier.fillMaxSize().testTag(ContactsTag.LIST)) {
+      if (state.loaded && state.rows.isEmpty()) {
+        item {
+          EmptyState(
+              title =
+                  stringResource(
+                      if (state.query.isBlank()) R.string.contacts_empty
+                      else R.string.contacts_no_results
+                  ),
+              detail =
+                  stringResource(
+                      if (state.query.isBlank()) R.string.contacts_empty_detail
+                      else R.string.contacts_no_results_detail
+                  ),
+          )
+        }
+      }
+      items(state.rows, key = { it.id }) { row ->
+        ContactRowItem(row, onOpenContact)
+        HorizontalDivider()
+      }
+    }
+  }
+}
+
+@Composable
+private fun SortChip(
+    sort: ContactSort,
+    label: Int,
+    selected: ContactSort,
+    onSelect: (ContactSort) -> Unit,
+) {
+  FilterChip(
+      selected = sort == selected,
+      onClick = { onSelect(sort) },
+      label = { Text(stringResource(label)) },
   )
 }
 
 @Composable
-fun ContactDetailScreen(contactId: String, modifier: Modifier = Modifier) {
-  PlaceholderScreen(
-      title = stringResource(R.string.title_contact_detail),
-      modifier = modifier,
-      tag = ScreenTag.CONTACT_DETAIL,
-      detail = stringResource(R.string.contact_detail_id, contactId),
+private fun ContactRowItem(row: ContactRow, onOpenContact: (String) -> Unit) {
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .clickable { onOpenContact(row.id) }
+              .padding(horizontal = 16.dp, vertical = 10.dp)
+              .testTag(ContactsTag.row(row.id)),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(Modifier.weight(1f)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = row.name, style = MaterialTheme.typography.titleMedium)
+        if (row.pending) {
+          Spacer(Modifier.width(6.dp))
+          PendingBadge()
+        }
+      }
+      Text(
+          text = row.phone.ifBlank { stringResource(R.string.contacts_no_phone) },
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    Text(text = formatCents(row.balance), style = MaterialTheme.typography.titleMedium)
+  }
+}
+
+@Composable
+fun ContactDetailScreen(
+    contactId: String,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    onRecordDebt: () -> Unit = {},
+    onRecordPayment: () -> Unit = {},
+    onEdit: () -> Unit = {},
+) {
+  val viewModel = contactDetailViewModel(contactId)
+  if (viewModel == null) {
+    // No graph (Compose tests that never sign in): keep the shell's placeholder and its route arg.
+    PlaceholderScreen(
+        title = stringResource(R.string.title_contact_detail),
+        modifier = modifier,
+        tag = ScreenTag.CONTACT_DETAIL,
+        detail = stringResource(R.string.contact_detail_id, contactId),
+    )
+    return
+  }
+  ContactDetailScreen(viewModel, onBack, onRecordDebt, onRecordPayment, onEdit, modifier)
+}
+
+@Composable
+internal fun ContactDetailScreen(
+    viewModel: ContactDetailViewModel,
+    onBack: () -> Unit,
+    onRecordDebt: () -> Unit,
+    onRecordPayment: () -> Unit,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val state by viewModel.state.collectAsState()
+  val context = LocalContext.current
+  val scope = rememberCoroutineScope()
+  LaunchedEffect(state.done) { if (state.done) onBack() }
+  LaunchedEffect(state.error) {
+    if (state.error != null) {
+      delay(5_000)
+      viewModel.clearError()
+    }
+  }
+  Box(modifier.fillMaxSize()) {
+    LazyColumn(Modifier.fillMaxSize().testTag(ContactsTag.MOVEMENTS)) {
+      item { DetailHeader(state) }
+      item {
+        DetailActions(
+            state = state,
+            onRecordDebt = onRecordDebt,
+            onRecordPayment = onRecordPayment,
+            onEdit = onEdit,
+            onWhatsApp = {
+              val number = viewModel.whatsAppNumber()
+              if (number == null) {
+                viewModel.reportError(context.getString(R.string.contacts_whatsapp_invalid))
+                return@DetailActions
+              }
+              AppLock.get(context).skipNextLock()
+              try {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$number"))
+                )
+              } catch (_: ActivityNotFoundException) {
+                viewModel.reportError(context.getString(R.string.contacts_whatsapp_missing))
+              }
+            },
+        )
+      }
+      item {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Text(
+              text =
+                  if (state.movements.isEmpty()) stringResource(R.string.contacts_movements_title)
+                  else
+                      stringResource(R.string.contacts_movements_title) +
+                          " · " +
+                          stringResource(R.string.contacts_movements_count, state.movements.size),
+              style = MaterialTheme.typography.titleMedium,
+          )
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = state.newestFirst,
+                onClick = { if (!state.newestFirst) viewModel.toggleOrder() },
+                label = { Text(stringResource(R.string.contacts_newest)) },
+            )
+            FilterChip(
+                selected = !state.newestFirst,
+                onClick = { if (state.newestFirst) viewModel.toggleOrder() },
+                label = { Text(stringResource(R.string.contacts_oldest)) },
+            )
+          }
+        }
+      }
+      if (state.movements.isEmpty()) {
+        item {
+          EmptyState(
+              title = stringResource(R.string.contacts_no_movements),
+              detail = stringResource(R.string.contacts_no_movements_detail),
+          )
+        }
+      } else {
+        items(state.movements, key = { "movement:${it.id}" }) { movement ->
+          MovementRow(movement)
+          HorizontalDivider()
+        }
+      }
+      item {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          OutlinedButton(
+              onClick = {
+                AppLock.get(context).skipNextLock()
+                scope.launch { viewModel.share(context) }
+              },
+              modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text(stringResource(R.string.contacts_share))
+          }
+          if (state.canDeleteContacts) {
+            Button(
+                onClick = viewModel::requestDelete,
+                modifier = Modifier.fillMaxWidth(),
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+            ) {
+              Text(stringResource(R.string.contacts_delete))
+            }
+          }
+        }
+      }
+    }
+    state.error?.let { message ->
+      Snackbar(modifier = Modifier.align(Alignment.BottomCenter)) { Text(message) }
+    }
+    state.undoName?.let { name ->
+      UndoSnackbar(
+          message = stringResource(R.string.contacts_delete_undo, name),
+          onUndo = viewModel::undoDelete,
+          onCommit = { viewModel.commitDelete(context) },
+          onDismiss = {},
+          modifier = Modifier.align(Alignment.BottomCenter),
+      )
+    }
+  }
+  state.settleFirst?.let { amount ->
+    AlertDialog(
+        onDismissRequest = viewModel::dismissSettleFirst,
+        title = { Text(stringResource(R.string.contacts_settle_title)) },
+        text = { Text(stringResource(R.string.contacts_settle_message, formatCents(amount))) },
+        confirmButton = {
+          if (state.balance > Cents.ZERO) {
+            TextButton(
+                onClick = {
+                  viewModel.dismissSettleFirst()
+                  onRecordPayment()
+                }
+            ) {
+              Text(stringResource(R.string.contacts_record_payment))
+            }
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = viewModel::dismissSettleFirst) {
+            Text(stringResource(R.string.contacts_close))
+          }
+        },
+    )
+  }
+  if (state.confirmDelete) {
+    ConfirmDialog(
+        title = stringResource(R.string.contacts_confirm_delete_title),
+        message = stringResource(R.string.contacts_confirm_delete_message),
+        confirmText = stringResource(R.string.contacts_delete),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDelete,
+        onDismiss = viewModel::dismissConfirm,
+    )
+  }
+}
+
+@Composable
+private fun DetailHeader(state: ContactDetailState) {
+  Column(
+      Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    if (state.missing) {
+      Text(
+          text = stringResource(R.string.contacts_missing),
+          style = MaterialTheme.typography.headlineSmall,
+          modifier = Modifier.testTag(ScreenTag.CONTACT_DETAIL),
+      )
+      Text(stringResource(R.string.contacts_missing_detail))
+      return@Column
+    }
+    Text(
+        text = state.name,
+        style = MaterialTheme.typography.headlineSmall,
+        modifier = Modifier.testTag(ScreenTag.CONTACT_DETAIL),
+    )
+    val details =
+        listOfNotNull(state.category.ifBlank { null }, state.phone.ifBlank { null })
+            .joinToString("  ·  ")
+    if (details.isNotEmpty()) {
+      Text(
+          text = details,
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    if (state.note.isNotBlank()) {
+      Text(
+          text = stringResource(R.string.contacts_note, state.note),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    Surface(color = MaterialTheme.colorScheme.primary, shape = MaterialTheme.shapes.medium) {
+      Text(
+          text = stringResource(R.string.contacts_balance, formatCents(state.balance)),
+          style = MaterialTheme.typography.titleMedium,
+          color = MaterialTheme.colorScheme.onPrimary,
+          modifier = Modifier.fillMaxWidth().padding(16.dp),
+      )
+    }
+  }
+}
+
+@Composable
+private fun DetailActions(
+    state: ContactDetailState,
+    onRecordDebt: () -> Unit,
+    onRecordPayment: () -> Unit,
+    onEdit: () -> Unit,
+    onWhatsApp: () -> Unit,
+) {
+  if (state.missing) return
+  Column(
+      Modifier.padding(horizontal = 16.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(onClick = onRecordDebt, modifier = Modifier.weight(1f)) {
+        Text(stringResource(R.string.contacts_record_debt))
+      }
+      if (state.canRegisterPayments) {
+        Button(onClick = onRecordPayment, modifier = Modifier.weight(1f)) {
+          Text(stringResource(R.string.contacts_record_payment))
+        }
+      } else {
+        Text(
+            text = stringResource(R.string.contacts_payments_restricted),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+      }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
+        Text(stringResource(R.string.contacts_edit))
+      }
+      OutlinedButton(onClick = onWhatsApp, modifier = Modifier.weight(1f)) {
+        Text(stringResource(R.string.contacts_whatsapp))
+      }
+    }
+  }
+}
+
+@Composable
+private fun MovementRow(movement: ContactMovement) {
+  Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(Modifier.weight(1f)) {
+      Text(
+          text =
+              stringResource(
+                  if (movement.kind == MovementKind.DEBT) R.string.contacts_kind_debt
+                  else R.string.contacts_kind_payment
+              ) + " · " + formatDate(movement.createdAt),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+      movement.method?.let { method ->
+        Text(
+            text = methodLabel(method),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+      if (movement.note.isNotBlank()) {
+        Text(text = movement.note, style = MaterialTheme.typography.bodyMedium)
+      }
+    }
+    Text(text = formatCents(movement.amount), style = MaterialTheme.typography.titleMedium)
+    if (movement.pending) {
+      Spacer(Modifier.width(6.dp))
+      PendingBadge()
+    }
+  }
+}
+
+@Composable
+private fun methodLabel(method: PaymentMethod): String =
+    stringResource(
+        when (method) {
+          PaymentMethod.CASH -> R.string.contacts_method_cash
+          PaymentMethod.BANK -> R.string.contacts_method_bank
+          PaymentMethod.WALLET -> R.string.contacts_method_wallet
+          PaymentMethod.WALLET_JAWWAL -> R.string.contacts_method_jawwal
+          PaymentMethod.WALLET_PALPAY -> R.string.contacts_method_palpay
+        }
+    )
+
+@Composable
+private fun contactsViewModel(): ContactsViewModel? {
+  val app = LocalContext.current.applicationContext as? SadadApplication ?: return null
+  return viewModel(
+      factory =
+          viewModelFactory {
+            initializer { ContactsViewModel(app.graph, createSavedStateHandle()) }
+          }
+  )
+}
+
+@Composable
+private fun contactDetailViewModel(contactId: String): ContactDetailViewModel? {
+  val app = LocalContext.current.applicationContext as? SadadApplication ?: return null
+  return viewModel(
+      factory =
+          viewModelFactory {
+            initializer { ContactDetailViewModel(app.graph, contactId) }
+          }
   )
 }
