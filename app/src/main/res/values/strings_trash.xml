@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_trash">سلة المحذوفات</string>
+    <string name="trash_subtitle">استعد سجلات الأشخاص والإشعارات أو احذفها نهائياً.</string>
+    <string name="trash_empty_title">سلة المحذوفات فارغة</string>
+    <string name="trash_empty_detail">ستظهر هنا السجلات والإشعارات التي تحذفها.</string>
+    <string name="trash_kind_contact">زبون وسجله</string>
+    <string name="trash_kind_notification">إشعار</string>
+    <string name="trash_restore">استعادة</string>
+    <string name="trash_delete">حذف نهائياً</string>
+    <string name="trash_confirm_title">حذف نهائي</string>
+    <string name="trash_confirm_message">لن يمكن استعادة هذا العنصر بعد حذفه نهائياً.</string>
+    <string name="trash_confirm_delete">حذف</string>
+    <string name="trash_cancel">إلغاء</string>
+    <string name="trash_restored">تمت الاستعادة.</string>
+    <string name="trash_restore_failed">تعذرت الاستعادة.</string>
 </resources>
