@@ -246,6 +246,13 @@ class ReportsViewModel(
     return false
   }
 
+  /** The phone has no document picker: say so instead of leaving the tap without an answer. */
+  fun pickerUnavailable(context: Context) {
+    mutable.update {
+      it.copy(error = context.getString(R.string.reports_export_failed), saved = false)
+    }
+  }
+
   /** Writes the whole statement for the chosen period to [uri], in the format the user picked. */
   fun saveStatement(activity: Context, uri: Uri, format: StatementFormat) {
     // The work outlives a rotation, so it must not hold the Activity.
@@ -333,21 +340,23 @@ class ReportsViewModel(
   /** The newest view and the chosen period, or null when a document is already being written. */
   private fun prepare(context: Context, contactId: String?): Request? {
     if (state.value.busy) return null
-    val view = graph.current.value?.repository?.view?.value
+    // One scope for the view and the header: a store switch must not mix two stores.
+    val scope = graph.current.value
+    val view = scope?.repository?.view?.value
     if (view == null) return refuse(context, R.string.reports_export_failed)
     if (view.contacts.none { contactId == null || it.id == contactId }) {
       return refuse(context, R.string.reports_nothing_to_export)
     }
     mutable.update { it.copy(busy = true, error = null, saved = false) }
-    val account = graph.current.value?.account
+    val account = scope.account
     val period = period.value
     val bounds = period.bounds(clock.zone)
     val header =
         StatementHeader(
             store =
-                account?.storeName?.ifBlank { null }
+                account.storeName.ifBlank { null }
                     ?: context.getString(R.string.reports_default_store),
-            owner = account?.ownerName.orEmpty(),
+            owner = account.ownerName,
             periodLabel = periodLabel(context, period),
         )
     return Request(view, header, bounds.from, bounds.to?.minusNanos(1))

@@ -159,6 +159,25 @@ class ReportsExportTest {
   }
 
   @Test
+  fun aPhoneWithoutADocumentPickerShowsTheFailureMessage() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.seedOctober()
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.loaded }
+
+      model.pickerUnavailable(fixture.context)
+
+      val state = model.state.first { it.error != null }
+      assertEquals(
+          fixture.context.getString(com.sadad.app.R.string.reports_export_failed),
+          state.error,
+      )
+      assertFalse(state.busy)
+    }
+  }
+
+  @Test
   fun changingThePeriodClearsTheLastExportMessage() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)

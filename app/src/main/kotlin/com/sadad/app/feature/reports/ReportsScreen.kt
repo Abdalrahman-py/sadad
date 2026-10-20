@@ -1,5 +1,6 @@
 package com.sadad.app.feature.reports
 
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -96,12 +97,18 @@ fun ReportsScreen(
       onSave = { format ->
         // Nothing to write must be said before the picker creates an empty document.
         if (!reportsViewModel.canExport(context)) return@ReportsContent
-        // The picker takes the app to another activity; arm the lock skip before it starts.
-        AppLock.get(context).skipNextLock()
         val name = context.getString(R.string.reports_statement_name) + "-" + stamp()
-        when (format) {
-          StatementFormat.PDF -> savePdf.launch(name)
-          StatementFormat.XLSX -> saveXlsx.launch(name)
+        try {
+          when (format) {
+            StatementFormat.PDF -> savePdf.launch(name)
+            StatementFormat.XLSX -> saveXlsx.launch(name)
+          }
+          // The picker takes the app to another activity. Armed once the launch succeeded and
+          // before the main looper delivers the background event, so a phone without a picker
+          // does not skip a later lock.
+          AppLock.get(context).skipNextLock()
+        } catch (_: ActivityNotFoundException) {
+          reportsViewModel.pickerUnavailable(context)
         }
       },
       modifier = modifier,
