@@ -5,7 +5,8 @@ import com.sadad.app.data.session.StoreScope
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
 import java.nio.charset.StandardCharsets.UTF_8
-import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -22,7 +23,10 @@ object Recovery {
   private val commands = ListSerializer(LedgerCommand.serializer())
 
   /** Every queued command of this store, sealed under [passphrase]. */
-  suspend fun export(scope: StoreScope, passphrase: CharArray): ByteArray {
+  suspend fun export(scope: StoreScope, passphrase: CharArray): ByteArray =
+      withContext(Dispatchers.Default) { sealed(scope, passphrase) }
+
+  private suspend fun sealed(scope: StoreScope, passphrase: CharArray): ByteArray {
     val queued =
         scope.outbox.snapshot().filter { it.state == OutboxState.QUEUED }.map { it.command }
     val bundle = buildJsonObject {
@@ -37,7 +41,10 @@ object Recovery {
    * Appends [file]'s commands as queued rows, skipping ones this outbox already holds; returns how
    * many.
    */
-  suspend fun import(scope: StoreScope, file: ByteArray, passphrase: CharArray): Int {
+  suspend fun import(scope: StoreScope, file: ByteArray, passphrase: CharArray): Int =
+      withContext(Dispatchers.Default) { opened(scope, file, passphrase) }
+
+  private suspend fun opened(scope: StoreScope, file: ByteArray, passphrase: CharArray): Int {
     val bundle = RecoveryFile.open(file, passphrase)
     val storeUserId =
         try {
@@ -98,7 +105,12 @@ object Recovery {
    * Puts the admin's [permit] on [origin]'s queued rows; sync then sends them in their own batches.
    */
   suspend fun setPermit(scope: StoreScope, origin: String, permit: String) {
-    require(runCatching { UUID.fromString(permit) }.isSuccess) { "رقم التصريح غير صالح." }
-    scope.outbox.setPermit(origin, permit)
+    // The server's check is a canonical UUID; a typo stored on the rows would block the sends.
+    val canonical = permit.trim().lowercase()
+    require(PERMIT.matches(canonical)) { "رقم التصريح غير صالح." }
+    require(origin != scope.account.installationId) { "هذا الهاتف لا يحتاج إلى تصريح لإدخالاته." }
+    scope.outbox.setPermit(origin, canonical)
   }
+
+  private val PERMIT = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 }

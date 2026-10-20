@@ -62,8 +62,10 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
         runCatching { graph.syncStore(scope().account.storeUserId) }
       } catch (cancelled: CancellationException) {
         throw cancelled
-      } catch (error: Exception) {
+      } catch (error: IllegalArgumentException) {
         showMessage(error.message ?: appContext.getString(R.string.recovery_failed))
+      } catch (_: Exception) {
+        showMessage(appContext.getString(R.string.recovery_failed))
       }
     }
   }
@@ -71,8 +73,12 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
   fun registerAgain() {
     viewModelScope.launch {
       try {
-        graph.sessions.registerAgain(scope())
-        showMessage(appContext.getString(R.string.recovery_registered))
+        val registered = graph.sessions.registerAgain(scope())
+        showMessage(
+            appContext.getString(
+                if (registered) R.string.recovery_registered else R.string.recovery_register_failed
+            )
+        )
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {

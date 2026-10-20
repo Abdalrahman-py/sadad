@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -328,6 +330,7 @@ private fun PassphraseDialog(
               },
               singleLine = true,
               visualTransformation = PasswordVisualTransformation(),
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
               placeholder = { Text(stringResource(R.string.recovery_passphrase_hint)) },
               isError = tooShort,
               supportingText =
@@ -371,7 +374,7 @@ private fun recoveryViewModel(): RecoveryViewModel =
 
 private fun write(context: Context, uri: Uri, bytes: ByteArray): Boolean =
     try {
-      context.contentResolver.openOutputStream(uri, "w")?.use { it.write(bytes) } != null
+      context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } != null
     } catch (_: Exception) {
       false
     }

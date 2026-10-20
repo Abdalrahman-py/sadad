@@ -137,23 +137,24 @@ class Sessions(
    * A revoked phone takes a fresh identity (new installation id and Keystore alias); the database
    * and its queued rows stay, and ticket 47's next pass enrolls the new key for approval.
    */
-  suspend fun registerAgain(scope: StoreScope): Unit = mutex.withLock {
-    val account = accounts.account(scope.account.storeUserId) ?: return@withLock
-    if (account.installation?.status != "revoked") return@withLock
+  suspend fun registerAgain(scope: StoreScope): Boolean = mutex.withLock {
+    val account = accounts.account(scope.account.storeUserId) ?: return@withLock false
+    if (account.installation?.status != "revoked") return@withLock false
     val installationId = UUID.randomUUID().toString()
     val keyAlias = nextAlias(account)
     installations.create(keyAlias, installationId)
     val fresh =
-        account.copy(
-            installationId = installationId,
-            keyAlias = keyAlias,
-            installation = null,
-        )
-    accounts.update(account.storeUserId) { fresh }
+        account.copy(installationId = installationId, keyAlias = keyAlias, installation = null)
+    // Only the identity changes: a name or label saved meanwhile is kept.
+    accounts.update(account.storeUserId) {
+      it.copy(installationId = installationId, keyAlias = keyAlias, installation = null)
+    }
     host.close()
     host.open(fresh)
-    // Only once the new identity opens is the old key disposable.
-    installations.delete(account.keyAlias)
+    // Only once the new identity opens is the old key disposable; failing to delete it is not a
+    // failed registration.
+    runCatching { installations.delete(account.keyAlias) }
+    true
   }
 
   /** `installation-<storeUserId>` then `-1`, `-2`, … so the old alias is never reused. */

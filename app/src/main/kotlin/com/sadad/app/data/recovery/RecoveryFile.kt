@@ -84,11 +84,13 @@ object RecoveryFile {
             } catch (_: RuntimeException) {
               throw IllegalArgumentException(WRONG_PASSPHRASE)
             }
-        if (
-            envelope["format"]?.jsonPrimitive?.content != FORMAT ||
-                envelope["kdf"]?.jsonPrimitive?.content != KDF ||
-                envelope["iterations"]?.jsonPrimitive?.content != ITERATIONS.toString()
-        ) {
+        val header =
+            try {
+              listOf("format", "kdf", "iterations").map { envelope[it]?.jsonPrimitive?.content }
+            } catch (_: RuntimeException) {
+              throw IllegalArgumentException(WRONG_PASSPHRASE)
+            }
+        if (header != listOf(FORMAT, KDF, ITERATIONS.toString())) {
           throw IllegalArgumentException("صيغة استرداد غير مدعومة.")
         }
         val salt =
