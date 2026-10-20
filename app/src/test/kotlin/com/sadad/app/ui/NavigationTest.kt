@@ -4,25 +4,31 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+/**
+ * The shell's last placeholder, rendered under `UiTestApplication`: a real screen's default
+ * ViewModel needs `SadadApplication`'s graph, so this test starts on Settings (still a placeholder)
+ * and checks the shell and its bottom bar render. Navigating to the real screens is each feature
+ * screen test's job, with a `TestGraph`.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class NavigationTest {
   @get:Rule val compose = createComposeRule()
 
   @Test
-  fun bottomBarItemsShowTheRemainingPlaceholders() {
-    compose.setContent { SadadApp(startDestination = History) }
-    compose.onNodeWithTag(ScreenTag.HISTORY).assertIsDisplayed().assertTextEquals("سجل الحركات")
-    compose.onNodeWithTag(ScreenTag.NAV_SETTINGS).performClick()
+  fun theSettingsPlaceholderAndTheBottomBarRender() {
+    compose.setContent { SadadApp(startDestination = Settings) }
+
     compose.onNodeWithTag(ScreenTag.SETTINGS).assertIsDisplayed().assertTextEquals("الإعدادات")
-    compose.onNodeWithTag(ScreenTag.NAV_HISTORY).performClick()
-    compose.onNodeWithTag(ScreenTag.HISTORY).assertIsDisplayed().assertTextEquals("سجل الحركات")
+    compose.onNodeWithTag(ScreenTag.NAV_HOME).assertIsDisplayed()
+    compose.onNodeWithTag(ScreenTag.NAV_CONTACTS).assertIsDisplayed()
+    compose.onNodeWithTag(ScreenTag.NAV_HISTORY).assertIsDisplayed()
+    compose.onNodeWithTag(ScreenTag.NAV_SETTINGS).assertIsDisplayed()
   }
 }
