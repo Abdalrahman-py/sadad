@@ -1,6 +1,7 @@
 package com.sadad.app.feature.trash
 
 import android.content.Context
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
@@ -54,6 +55,9 @@ class TrashViewModelTest {
   ): TrashViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
     return TrashViewModel(scope.repository, scope.outbox, reminders, hidden, STORE_A, context)
+        .also {
+          closeWithStore(it.viewModelScope)
+        }
   }
 
   private suspend fun TestGraph.rows() = checkNotNull(graph.current.value).outbox.snapshot()
@@ -138,13 +142,16 @@ class TrashViewModelTest {
             online = false
             offline = false
           }
-      val offline = LedgerRepository(scope.store, scope.outbox, session, backgroundScope)
+      val offlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+      fixture.closeWithStore(offlineScope)
+      val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
       offline.view.first { view -> view?.archivedContacts?.isNotEmpty() == true }
       val model = TrashViewModel(offline, scope.outbox, reminders(), hidden(), STORE_A, context)
+      fixture.closeWithStore(model.viewModelScope)
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
 
       val state = model.state.first { it.message != null }
       assertEquals("تعذرت الاستعادة.", state.message)
@@ -152,7 +159,7 @@ class TrashViewModelTest {
       assertTrue(state.restoring.isEmpty())
 
       session.online = true
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
       model.state.first { item.id in it.restoring }
       assertEquals(1, fixture.rows().count { it.type == CommandType.CONTACT_RESTORE })
     }
@@ -221,7 +228,7 @@ class TrashViewModelTest {
       fixture.archiveOne()
       val model = fixture.model()
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
       model.state.first { item.id in it.restoring }
       val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
       checkNotNull(fixture.graph.current.value)
@@ -229,7 +236,7 @@ class TrashViewModelTest {
           .settle(listOf(receiptOf(restore.command, ReceiptStatus.REJECTED, code = "conflict")))
       model.state.first { it.restoring.isEmpty() }
 
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
 
       model.state.first { item.id in it.restoring }
       val rows = fixture.rows().filter { it.type == CommandType.CONTACT_RESTORE }
@@ -244,13 +251,13 @@ class TrashViewModelTest {
       fixture.archiveOne()
       val model = fixture.model()
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
       model.state.first { item.id in it.restoring }
       val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
       checkNotNull(fixture.graph.current.value).outbox.cancel(restore.operationId)
       model.state.first { it.restoring.isEmpty() }
 
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
 
       model.state.first { item.id in it.restoring }
       val rows = fixture.rows().filter { it.type == CommandType.CONTACT_RESTORE }

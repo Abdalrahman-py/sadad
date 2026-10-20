@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.sadad.app.feature.lock.AppLock
 import com.sadad.ledger.LedgerView
 import java.io.File
 import java.io.IOException
@@ -89,6 +90,8 @@ object StatementExport {
             clipData = send.clipData
           }
       context.startActivity(chooser)
+      // Arm only after a successful launch, before Android delivers the background lifecycle event.
+      AppLock.get(context).skipNextLock()
     }
   }
 

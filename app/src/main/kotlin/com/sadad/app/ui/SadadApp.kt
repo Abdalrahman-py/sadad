@@ -73,9 +73,30 @@ fun SadadApp(
             composable<AwaitingApproval> {
               AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
             }
-            composable<Home> { HomeScreen() }
-            composable<Contacts> { ContactsScreen() }
-            composable<ContactDetail> { ContactDetailScreen(it.toRoute<ContactDetail>().contactId) }
+            composable<Home> {
+              HomeScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
+            }
+            composable<Contacts> {
+              ContactsScreen(
+                  onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) }
+              )
+            }
+            composable<ContactDetail> {
+              val contactId = it.toRoute<ContactDetail>().contactId
+              ContactDetailScreen(
+                  contactId = contactId,
+                  onBack = {
+                    // One entry back to the list the Contact was opened from; clearing the whole
+                    // graph here would drop the start destination.
+                    if (!navController.popBackStack()) {
+                      navController.navigate(Contacts) { launchSingleTop = true }
+                    }
+                  },
+                  onRecordDebt = { navController.navigate(DebtForm(contactId)) },
+                  onRecordPayment = { navController.navigate(PaymentForm(contactId)) },
+                  onEdit = { navController.navigate(ContactForm(contactId)) },
+              )
+            }
             composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
             composable<DebtForm> { DebtFormScreen(it.toRoute<DebtForm>().contactId) }
             composable<PaymentForm> {

@@ -13,6 +13,7 @@ import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.Reminder
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactView
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,9 +89,9 @@ class TrashViewModel(
    * The outbox guard survives screen recreation and accepted receipts awaiting their pull page. The
    * in-flight guard covers rapid taps before the queued row reaches the flow.
    */
-  fun restore(item: TrashItem) {
-    if (item.id in mutable.value.restoring || !inFlight.add(item.id)) return
-    viewModelScope.launch {
+  fun restore(item: TrashItem): Job? {
+    if (item.id in mutable.value.restoring || !inFlight.add(item.id)) return null
+    return viewModelScope.launch {
       try {
         when (item) {
           is TrashItem.Contact -> {

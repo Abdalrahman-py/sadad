@@ -55,6 +55,13 @@ private constructor(
     private val graphScope: CoroutineScope,
     private val dataStoreScope: CoroutineScope,
 ) : AutoCloseable {
+  private val testJobs = mutableListOf<Job>()
+
+  /** Stop test-owned collectors before closing the store's Room database. */
+  fun closeWithStore(scope: CoroutineScope) {
+    testJobs += checkNotNull(scope.coroutineContext[Job])
+  }
+
   val context: Context
     get() = ApplicationProvider.getApplicationContext()
 
@@ -135,6 +142,7 @@ private constructor(
 
   override fun close() {
     runBlocking {
+      for (job in testJobs.asReversed()) job.cancelAndJoin()
       graph.closeStore()
       graphScope.cancel()
       dataStoreScope.coroutineContext[Job]?.cancelAndJoin()
@@ -144,7 +152,7 @@ private constructor(
 
   companion object {
     /** No store yet: for sign-in, refresh and session tests. */
-    fun unsigned(): TestGraph {
+    fun unsigned(online: () -> Boolean = { true }): TestGraph {
       val context = ApplicationProvider.getApplicationContext<Context>()
       val server = MockWebServer().apply { start() }
       val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -168,7 +176,7 @@ private constructor(
               installations = SoftwareInstallations(),
               openDatabase = { LedgerDatabase.open(context, it) },
               deleteDatabase = { context.deleteDatabase("ledger-$it.db") },
-              online = { true },
+              online = online,
               deviceLabel = "Test Device",
               scope = graphScope,
           )
@@ -179,8 +187,9 @@ private constructor(
     suspend fun signedIn(
         storeUserId: String = STORE_A,
         username: String = "store-$storeUserId",
+        online: () -> Boolean = { true },
     ): TestGraph {
-      val graph = unsigned()
+      val graph = unsigned(online)
       graph.signIn(storeUserId, username)
       graph.activate(storeUserId)
       return graph
