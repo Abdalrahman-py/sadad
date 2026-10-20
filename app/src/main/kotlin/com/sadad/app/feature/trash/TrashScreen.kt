@@ -60,6 +60,7 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
         items(state.items, key = { it.id }) { item ->
           TrashRow(
               item,
+              restoring = item.id in state.restoring,
               onRestore = { viewModel.restore(item) },
               onDelete = { viewModel.askDelete(item) },
           )
@@ -81,7 +82,12 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TrashRow(item: TrashItem, onRestore: () -> Unit, onDelete: () -> Unit) {
+private fun TrashRow(
+    item: TrashItem,
+    restoring: Boolean,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+) {
   Card(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Text(item.title(), style = MaterialTheme.typography.titleMedium)
@@ -91,7 +97,7 @@ private fun TrashRow(item: TrashItem, onRestore: () -> Unit, onDelete: () -> Uni
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = onRestore, modifier = Modifier.weight(1f)) {
+        OutlinedButton(onClick = onRestore, enabled = !restoring, modifier = Modifier.weight(1f)) {
           Text(stringResource(R.string.trash_restore))
         }
         OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
@@ -132,6 +138,7 @@ private fun trashViewModel(): TrashViewModel =
                 val storeUserId = store.account.storeUserId
                 TrashViewModel(
                     store.repository,
+                    store.outbox,
                     DueReminders.get(app),
                     TrashHidden.get(app, storeUserId),
                     storeUserId,

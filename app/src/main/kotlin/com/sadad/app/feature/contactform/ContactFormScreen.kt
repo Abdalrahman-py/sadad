@@ -3,7 +3,6 @@ package com.sadad.app.feature.contactform
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,9 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -336,28 +332,12 @@ private fun ReviewRow(label: Int, value: String) {
   }
 }
 
-/**
- * The speech recognizer stops the app, so the lock must be told before the button launches it.
- * VoiceDraftButton has no hook of its own; the Initial pass reaches this wrapper first.
- */
+/** Exempt only the actual speech launch, including keyboard and accessibility activation. */
 @Composable
 private fun VoiceDraft(onText: (String) -> Unit) {
   val context = LocalContext.current
   val lock = remember(context) { AppLock.get(context.applicationContext) }
-  Box(
-      Modifier.pointerInput(lock) {
-        awaitPointerEventScope {
-          while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            // shortcut: a press dragged off the button also skips one lock; give VoiceDraftButton
-            // an onLaunch hook if that ever matters.
-            if (event.type == PointerEventType.Press) lock.skipNextLock()
-          }
-        }
-      }
-  ) {
-    VoiceDraftButton(onText)
-  }
+  VoiceDraftButton(onText, onLaunch = lock::skipNextLock)
 }
 
 /**

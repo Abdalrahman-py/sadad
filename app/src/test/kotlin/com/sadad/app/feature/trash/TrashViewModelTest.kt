@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
+import com.sadad.app.data.ledger.OutboxState
+import com.sadad.app.data.ledger.receiptOf
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.Reminder
@@ -12,6 +14,7 @@ import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
+import com.sadad.ledger.ReceiptStatus
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -50,7 +53,7 @@ class TrashViewModelTest {
       hidden: TrashHidden = hidden(),
   ): TrashViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return TrashViewModel(scope.repository, reminders, hidden, STORE_A, context)
+    return TrashViewModel(scope.repository, scope.outbox, reminders, hidden, STORE_A, context)
   }
 
   private suspend fun TestGraph.rows() = checkNotNull(graph.current.value).outbox.snapshot()
@@ -90,11 +93,14 @@ class TrashViewModelTest {
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 
       model.restore(item)
+      model.restore(item)
 
-      val state = model.state.first { it.message != null }
-      assertEquals("تمت الاستعادة.", state.message)
+      val state = model.state.first { it.message != null && item.id in it.restoring }
+      assertEquals("أُضيف طلب الاستعادة إلى قائمة الانتظار.", state.message)
       val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
       assertEquals(archived.version, restore.command.expectedVersion)
+      model.restore(item)
+      assertEquals(1, fixture.rows().count { it.type == CommandType.CONTACT_RESTORE })
       // The row leaves the list once the server accepts the restore.
       fixture.settleAll()
       assertTrue(model.state.first { it.items.isEmpty() }.items.isEmpty())
@@ -135,7 +141,7 @@ class TrashViewModelTest {
       val offline = LedgerRepository(scope.store, scope.outbox, session, backgroundScope)
       offline.load()
       offline.view.first { view -> view?.archivedContacts?.isNotEmpty() == true }
-      val model = TrashViewModel(offline, reminders(), hidden(), STORE_A, context)
+      val model = TrashViewModel(offline, scope.outbox, reminders(), hidden(), STORE_A, context)
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 
       model.restore(item)
@@ -143,6 +149,12 @@ class TrashViewModelTest {
       val state = model.state.first { it.message != null }
       assertEquals("تعذرت الاستعادة.", state.message)
       assertTrue(fixture.rows().none { it.type == CommandType.CONTACT_RESTORE })
+      assertTrue(state.restoring.isEmpty())
+
+      session.online = true
+      model.restore(item)
+      model.state.first { item.id in it.restoring }
+      assertEquals(1, fixture.rows().count { it.type == CommandType.CONTACT_RESTORE })
     }
   }
 
@@ -175,6 +187,75 @@ class TrashViewModelTest {
       model.state.first { it.items.isEmpty() && it.message != null }
       assertEquals(event.id, reminders.inbox(STORE_A).first().single().id)
       assertFalse(reminders.dismissed(STORE_A).first().any())
+    }
+  }
+
+  @Test
+  fun reopeningTheTrashKeepsQueuedAndAcceptedRestoresDisabled() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.archiveOne()
+      val reminders = reminders()
+      val hidden = hidden()
+      val model = fixture.model(reminders, hidden)
+      val item = model.state.first { it.items.isNotEmpty() }.items.single()
+      model.restore(item)
+      model.state.first { item.id in it.restoring }
+
+      val reopened = fixture.model(reminders, hidden)
+      reopened.state.first { it.items.isNotEmpty() && item.id in it.restoring }
+      reopened.restore(item)
+      val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
+
+      val outbox = checkNotNull(fixture.graph.current.value).outbox
+      outbox.settle(listOf(receiptOf(restore.command, ReceiptStatus.ACCEPTED)))
+      val awaitingPull = fixture.model(reminders, hidden)
+      awaitingPull.state.first { it.items.isNotEmpty() && item.id in it.restoring }
+      awaitingPull.restore(item)
+      assertEquals(1, fixture.rows().count { it.type == CommandType.CONTACT_RESTORE })
+    }
+  }
+
+  @Test
+  fun aRejectedRestoreCanBeRetried() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.archiveOne()
+      val model = fixture.model()
+      val item = model.state.first { it.items.isNotEmpty() }.items.single()
+      model.restore(item)
+      model.state.first { item.id in it.restoring }
+      val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
+      checkNotNull(fixture.graph.current.value)
+          .outbox
+          .settle(listOf(receiptOf(restore.command, ReceiptStatus.REJECTED, code = "conflict")))
+      model.state.first { it.restoring.isEmpty() }
+
+      model.restore(item)
+
+      model.state.first { item.id in it.restoring }
+      val rows = fixture.rows().filter { it.type == CommandType.CONTACT_RESTORE }
+      assertEquals(2, rows.size)
+      assertEquals(1, rows.count { it.state == OutboxState.QUEUED })
+    }
+  }
+
+  @Test
+  fun aCancelledRestoreCanBeRetried() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.archiveOne()
+      val model = fixture.model()
+      val item = model.state.first { it.items.isNotEmpty() }.items.single()
+      model.restore(item)
+      model.state.first { item.id in it.restoring }
+      val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
+      checkNotNull(fixture.graph.current.value).outbox.cancel(restore.operationId)
+      model.state.first { it.restoring.isEmpty() }
+
+      model.restore(item)
+
+      model.state.first { item.id in it.restoring }
+      val rows = fixture.rows().filter { it.type == CommandType.CONTACT_RESTORE }
+      assertEquals(2, rows.size)
+      assertEquals(1, rows.count { it.state == OutboxState.QUEUED })
     }
   }
 }

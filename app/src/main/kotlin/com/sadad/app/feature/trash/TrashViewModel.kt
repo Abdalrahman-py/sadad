@@ -5,9 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
 import com.sadad.app.data.ledger.LedgerRepository
+import com.sadad.app.data.ledger.Outbox
+import com.sadad.app.data.ledger.OutboxRow
+import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.Reminder
+import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +40,7 @@ data class TrashState(
     /** The item whose "delete for good" confirm dialog is open. */
     val confirm: TrashItem? = null,
     val message: String? = null,
+    val restoring: Set<String> = emptySet(),
 )
 
 /**
@@ -45,6 +50,7 @@ data class TrashState(
  */
 class TrashViewModel(
     private val repository: LedgerRepository,
+    private val outbox: Outbox,
     private val reminders: DueReminders,
     private val hidden: TrashHidden,
     storeUserId: String,
@@ -56,53 +62,59 @@ class TrashViewModel(
 
   init {
     viewModelScope.launch {
-      combine(repository.view, reminders.dismissed(storeUserId), hidden.ids) {
+      combine(repository.view, reminders.dismissed(storeUserId), hidden.ids, outbox.rows) {
               view,
               dismissed,
-              hiddenIds ->
+              hiddenIds,
+              rows ->
             val contacts = view?.archivedContacts.orEmpty().map { TrashItem.Contact(it) }
             val notifications = dismissed.map { TrashItem.Notification(it) }
-            (contacts + notifications).filter { it.id !in hiddenIds }
+            val items = (contacts + notifications).filter { it.id !in hiddenIds }
+            items to pendingRestores(rows)
           }
-          .collect { items -> mutable.update { it.copy(items = items) } }
+          .collect { (items, pending) ->
+            mutable.update { it.copy(items = items, restoring = pending) }
+          }
     }
   }
 
-  private val restoring = mutableSetOf<String>()
+  private val inFlight = mutableSetOf<String>()
 
   fun askDelete(item: TrashItem) = mutable.update { it.copy(confirm = item) }
 
   fun dismissDelete() = mutable.update { it.copy(confirm = null) }
 
   /**
-   * One restore per row: the row stays listed until the server accepts, so a second tap must not
-   * queue again.
+   * The outbox guard survives screen recreation and accepted receipts awaiting their pull page. The
+   * in-flight guard covers rapid taps before the queued row reaches the flow.
    */
   fun restore(item: TrashItem) {
-    if (!restoring.add(item.id)) return
+    if (item.id in mutable.value.restoring || !inFlight.add(item.id)) return
     viewModelScope.launch {
       try {
         when (item) {
-          is TrashItem.Contact ->
-              repository
-                  .restoreContact(item.contact.id, RESTORE_REASON)
-                  .fold(
-                      onSuccess = {
-                        mutable.update {
-                          it.copy(message = appContext.getString(R.string.trash_restored))
-                        }
-                      },
-                      onFailure = { error ->
-                        mutable.update { it.copy(message = refusalText(error)) }
-                      },
-                  )
+          is TrashItem.Contact -> {
+            if (item.id in pendingRestores(outbox.snapshot())) return@launch
+            repository
+                .restoreContact(item.contact.id, RESTORE_REASON)
+                .fold(
+                    onSuccess = {
+                      mutable.update {
+                        it.copy(message = appContext.getString(R.string.trash_restore_queued))
+                      }
+                    },
+                    onFailure = { error ->
+                      mutable.update { it.copy(message = refusalText(error)) }
+                    },
+                )
+          }
           is TrashItem.Notification -> {
             reminders.restore(item.reminder.id)
             mutable.update { it.copy(message = appContext.getString(R.string.trash_restored)) }
           }
         }
       } finally {
-        restoring.remove(item.id)
+        inFlight.remove(item.id)
       }
     }
   }
@@ -114,6 +126,14 @@ class TrashViewModel(
       mutable.update { it.copy(confirm = null) }
     }
   }
+
+  private fun pendingRestores(rows: List<OutboxRow>): Set<String> =
+      rows
+          .filter {
+            it.type == CommandType.CONTACT_RESTORE &&
+                (it.state == OutboxState.QUEUED || it.state == OutboxState.ACCEPTED)
+          }
+          .mapTo(mutableSetOf()) { it.entityId }
 
   private fun refusalText(error: Throwable): String =
       when (error) {
