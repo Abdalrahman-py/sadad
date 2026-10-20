@@ -135,6 +135,10 @@ fun reportOf(view: LedgerView, period: Period, query: String, zone: ZoneId): Rep
   )
 }
 
+/** [StatementExport.writePdf]'s shape: the document's `content://` URI for the viewer. */
+typealias PdfWriterCall =
+    suspend (Context, StatementHeader, LedgerView, String?, Instant?, Instant?) -> Uri
+
 /**
  * The reports screen: the period and the search text live in [saved], so a recreated screen keeps
  * them. Totals and rows are projected on [Dispatchers.Default] from the one [LedgerView]; the
@@ -145,6 +149,8 @@ class ReportsViewModel(
     private val graph: AppGraph,
     private val saved: SavedStateHandle,
     private val clock: Clock = Clock.systemDefaultZone(),
+    /** Writes one Contact's PDF; a seam because Robolectric's `PdfDocument` cannot draw pages. */
+    private val writePdf: PdfWriterCall = StatementExport::writePdf,
 ) : ViewModel() {
   private val period = MutableStateFlow(periodOf(saved.get<String>(PERIOD)))
   private val query = MutableStateFlow(saved.get<String>(QUERY).orEmpty())
@@ -215,7 +221,7 @@ class ReportsViewModel(
     viewModelScope.launch {
       runCatching {
         val uri =
-            StatementExport.writePdf(
+            writePdf(
                 context,
                 request.header,
                 request.view,

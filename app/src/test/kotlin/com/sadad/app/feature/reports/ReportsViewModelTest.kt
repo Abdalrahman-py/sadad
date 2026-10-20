@@ -242,24 +242,34 @@ class ReportsViewModelTest {
   fun openingAContactStatementLaunchesAPdfViewerWithReadAccess() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val written = mutableListOf<Triple<String?, Instant?, Instant?>>()
+      val model =
+          ReportsViewModel(fixture.graph, SavedStateHandle(), clock) { _, _, _, contactId, from, to
+            ->
+            written += Triple(contactId, from, to)
+            Uri.parse("content://com.sadad.app.files/exports/statement.pdf")
+          }
       fixture.closeWithStore(model.viewModelScope)
       val sami =
           model.state
               .first { it.loaded && it.people.isNotEmpty() }
               .people
               .first { it.name == "سامي" }
+      model.selectPreset(PeriodPreset.MONTH)
 
       model.openStatement(fixture.context, sami.contactId)
 
-      val launched = awaitStartedActivity()
+      val launched = awaitStartedActivity { model.state.value.error }
       assertEquals(Intent.ACTION_VIEW, launched.action)
       assertEquals("application/pdf", launched.type)
       assertTrue(launched.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+      // The statement covers the chosen month and ends one instant before the next month starts.
+      val month = Period.Month(OCTOBER).bounds(zone)
+      assertEquals(listOf(Triple(sami.contactId, month.from, month.to?.minusNanos(1))), written)
     }
   }
 
-  private fun awaitStartedActivity(): Intent {
+  private fun awaitStartedActivity(failure: () -> String?): Intent {
     val application = shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
     repeat(200) {
       application.nextStartedActivity?.let {
@@ -267,7 +277,7 @@ class ReportsViewModelTest {
       }
       Thread.sleep(25)
     }
-    error("no activity was started")
+    error("no activity was started; state error: ${failure()}")
   }
 
   private val zone = ZoneId.of("Asia/Gaza")
