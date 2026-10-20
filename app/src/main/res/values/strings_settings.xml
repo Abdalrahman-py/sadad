@@ -1,4 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_settings">الإعدادات</string>
+
+    <!-- Store profile -->
+    <string name="settings_store_heading">بيانات المتجر</string>
+    <string name="settings_store_edit">تعديل اسم المتجر وصاحب المتجر</string>
+    <string name="settings_store_name">اسم المتجر: %1$s</string>
+    <string name="settings_owner_name">اسم صاحب المتجر: %1$s</string>
+    <string name="settings_default_store">متجري</string>
+    <string name="settings_default_owner">غير مسجل</string>
+    <string name="settings_profile_title">بيانات المتجر</string>
+    <string name="settings_profile_store_label">اسم المتجر</string>
+    <string name="settings_profile_owner_label">اسم صاحب المتجر</string>
+    <string name="settings_profile_note">تُحفظ على هذا الهاتف فقط.</string>
+
+    <!-- Data and export -->
+    <string name="settings_data_heading">البيانات والتصدير</string>
+    <string name="settings_export_period">مدة تصدير كشف السجلات</string>
+    <string name="settings_share_statement">مشاركة كشف السجلات</string>
+    <string name="settings_trash">سلة المحذوفات</string>
+    <string name="settings_notifications">الإشعارات</string>
+    <string name="settings_support">تواصل معنا على WhatsApp</string>
+    <string name="settings_nothing_to_export">أضف أشخاصًا وحركات قبل إنشاء كشف السجلات.</string>
+    <string name="settings_share_failed">تعذر إنشاء الكشف. حاول مرة أخرى.</string>
+
+    <!-- Sync -->
+    <string name="settings_sync_heading">مزامنة السجلات والاسترداد</string>
+    <string name="settings_sync_status">حالة مزامنة السجلات: %1$s</string>
+    <string name="settings_sync_idle">السجلات محدّثة</string>
+    <string name="settings_sync_running">جارٍ تحديث السجلات…</string>
+    <string name="settings_sync_offline">لا يوجد اتصال؛ ستُرسل الإدخالات عند عودته.</string>
+    <string name="settings_sync_signed_out">سجّل الدخول لمتابعة المزامنة.</string>
+    <string name="settings_sync_awaiting_approval">بانتظار موافقة الإدارة على هذا الجهاز.</string>
+    <string name="settings_sync_revoked">أُلغي اعتماد هذا الجهاز.</string>
+    <string name="settings_sync_suspended">المتجر موقوف.</string>
+    <string name="settings_sync_password_change">يجب تغيير كلمة المرور للمتابعة.</string>
+    <string name="settings_sync_retry">ستُعاد المحاولة تلقائياً.</string>
+    <string name="settings_unsent">لديك %1$s عمليات لم تُرسل بعد</string>
+    <string name="settings_download_latest">تحميل أحدث السجلات</string>
+    <string name="settings_activity_log">سجل عمليات الدفتر</string>
+    <string name="settings_recovery">الاسترداد وتسجيل الهاتف كجهاز جديد</string>
+
+    <!-- App lock -->
+    <string name="settings_lock_heading">قفل التطبيق</string>
+    <string name="settings_lock_enable">تفعيل</string>
+    <string name="settings_lock_change_pin">تغيير رمز القفل</string>
+    <string name="settings_lock_create_pin">إنشاء رمز قفل</string>
+    <string name="settings_lock_biometric">تفعيل البصمة</string>
+    <string name="settings_pin_title">إعداد قفل التطبيق</string>
+    <string name="settings_pin_message">سيُطلب الرمز عند فتح التطبيق بعد مغادرته.</string>
+    <string name="settings_pin_new">رمز جديد (4 إلى 12 رقماً)</string>
+    <string name="settings_pin_confirm">تأكيد الرمز</string>
+    <string name="settings_pin_invalid">الرمز يجب أن يكون من 4 إلى 12 رقماً.</string>
+    <string name="settings_pin_mismatch">الرمزان غير متطابقين</string>
+
+    <!-- Appearance -->
+    <string name="settings_appearance_heading">المظهر</string>
+    <string name="settings_theme_system">حسب النظام</string>
+    <string name="settings_theme_light">الوضع الفاتح</string>
+    <string name="settings_theme_dark">الوضع الداكن</string>
+
+    <!-- Account -->
+    <string name="settings_account_heading">الحساب</string>
+    <string name="settings_change_password">تغيير كلمة المرور</string>
+    <string name="settings_saved_stores">حسابات المتاجر</string>
+    <string name="settings_stores_title">حسابات المتاجر</string>
+    <string name="settings_store_active">نشط</string>
+    <string name="settings_add_store">＋ إضافة حساب متجر</string>
+    <string name="settings_sign_out">تسجيل الخروج</string>
+    <string name="settings_sign_out_message">هل تريد تسجيل الخروج؟ تبقى بيانات المتجر على هذا الهاتف.</string>
+    <string name="settings_remove_store">إزالة هذا المتجر من الهاتف</string>
+    <string name="settings_remove_title">إزالة المتجر من الهاتف</string>
+    <string name="settings_remove_message">تُحذف بيانات المتجر ومفتاح هذا الهاتف ولا يمكن التراجع.</string>
+    <string name="settings_remove_unsent">لديك %1$s عمليات لم تُرسل بعد وستضيع. اضغط تأكيد مرتين للإزالة.</string>
+    <string name="settings_remove_again">تأكيد مرة أخرى</string>
+    <string name="settings_confirm">تأكيد</string>
+    <string name="settings_cancel">إلغاء</string>
+    <string name="settings_save">حفظ</string>
+    <string name="settings_back">رجوع</string>
+    <string name="settings_developer">المطور : orca</string>
 </resources>

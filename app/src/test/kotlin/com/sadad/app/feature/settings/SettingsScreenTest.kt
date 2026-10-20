@@ -6,10 +6,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.HistoryTags
@@ -76,6 +81,67 @@ class SettingsScreenTest {
       scrollTo(hasText("اسم المتجر: متجري"))
       compose.onNodeWithText("اسم المتجر: متجري").assertIsDisplayed()
       compose.onNodeWithText("اسم صاحب المتجر: غير مسجل").assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun editingTheProfileSavesTheNamesOnTheCard() {
+    show { _ ->
+      compose.onNodeWithContentDescription("تعديل اسم المتجر وصاحب المتجر").performClick()
+      compose.onNodeWithTag(SettingsDialogTags.PROFILE_STORE).performTextInput("متجر سامي")
+      compose.onNodeWithTag(SettingsDialogTags.PROFILE_OWNER).performTextInput("سامي")
+      compose.onNodeWithTag(SettingsDialogTags.PROFILE_SAVE).performClick()
+
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose.onAllNodesWithText("اسم المتجر: متجر سامي").fetchSemanticsNodes().isNotEmpty()
+      }
+      scrollTo(hasText("اسم صاحب المتجر: سامي"))
+      compose.onNodeWithText("اسم صاحب المتجر: سامي").assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun signingOutAsksBeforeLeavingAndCancelKeepsTheStore() {
+    show { _ ->
+      scrollTo(hasText("تسجيل الخروج"))
+      compose.onNodeWithText("تسجيل الخروج").performScrollTo().performClick()
+
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose
+            .onAllNodesWithText("هل تريد تسجيل الخروج؟ تبقى بيانات المتجر على هذا الهاتف.")
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
+      compose.onNodeWithText("إلغاء").performClick()
+
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose
+            .onAllNodesWithTag(SettingsDialogTags.SIGN_OUT_CONFIRM)
+            .fetchSemanticsNodes()
+            .isEmpty()
+      }
+    }
+  }
+
+  @Test
+  fun theLockSwitchOffersAPinDialogWhenThereIsNone() {
+    show { _ ->
+      scrollTo(hasText("قفل التطبيق"))
+      compose.onNodeWithText("إنشاء رمز قفل").performScrollTo().performClick()
+
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose.onAllNodesWithTag(SettingsDialogTags.PIN_FIRST).fetchSemanticsNodes().isNotEmpty()
+      }
+      compose.onNodeWithTag(SettingsDialogTags.PIN_FIRST).performTextInput("12")
+      compose.onNodeWithTag(SettingsDialogTags.PIN_SECOND).performTextInput("12")
+      compose.onNodeWithTag(SettingsDialogTags.PIN_SAVE).performClick()
+
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose
+            .onAllNodesWithText("الرمز يجب أن يكون من 4 إلى 12 رقماً.")
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
     }
   }
 

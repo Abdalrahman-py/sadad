@@ -7,10 +7,12 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +25,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.sadad.app.feature.notifications.reminderDestination
+import com.sadad.app.feature.settings.ThemeChoice
+import com.sadad.app.feature.settings.ThemePreference
 import com.sadad.app.ui.SadadApp
 import com.sadad.app.ui.theme.SadadTheme
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +52,13 @@ class MainActivity : FragmentActivity() {
             }
       }
       val route = destination
-      if (route == null) Splash() else key(route, request) { SadadApp(startDestination = route) }
+      val choice by remember {
+        ThemePreference.get(applicationContext).theme
+      }
+          .collectAsState(ThemeChoice.SYSTEM)
+      val dark = choice.isDark(isSystemInDarkTheme())
+      if (route == null) Splash(dark)
+      else key(route, request) { SadadApp(startDestination = route, dark = dark) }
     }
   }
 
@@ -84,6 +94,6 @@ class MainActivity : FragmentActivity() {
 
 /** Shown while the accounts are read off the main thread. */
 @Composable
-private fun Splash() {
-  SadadTheme { Surface(modifier = Modifier.fillMaxSize()) {} }
+private fun Splash(dark: Boolean) {
+  SadadTheme(dark = dark) { Surface(modifier = Modifier.fillMaxSize()) {} }
 }

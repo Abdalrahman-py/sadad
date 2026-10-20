@@ -12,6 +12,7 @@ import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import mockwebserver3.MockResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -140,6 +141,7 @@ class SettingsViewModelTest {
         assertEquals(Pending.SignOut(unsent = 1), warned.pending)
         assertNotNull(fixture.graph.current.value)
 
+        fixture.server.enqueue(MockResponse.Builder().body("{}").build())
         model.confirmSignOut()
 
         model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
