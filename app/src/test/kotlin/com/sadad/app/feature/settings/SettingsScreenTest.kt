@@ -3,6 +3,8 @@ package com.sadad.app.feature.settings
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -124,7 +126,7 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun theLockSwitchOffersAPinDialogWhenThereIsNone() {
+  fun theCreatePinButtonOpensTheDialogAndATooShortPinIsRefused() {
     show { _ ->
       scrollTo(hasText("قفل التطبيق"))
       compose.onNodeWithText("إنشاء رمز قفل").performScrollTo().performClick()
@@ -145,15 +147,44 @@ class SettingsScreenTest {
     }
   }
 
+  @Test
+  fun theSecondRemovalConfirmationIsDisabledForAMomentSoADoubleTapCannotCountTwice() {
+    show(unsent = true) { _ ->
+      scrollTo(hasText("الحساب"))
+      compose.onNodeWithText("إزالة هذا المتجر من الهاتف").performScrollTo().performClick()
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose
+            .onAllNodesWithTag(SettingsDialogTags.REMOVE_CONFIRM)
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
+      compose.onNodeWithTag(SettingsDialogTags.REMOVE_CONFIRM).assertIsEnabled().performClick()
+
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose.onAllNodesWithText("تأكيد مرة أخرى").fetchSemanticsNodes().isNotEmpty()
+      }
+      compose.onNodeWithTag(SettingsDialogTags.REMOVE_CONFIRM).assertIsNotEnabled()
+      compose.waitUntil(timeoutMillis = 10_000) {
+        runCatching { compose.onNodeWithTag(SettingsDialogTags.REMOVE_CONFIRM).assertIsEnabled() }
+            .isSuccess
+      }
+    }
+  }
+
   private fun scrollTo(matcher: androidx.compose.ui.test.SemanticsMatcher) {
     compose.onNodeWithTag(SettingsTags.LIST).performScrollToNode(matcher)
   }
 
   /** Asserts inside the fixture's lifetime: closing the store empties every state flow. */
-  private fun show(check: (SettingsKit) -> Unit) {
+  private fun show(unsent: Boolean = false, check: (SettingsKit) -> Unit) {
     runBlocking { TestGraph.signedIn() }
         .use { fixture ->
           SettingsKit(fixture).use { kit ->
+            if (unsent) {
+              runBlocking {
+                fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
+              }
+            }
             val model = kit.viewModel()
             runBlocking { model.state.first { it.loaded } }
             compose.setContent {

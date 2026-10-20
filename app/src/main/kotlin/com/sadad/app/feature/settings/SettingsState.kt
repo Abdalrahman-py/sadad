@@ -1,5 +1,7 @@
 package com.sadad.app.feature.settings
 
+import com.sadad.app.feature.history.PeriodPreset
+
 /** One store the phone remembers, as the accounts dialog lists it. */
 data class SavedStore(
     val storeUserId: String,
@@ -39,10 +41,16 @@ sealed interface Pending {
 
   data object SetPin : Pending
 
-  data class SignOut(val unsent: Int) : Pending
+  /** [storeUserId] is the store the count was taken for; a different open store refuses. */
+  data class SignOut(val storeUserId: String, val unsent: Int) : Pending
 
   /** [needed] confirmations are required: two when entries are unsent, else one. */
-  data class Remove(val unsent: Int, val confirmed: Int, val needed: Int) : Pending
+  data class Remove(
+      val storeUserId: String,
+      val unsent: Int,
+      val confirmed: Int,
+      val needed: Int,
+  ) : Pending
 }
 
 enum class PinError {
@@ -54,6 +62,8 @@ enum class PinError {
 enum class SettingsError {
   NOTHING_TO_EXPORT,
   SHARE_FAILED,
+  /** An account action threw: nothing was half-confirmed on screen. */
+  ACTION_FAILED,
 }
 
 /** What the shell must do once an action has finished. */
@@ -76,7 +86,8 @@ data class SettingsState(
     val lockOn: Boolean = false,
     val pinSet: Boolean = false,
     val biometricEnabled: Boolean = false,
-    val biometricAvailable: Boolean = false,
+    /** A document, sign-out or removal is running; the buttons wait for it. */
+    val busy: Boolean = false,
     val accounts: List<SavedStore> = emptyList(),
     val pending: Pending? = null,
     val pinError: PinError? = null,

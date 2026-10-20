@@ -23,6 +23,7 @@
     <string name="settings_support">تواصل معنا على WhatsApp</string>
     <string name="settings_nothing_to_export">أضف أشخاصًا وحركات قبل إنشاء كشف السجلات.</string>
     <string name="settings_share_failed">تعذر إنشاء الكشف. حاول مرة أخرى.</string>
+    <string name="settings_action_failed">تعذر تنفيذ العملية. حاول مرة أخرى.</string>
 
     <!-- Sync -->
     <string name="settings_sync_heading">مزامنة السجلات والاسترداد</string>

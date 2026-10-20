@@ -11,6 +11,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,8 +23,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.sadad.app.R
+import kotlinx.coroutines.delay
 
 /** Stable handles for the dialogs' buttons and fields. */
+/** How long the second removal confirmation stays disabled after the first. */
+internal const val CONFIRM_DELAY_MS = 1_500L
+
 object SettingsDialogTags {
   const val PROFILE_STORE = "settings:profile:store"
   const val PROFILE_OWNER = "settings:profile:owner"
@@ -47,8 +52,8 @@ internal fun SettingsDialogs(
   when (val pending = state.pending) {
     is Pending.Profile -> ProfileDialog(pending, model)
     Pending.SetPin -> PinDialog(state.pinError, model)
-    is Pending.SignOut -> SignOutDialog(pending, model)
-    is Pending.Remove -> RemoveDialog(pending, model)
+    is Pending.SignOut -> SignOutDialog(pending, state.busy, model)
+    is Pending.Remove -> RemoveDialog(pending, state.busy, model)
     null -> Unit
   }
   if (showStores) {
@@ -58,6 +63,11 @@ internal fun SettingsDialogs(
 
 @Composable
 private fun ProfileDialog(draft: Pending.Profile, model: SettingsViewModel) {
+  // The fields own their text: a value that makes a round trip through the view model state can
+  // lag behind the keyboard and move the cursor. The view model gets every change for the saved
+  // state.
+  var store by remember { mutableStateOf(draft.storeName) }
+  var owner by remember { mutableStateOf(draft.ownerName) }
   AlertDialog(
       onDismissRequest = model::dismiss,
       title = { Text(stringResource(R.string.settings_profile_title)) },
@@ -68,15 +78,21 @@ private fun ProfileDialog(draft: Pending.Profile, model: SettingsViewModel) {
               style = MaterialTheme.typography.labelMedium,
           )
           OutlinedTextField(
-              value = draft.storeName,
-              onValueChange = { model.onProfileChange(it, draft.ownerName) },
+              value = store,
+              onValueChange = {
+                store = it
+                model.onProfileChange(it, owner)
+              },
               label = { Text(stringResource(R.string.settings_profile_store_label)) },
               singleLine = true,
               modifier = Modifier.fillMaxWidth().testTag(SettingsDialogTags.PROFILE_STORE),
           )
           OutlinedTextField(
-              value = draft.ownerName,
-              onValueChange = { model.onProfileChange(draft.storeName, it) },
+              value = owner,
+              onValueChange = {
+                owner = it
+                model.onProfileChange(store, it)
+              },
               label = { Text(stringResource(R.string.settings_profile_owner_label)) },
               singleLine = true,
               modifier = Modifier.fillMaxWidth().testTag(SettingsDialogTags.PROFILE_OWNER),
@@ -178,7 +194,7 @@ private fun ErrorText(message: Int) {
 }
 
 @Composable
-private fun SignOutDialog(pending: Pending.SignOut, model: SettingsViewModel) {
+private fun SignOutDialog(pending: Pending.SignOut, busy: Boolean, model: SettingsViewModel) {
   AlertDialog(
       onDismissRequest = model::dismiss,
       title = { Text(stringResource(R.string.settings_sign_out)) },
@@ -196,6 +212,7 @@ private fun SignOutDialog(pending: Pending.SignOut, model: SettingsViewModel) {
       confirmButton = {
         TextButton(
             onClick = model::confirmSignOut,
+            enabled = !busy,
             modifier = Modifier.testTag(SettingsDialogTags.SIGN_OUT_CONFIRM),
         ) {
           Text(stringResource(R.string.settings_sign_out))
@@ -208,7 +225,16 @@ private fun SignOutDialog(pending: Pending.SignOut, model: SettingsViewModel) {
 }
 
 @Composable
-private fun RemoveDialog(pending: Pending.Remove, model: SettingsViewModel) {
+private fun RemoveDialog(pending: Pending.Remove, busy: Boolean, model: SettingsViewModel) {
+  // The second confirmation must be a separate, read decision: after the first one the button
+  // stays off for a moment, so a double tap cannot count twice.
+  var ready by remember(pending.confirmed) { mutableStateOf(pending.confirmed == 0) }
+  LaunchedEffect(pending.confirmed) {
+    if (pending.confirmed > 0) {
+      delay(CONFIRM_DELAY_MS)
+      ready = true
+    }
+  }
   AlertDialog(
       onDismissRequest = model::dismiss,
       title = { Text(stringResource(R.string.settings_remove_title)) },
@@ -226,6 +252,7 @@ private fun RemoveDialog(pending: Pending.Remove, model: SettingsViewModel) {
       confirmButton = {
         TextButton(
             onClick = model::confirmRemove,
+            enabled = ready && !busy,
             modifier = Modifier.testTag(SettingsDialogTags.REMOVE_CONFIRM),
         ) {
           Text(
@@ -266,7 +293,14 @@ private fun StoresDialog(
                   modifier = Modifier.fillMaxWidth(),
                   horizontalArrangement = Arrangement.SpaceBetween,
               ) {
-                Text(store.storeName.ifBlank { store.username })
+                Column {
+                  Text(store.storeName.ifBlank { stringResource(R.string.settings_default_store) })
+                  Text(
+                      text = store.username,
+                      style = MaterialTheme.typography.labelSmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                }
                 if (store.active) Text(stringResource(R.string.settings_store_active))
               }
             }

@@ -53,7 +53,10 @@ internal class SettingsKit(private val fixture: TestGraph) : AutoCloseable {
           elapsedRealtime = { 0L },
           bootCount = { 1 },
       )
-  val scheduler = RecordingScheduler()
+  val recording = RecordingScheduler()
+
+  /** What the next view model gets; a test can swap in one that fails. */
+  var scheduler: SyncScheduling = recording
 
   fun viewModel(
       saved: SavedStateHandle = SavedStateHandle(),

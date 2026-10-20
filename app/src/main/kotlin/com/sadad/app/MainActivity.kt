@@ -3,14 +3,17 @@ package com.sadad.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,7 +28,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.sadad.app.feature.notifications.reminderDestination
-import com.sadad.app.feature.settings.ThemeChoice
 import com.sadad.app.feature.settings.ThemePreference
 import com.sadad.app.ui.SadadApp
 import com.sadad.app.ui.theme.SadadTheme
@@ -38,7 +40,6 @@ class MainActivity : FragmentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
     launchIntent = intent
     observeNotificationPermission()
     setContent {
@@ -52,12 +53,19 @@ class MainActivity : FragmentActivity() {
             }
       }
       val route = destination
-      val choice by remember {
-        ThemePreference.get(applicationContext).theme
+      val choice by remember { ThemePreference.get(applicationContext).theme }.collectAsState(null)
+      val systemDark = isSystemInDarkTheme()
+      val dark = choice?.isDark(systemDark) ?: systemDark
+      // The system bars follow the chosen theme, not the device's night mode.
+      DisposableEffect(dark) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+            navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { dark },
+        )
+        onDispose {}
       }
-          .collectAsState(ThemeChoice.SYSTEM)
-      val dark = choice.isDark(isSystemInDarkTheme())
-      if (route == null) Splash(dark)
+      // Hold the splash until the saved theme is read, so a saved dark theme never flashes light.
+      if (route == null || choice == null) Splash(dark)
       else key(route, request) { SadadApp(startDestination = route, dark = dark) }
     }
   }
@@ -92,7 +100,11 @@ class MainActivity : FragmentActivity() {
   }
 }
 
-/** Shown while the accounts are read off the main thread. */
+/** The system navigation bar's scrims, as `enableEdgeToEdge` uses by default. */
+private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
+
+/** Shown while the accounts and the saved theme are read off the main thread. */
 @Composable
 private fun Splash(dark: Boolean) {
   SadadTheme(dark = dark) { Surface(modifier = Modifier.fillMaxSize()) {} }

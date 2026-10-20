@@ -15,6 +15,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -23,6 +24,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +47,7 @@ internal fun LazyListScope.storeSection(state: SettingsState, model: SettingsVie
               modifier = Modifier.weight(1f),
           )
           TextButton(onClick = model::editProfile) {
-            androidx.compose.material3.Icon(
+            Icon(
                 painter = painterResource(R.drawable.ic_edit_thin),
                 contentDescription = stringResource(R.string.settings_store_edit),
                 tint = MaterialTheme.colorScheme.onPrimary,
@@ -94,11 +96,15 @@ internal fun LazyListScope.dataSection(
           onPreset = model::selectPreset,
           onCustom = model::selectCustom,
       )
-      Action(R.string.settings_share_statement) { model.shareStatement(context) }
+      Action(
+          R.string.settings_share_statement,
+          onClick = { model.shareStatement(context) },
+          enabled = !state.busy,
+      )
       state.error?.let { ErrorLine(it) }
       Action(R.string.settings_trash, navigation.onOpenTrash)
       Action(R.string.settings_notifications, navigation.onOpenNotifications)
-      Action(R.string.settings_support) { openSupport(context) }
+      Action(R.string.settings_support, onClick = { openSupport(context) })
     }
   }
 }
@@ -130,7 +136,11 @@ internal fun LazyListScope.syncSection(
   }
 }
 
-internal fun LazyListScope.lockSection(state: SettingsState, model: SettingsViewModel) {
+internal fun LazyListScope.lockSection(
+    state: SettingsState,
+    model: SettingsViewModel,
+    biometricAvailable: Boolean,
+) {
   item {
     Section(stringResource(R.string.settings_lock_heading)) {
       SwitchRow(R.string.settings_lock_enable, state.lockOn, model::setLockEnabled)
@@ -139,7 +149,7 @@ internal fun LazyListScope.lockSection(state: SettingsState, model: SettingsView
           else R.string.settings_lock_create_pin,
           model::requestPin,
       )
-      if (state.biometricAvailable) {
+      if (biometricAvailable) {
         SwitchRow(R.string.settings_lock_biometric, state.biometricEnabled, model::setBiometric)
       }
     }
@@ -170,10 +180,11 @@ internal fun LazyListScope.accountSection(
 ) {
   item {
     Section(stringResource(R.string.settings_account_heading)) {
+      state.error?.takeIf { it == SettingsError.ACTION_FAILED }?.let { ErrorLine(it) }
       Action(R.string.settings_change_password, navigation.onChangePassword)
       Action(R.string.settings_saved_stores, onShowStores)
-      Action(R.string.settings_sign_out, model::requestSignOut)
-      Action(R.string.settings_remove_store, model::requestRemove)
+      Action(R.string.settings_sign_out, onClick = model::requestSignOut, enabled = !state.busy)
+      Action(R.string.settings_remove_store, onClick = model::requestRemove, enabled = !state.busy)
       TextButton(
           onClick = { openSupport(context) },
           modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -201,7 +212,7 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 private fun Heading(
     text: String,
     modifier: Modifier = Modifier,
-    color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onBackground,
+    color: Color = MaterialTheme.colorScheme.onBackground,
 ) {
   Text(
       text = text,
@@ -213,9 +224,10 @@ private fun Heading(
 }
 
 @Composable
-private fun Action(label: Int, onClick: () -> Unit) {
+private fun Action(label: Int, onClick: () -> Unit, enabled: Boolean = true) {
   OutlinedButton(
       onClick = onClick,
+      enabled = enabled,
       modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
   ) {
     Text(stringResource(label))
@@ -255,6 +267,7 @@ private fun ErrorLine(error: SettingsError) {
               when (error) {
                 SettingsError.NOTHING_TO_EXPORT -> R.string.settings_nothing_to_export
                 SettingsError.SHARE_FAILED -> R.string.settings_share_failed
+                SettingsError.ACTION_FAILED -> R.string.settings_action_failed
               }
           ),
       style = MaterialTheme.typography.labelMedium,

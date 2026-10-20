@@ -20,6 +20,7 @@ import java.time.Clock
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** The screen state that does not come from a store, a preference or the lock. */
 private data class Ui(
@@ -38,6 +40,7 @@ private data class Ui(
     val pinError: PinError? = null,
     val error: SettingsError? = null,
     val outcome: SettingsOutcome? = null,
+    val busy: Boolean = false,
 )
 
 private data class Core(val file: AccountsFile, val open: StoreScope?)
@@ -46,12 +49,7 @@ private data class SyncPart(val line: SyncLine, val unsent: Int)
 
 private data class Prefs(val theme: ThemeChoice, val period: ExportPeriod)
 
-private data class LockPart(
-    val on: Boolean,
-    val pinSet: Boolean,
-    val biometric: Boolean,
-    val biometricAvailable: Boolean,
-)
+private data class LockPart(val on: Boolean, val pinSet: Boolean, val biometric: Boolean)
 
 /**
  * The settings screen. It only calls the graph, the lock, the scheduler and the statement export:
@@ -64,7 +62,7 @@ class SettingsViewModel(
     private val saved: SavedStateHandle,
     private val preferences: ThemePreference,
     private val lock: AppLock,
-    private val scheduler: SyncScheduling?,
+    private val scheduler: SyncScheduling,
     private val clock: Clock = Clock.systemDefaultZone(),
     private val biometricAvailable: () -> Boolean = { false },
     private val syncStatus: (String) -> Flow<SyncStatus> = graph::syncStatus,
@@ -86,7 +84,7 @@ class SettingsViewModel(
                 lockOn = lock.on,
                 pinSet = lock.pinSet,
                 biometricEnabled = lock.biometric,
-                biometricAvailable = lock.biometricAvailable,
+                busy = ui.busy,
                 accounts =
                     core.file.accounts.map {
                       SavedStore(it.storeUserId, it.username, it.storeName, it.storeUserId == open)
@@ -112,7 +110,7 @@ class SettingsViewModel(
   fun saveProfile() {
     val draft = ui.value.pending as? Pending.Profile ?: return
     val id = openStoreId() ?: return
-    viewModelScope.launch {
+    act {
       graph.accounts.update(id) {
         it.copy(storeName = draft.storeName.trim(), ownerName = draft.ownerName.trim())
       }
@@ -124,28 +122,33 @@ class SettingsViewModel(
   // --- Theme and export ----------------------------------------------------------------------
 
   fun setTheme(choice: ThemeChoice) {
-    viewModelScope.launch { preferences.setTheme(choice) }
+    act { preferences.setTheme(choice) }
   }
 
   fun selectPreset(preset: PeriodPreset) {
-    viewModelScope.launch { preferences.setExportPeriod(ExportPeriod.Preset(preset)) }
+    act { preferences.setExportPeriod(ExportPeriod.Preset(preset)) }
   }
 
   fun selectCustom(from: LocalDate, to: LocalDate) {
     require(!from.isAfter(to)) { "The range must not end before it starts" }
-    viewModelScope.launch { preferences.setExportPeriod(ExportPeriod.Custom(from, to)) }
+    act { preferences.setExportPeriod(ExportPeriod.Custom(from, to)) }
   }
 
   /** Shares the statement of every Contact for the saved period. */
   fun shareStatement(activity: Context) {
+    if (ui.value.busy) return
     val context = activity.applicationContext
-    val scope = graph.current.value ?: return
-    val view = scope.repository.view.value ?: return
+    val scope = graph.current.value
+    val view = scope?.repository?.view?.value
+    if (scope == null || view == null) {
+      ui.update { it.copy(error = SettingsError.SHARE_FAILED) }
+      return
+    }
     if (view.contacts.isEmpty()) {
       ui.update { it.copy(error = SettingsError.NOTHING_TO_EXPORT) }
       return
     }
-    ui.update { it.copy(error = null) }
+    ui.update { it.copy(error = null, busy = true) }
     val period = state.value.exportPeriod.toPeriod(LocalDate.now(clock))
     val bounds = period.bounds(clock.zone)
     val header =
@@ -159,9 +162,10 @@ class SettingsViewModel(
     viewModelScope.launch {
       try {
         StatementExport.sharePdf(context, header, view, null, bounds.from, bounds.to?.minusNanos(1))
+        ui.update { it.copy(busy = false) }
       } catch (failure: Throwable) {
         if (failure is CancellationException) throw failure
-        ui.update { it.copy(error = SettingsError.SHARE_FAILED) }
+        ui.update { it.copy(busy = false, error = SettingsError.SHARE_FAILED) }
       }
     }
   }
@@ -170,13 +174,13 @@ class SettingsViewModel(
 
   fun downloadLatest() {
     val id = openStoreId() ?: return
-    scheduler?.syncNow(id)
+    act { scheduler.syncNow(id) }
   }
 
   // --- App lock ------------------------------------------------------------------------------
 
   fun setLockEnabled(on: Boolean) {
-    viewModelScope.launch {
+    act {
       if (on && !lock.hasPin()) requestPin() else lock.setLockEnabled(on)
     }
   }
@@ -197,14 +201,14 @@ class SettingsViewModel(
       ui.update { it.copy(pinError = error) }
       return
     }
-    viewModelScope.launch {
+    act {
       lock.setPin(first)
       ui.update { it.copy(pending = null, pinError = null) }
     }
   }
 
   fun setBiometric(on: Boolean) {
-    viewModelScope.launch {
+    act {
       when {
         !on -> lock.setBiometricEnabled(false)
         !biometricAvailable() -> Unit
@@ -216,27 +220,39 @@ class SettingsViewModel(
 
   // --- Account -------------------------------------------------------------------------------
 
-  /** Counts the unsent entries, then asks the screen to warn before signing out. */
+  /** Counts the unsent entries of the open store, then asks the screen to warn first. */
   fun requestSignOut() {
-    viewModelScope.launch {
-      val unsent = graph.unsentCount()
-      ui.update { it.copy(pending = Pending.SignOut(unsent)) }
+    val id = openStoreId() ?: return
+    act {
+      val unsent = graph.unsentCount(id)
+      ui.update { it.copy(pending = Pending.SignOut(id, unsent)) }
     }
   }
 
   fun confirmSignOut() {
-    if (ui.value.pending !is Pending.SignOut) return
-    viewModelScope.launch {
-      graph.sessions.signOut()
-      ui.update { it.copy(pending = null, outcome = SettingsOutcome.NEEDS_LOGIN) }
+    val pending = ui.value.pending as? Pending.SignOut ?: return
+    if (ui.value.busy) return
+    if (openStoreId() != pending.storeUserId) {
+      // Another store is open now than the one the warning counted: ask again.
+      dismiss()
+      return
+    }
+    ui.update { it.copy(busy = true) }
+    act {
+      // Back-navigation must not cancel the sign-out half way.
+      withContext(NonCancellable) { graph.sessions.signOut() }
+      ui.update { it.copy(pending = null, busy = false, outcome = SettingsOutcome.NEEDS_LOGIN) }
     }
   }
 
   fun requestRemove() {
-    viewModelScope.launch {
-      val unsent = graph.unsentCount()
+    val id = openStoreId() ?: return
+    act {
+      val unsent = graph.unsentCount(id)
       ui.update {
-        it.copy(pending = Pending.Remove(unsent, confirmed = 0, needed = if (unsent > 0) 2 else 1))
+        it.copy(
+            pending = Pending.Remove(id, unsent, confirmed = 0, needed = if (unsent > 0) 2 else 1)
+        )
       }
     }
   }
@@ -244,24 +260,34 @@ class SettingsViewModel(
   /** One confirmation; the store is removed once [Pending.Remove.needed] have been given. */
   fun confirmRemove() {
     val pending = ui.value.pending as? Pending.Remove ?: return
-    val id = openStoreId() ?: return
+    if (ui.value.busy) return
+    if (openStoreId() != pending.storeUserId) {
+      dismiss()
+      return
+    }
     val confirmed = pending.confirmed + 1
     if (confirmed < pending.needed) {
       ui.update { it.copy(pending = pending.copy(confirmed = confirmed)) }
       return
     }
-    viewModelScope.launch {
-      if (graph.removeStore(id, confirmedTwice = pending.needed > 1)) {
-        ui.update { it.copy(pending = null, outcome = SettingsOutcome.NEEDS_LOGIN) }
+    ui.update { it.copy(busy = true) }
+    act {
+      val removed =
+          withContext(NonCancellable) {
+            graph.removeStore(pending.storeUserId, confirmedTwice = pending.needed > 1)
+          }
+      if (removed) {
+        ui.update { it.copy(pending = null, busy = false, outcome = SettingsOutcome.NEEDS_LOGIN) }
       } else {
         // Entries were queued after the first count: ask again with the new count.
+        ui.update { it.copy(busy = false) }
         requestRemove()
       }
     }
   }
 
   fun switchTo(storeUserId: String) {
-    viewModelScope.launch {
+    act {
       graph.switchStore(storeUserId)
       if (graph.current.value?.account?.storeUserId != storeUserId) {
         ui.update { it.copy(outcome = SettingsOutcome.NEEDS_LOGIN) }
@@ -280,6 +306,18 @@ class SettingsViewModel(
 
   fun clearError() = ui.update { it.copy(error = null) }
 
+  /** Runs an account action; a failure ends the dialog with a message instead of crashing. */
+  private fun act(block: suspend () -> Unit) {
+    viewModelScope.launch {
+      try {
+        block()
+      } catch (failure: Throwable) {
+        if (failure is CancellationException) throw failure
+        ui.update { it.copy(pending = null, busy = false, error = SettingsError.ACTION_FAILED) }
+      }
+    }
+  }
+
   // --- Sources -------------------------------------------------------------------------------
 
   private fun core(): Flow<Core> =
@@ -290,7 +328,7 @@ class SettingsViewModel(
         if (open == null) flowOf(SyncPart(SyncLine.SignedOut, 0))
         else
             syncStatus(open.account.storeUserId).map { status ->
-              SyncPart(line(status), graph.unsentCount())
+              SyncPart(line(status), graph.unsentCount(open.account.storeUserId))
             }
       }
 
@@ -299,7 +337,7 @@ class SettingsViewModel(
 
   private fun lockPart(): Flow<LockPart> =
       combine(lock.lockEnabled, lock.pinSet, lock.biometricEnabled) { enabled, pinSet, biometric ->
-        LockPart(enabled && pinSet, pinSet, biometric, biometricAvailable())
+        LockPart(enabled && pinSet, pinSet, biometric)
       }
 
   private fun line(status: SyncStatus): SyncLine =

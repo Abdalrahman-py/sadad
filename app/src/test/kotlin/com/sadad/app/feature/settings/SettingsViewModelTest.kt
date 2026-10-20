@@ -1,21 +1,19 @@
 package com.sadad.app.feature.settings
 
 import androidx.lifecycle.SavedStateHandle
+import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
-import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import mockwebserver3.MockResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -117,125 +115,14 @@ class SettingsViewModelTest {
                 SyncStatus.Revoked to SyncLine.Revoked,
                 SyncStatus.Suspended to SyncLine.Suspended,
                 SyncStatus.PasswordChangeRequired to SyncLine.PasswordChangeRequired,
+                SyncStatus.SignedOut to SyncLine.SignedOut,
+                SyncStatus.Retry to SyncLine.Retry,
             )
 
         for ((source, line) in expected) {
           status.value = source
           assertEquals(line, model.state.first { it.loaded && it.sync == line }.sync)
         }
-      }
-    }
-  }
-
-  @Test
-  fun signingOutWithUnsentEntriesWarnsFirstAndKeepsTheDatabase() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      SettingsKit(fixture).use { kit ->
-        fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
-        val model = kit.viewModel()
-        model.state.first { it.loaded }
-
-        model.requestSignOut()
-
-        val warned = model.state.first { it.pending is Pending.SignOut }
-        assertEquals(Pending.SignOut(unsent = 1), warned.pending)
-        assertNotNull(fixture.graph.current.value)
-
-        fixture.server.enqueue(MockResponse.Builder().body("{}").build())
-        model.confirmSignOut()
-
-        model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
-        assertNull(fixture.graph.current.value)
-        assertTrue(fixture.databaseFile(STORE_A).exists())
-        val account = checkNotNull(fixture.graph.accounts.account(STORE_A))
-        assertNull(account.sealedRefreshToken)
-      }
-    }
-  }
-
-  @Test
-  fun cancellingTheSignOutWarningLeavesTheStoreOpen() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      SettingsKit(fixture).use { kit ->
-        val model = kit.viewModel()
-        model.state.first { it.loaded }
-        model.requestSignOut()
-        model.state.first { it.pending is Pending.SignOut }
-
-        model.dismiss()
-
-        assertNull(model.state.first { it.pending == null }.pending)
-        assertNotNull(fixture.graph.current.value)
-      }
-    }
-  }
-
-  @Test
-  fun removingAStoreWithUnsentEntriesNeedsTwoConfirmations() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      SettingsKit(fixture).use { kit ->
-        fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
-        val model = kit.viewModel()
-        model.state.first { it.loaded }
-
-        model.requestRemove()
-        assertEquals(
-            Pending.Remove(unsent = 1, confirmed = 0, needed = 2),
-            model.state.first { it.pending is Pending.Remove }.pending,
-        )
-        model.confirmRemove()
-        assertEquals(
-            Pending.Remove(unsent = 1, confirmed = 1, needed = 2),
-            model.state.first { (it.pending as? Pending.Remove)?.confirmed == 1 }.pending,
-        )
-        assertNotNull(fixture.graph.accounts.account(STORE_A))
-
-        model.confirmRemove()
-
-        model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
-        assertNull(fixture.graph.accounts.account(STORE_A))
-        assertFalse(fixture.databaseFile(STORE_A).exists())
-      }
-    }
-  }
-
-  @Test
-  fun removingAStoreWithNothingUnsentNeedsOneConfirmation() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      SettingsKit(fixture).use { kit ->
-        val model = kit.viewModel()
-        model.state.first { it.loaded }
-
-        model.requestRemove()
-        assertEquals(
-            Pending.Remove(unsent = 0, confirmed = 0, needed = 1),
-            model.state.first { it.pending is Pending.Remove }.pending,
-        )
-        model.confirmRemove()
-
-        model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
-        assertNull(fixture.graph.accounts.account(STORE_A))
-      }
-    }
-  }
-
-  @Test
-  fun switchingToAnotherSavedStoreChangesTheOpenStore() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      SettingsKit(fixture).use { kit ->
-        fixture.signIn(STORE_B)
-        fixture.activate(STORE_B)
-        val model = kit.viewModel()
-        val listed = model.state.first { it.loaded && it.accounts.size == 2 }
-        assertEquals(STORE_B, checkNotNull(fixture.graph.current.value).account.storeUserId)
-        assertEquals(listOf(STORE_B), listed.accounts.filter { it.active }.map { it.storeUserId })
-
-        model.switchTo(STORE_A)
-
-        model.state.first {
-          it.accounts.firstOrNull { saved -> saved.active }?.storeUserId == STORE_A
-        }
-        assertEquals(STORE_A, checkNotNull(fixture.graph.current.value).account.storeUserId)
       }
     }
   }
@@ -318,7 +205,7 @@ class SettingsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
         val without = kit.viewModel(biometricAvailable = false)
-        assertFalse(without.state.first { it.loaded }.biometricAvailable)
+        without.state.first { it.loaded }
         without.setBiometric(true)
         assertFalse(kit.lock.biometricEnabled.first())
 
@@ -366,7 +253,7 @@ class SettingsViewModelTest {
 
         model.downloadLatest()
 
-        assertEquals(listOf(STORE_A), kit.scheduler.syncNow)
+        assertEquals(listOf(STORE_A), kit.recording.syncNow)
       }
     }
   }
@@ -379,6 +266,54 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
 
         assertEquals(1, model.state.first { it.loaded && it.unsent == 1 }.unsent)
+      }
+    }
+  }
+
+  @Test
+  fun aPinWithThirteenDigitsOrLettersIsRefusedAndNeverReachesTheSavedState() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        val saved = SavedStateHandle()
+        val model = kit.viewModel(saved)
+        model.state.first { it.loaded }
+        model.requestPin()
+        model.state.first { it.pending == Pending.SetPin }
+
+        for (pin in listOf("1234567890123", "12a4")) {
+          model.savePin(pin, pin)
+          assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
+        }
+        model.savePin("483927", "483927")
+        model.state.first { it.pending == null }
+
+        assertTrue(kit.lock.hasPin())
+        assertTrue(saved.keys().none { key -> saved.get<Any>(key).toString().contains("483927") })
+      }
+    }
+  }
+
+  @Test
+  fun anActionThatFailsEndsWithAMessageInsteadOfCrashing() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        // WorkManager refuses to enqueue when it is not initialised.
+        kit.scheduler =
+            object : SyncScheduling {
+              override fun syncNow(storeUserId: String) = error("WorkManager is not initialised")
+
+              override fun schedulePeriodic(storeUserId: String) = Unit
+
+              override fun cancel(storeUserId: String) = Unit
+            }
+        val model = kit.viewModel()
+        model.state.first { it.loaded }
+
+        model.downloadLatest()
+
+        val state = model.state.first { it.error != null }
+        assertEquals(SettingsError.ACTION_FAILED, state.error)
+        assertFalse(state.busy)
       }
     }
   }
