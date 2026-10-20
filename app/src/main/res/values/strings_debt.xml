@@ -1,4 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_debt">تسجيل دين</string>
+    <string name="debt_subtitle">إضافة مبلغ مستحق لك من %1$s</string>
+    <string name="debt_amount_label">المبلغ بالشيكل</string>
+    <string name="debt_amount_placeholder">0.00</string>
+    <string name="debt_amount_invalid">تحقق من المبلغ</string>
+    <string name="debt_due_label">موعد الاستحقاق</string>
+    <string name="debt_due_hint">اختر موعد الاستحقاق من التقويم (اختياري)</string>
+    <string name="debt_due_remove">إزالة موعد الاستحقاق</string>
+    <string name="debt_due_none">غير محدد</string>
+    <string name="debt_picker_confirm">موافق</string>
+    <string name="debt_picker_cancel">إلغاء</string>
+    <string name="debt_note_label">سبب الدين أو تفاصيله</string>
+    <string name="debt_save">حفظ الدين</string>
+    <string name="debt_anomaly_title">مراجعة مبلغ الدين</string>
+    <string name="debt_anomaly_message">المبلغ مرتفع بشكل غير معتاد. راجع القيمة قبل تسجيلها.</string>
+    <string name="debt_anomaly_dismiss">مراجعة</string>
+    <string name="debt_anomaly_confirm">المبلغ صحيح، متابعة</string>
+    <string name="debt_review_title">مراجعة تسجيل الدين</string>
+    <string name="debt_review_person">الشخص: %1$s</string>
+    <string name="debt_review_phone">رقم الهاتف: %1$s</string>
+    <string name="debt_review_amount">المبلغ: %1$s</string>
+    <string name="debt_review_due">موعد الاستحقاق: %1$s</string>
+    <string name="debt_review_note">الملاحظة: %1$s</string>
+    <string name="debt_review_footer">راجع المعلومات قبل التسجيل.</string>
+    <string name="debt_review_confirm">تأكيد تسجيل الدين</string>
+    <string name="debt_review_dismiss">مراجعة البيانات</string>
+    <string name="debt_phone_none">غير مسجل</string>
+    <string name="debt_no_contact">اختر شخصاً أولاً</string>
+    <string name="debt_no_contact_detail">أضف جهة اتصال قبل تسجيل الدين</string>
+    <string name="debt_success">تم تسجيل الدين وتحديث الرصيد.</string>
+    <string name="debt_offline">لا يمكن الحفظ بلا اتصال الآن؛ اتصل بالإنترنت لتجديد التصريح.</string>
+    <string name="debt_failed">تعذر تسجيل الدين. حاول مرة أخرى.</string>
 </resources>

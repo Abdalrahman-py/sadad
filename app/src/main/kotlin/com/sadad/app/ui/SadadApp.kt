@@ -98,7 +98,18 @@ fun SadadApp(
               )
             }
             composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
-            composable<DebtForm> { DebtFormScreen(it.toRoute<DebtForm>().contactId) }
+            composable<DebtForm> {
+              val contactId = it.toRoute<DebtForm>().contactId
+              DebtFormScreen(
+                  contactId = contactId,
+                  // Back to the Contact the Debt was recorded for, keeping its live detail state.
+                  onSaved = {
+                    if (!navController.popBackStack()) {
+                      navController.navigate(ContactDetail(contactId))
+                    }
+                  },
+              )
+            }
             composable<PaymentForm> {
               val route = it.toRoute<PaymentForm>()
               PaymentFormScreen(route.contactId, route.debtId)
