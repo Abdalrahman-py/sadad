@@ -194,6 +194,99 @@ class ReportsViewModelTest {
   }
 
   @Test
+  fun payableDebtsAndPaymentsOnEarlierDebtsFollowTheStatementRule() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.seedOctober()
+      val supplier = fixture.confirmedContact("المورد", at("2026-09-20T09:00:00Z"))
+      val payable =
+          fixture.confirmedDebt(
+              supplier,
+              9_000,
+              at("2026-10-03T09:00:00Z"),
+              direction = Direction.PAYABLE,
+          )
+      fixture.confirmedPayment(payable, 4_000, at("2026-10-04T09:00:00Z"))
+      // عمر paid part of his September Debt in October.
+      val omar = fixture.view().contacts.first { it.name == "عمر" }
+      val septemberDebt = fixture.view().debts.first { it.contactId == omar.id }
+      fixture.confirmedPayment(septemberDebt.id, 2_000, at("2026-10-15T09:00:00Z"))
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+
+      model.select(Period.Month(OCTOBER))
+      val state = model.state.first { it.loaded && it.period == Period.Month(OCTOBER) }
+
+      // The payable Debt and its Payment count nowhere; the Payment on the September Debt does.
+      assertEquals(3, state.totals.contacts)
+      assertEquals(2, state.totals.debtCount)
+      assertEquals(Cents(15_000), state.totals.debtTotal)
+      assertEquals(2, state.totals.paymentCount)
+      assertEquals(Cents(5_000), state.totals.paymentTotal)
+      assertEquals(Cents(17_000), state.totals.openBalance)
+      assertEquals(fixture.view().receivable, state.totals.openBalance)
+      assertEquals(Cents(5_000), state.people.first { it.name == "عمر" }.openBalance)
+      assertEquals(setOf("سامي", "ليلى", "عمر"), state.people.map { it.name }.toSet())
+    }
+  }
+
+  @Test
+  fun sharingWhenThePdfCannotBeWrittenShowsTheMessageAndFreesTheScreen() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.seedOctober()
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+      val sami =
+          model.state
+              .first { it.loaded && it.people.isNotEmpty() }
+              .people
+              .first { it.name == "سامي" }
+
+      // Robolectric's PdfDocument cannot draw pages, so the real writer fails here.
+      model.shareStatement(fixture.context, sami.contactId)
+
+      val state = model.state.first { it.error != null && !it.busy }
+      assertEquals(
+          fixture.context.getString(com.sadad.app.R.string.reports_open_failed),
+          state.error,
+      )
+      assertFalse(state.saved)
+    }
+  }
+
+  @Test
+  fun anEmptyStoreHasNothingToExport() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.loaded }
+
+      assertFalse(model.canExport(fixture.context))
+
+      val state = model.state.first { it.error != null }
+      assertEquals(
+          fixture.context.getString(com.sadad.app.R.string.reports_nothing_to_export),
+          state.error,
+      )
+      assertEquals(0, state.registered)
+    }
+  }
+
+  @Test
+  fun changingThePeriodClearsTheLastExportMessage() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.loaded }
+      model.canExport(fixture.context)
+      model.state.first { it.error != null }
+
+      model.selectPreset(PeriodPreset.MONTH)
+
+      assertEquals(null, model.state.first { it.period == Period.Month(OCTOBER) }.error)
+    }
+  }
+
+  @Test
   fun savingWritesTheChosenFormatToTheDocumentAndReportsIt() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
@@ -317,13 +410,14 @@ class ReportsViewModelTest {
       contactId: String,
       amount: Long,
       at: Instant,
+      direction: Direction = Direction.RECEIVABLE,
   ): String {
     val command =
         Commands.debtCreate(
             Events.origin,
             at,
             contactId = contactId,
-            direction = Direction.RECEIVABLE,
+            direction = direction,
             amount = Cents(amount),
             entityId = UUID.randomUUID().toString(),
         )

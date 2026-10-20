@@ -73,18 +73,36 @@ data class ReportsState(
     val queryInput: String = "",
     val totals: ReportTotals = ReportTotals(),
     val people: List<ReportPerson> = emptyList(),
+    /** Visible Contacts in the store, whatever the period or the search. */
+    val registered: Int = 0,
+    /** A document is being written; the open, share and save actions wait for it. */
+    val busy: Boolean = false,
     /** The statement was written to the document the user picked. */
     val saved: Boolean = false,
     val error: String? = null,
 )
 
 /**
- * The period totals and the Contact rows. The totals are read off [Statement.build] for the same
- * period the statements are written for, so the screen and the documents share one money rule: it
- * counts only receivable Debts and the live Payments on them, and its end is inclusive, so the
- * period's exclusive end is stepped back one nanosecond.
+ * What the view and the period fix, whatever the search says: typing in the field does not redo it.
+ * [view] is null until the store's Ledger is loaded.
  */
-fun reportOf(view: LedgerView, period: Period, query: String, zone: ZoneId): ReportsState {
+class ReportBase(
+    val view: LedgerView?,
+    val period: Period,
+    val totals: ReportTotals,
+    /** Contacts with at least one counted movement in the period. */
+    val moved: Set<String>,
+    /** Per Contact, the sum of `remaining` over its receivable Debts. */
+    val remaining: Map<String, Cents>,
+)
+
+/**
+ * The period totals, read off [Statement.build] for the same period the statements are written for,
+ * so the screen and the documents share one money rule: it counts only receivable Debts and the
+ * live Payments on them, and its end is inclusive, so the period's exclusive end is stepped back
+ * one nanosecond.
+ */
+fun reportBaseOf(view: LedgerView, period: Period, zone: ZoneId): ReportBase {
   val bounds = period.bounds(zone)
   val statements = Statement.build(view, null, bounds.from, bounds.to?.minusNanos(1))
   var debtCount = 0
@@ -105,33 +123,41 @@ fun reportOf(view: LedgerView, period: Period, query: String, zone: ZoneId): Rep
     if (debt.direction != Direction.RECEIVABLE) continue
     remaining.merge(debt.contactId, debt.remaining, Cents::plus)
   }
+  val totals =
+      ReportTotals(
+          contacts = moved.size,
+          debtCount = debtCount,
+          debtTotal = debtTotal,
+          paymentCount = paymentCount,
+          paymentTotal = paymentTotal,
+          openBalance = view.receivable,
+      )
+  return ReportBase(view, period, totals, moved, remaining)
+}
+
+/** The Contacts of the period whose name or phone contains [query], by name. */
+fun reportOf(base: ReportBase, query: String): ReportsState {
+  val view = base.view ?: return ReportsState(period = base.period, query = query)
   val needle = searchText(query)
   val phoneNeedle = needle.takeIf { it.none(Char::isLetter) }?.filter(Char::isDigit).orEmpty()
   val people =
       view.contacts
-          .filter { period == Period.All || it.id in moved }
+          .filter { base.period == Period.All || it.id in base.moved }
           .filter { contact ->
             needle.isEmpty() ||
                 searchText(contact.name).contains(needle) ||
                 (phoneNeedle.isNotEmpty() &&
                     searchText(contact.phone).filter(Char::isDigit).contains(phoneNeedle))
           }
-          .map { ReportPerson(it.id, it.name, it.phone, remaining[it.id] ?: Cents.ZERO) }
+          .map { ReportPerson(it.id, it.name, it.phone, base.remaining[it.id] ?: Cents.ZERO) }
           .sortedBy { it.name }
   return ReportsState(
       loaded = true,
-      period = period,
+      period = base.period,
       query = query,
-      totals =
-          ReportTotals(
-              contacts = moved.size,
-              debtCount = debtCount,
-              debtTotal = debtTotal,
-              paymentCount = paymentCount,
-              paymentTotal = paymentTotal,
-              openBalance = view.receivable,
-          ),
+      totals = base.totals,
       people = people,
+      registered = view.contacts.size,
   )
 }
 
@@ -154,7 +180,6 @@ class ReportsViewModel(
 ) : ViewModel() {
   private val period = MutableStateFlow(periodOf(saved.get<String>(PERIOD)))
   private val query = MutableStateFlow(saved.get<String>(QUERY).orEmpty())
-  private val busy = MutableStateFlow(false)
   private val mutable =
       MutableStateFlow(
           ReportsState(period = period.value, query = query.value, queryInput = query.value)
@@ -163,17 +188,22 @@ class ReportsViewModel(
 
   init {
     viewModelScope.launch {
-      combine(view(), period, query) { view, period, query ->
-            if (view == null) ReportsState(period = period, query = query)
-            else reportOf(view, period, query, clock.zone)
+      val base =
+          combine(view(), period) { view, period ->
+            if (view == null) ReportBase(null, period, ReportTotals(), emptySet(), emptyMap())
+            else reportBaseOf(view, period, clock.zone)
           }
-          .flowOn(Dispatchers.Default)
-          .collect { projected ->
-            // The field and the export result belong to the screen, not to the projection.
-            mutable.update {
-              projected.copy(queryInput = it.queryInput, saved = it.saved, error = it.error)
-            }
-          }
+      combine(base, query, ::reportOf).flowOn(Dispatchers.Default).collect { projected ->
+        // The field and the export state belong to the screen, not to the projection.
+        mutable.update {
+          projected.copy(
+              queryInput = it.queryInput,
+              busy = it.busy,
+              saved = it.saved,
+              error = it.error,
+          )
+        }
+      }
     }
   }
 
@@ -184,6 +214,7 @@ class ReportsViewModel(
   fun select(value: Period) {
     saved[PERIOD] = value.encoded()
     period.value = value
+    mutable.update { it.copy(saved = false, error = null) }
   }
 
   fun onQueryChange(value: String) {
@@ -191,11 +222,29 @@ class ReportsViewModel(
     query.value = value
     // The field reads this value; waiting for the projection on Dispatchers.Default would drop
     // characters typed faster than one round trip.
-    mutable.update { it.copy(queryInput = value) }
+    mutable.update { it.copy(queryInput = value, saved = false, error = null) }
+  }
+
+  /**
+   * Whether there is anything to write; otherwise the message is set. The screen asks before it
+   * opens the document picker, which would create an empty document the export could not fill.
+   */
+  fun canExport(context: Context): Boolean {
+    val view = graph.current.value?.repository?.view?.value
+    if (view == null || state.value.busy) return false
+    if (view.contacts.isEmpty()) {
+      mutable.update {
+        it.copy(error = context.getString(R.string.reports_nothing_to_export), saved = false)
+      }
+      return false
+    }
+    return true
   }
 
   /** Writes the whole statement for the chosen period to [uri], in the format the user picked. */
-  fun saveStatement(context: Context, uri: Uri, format: StatementFormat) {
+  fun saveStatement(activity: Context, uri: Uri, format: StatementFormat) {
+    // The work outlives a rotation, so it must not hold the Activity.
+    val context = activity.applicationContext
     val request = prepare(context, contactId = null) ?: return
     viewModelScope.launch {
       runCatching {
@@ -216,7 +265,9 @@ class ReportsViewModel(
   }
 
   /** Writes one Contact's PDF statement and opens it in the phone's PDF viewer. */
-  fun openStatement(context: Context, contactId: String) {
+  fun openStatement(activity: Context, contactId: String) {
+    // The work outlives a rotation, so it must not hold the Activity.
+    val context = activity.applicationContext
     val request = prepare(context, contactId) ?: return
     viewModelScope.launch {
       runCatching {
@@ -247,7 +298,9 @@ class ReportsViewModel(
   }
 
   /** Writes one Contact's PDF statement and offers it to Android's share sheet. */
-  fun shareStatement(context: Context, contactId: String) {
+  fun shareStatement(activity: Context, contactId: String) {
+    // The work outlives a rotation, so it must not hold the Activity.
+    val context = activity.applicationContext
     val request = prepare(context, contactId) ?: return
     viewModelScope.launch {
       runCatching {
@@ -265,10 +318,6 @@ class ReportsViewModel(
     }
   }
 
-  fun consumeSaved() = mutable.update { it.copy(saved = false) }
-
-  fun clearError() = mutable.update { it.copy(error = null) }
-
   private class Request(
       val view: LedgerView,
       val header: StatementHeader,
@@ -276,18 +325,15 @@ class ReportsViewModel(
       val to: Instant?,
   )
 
-  /** The newest view and the chosen period, or null with the message set when none can be used. */
+  /** The newest view and the chosen period, or null when a document is already being written. */
   private fun prepare(context: Context, contactId: String?): Request? {
+    if (state.value.busy) return null
     val view = graph.current.value?.repository?.view?.value
-    if (view == null || busy.value) return null
+    if (view == null) return refuse(context, R.string.reports_export_failed)
     if (view.contacts.none { contactId == null || it.id == contactId }) {
-      mutable.update {
-        it.copy(error = context.getString(R.string.reports_nothing_to_export), saved = false)
-      }
-      return null
+      return refuse(context, R.string.reports_nothing_to_export)
     }
-    busy.value = true
-    mutable.update { it.copy(error = null, saved = false) }
+    mutable.update { it.copy(busy = true, error = null, saved = false) }
     val account = graph.current.value?.account
     val period = period.value
     val bounds = period.bounds(clock.zone)
@@ -302,15 +348,20 @@ class ReportsViewModel(
     return Request(view, header, bounds.from, bounds.to?.minusNanos(1))
   }
 
+  private fun refuse(context: Context, message: Int): Request? {
+    mutable.update { it.copy(error = context.getString(message), saved = false) }
+    return null
+  }
+
   private fun finish(saved: Boolean) {
-    busy.value = false
-    mutable.update { it.copy(saved = saved) }
+    mutable.update { it.copy(busy = false, saved = saved) }
   }
 
   private fun fail(context: Context, failure: Throwable, message: Int) {
     if (failure is CancellationException) throw failure
-    busy.value = false
-    mutable.update { it.copy(error = context.getString(message), saved = false) }
+    mutable.update {
+      it.copy(busy = false, error = context.getString(message), saved = false)
+    }
   }
 
   private fun view(): Flow<LedgerView?> =

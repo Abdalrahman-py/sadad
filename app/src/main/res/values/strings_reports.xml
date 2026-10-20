@@ -9,9 +9,9 @@
     <string name="reports_contacts_title">الأشخاص ذوو الحركة</string>
     <string name="reports_contacts_detail">ضمن الفترة المحددة</string>
     <string name="reports_debts_title">الديون المسجلة بالفترة</string>
-    <string name="reports_debts_count">%1$d عملية دين</string>
+    <string name="reports_debts_count">%1$s عملية دين</string>
     <string name="reports_payments_title">الدفعات المسجلة بالفترة</string>
-    <string name="reports_payments_count">%1$d حركة سداد</string>
+    <string name="reports_payments_count">%1$s حركة سداد</string>
     <string name="reports_open_balance">الرصيد المفتوح الآن لكل المتجر: %1$s</string>
 
     <!-- Contact statements -->
@@ -23,6 +23,8 @@
     <string name="reports_share_statement">مشاركة</string>
     <string name="reports_empty_title">لا توجد أشخاص بعد</string>
     <string name="reports_empty_detail">أضف شخصاً لتظهر كشوفاته هنا.</string>
+    <string name="reports_period_empty_title">لا توجد حركات في هذه الفترة</string>
+    <string name="reports_period_empty_detail">اختر مدة أخرى لعرض الحركات.</string>
     <string name="reports_no_results_title">لا توجد نتائج</string>
     <string name="reports_no_results_detail">ابحث بجزء من الاسم أو رقم الهاتف.</string>
 

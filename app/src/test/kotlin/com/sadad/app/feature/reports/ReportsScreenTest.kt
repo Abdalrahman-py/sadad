@@ -5,6 +5,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -49,7 +50,8 @@ class ReportsScreenTest {
   @Test
   fun theFourTotalsRenderForTheWholeHistory() {
     show {
-      shown(ReportsTags.TOTAL_CONTACTS).assertTextContains("3", substring = true)
+      shown(ReportsTags.TOTAL_CONTACTS)
+          .assertTextEquals("الأشخاص ذوو الحركة", "3", "ضمن الفترة المحددة")
       shown(ReportsTags.TOTAL_DEBTS)
           .assertTextContains(formatCents(Cents(22_000)), substring = true)
       shown(ReportsTags.TOTAL_DEBTS).assertTextContains("3 عملية دين", substring = true)
@@ -67,7 +69,8 @@ class ReportsScreenTest {
       compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).performClick()
       compose.waitForIdle()
 
-      shown(ReportsTags.TOTAL_CONTACTS).assertTextContains("2", substring = true)
+      shown(ReportsTags.TOTAL_CONTACTS)
+          .assertTextEquals("الأشخاص ذوو الحركة", "2", "ضمن الفترة المحددة")
       shown(ReportsTags.TOTAL_DEBTS)
           .assertTextContains(formatCents(Cents(15_000)), substring = true)
       shown(ReportsTags.TOTAL_DEBTS).assertTextContains("2 عملية دين", substring = true)

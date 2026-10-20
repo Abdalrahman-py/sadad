@@ -98,6 +98,8 @@ fun ReportsScreen(
       onOpen = { reportsViewModel.openStatement(context, it) },
       onShare = { reportsViewModel.shareStatement(context, it) },
       onSave = { format ->
+        // Nothing to write must be said before the picker creates an empty document.
+        if (!reportsViewModel.canExport(context)) return@ReportsContent
         // The picker takes the app to another activity; arm the lock skip before it starts.
         AppLock.get(context).skipNextLock()
         val name = context.getString(R.string.reports_statement_name) + "-" + stamp()
@@ -164,7 +166,7 @@ fun ReportsContent(
           tag = ReportsTags.TOTAL_DEBTS,
           title = stringResource(R.string.reports_debts_title),
           value = formatCents(state.totals.debtTotal),
-          detail = stringResource(R.string.reports_debts_count, state.totals.debtCount),
+          detail = stringResource(R.string.reports_debts_count, state.totals.debtCount.toString()),
       )
     }
     item {
@@ -172,7 +174,8 @@ fun ReportsContent(
           tag = ReportsTags.TOTAL_PAYMENTS,
           title = stringResource(R.string.reports_payments_title),
           value = formatCents(state.totals.paymentTotal),
-          detail = stringResource(R.string.reports_payments_count, state.totals.paymentCount),
+          detail =
+              stringResource(R.string.reports_payments_count, state.totals.paymentCount.toString()),
       )
     }
     item {
@@ -211,23 +214,19 @@ fun ReportsContent(
     }
     if (state.people.isEmpty()) {
       item {
-        val searching = state.query.isNotBlank()
-        EmptyState(
-            title =
-                stringResource(
-                    if (searching) R.string.reports_no_results_title
-                    else R.string.reports_empty_title
-                ),
-            detail =
-                stringResource(
-                    if (searching) R.string.reports_no_results_detail
-                    else R.string.reports_empty_detail
-                ),
-        )
+        val (title, detail) =
+            when {
+              state.query.isNotBlank() ->
+                  R.string.reports_no_results_title to R.string.reports_no_results_detail
+              state.registered > 0 ->
+                  R.string.reports_period_empty_title to R.string.reports_period_empty_detail
+              else -> R.string.reports_empty_title to R.string.reports_empty_detail
+            }
+        EmptyState(title = stringResource(title), detail = stringResource(detail))
       }
     } else {
       items(state.people, key = { "person:${it.contactId}" }) { person ->
-        PersonRow(person = person, onOpen = onOpen, onShare = onShare)
+        PersonRow(person = person, enabled = !state.busy, onOpen = onOpen, onShare = onShare)
       }
     }
     item {
@@ -244,6 +243,7 @@ fun ReportsContent(
         )
         TextButton(
             onClick = { choosingFormat = true },
+            enabled = !state.busy,
             modifier = Modifier.testTag(ReportsTags.SAVE),
         ) {
           Text(stringResource(R.string.reports_save_statement))
@@ -307,7 +307,12 @@ private fun Metric(tag: String, title: String, value: String, detail: String) {
 }
 
 @Composable
-private fun PersonRow(person: ReportPerson, onOpen: (String) -> Unit, onShare: (String) -> Unit) {
+private fun PersonRow(
+    person: ReportPerson,
+    enabled: Boolean,
+    onOpen: (String) -> Unit,
+    onShare: (String) -> Unit,
+) {
   Card(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -326,12 +331,14 @@ private fun PersonRow(person: ReportPerson, onOpen: (String) -> Unit, onShare: (
       Row(verticalAlignment = Alignment.CenterVertically) {
         TextButton(
             onClick = { onOpen(person.contactId) },
+            enabled = enabled,
             modifier = Modifier.testTag(ReportsTags.personOpen(person.contactId)),
         ) {
           Text(stringResource(R.string.reports_open_statement))
         }
         TextButton(
             onClick = { onShare(person.contactId) },
+            enabled = enabled,
             modifier = Modifier.testTag(ReportsTags.personShare(person.contactId)),
         ) {
           Text(stringResource(R.string.reports_share_statement))
