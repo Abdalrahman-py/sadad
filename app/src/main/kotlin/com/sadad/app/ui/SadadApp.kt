@@ -127,8 +127,9 @@ fun SadadApp(
   }
 }
 
+/** The four tabs; `internal` so the shell test can render them without the real screens. */
 @Composable
-private fun SadadBottomBar(navController: NavHostController) {
+internal fun SadadBottomBar(navController: NavHostController) {
   val currentDestination = navController.currentBackStackEntryAsState().value?.destination
   val navigate: (Any) -> Unit = { destination ->
     navController.navigate(destination) {
