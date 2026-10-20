@@ -133,6 +133,36 @@ class Sessions(
     return host.unsentCount(storeUserId)
   }
 
+  /**
+   * A revoked phone takes a fresh identity (new installation id and Keystore alias); the database
+   * and its queued rows stay, and ticket 47's next pass enrolls the new key for approval.
+   */
+  suspend fun registerAgain(scope: StoreScope): Unit = mutex.withLock {
+    val account = accounts.account(scope.account.storeUserId) ?: return@withLock
+    if (account.installation?.status != "revoked") return@withLock
+    val installationId = UUID.randomUUID().toString()
+    val keyAlias = nextAlias(account)
+    installations.create(keyAlias, installationId)
+    val fresh =
+        account.copy(
+            installationId = installationId,
+            keyAlias = keyAlias,
+            installation = null,
+        )
+    accounts.update(account.storeUserId) { fresh }
+    host.close()
+    host.open(fresh)
+    // Only once the new identity opens is the old key disposable.
+    installations.delete(account.keyAlias)
+  }
+
+  /** `installation-<storeUserId>` then `-1`, `-2`, … so the old alias is never reused. */
+  private fun nextAlias(account: Account): String {
+    val prefix = "installation-${account.storeUserId}"
+    val previous = account.keyAlias.removePrefix("$prefix-").toIntOrNull() ?: 0
+    return "$prefix-${previous + 1}"
+  }
+
   /** Drops the in-memory token for a store the graph is removing. */
   internal fun leave(storeUserId: String) {
     syncAccess.remove(storeUserId)

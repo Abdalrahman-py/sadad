@@ -1,4 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_recovery">الاستعادة</string>
+    <string name="recovery_explanation">احفظ نسخة استرداد مشفرة تحمل إدخالاتك غير المرسلة قبل تغيير الهاتف أو بعد إلغاء اعتماد الجهاز.</string>
+    <string name="recovery_save_copy">حفظ نسخة استرداد مشفرة</string>
+    <string name="recovery_import_copy">استيراد نسخة استرداد</string>
+    <string name="recovery_export_manifest">تصدير قائمة اعتماد الإدارة</string>
+    <string name="recovery_enter_permit">إدخال تصريح الاسترداد</string>
+    <string name="recovery_export_title">حفظ نسخة استرداد مشفرة</string>
+    <string name="recovery_export_message">احتفظ بالملف وعبارة المرور خارج الهاتف. لا يحتوي الملف رموز الدخول أو مفاتيح الجهاز.</string>
+    <string name="recovery_import_title">استيراد نسخة استرداد</string>
+    <string name="recovery_import_message">أدخل عبارة مرور الملف. تُستورد الإدخالات بأرقامها الأصلية للحساب نفسه، وتحتاج مراجعة الإدارة قبل استرداد أصل سابق.</string>
+    <string name="recovery_passphrase_hint">عبارة مرور من ١٢ حرفًا على الأقل</string>
+    <string name="recovery_passphrase_short">أدخل عبارة المرور كاملة؛ ١٢ حرفًا على الأقل.</string>
+    <string name="recovery_manifest_title">قائمة اعتماد الإدارة</string>
+    <string name="recovery_manifest_message">اختر هوية الهاتف التي أضافت الإدخالات. هذا الملف يحتوي تفاصيل مالية واضحة؛ سلّمه للإدارة عبر قناة موثوقة.</string>
+    <string name="recovery_no_origins">لا توجد إدخالات مالية معلقة تحتاج قائمة اعتماد.</string>
+    <string name="recovery_permit_title">تصريح استرداد الإدخالات</string>
+    <string name="recovery_permit_hint">رقم التصريح من لوحة الإدارة</string>
+    <string name="recovery_permit_invalid">رقم التصريح غير صالح.</string>
+    <string name="recovery_permit_stored">حُفظ التصريح؛ ستُرسل إدخالات الهوية السابقة في مزامنة منفصلة.</string>
+    <string name="recovery_saved">تم حفظ الملف.</string>
+    <string name="recovery_save_failed">تعذر حفظ الملف.</string>
+    <string name="recovery_read_failed">تعذر قراءة الملف.</string>
+    <string name="recovery_imported">حُفظت الإدخالات المستوردة. زامن ثم صدّر قائمة الاعتماد للإدارة عند الحاجة.</string>
+    <string name="recovery_import_none">لا توجد إدخالات جديدة في الملف.</string>
+    <string name="recovery_registered">تم حفظ هوية جديدة لهذا المتجر. اعتمد طلب الهاتف الجديد من اللوحة.</string>
+    <string name="recovery_register_failed">تعذر تسجيل الهاتف كجهاز جديد. حاول مرة أخرى.</string>
+    <string name="recovery_register_confirm">تسجيل جديد</string>
+    <string name="recovery_failed">تعذر إكمال العملية. حاول مرة أخرى.</string>
+    <string name="recovery_cancel">إلغاء</string>
+    <string name="recovery_save">حفظ</string>
+    <string name="recovery_import">استيراد</string>
+    <string name="recovery_register_again">تسجيل الهاتف كجهاز جديد</string>
+    <string name="recovery_register_again_explanation">بعد إلغاء اعتماده فقط: تبقى السجلات والإدخالات المعلقة محفوظة، وتحتاج الهوية الجديدة اعتماد الإدارة. استرداد إدخالات الهوية السابقة يحتاج قائمة اعتماد وتصريحًا من اللوحة. احفظ نسخة استرداد أولًا.</string>
 </resources>

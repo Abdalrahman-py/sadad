@@ -153,32 +153,41 @@ class SyncEngine(
     }
 
     private suspend fun push() {
+      // A normal batch never mixes origins or a permit: the server refuses a batch whose origin is
+      // not the caller's, or whose commands are not exactly the permit's manifest.
       while (true) {
-        val eligible =
-            scope.database
-                .outboxDao()
-                .all()
-                .filter { it.state == "queued" && it.recoveryPermit == null }
-                .mapTo(HashSet()) { it.operationId }
-        val queued =
+        val rows =
             scope.outbox
                 .snapshot()
-                .filter { it.state == OutboxState.QUEUED && it.operationId in eligible }
+                .filter {
+                  it.state == OutboxState.QUEUED &&
+                      it.recoveryPermit == null &&
+                      it.command.originInstallationId == scope.account.installationId
+                }
                 .take(OperationsRequest.MAX_BATCH)
-                .map { it.command }
-        if (queued.isEmpty()) return
-        val batch = batchWithinLimit(queued)
-        if (batch.isEmpty()) throw Stopped(SyncStatus.Failed("invalid_input"))
-        val receipts = call { api.operations(it, scope.signer, batch) }
-        // Never settle an unrelated row or loop forever on a partial/malformed answer.
-        if (
-            receipts.map { it.operationId }.toSet() != batch.map { it.operationId }.toSet() ||
-                receipts.size != batch.size
-        ) {
-          throw Stopped(SyncStatus.Failed("temporary_service_failure"))
-        }
-        scope.outbox.settle(receipts)
+        if (rows.isEmpty()) break
+        send(rows.map { it.command }, null)
       }
+      while (true) {
+        val rows = scope.outbox.snapshot().filter { it.state == OutboxState.QUEUED }
+        val permit = rows.firstNotNullOfOrNull { it.recoveryPermit } ?: break
+        val batch = rows.filter { it.recoveryPermit == permit }.take(OperationsRequest.MAX_BATCH)
+        send(batch.map { it.command }, permit)
+      }
+    }
+
+    private suspend fun send(commands: List<LedgerCommand>, recoveryPermit: String?) {
+      val batch = batchWithinLimit(commands)
+      if (batch.isEmpty()) throw Stopped(SyncStatus.Failed("invalid_input"))
+      val receipts = call { api.operations(it, scope.signer, batch, recoveryPermit) }
+      // Never settle an unrelated row or loop forever on a partial/malformed answer.
+      if (
+          receipts.map { it.operationId }.toSet() != batch.map { it.operationId }.toSet() ||
+              receipts.size != batch.size
+      ) {
+        throw Stopped(SyncStatus.Failed("temporary_service_failure"))
+      }
+      scope.outbox.settle(receipts)
     }
 
     private suspend fun pull() {

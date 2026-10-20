@@ -81,6 +81,11 @@ interface OutboxDao {
   suspend fun queued(limit: Int): List<OutboxEntity>
 
   @Query(
+      "UPDATE outbox SET recoveryPermit = :permit WHERE state = 'queued' AND operationId IN (:operationIds)"
+  )
+  suspend fun setRecoveryPermit(operationIds: List<String>, permit: String)
+
+  @Query(
       "UPDATE outbox SET state = :state, code = :code WHERE operationId = :operationId AND state = 'queued'"
   )
   suspend fun markAnswered(operationId: String, state: String, code: String?)
