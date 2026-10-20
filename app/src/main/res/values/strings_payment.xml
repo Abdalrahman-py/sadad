@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_payment">تسجيل دفعة</string>
+    <string name="payment_subtitle">دفعة من إجمالي حساب %1$s</string>
+    <string name="payment_balance">الرصيد الإجمالي الحالي: %1$s\nتُخصم الدفعة من إجمالي الحساب وتوزّع على الديون الأقدم أولاً.</string>
+    <string name="payment_amount_label">مبلغ الدفعة بالشيكل</string>
+    <string name="payment_amount_placeholder">0.00</string>
+    <string name="payment_amount_invalid">تحقق من المبلغ</string>
+    <string name="payment_over_balance">المبلغ أكبر من الرصيد المفتوح</string>
+    <string name="payment_method_label">طريقة الدفع</string>
+    <string name="payment_method_cash">نقدي</string>
+    <string name="payment_method_bank">بنكي</string>
+    <string name="payment_method_wallet">محفظة</string>
+    <string name="payment_method_jawwal">محفظة جوال</string>
+    <string name="payment_method_palpay">محفظة بال بي</string>
+    <string name="payment_note_label">ملاحظة الدفعة</string>
+    <string name="payment_note_placeholder">ملاحظة عن هذه الدفعة (اختياري)</string>
+    <string name="payment_save">مراجعة وحفظ الدفعة</string>
+    <string name="payment_review_title">مراجعة تسجيل الدفعة</string>
+    <string name="payment_review_person">الشخص: %1$s</string>
+    <string name="payment_review_amount">المبلغ: %1$s</string>
+    <string name="payment_review_method">طريقة الدفع: %1$s</string>
+    <string name="payment_review_note">الملاحظة: %1$s</string>
+    <string name="payment_review_part">دين بتاريخ %1$s: %2$s</string>
+    <string name="payment_review_footer">تحقق من المبلغ والاسم قبل تسجيل الدفعة.</string>
+    <string name="payment_review_confirm">تأكيد تسجيل الدفعة</string>
+    <string name="payment_review_dismiss">مراجعة البيانات</string>
+    <string name="payment_no_open_balance">لا يوجد رصيد مفتوح</string>
+    <string name="payment_no_open_balance_detail">سجّل ديناً لهذا الشخص قبل تسجيل الدفعة.</string>
+    <string name="payment_no_contact">الشخص غير موجود</string>
+    <string name="payment_no_contact_detail">قد يكون قد حُذف من السجلات</string>
+    <string name="payment_restricted">تسجيل الدفعات مقيّد</string>
+    <string name="payment_restricted_detail">اطلب من صاحب المتجر أو الأدمن تفعيل هذه الصلاحية لهذا الجهاز.</string>
+    <string name="payment_success_title">تم تسجيل الدفعة</string>
+    <string name="payment_success">تم حفظ الدفعة وخصم %1$s من حساب %2$s.</string>
+    <string name="payment_close">إغلاق</string>
+    <string name="payment_offline">لا يمكن الحفظ بلا اتصال الآن؛ اتصل بالإنترنت لتجديد التصريح.</string>
+    <string name="payment_failed">تعذر تسجيل الدفعة. حاول مرة أخرى.</string>
 </resources>
