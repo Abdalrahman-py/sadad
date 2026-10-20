@@ -16,8 +16,6 @@ import com.sadad.ledger.Direction
 import java.util.UUID
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -144,7 +142,7 @@ class ContactDetailViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)
       fixture.seedCommands(listOf(person))
-      val model = ContactDetailViewModel(fixture.graph, person.entityId, context)
+      val model = ContactDetailViewModel(fixture.graph, person.entityId, context, undoWindowMs = 50)
       model.state.first { it.loaded }
       model.requestDelete()
       model.state.first { it.confirmDelete }
@@ -154,8 +152,7 @@ class ContactDetailViewModelTest {
       // The user leaves the Contact: the screen and the ViewModel scope are gone, and the undo
       // window must still end in the archive the confirm dialog promised.
       model.viewModelScope.cancel()
-      advanceTimeBy(5_001)
-      advanceUntilIdle()
+      Thread.sleep(500)
 
       val rows = outboxRows(fixture)
       assertEquals(1, rows.size)
