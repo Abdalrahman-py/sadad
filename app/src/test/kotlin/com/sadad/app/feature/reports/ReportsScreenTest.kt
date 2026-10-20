@@ -2,13 +2,15 @@ package com.sadad.app.feature.reports
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.SavedStateHandle
@@ -47,21 +49,14 @@ class ReportsScreenTest {
   @Test
   fun theFourTotalsRenderForTheWholeHistory() {
     show {
-      compose.onNodeWithTag(ReportsTags.TOTAL_CONTACTS).assertTextContains("3", substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
+      shown(ReportsTags.TOTAL_CONTACTS).assertTextContains("3", substring = true)
+      shown(ReportsTags.TOTAL_DEBTS)
           .assertTextContains(formatCents(Cents(22_000)), substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
-          .assertTextContains("3 عملية دين", substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_PAYMENTS)
+      shown(ReportsTags.TOTAL_DEBTS).assertTextContains("3 عملية دين", substring = true)
+      shown(ReportsTags.TOTAL_PAYMENTS)
           .assertTextContains(formatCents(Cents(3_000)), substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_PAYMENTS)
-          .assertTextContains("1 حركة سداد", substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.OPEN_BALANCE)
+      shown(ReportsTags.TOTAL_PAYMENTS).assertTextContains("1 حركة سداد", substring = true)
+      shown(ReportsTags.OPEN_BALANCE)
           .assertTextContains(formatCents(Cents(19_000)), substring = true)
     }
   }
@@ -72,19 +67,14 @@ class ReportsScreenTest {
       compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).performClick()
       compose.waitForIdle()
 
-      compose.onNodeWithTag(ReportsTags.TOTAL_CONTACTS).assertTextContains("2", substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
+      shown(ReportsTags.TOTAL_CONTACTS).assertTextContains("2", substring = true)
+      shown(ReportsTags.TOTAL_DEBTS)
           .assertTextContains(formatCents(Cents(15_000)), substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
-          .assertTextContains("2 عملية دين", substring = true)
-      compose
-          .onNodeWithTag(ReportsTags.TOTAL_PAYMENTS)
+      shown(ReportsTags.TOTAL_DEBTS).assertTextContains("2 عملية دين", substring = true)
+      shown(ReportsTags.TOTAL_PAYMENTS)
           .assertTextContains(formatCents(Cents(3_000)), substring = true)
       // The open balance is the whole store's, whatever the period.
-      compose
-          .onNodeWithTag(ReportsTags.OPEN_BALANCE)
+      shown(ReportsTags.OPEN_BALANCE)
           .assertTextContains(formatCents(Cents(19_000)), substring = true)
     }
   }
@@ -92,10 +82,10 @@ class ReportsScreenTest {
   @Test
   fun searchingNarrowsTheContactStatements() {
     show {
-      compose.onNodeWithTag(ReportsTags.SEARCH).performScrollTo().performTextInput("ليلى")
+      shown(ReportsTags.SEARCH).performTextInput("ليلى")
       compose.waitForIdle()
 
-      compose.onNodeWithTag(ReportsTags.personOpen(laila)).performScrollTo().assertIsDisplayed()
+      shown(ReportsTags.personOpen(laila)).assertIsDisplayed()
       compose.onNodeWithTag(ReportsTags.personOpen(sami)).assertDoesNotExist()
     }
   }
@@ -103,20 +93,26 @@ class ReportsScreenTest {
   @Test
   fun eachContactRowOffersTheOpenAndShareActions() {
     show {
-      compose.onNodeWithTag(ReportsTags.personOpen(sami)).performScrollTo().assertIsDisplayed()
-      compose.onNodeWithTag(ReportsTags.personShare(sami)).performScrollTo().assertIsDisplayed()
+      shown(ReportsTags.personOpen(sami)).assertIsDisplayed()
+      shown(ReportsTags.personShare(sami)).assertIsDisplayed()
     }
   }
 
   @Test
   fun theSaveButtonOffersPdfAndExcel() {
     show {
-      compose.onNodeWithTag(ReportsTags.SAVE).performScrollTo().performClick()
+      shown(ReportsTags.SAVE).performClick()
       compose.waitForIdle()
 
       compose.onNodeWithText("PDF").assertIsDisplayed()
       compose.onNodeWithText("Excel").assertIsDisplayed()
     }
+  }
+
+  /** The list composes only the rows on screen, so scroll the node into view before using it. */
+  private fun shown(tag: String): SemanticsNodeInteraction {
+    compose.onNodeWithTag(ReportsTags.LIST).performScrollToNode(hasTestTag(tag))
+    return compose.onNodeWithTag(tag)
   }
 
   private val sami = "00000000-0000-4000-8000-000000000001"

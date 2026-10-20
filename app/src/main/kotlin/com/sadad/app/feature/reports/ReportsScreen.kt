@@ -57,6 +57,7 @@ object ReportsTags {
   const val OPEN_BALANCE = "reports:open-balance"
   const val SEARCH = "reports:search"
   const val SAVE = "reports:save"
+  const val LIST = "reports:list"
 
   fun personOpen(contactId: String) = "reports:open:$contactId"
 
@@ -123,7 +124,7 @@ fun ReportsContent(
   var choosingFormat by rememberSaveable { mutableStateOf(false) }
   val context = LocalContext.current
   LazyColumn(
-      modifier = modifier.fillMaxSize(),
+      modifier = modifier.fillMaxSize().testTag(ReportsTags.LIST),
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     item {
