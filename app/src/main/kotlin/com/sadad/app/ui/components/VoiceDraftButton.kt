@@ -20,7 +20,11 @@ import com.sadad.app.R
  * device has no recognizer, like the Java app.
  */
 @Composable
-fun VoiceDraftButton(onText: (String) -> Unit, modifier: Modifier = Modifier) {
+fun VoiceDraftButton(
+    onText: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    onLaunch: () -> Unit = {},
+) {
   val context = LocalContext.current
   val prompt = stringResource(R.string.voice_prompt)
   val launcher =
@@ -45,7 +49,13 @@ fun VoiceDraftButton(onText: (String) -> Unit, modifier: Modifier = Modifier) {
       }
   val available = remember(intent) { intent.resolveActivity(context.packageManager) != null }
   if (!available) return
-  IconButton(onClick = { launcher.launch(intent) }, modifier = modifier) {
+  IconButton(
+      onClick = {
+        onLaunch()
+        launcher.launch(intent)
+      },
+      modifier = modifier,
+  ) {
     Icon(
         painter = painterResource(R.drawable.ic_mic),
         contentDescription = stringResource(R.string.voice_draft),
