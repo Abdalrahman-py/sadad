@@ -230,15 +230,16 @@ class ReportsViewModel(
    * opens the document picker, which would create an empty document the export could not fill.
    */
   fun canExport(context: Context): Boolean {
+    if (state.value.busy) return false
     val view = graph.current.value?.repository?.view?.value
-    if (view == null || state.value.busy) return false
-    if (view.contacts.isEmpty()) {
-      mutable.update {
-        it.copy(error = context.getString(R.string.reports_nothing_to_export), saved = false)
-      }
-      return false
-    }
-    return true
+    val message =
+        when {
+          view == null -> R.string.reports_export_failed
+          view.contacts.isEmpty() -> R.string.reports_nothing_to_export
+          else -> return true
+        }
+    mutable.update { it.copy(error = context.getString(message), saved = false) }
+    return false
   }
 
   /** Writes the whole statement for the chosen period to [uri], in the format the user picked. */

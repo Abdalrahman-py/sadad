@@ -272,6 +272,23 @@ class ReportsViewModelTest {
   }
 
   @Test
+  fun exportingBeforeTheLedgerHasLoadedShowsTheFailureMessage() = runTest {
+    TestGraph.unsigned().use { fixture ->
+      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      fixture.closeWithStore(model.viewModelScope)
+
+      assertFalse(model.canExport(fixture.context))
+
+      val state = model.state.first { it.error != null }
+      assertEquals(
+          fixture.context.getString(com.sadad.app.R.string.reports_export_failed),
+          state.error,
+      )
+      assertFalse(state.loaded)
+    }
+  }
+
+  @Test
   fun changingThePeriodClearsTheLastExportMessage() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
