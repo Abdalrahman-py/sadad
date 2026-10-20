@@ -1,6 +1,5 @@
 package com.sadad.app.feature.reports
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
@@ -83,7 +82,8 @@ class ReportsViewModelTest {
         model.select(period)
         val state = model.state.first { it.loaded && it.period == period }
         val bounds = period.bounds(zone)
-        val statements = Statement.build(fixture.view(), null, bounds.from, bounds.to?.minusNanos(1))
+        val statements =
+            Statement.build(fixture.view(), null, bounds.from, bounds.to?.minusNanos(1))
 
         assertEquals(
             "debts in $period",
@@ -117,7 +117,8 @@ class ReportsViewModelTest {
       model.select(Period.Month(OCTOBER))
       val october = model.state.first { it.loaded && it.period == Period.Month(OCTOBER) }
       model.select(Period.Month(YearMonth.of(2026, 11)))
-      val november = model.state.first { it.loaded && it.period == Period.Month(YearMonth.of(2026, 11)) }
+      val november =
+          model.state.first { it.loaded && it.period == Period.Month(YearMonth.of(2026, 11)) }
 
       assertEquals(Cents.ZERO, october.totals.debtTotal)
       assertEquals(Cents(4_000), november.totals.debtTotal)
@@ -229,7 +230,10 @@ class ReportsViewModelTest {
       )
 
       val state = model.state.first { it.error != null }
-      assertEquals(fixture.context.getString(com.sadad.app.R.string.reports_export_failed), state.error)
+      assertEquals(
+          fixture.context.getString(com.sadad.app.R.string.reports_export_failed),
+          state.error,
+      )
       assertFalse(state.saved)
     }
   }
@@ -240,7 +244,11 @@ class ReportsViewModelTest {
       fixture.seedOctober()
       val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
-      val sami = model.state.first { it.loaded && it.people.isNotEmpty() }.people.first { it.name == "سامي" }
+      val sami =
+          model.state
+              .first { it.loaded && it.people.isNotEmpty() }
+              .people
+              .first { it.name == "سامي" }
 
       model.openStatement(fixture.context, sami.contactId)
 
@@ -254,7 +262,9 @@ class ReportsViewModelTest {
   private fun awaitStartedActivity(): Intent {
     val application = shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
     repeat(200) {
-      application.nextStartedActivity?.let { return it }
+      application.nextStartedActivity?.let {
+        return it
+      }
       Thread.sleep(25)
     }
     error("no activity was started")
@@ -293,7 +303,11 @@ class ReportsViewModelTest {
     return command.entityId
   }
 
-  private suspend fun TestGraph.confirmedDebt(contactId: String, amount: Long, at: Instant): String {
+  private suspend fun TestGraph.confirmedDebt(
+      contactId: String,
+      amount: Long,
+      at: Instant,
+  ): String {
     val command =
         Commands.debtCreate(
             Events.origin,
@@ -307,7 +321,11 @@ class ReportsViewModelTest {
     return command.entityId
   }
 
-  private suspend fun TestGraph.confirmedPayment(debtId: String, amount: Long, at: Instant): String {
+  private suspend fun TestGraph.confirmedPayment(
+      debtId: String,
+      amount: Long,
+      at: Instant,
+  ): String {
     val command =
         Commands.paymentCreate(
             Events.origin,

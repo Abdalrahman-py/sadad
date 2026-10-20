@@ -51,7 +51,9 @@ class ReportsScreenTest {
       compose
           .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
           .assertTextContains(formatCents(Cents(22_000)), substring = true)
-      compose.onNodeWithTag(ReportsTags.TOTAL_DEBTS).assertTextContains("3 عملية دين", substring = true)
+      compose
+          .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
+          .assertTextContains("3 عملية دين", substring = true)
       compose
           .onNodeWithTag(ReportsTags.TOTAL_PAYMENTS)
           .assertTextContains(formatCents(Cents(3_000)), substring = true)
@@ -74,7 +76,9 @@ class ReportsScreenTest {
       compose
           .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
           .assertTextContains(formatCents(Cents(15_000)), substring = true)
-      compose.onNodeWithTag(ReportsTags.TOTAL_DEBTS).assertTextContains("2 عملية دين", substring = true)
+      compose
+          .onNodeWithTag(ReportsTags.TOTAL_DEBTS)
+          .assertTextContains("2 عملية دين", substring = true)
       compose
           .onNodeWithTag(ReportsTags.TOTAL_PAYMENTS)
           .assertTextContains(formatCents(Cents(3_000)), substring = true)
