@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -69,6 +70,56 @@ class AppLockTest {
       assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains("483927"))
       lock.clearPin()
       assertFalse(lock.hasPin())
+    } finally {
+      scope.cancel()
+    }
+  }
+
+  @Test
+  fun theLockDefaultsToOnAndSwitchingItOffSwitchesBiometricOffToo() = runBlocking {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    try {
+      val lock = AppLock(File(temporary.root, "flags.preferences_pb"), scope, { 0L }, { 1 })
+      assertTrue(lock.lockEnabled.first())
+      assertFalse(lock.biometricEnabled.first())
+      lock.setBiometricEnabled(true)
+      assertTrue(lock.biometricEnabled.first())
+      lock.setLockEnabled(false)
+      assertFalse(lock.lockEnabled.first())
+      assertFalse(lock.biometricEnabled.first())
+      lock.setPin("1234")
+      assertTrue(lock.lockEnabled.first())
+    } finally {
+      scope.cancel()
+    }
+  }
+
+  @Test
+  fun lockedAtStartAndAfterMoreThan1200MsAwayAndSkipNextLockSuppressesOne() {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    try {
+      var now = 5_000L
+      val lock = AppLock(File(temporary.root, "away.preferences_pb"), scope, { now }, { 1 })
+      assertTrue(lock.locked.value)
+      lock.markUnlocked()
+      lock.appStopped()
+      now += 1_200
+      lock.appStarted()
+      assertFalse(lock.locked.value)
+      lock.appStopped()
+      now += 1_201
+      lock.appStarted()
+      assertTrue(lock.locked.value)
+      lock.markUnlocked()
+      lock.skipNextLock()
+      lock.appStopped()
+      now += 60_000
+      lock.appStarted()
+      assertFalse(lock.locked.value)
+      lock.appStopped()
+      now += 2_000
+      lock.appStarted()
+      assertTrue(lock.locked.value)
     } finally {
       scope.cancel()
     }
