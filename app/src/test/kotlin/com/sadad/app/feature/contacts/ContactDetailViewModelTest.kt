@@ -1,6 +1,7 @@
 package com.sadad.app.feature.contacts
 
 import android.content.Context
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxState
@@ -38,7 +39,10 @@ class ContactDetailViewModelTest {
       val payable = debt(person.entityId, amount = 3_000, direction = Direction.PAYABLE, minute = 4)
       fixture.seedCommands(listOf(person, first, second, paid, payable))
 
-      val model = ContactDetailViewModel(fixture.graph, person.entityId)
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       val state = model.state.first { it.loaded && it.movements.size == 4 }
 
       assertEquals(Cents(11_500), state.balance)
@@ -68,7 +72,10 @@ class ContactDetailViewModelTest {
             view != null && view.payments.any { it.reversed }
           }
 
-      val model = ContactDetailViewModel(fixture.graph, person.entityId)
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       val state = model.state.first { it.loaded }
 
       assertEquals(Cents(10_000), state.balance)
@@ -82,7 +89,10 @@ class ContactDetailViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)
       fixture.seedCommands(listOf(person, debt(person.entityId, amount = 10_000, minute = 1)))
-      val model = ContactDetailViewModel(fixture.graph, person.entityId)
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded && it.balance == Cents(10_000) }
 
       model.requestDelete()
@@ -98,7 +108,10 @@ class ContactDetailViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)
       fixture.seedCommands(listOf(person))
-      val model = ContactDetailViewModel(fixture.graph, person.entityId)
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded }
 
       model.requestDelete()
@@ -124,7 +137,10 @@ class ContactDetailViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)
       fixture.seedCommands(listOf(person))
-      val model = ContactDetailViewModel(fixture.graph, person.entityId)
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded }
 
       model.requestDelete()

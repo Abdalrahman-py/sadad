@@ -1,6 +1,7 @@
 package com.sadad.app.feature.contacts
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
@@ -32,7 +33,10 @@ class ContactsViewModelTest {
       fixture.seedCommands(
           names.mapIndexed { index, name -> contact(name, contactId(index), minute = index) }
       )
-      val model = ContactsViewModel(fixture.graph, SavedStateHandle())
+      val model =
+          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded && it.registered == 5000 }
 
       model.onQueryChange("سا")
@@ -50,7 +54,10 @@ class ContactsViewModelTest {
       fixture.seedCommands(
           listOf(phone) + (1 until 5000).map { contact("شخص $it", contactId(it), minute = it) }
       )
-      val model = ContactsViewModel(fixture.graph, SavedStateHandle())
+      val model =
+          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded && it.registered == 5000 }
 
       model.onQueryChange("٠٥٩٩")
@@ -58,6 +65,28 @@ class ContactsViewModelTest {
       val state = model.state.first { it.query == "٠٥٩٩" && it.loaded }
       assertEquals("سامي", state.rows.single().name)
       assertEquals("+970599123456", state.rows.single().phone)
+    }
+  }
+
+  @Test
+  fun canonicalAndFormattedPhoneQueriesMatchWithoutTurningNamesIntoPhoneQueries() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سامي", contactId(0), phone = "+970599123456")
+      fixture.seedCommands(listOf(person, contact("خالد", contactId(1))))
+      val model =
+          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      model.state.first { it.loaded && it.registered == 2 }
+      for (query in listOf("+970599123456", "+٩٧٠ (٥٩٩) ١٢٣-٤٥٦", "شخص 599", "+")) {
+        model.onQueryChange(query)
+        val state = model.state.first { it.loaded && it.query == query }
+        assertEquals(
+            if (query.startsWith("+970") || query.startsWith("+٩٧٠")) listOf(person.entityId)
+            else emptyList<String>(),
+            state.rows.map { it.id },
+        )
+      }
     }
   }
 
@@ -76,7 +105,10 @@ class ContactsViewModelTest {
               settled,
           )
       )
-      val model = ContactsViewModel(fixture.graph, SavedStateHandle())
+      val model =
+          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded && it.rows.size == 3 }
 
       model.onSortChange(ContactSort.HIGHEST_DEBT)
@@ -95,7 +127,10 @@ class ContactsViewModelTest {
       val second = contact("الثاني", contactId(2), minute = 1)
       val third = contact("الثالث", contactId(3), minute = 2)
       fixture.seedCommands(listOf(first, second, third))
-      val model = ContactsViewModel(fixture.graph, SavedStateHandle())
+      val model =
+          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       model.state.first { it.loaded && it.rows.size == 3 }
 
       model.onSortChange(ContactSort.NEWEST)
@@ -122,7 +157,8 @@ class ContactsViewModelTest {
           )
       )
       val saved = SavedStateHandle()
-      val first = ContactsViewModel(fixture.graph, saved)
+      val first =
+          ContactsViewModel(fixture.graph, saved).also { fixture.closeWithStore(it.viewModelScope) }
       first.state.first { it.loaded && it.rows.size == 3 }
       first.onQueryChange("س")
       first.onSortChange(ContactSort.HIGHEST_DEBT)
@@ -130,7 +166,8 @@ class ContactsViewModelTest {
         it.query == "س" && it.sort == ContactSort.HIGHEST_DEBT && it.rows.size == 2
       }
 
-      val second = ContactsViewModel(fixture.graph, saved)
+      val second =
+          ContactsViewModel(fixture.graph, saved).also { fixture.closeWithStore(it.viewModelScope) }
 
       val state = second.state.first { it.loaded && it.rows.size == 2 }
       assertEquals("س", state.query)
