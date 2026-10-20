@@ -1,4 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_history">سجل الحركات</string>
+
+    <!-- Tabs -->
+    <string name="history_tab_people">سجل الأشخاص</string>
+    <string name="history_tab_activity">سجل عمليات الدفتر</string>
+
+    <!-- Period filter -->
+    <string name="history_filter_label">فلتر السجل: %1$s</string>
+    <string name="history_period_day">اليوم</string>
+    <string name="history_period_month">هذا الشهر</string>
+    <string name="history_period_year">هذه السنة</string>
+    <string name="history_period_all">كل المدة</string>
+    <string name="history_period_custom">فترة مخصصة</string>
+    <string name="history_period_custom_range">من %1$s إلى %2$s</string>
+    <string name="history_custom_title">مدة السجل</string>
+    <string name="history_custom_confirm">تم</string>
+    <string name="history_custom_invalid">تاريخ النهاية يجب أن يقع بعد تاريخ البداية.</string>
+
+    <!-- People tab -->
+    <string name="history_people_heading">%1$d شخصاً لديهم حركات ضمن %2$s</string>
+    <string name="history_open_reports">فتح التقارير والكشوفات</string>
+    <string name="history_empty_title">السجل فارغ</string>
+    <string name="history_empty_detail">ستظهر الديون والدفعات هنا بعد تسجيلها.</string>
+    <string name="history_person_remaining">المتبقي: %1$s</string>
+    <string name="history_person_last_debt">آخر دين</string>
+    <string name="history_person_no_debt">لا يوجد</string>
+    <string name="history_person_open">فتح سجل %1$s</string>
+
+    <!-- Export -->
+    <string name="history_export_heading">التصدير</string>
+    <string name="history_export_detail">اختر الصيغة عند الحفظ.</string>
+    <string name="history_save_statement">حفظ كشف السجلات</string>
+    <string name="history_format_title">صيغة الكشف</string>
+    <string name="history_format_pdf">PDF</string>
+    <string name="history_format_xlsx">Excel</string>
+    <string name="history_statement_name">كشف السجلات</string>
+    <string name="history_cancel">إلغاء</string>
+    <string name="history_saved">تم حفظ الكشف.</string>
+    <string name="history_export_failed">تعذر حفظ الكشف. حاول مرة أخرى.</string>
+    <string name="history_default_store">متجري</string>
+
+    <!-- Activity tab -->
+    <string name="history_activity_empty_title">لا توجد عمليات دفتر مسجلة بعد</string>
+    <string name="history_activity_empty_detail">لا يشمل هذا السجل الدخول أو إجراءات الإدارة.</string>
+    <string name="history_actor_device">جهاز %1$s</string>
+    <string name="history_actor_unknown">هذا الجهاز</string>
+    <string name="history_refused">مرفوضة: %1$s</string>
+    <string name="history_unaccepted_title">لم تُقبل على هذا الجهاز</string>
+    <string name="history_unaccepted_rejected">مرفوضة: %1$s</string>
+    <string name="history_unaccepted_cancelled">ملغاة</string>
+    <string name="history_unaccepted_blocked">لا يمكن التجاهل قبل %1$s</string>
+    <string name="history_dismiss">تجاهل</string>
+
+    <!-- Action names, as the Java ledger log printed them -->
+    <string name="history_action_contact_create">إضافة شخص</string>
+    <string name="history_action_contact_update">تعديل شخص</string>
+    <string name="history_action_contact_archive">أرشفة شخص</string>
+    <string name="history_action_contact_restore">استعادة شخص</string>
+    <string name="history_action_debt_create">تسجيل دين</string>
+    <string name="history_action_debt_correct">تصحيح دين</string>
+    <string name="history_action_payment_create">تسجيل دفعة</string>
+    <string name="history_action_payment_reverse">عكس دفعة</string>
+    <string name="history_action_other">عملية دفتر</string>
 </resources>

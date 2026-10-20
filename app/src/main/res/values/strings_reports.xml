@@ -1,4 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_reports">التقارير</string>
+    <string name="reports_heading">التقارير والكشوفات</string>
+    <string name="reports_subtitle">اختر المدة لعرض السجل والكشوفات</string>
+    <string name="reports_period">الفترة المحددة: %1$s</string>
+
+    <!-- Totals -->
+    <string name="reports_contacts_title">الأشخاص ذوو الحركة</string>
+    <string name="reports_contacts_detail">ضمن الفترة المحددة</string>
+    <string name="reports_debts_title">الديون المسجلة بالفترة</string>
+    <string name="reports_debts_count">%1$s عملية دين</string>
+    <string name="reports_payments_title">الدفعات المسجلة بالفترة</string>
+    <string name="reports_payments_count">%1$s حركة سداد</string>
+    <string name="reports_open_balance">الرصيد المفتوح الآن لكل المتجر: %1$s</string>
+
+    <!-- Contact statements -->
+    <string name="reports_people_heading">كشوفات الأشخاص</string>
+    <string name="reports_people_detail">ابحث بالاسم أو رقم الهاتف وافتح كشف الشخص بصيغة PDF.</string>
+    <string name="reports_search">ابحث بالاسم أو رقم الهاتف</string>
+    <string name="reports_person_balance">المتبقي: %1$s</string>
+    <string name="reports_open_statement">فتح كشف PDF</string>
+    <string name="reports_share_statement">مشاركة</string>
+    <string name="reports_empty_title">لا توجد أشخاص بعد</string>
+    <string name="reports_empty_detail">أضف شخصاً لتظهر كشوفاته هنا.</string>
+    <string name="reports_period_empty_title">لا توجد حركات في هذه الفترة</string>
+    <string name="reports_period_empty_detail">اختر مدة أخرى لعرض الحركات.</string>
+    <string name="reports_no_results_title">لا توجد نتائج</string>
+    <string name="reports_no_results_detail">ابحث بجزء من الاسم أو رقم الهاتف.</string>
+
+    <!-- Export -->
+    <string name="reports_export_heading">التصدير</string>
+    <string name="reports_export_detail">اختر PDF أو Excel بعد الضغط على الحفظ.</string>
+    <string name="reports_save_statement">حفظ كشف السجلات</string>
+    <string name="reports_format_title">اختر صيغة التصدير</string>
+    <string name="reports_format_pdf">PDF</string>
+    <string name="reports_format_xlsx">Excel</string>
+    <string name="reports_cancel">إلغاء</string>
+    <string name="reports_statement_name">كشف-سدد</string>
+    <string name="reports_saved">تم حفظ الكشف.</string>
+    <string name="reports_export_failed">تعذر حفظ الكشف. حاول مرة أخرى.</string>
+    <string name="reports_open_failed">تعذر فتح الكشف. حاول مرة أخرى.</string>
+    <string name="reports_nothing_to_export">أضف أشخاصًا وحركات قبل إنشاء كشف السجلات.</string>
+    <string name="reports_default_store">متجري</string>
 </resources>
