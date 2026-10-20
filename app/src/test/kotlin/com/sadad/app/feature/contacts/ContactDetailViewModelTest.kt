@@ -3,6 +3,7 @@ package com.sadad.app.feature.contacts
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.R
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.export.MovementKind
@@ -16,6 +17,7 @@ import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -48,6 +50,8 @@ class ContactDetailViewModelTest {
       assertEquals(Cents(11_500), state.balance)
       assertEquals(Cents(3_000), state.payable)
       assertEquals("سامي", state.name)
+      assertEquals(Direction.PAYABLE, state.movements.first { it.id == payable.entityId }.direction)
+      assertEquals(Direction.RECEIVABLE, state.movements.first { it.id == paid.entityId }.direction)
     }
   }
 
@@ -67,10 +71,9 @@ class ContactDetailViewModelTest {
               operationId = UUID.randomUUID().toString(),
           )
       fixture.seedCommands(listOf(person, open, paid, reversed))
-      val view =
-          fixture.graph.current.value!!.repository.view.first { view ->
-            view != null && view.payments.any { it.reversed }
-          }
+      fixture.graph.current.value!!.repository.view.first { view ->
+        view != null && view.payments.any { it.reversed }
+      }
 
       val model =
           ContactDetailViewModel(fixture.graph, person.entityId).also {
@@ -122,6 +125,7 @@ class ContactDetailViewModelTest {
       assertTrue(outboxRows(fixture).isEmpty())
 
       model.commitDelete(context)
+      model.commitDelete(context)
 
       val done = model.state.first { it.done || it.error != null }
       assertTrue("delete failed: ${done.error}", done.done)
@@ -152,6 +156,57 @@ class ContactDetailViewModelTest {
 
       val state = model.state.first { it.undoName == null }
       assertNull(state.undoName)
+      assertTrue(outboxRows(fixture).isEmpty())
+    }
+  }
+
+  @Test
+  fun anOfflineArchiveShowsTheRefusalAndQueuesNothing() = runTest {
+    var online = true
+    TestGraph.signedIn(online = { online }).use { fixture ->
+      val person = contact("سامي", contactId(1))
+      fixture.seedCommands(listOf(person))
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      model.state.first { it.loaded }
+      model.requestDelete()
+      model.state.first { it.confirmDelete }
+      model.confirmDelete()
+      model.state.first { it.undoName != null }
+      online = false
+
+      model.commitDelete(context)
+
+      val state = model.state.first { it.error != null }
+      assertEquals(context.getString(R.string.contacts_delete_offline), state.error)
+      assertFalse(state.done)
+      assertTrue(outboxRows(fixture).isEmpty())
+      assertTrue(
+          checkNotNull(fixture.graph.current.value).repository.view.value!!.contacts.any {
+            it.id == person.entityId
+          }
+      )
+    }
+  }
+
+  @Test
+  fun aPayableBalanceAlsoPreventsArchiving() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سامي", contactId(1))
+      fixture.seedCommands(
+          listOf(person, debt(person.entityId, 1000, direction = Direction.PAYABLE))
+      )
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      model.state.first { it.loaded && it.payable == Cents(1000) }
+      model.requestDelete()
+      val state = model.state.first { it.settleFirst != null }
+      assertEquals(Cents(1000), state.settleFirst)
+      assertFalse(state.confirmDelete)
       assertTrue(outboxRows(fixture).isEmpty())
     }
   }

@@ -50,11 +50,11 @@ import com.sadad.app.ui.ScreenTag
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.PendingBadge
-import com.sadad.app.ui.components.PlaceholderScreen
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,15 +70,6 @@ internal object ContactsTag {
 @Composable
 fun ContactsScreen(modifier: Modifier = Modifier, onOpenContact: (String) -> Unit = {}) {
   val viewModel = contactsViewModel()
-  if (viewModel == null) {
-    // No graph (Compose tests that never sign in): the shell's placeholder is all there is.
-    PlaceholderScreen(
-        title = stringResource(R.string.title_contacts),
-        modifier = modifier,
-        tag = ScreenTag.CONTACTS,
-    )
-    return
-  }
   ContactsScreen(viewModel, onOpenContact, modifier)
 }
 
@@ -204,16 +195,6 @@ fun ContactDetailScreen(
     onEdit: () -> Unit = {},
 ) {
   val viewModel = contactDetailViewModel(contactId)
-  if (viewModel == null) {
-    // No graph (Compose tests that never sign in): keep the shell's placeholder and its route arg.
-    PlaceholderScreen(
-        title = stringResource(R.string.title_contact_detail),
-        modifier = modifier,
-        tag = ScreenTag.CONTACT_DETAIL,
-        detail = stringResource(R.string.contact_detail_id, contactId),
-    )
-    return
-  }
   ContactDetailScreen(viewModel, onBack, onRecordDebt, onRecordPayment, onEdit, modifier)
 }
 
@@ -251,11 +232,11 @@ internal fun ContactDetailScreen(
                 viewModel.reportError(context.getString(R.string.contacts_whatsapp_invalid))
                 return@DetailActions
               }
-              AppLock.get(context).skipNextLock()
               try {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$number"))
                 )
+                AppLock.get(context).skipNextLock()
               } catch (_: ActivityNotFoundException) {
                 viewModel.reportError(context.getString(R.string.contacts_whatsapp_missing))
               }
@@ -309,10 +290,8 @@ internal fun ContactDetailScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           OutlinedButton(
-              onClick = {
-                AppLock.get(context).skipNextLock()
-                scope.launch { viewModel.share(context) }
-              },
+              onClick = { scope.launch { viewModel.share(context) } },
+              enabled = state.loaded && !state.missing,
               modifier = Modifier.fillMaxWidth(),
           ) {
             Text(stringResource(R.string.contacts_share))
@@ -336,6 +315,8 @@ internal fun ContactDetailScreen(
     state.error?.let { message ->
       Snackbar(modifier = Modifier.align(Alignment.BottomCenter)) { Text(message) }
     }
+    // shortcut: leaving this screen cancels the undo timer; move it into the ViewModel if deletion
+    // must finish after navigation.
     state.undoName?.let { name ->
       UndoSnackbar(
           message = stringResource(R.string.contacts_delete_undo, name),
@@ -352,7 +333,7 @@ internal fun ContactDetailScreen(
         title = { Text(stringResource(R.string.contacts_settle_title)) },
         text = { Text(stringResource(R.string.contacts_settle_message, formatCents(amount))) },
         confirmButton = {
-          if (state.balance > Cents.ZERO) {
+          if (state.balance > Cents.ZERO && state.canRegisterPayments) {
             TextButton(
                 onClick = {
                   viewModel.dismissSettleFirst()
@@ -480,8 +461,14 @@ private fun MovementRow(movement: ContactMovement) {
       Text(
           text =
               stringResource(
-                  if (movement.kind == MovementKind.DEBT) R.string.contacts_kind_debt
-                  else R.string.contacts_kind_payment
+                  when {
+                    movement.kind == MovementKind.DEBT && movement.direction == Direction.PAYABLE ->
+                        R.string.contacts_kind_payable
+                    movement.kind == MovementKind.DEBT -> R.string.contacts_kind_debt
+                    movement.direction == Direction.PAYABLE ->
+                        R.string.contacts_kind_outgoing_payment
+                    else -> R.string.contacts_kind_payment
+                  }
               ) + " · " + formatDate(movement.createdAt),
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -518,8 +505,8 @@ private fun methodLabel(method: PaymentMethod): String =
     )
 
 @Composable
-private fun contactsViewModel(): ContactsViewModel? {
-  val app = LocalContext.current.applicationContext as? SadadApplication ?: return null
+private fun contactsViewModel(): ContactsViewModel {
+  val app = LocalContext.current.applicationContext as SadadApplication
   return viewModel(
       factory =
           viewModelFactory {
@@ -529,8 +516,8 @@ private fun contactsViewModel(): ContactsViewModel? {
 }
 
 @Composable
-private fun contactDetailViewModel(contactId: String): ContactDetailViewModel? {
-  val app = LocalContext.current.applicationContext as? SadadApplication ?: return null
+private fun contactDetailViewModel(contactId: String): ContactDetailViewModel {
+  val app = LocalContext.current.applicationContext as SadadApplication
   return viewModel(
       factory =
           viewModelFactory {

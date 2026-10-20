@@ -85,7 +85,12 @@ fun SadadApp(
               val contactId = it.toRoute<ContactDetail>().contactId
               ContactDetailScreen(
                   contactId = contactId,
-                  onBack = { navController.popBackStack() },
+                  onBack = {
+                    navController.navigate(Contacts) {
+                      popUpTo(navController.graph.id)
+                      launchSingleTop = true
+                    }
+                  },
                   onRecordDebt = { navController.navigate(DebtForm(contactId)) },
                   onRecordPayment = { navController.navigate(PaymentForm(contactId)) },
                   onEdit = { navController.navigate(ContactForm(contactId)) },

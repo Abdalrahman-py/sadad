@@ -110,12 +110,14 @@ class ContactsViewModel(
           ContactRow(contact.id, contact.name, contact.phone, balance, pending, contact.createdAt)
         }
     val needle = searchText(query)
+    val phoneNeedle = needle.takeIf { it.none(Char::isLetter) }?.filter(Char::isDigit).orEmpty()
     val filtered =
         if (needle.isEmpty()) rows
         else
             rows.filter { row ->
               searchText(row.name).contains(needle) ||
-                  searchText(row.phone).filter(Char::isDigit).contains(needle)
+                  (phoneNeedle.isNotEmpty() &&
+                      searchText(row.phone).filter(Char::isDigit).contains(phoneNeedle))
             }
     val ordered =
         when (sort) {

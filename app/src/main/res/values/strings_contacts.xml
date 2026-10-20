@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_contacts">الزبائن</string>
-    <string name="title_contact_detail">تفاصيل الشخص</string>
-    <string name="contact_detail_id">المعرّف: %1$s</string>
     <string name="contacts_registered">%1$d أشخاص مسجلين</string>
     <string name="contacts_search">ابحث بالاسم أو رقم الهاتف</string>
     <string name="contacts_sort_name">حسب الاسم</string>
@@ -49,4 +47,9 @@
     <string name="contacts_default_store">متجري</string>
     <string name="contacts_all_periods">كل الفترات</string>
     <string name="contacts_session_closed">انتهت الجلسة، سجّل الدخول من جديد.</string>
+    <string name="contacts_kind_payable">دين علينا</string>
+    <string name="contacts_kind_outgoing_payment">دفعة مدفوعة</string>
+    <string name="contacts_delete_offline">اتصل بالإنترنت لحذف الزبون.</string>
+    <string name="contacts_delete_failed">تعذّر حذف الزبون. حاول مرة أخرى.</string>
+    <string name="contacts_share_failed">تعذّرت مشاركة الكشف. حاول مرة أخرى.</string>
 </resources>

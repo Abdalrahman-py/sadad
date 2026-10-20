@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.AppGraph
 import com.sadad.app.R
+import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementExport
 import com.sadad.app.export.StatementHeader
@@ -13,6 +14,7 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 data class ContactMovement(
     val id: String,
     val kind: MovementKind,
+    val direction: Direction,
     val amount: Cents,
     val method: PaymentMethod?,
     val note: String,
@@ -88,12 +91,12 @@ class ContactDetailViewModel(
 
   init {
     viewModelScope.launch {
-      combine(view(), dialogs, permissions()) { view, ui, allowed -> Triple(view, ui, allowed) }
-          .flowOn(Dispatchers.Default)
-          .collect { (view, ui, allowed) ->
+      combine(view(), dialogs, permissions()) { view, ui, allowed ->
             currentView = view
-            mutable.value = project(view, ui, allowed)
+            project(view, ui, allowed)
           }
+          .flowOn(Dispatchers.Default)
+          .collect { mutable.value = it }
     }
   }
 
@@ -101,7 +104,13 @@ class ContactDetailViewModel(
 
   fun requestDelete() {
     val current = mutable.value
-    if (!current.loaded || current.missing) return
+    if (
+        !current.loaded ||
+            current.missing ||
+            !current.canDeleteContacts ||
+            dialogs.value.undoName != null
+    )
+        return
     val settling = maxOf(current.balance, current.payable)
     if (settling > Cents.ZERO) {
       dialogs.update { it.copy(settleFirst = settling) }
@@ -114,8 +123,9 @@ class ContactDetailViewModel(
 
   fun dismissConfirm() = dialogs.update { it.copy(confirmDelete = false) }
 
-  fun confirmDelete() = dialogs.update {
-    it.copy(confirmDelete = false, undoName = mutable.value.name)
+  fun confirmDelete() {
+    if (!dialogs.value.confirmDelete || !mutable.value.canDeleteContacts) return
+    dialogs.update { it.copy(confirmDelete = false, undoName = mutable.value.name) }
   }
 
   fun undoDelete() = dialogs.update { it.copy(undoName = null) }
@@ -123,6 +133,7 @@ class ContactDetailViewModel(
   /** The undo window ended: queue the archive now, keeping the rows if the server refuses it. */
   fun commitDelete(context: Context) {
     if (dialogs.value.undoName == null) return
+    dialogs.update { it.copy(undoName = null) }
     val repository = graph.current.value?.repository
     if (repository == null) {
       dialogs.update {
@@ -138,7 +149,9 @@ class ContactDetailViewModel(
                 dialogs.update { current -> current.copy(undoName = null, done = true) }
               },
               onFailure = { failure ->
-                dialogs.update { current -> current.copy(undoName = null, error = failure.message) }
+                dialogs.update { current ->
+                  current.copy(undoName = null, error = refusalText(context, failure))
+                }
               },
           )
     }
@@ -166,7 +179,10 @@ class ContactDetailViewModel(
       StatementExport.sharePdf(context, header, view, contactId, from = null, to = null)
     }
         .onFailure { failure ->
-          dialogs.update { current -> current.copy(error = failure.message) }
+          if (failure is CancellationException) throw failure
+          dialogs.update { current ->
+            current.copy(error = context.getString(R.string.contacts_share_failed))
+          }
         }
   }
 
@@ -214,11 +230,13 @@ class ContactDetailViewModel(
     val payable =
         own.filter { it.direction == Direction.PAYABLE }
             .fold(Cents.ZERO) { total, debt -> total + debt.remaining }
+    val ownById = own.associateBy { it.id }
     val movements =
         own.map { debt ->
           ContactMovement(
               id = debt.id,
               kind = MovementKind.DEBT,
+              direction = debt.direction,
               amount = debt.amount,
               method = null,
               note = debt.note,
@@ -232,6 +250,7 @@ class ContactDetailViewModel(
                   ContactMovement(
                       id = payment.id,
                       kind = MovementKind.PAYMENT,
+                      direction = ownById.getValue(payment.debtId).direction,
                       amount = payment.amount,
                       method = payment.method,
                       note = payment.note,
@@ -266,6 +285,14 @@ class ContactDetailViewModel(
         done = dialogs.done,
     )
   }
+
+  private fun refusalText(context: Context, error: Throwable): String =
+      when (error) {
+        is Refusal.OnlineOnly,
+        is Refusal.OfflineNotAllowed -> context.getString(R.string.contacts_delete_offline)
+        is Refusal.Invalid -> error.message
+        else -> context.getString(R.string.contacts_delete_failed)
+      }
 
   private companion object {
     const val ARCHIVE_REASON = "حذف الزبون من التطبيق"
