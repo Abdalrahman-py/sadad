@@ -151,7 +151,7 @@ class TrashViewModelTest {
       fixture.closeWithStore(model.viewModelScope)
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
 
       val state = model.state.first { it.message != null }
       assertEquals("تعذرت الاستعادة.", state.message)
@@ -159,7 +159,7 @@ class TrashViewModelTest {
       assertTrue(state.restoring.isEmpty())
 
       session.online = true
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
       model.state.first { item.id in it.restoring }
       assertEquals(1, fixture.rows().count { it.type == CommandType.CONTACT_RESTORE })
     }
@@ -228,7 +228,7 @@ class TrashViewModelTest {
       fixture.archiveOne()
       val model = fixture.model()
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
       model.state.first { item.id in it.restoring }
       val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
       checkNotNull(fixture.graph.current.value)
@@ -236,7 +236,7 @@ class TrashViewModelTest {
           .settle(listOf(receiptOf(restore.command, ReceiptStatus.REJECTED, code = "conflict")))
       model.state.first { it.restoring.isEmpty() }
 
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
 
       model.state.first { item.id in it.restoring }
       val rows = fixture.rows().filter { it.type == CommandType.CONTACT_RESTORE }
@@ -251,13 +251,13 @@ class TrashViewModelTest {
       fixture.archiveOne()
       val model = fixture.model()
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
       model.state.first { item.id in it.restoring }
       val restore = fixture.rows().single { it.type == CommandType.CONTACT_RESTORE }
       checkNotNull(fixture.graph.current.value).outbox.cancel(restore.operationId)
       model.state.first { it.restoring.isEmpty() }
 
-      model.restore(item)
+      checkNotNull(model.restore(item)).join()
 
       model.state.first { item.id in it.restoring }
       val rows = fixture.rows().filter { it.type == CommandType.CONTACT_RESTORE }
