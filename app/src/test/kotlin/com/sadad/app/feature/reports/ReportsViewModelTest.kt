@@ -1,5 +1,8 @@
 package com.sadad.app.feature.reports
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
@@ -12,6 +15,7 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.Period
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.feature.history.bounds
+import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.testing.TestGraph
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
@@ -21,6 +25,7 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import java.io.File
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -37,6 +42,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSystemClock
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = com.sadad.app.ui.UiTestApplication::class)
@@ -289,6 +295,34 @@ class ReportsViewModelTest {
   }
 
   @Test
+  fun aPhoneWithoutAPdfViewerShowsTheMessageAndKeepsTheLockArmed() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.seedOctober()
+      val model =
+          ReportsViewModel(fixture.graph, SavedStateHandle(), clock) { _, _, _, _, _, _ ->
+            Uri.parse("content://com.sadad.app.files/exports/statement.pdf")
+          }
+      fixture.closeWithStore(model.viewModelScope)
+      val sami =
+          model.state
+              .first { it.loaded && it.people.isNotEmpty() }
+              .people
+              .first { it.name == "سامي" }
+      drainLockSkip(fixture.context)
+
+      model.openStatement(NoPdfViewer(fixture.context), sami.contactId)
+
+      val state = model.state.first { it.error != null && !it.busy }
+      assertEquals(
+          fixture.context.getString(com.sadad.app.R.string.reports_open_failed),
+          state.error,
+      )
+      // No skip was armed, so the next long absence still locks.
+      assertTrue(locksAfterAbsence(fixture.context))
+    }
+  }
+
+  @Test
   fun anEmptyStoreHasNothingToExport() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
@@ -405,13 +439,36 @@ class ReportsViewModelTest {
       model.openStatement(fixture.context, sami.contactId)
 
       val launched = awaitStartedActivity { model.state.value.error }
+      model.state.first { !it.busy }
       assertEquals(Intent.ACTION_VIEW, launched.action)
       assertEquals("application/pdf", launched.type)
       assertTrue(launched.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
       // The statement covers the chosen month and ends one instant before the next month starts.
       val month = Period.Month(OCTOBER).bounds(zone)
       assertEquals(listOf(Triple(sami.contactId, month.from, month.to?.minusNanos(1))), written)
+      // Coming back from the viewer after a long absence must not lock the app.
+      assertFalse(locksAfterAbsence(fixture.context))
     }
+  }
+
+  /** `startActivity` as a phone without any PDF app answers it. */
+  private class NoPdfViewer(base: Context) : ContextWrapper(base) {
+    override fun getApplicationContext(): Context = this
+
+    override fun startActivity(intent: Intent) = throw ActivityNotFoundException()
+  }
+
+  /** Consumes a skip another test left armed on the process-wide lock. */
+  private fun drainLockSkip(context: Context) = AppLock.get(context).appStarted()
+
+  /** Whether leaving the app and returning after two seconds locks it; a skip is consumed. */
+  private fun locksAfterAbsence(context: Context): Boolean {
+    val lock = AppLock.get(context)
+    lock.markUnlocked()
+    lock.appStopped()
+    ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+    lock.appStarted()
+    return lock.locked.value
   }
 
   private fun awaitStartedActivity(failure: () -> String?): Intent {
