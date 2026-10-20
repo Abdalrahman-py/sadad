@@ -1,6 +1,7 @@
 package com.sadad.app.feature.trash
 
 import android.content.Context
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
@@ -54,6 +55,9 @@ class TrashViewModelTest {
   ): TrashViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
     return TrashViewModel(scope.repository, scope.outbox, reminders, hidden, STORE_A, context)
+        .also {
+          closeWithStore(it.viewModelScope)
+        }
   }
 
   private suspend fun TestGraph.rows() = checkNotNull(graph.current.value).outbox.snapshot()
@@ -138,10 +142,13 @@ class TrashViewModelTest {
             online = false
             offline = false
           }
-      val offline = LedgerRepository(scope.store, scope.outbox, session, backgroundScope)
+      val offlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+      fixture.closeWithStore(offlineScope)
+      val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
       offline.view.first { view -> view?.archivedContacts?.isNotEmpty() == true }
       val model = TrashViewModel(offline, scope.outbox, reminders(), hidden(), STORE_A, context)
+      fixture.closeWithStore(model.viewModelScope)
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 
       model.restore(item)

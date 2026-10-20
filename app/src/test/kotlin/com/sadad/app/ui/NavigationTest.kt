@@ -21,16 +21,13 @@ class NavigationTest {
 
   @Test
   fun bottomBarItemsShowTheirPlaceholders() {
-    compose.setContent { SadadApp() }
-    compose.onNodeWithTag(ScreenTag.HOME).assertIsDisplayed().assertTextEquals("الرئيسية")
-    compose.onNodeWithTag(ScreenTag.NAV_CONTACTS).performClick()
+    // Home is a real screen now (HomeScreenTest covers it); the rest are still placeholders.
+    compose.setContent { SadadApp(startDestination = Contacts) }
     compose.onNodeWithTag(ScreenTag.CONTACTS).assertIsDisplayed().assertTextEquals("الزبائن")
     compose.onNodeWithTag(ScreenTag.NAV_HISTORY).performClick()
     compose.onNodeWithTag(ScreenTag.HISTORY).assertIsDisplayed().assertTextEquals("سجل الحركات")
     compose.onNodeWithTag(ScreenTag.NAV_SETTINGS).performClick()
     compose.onNodeWithTag(ScreenTag.SETTINGS).assertIsDisplayed().assertTextEquals("الإعدادات")
-    compose.onNodeWithTag(ScreenTag.NAV_HOME).performClick()
-    compose.onNodeWithTag(ScreenTag.HOME).assertIsDisplayed().assertTextEquals("الرئيسية")
   }
 
   @Test
@@ -38,7 +35,7 @@ class NavigationTest {
     lateinit var nav: NavHostController
     compose.setContent {
       nav = rememberNavController()
-      SadadApp(navController = nav)
+      SadadApp(startDestination = Contacts, navController = nav)
     }
     nav.navigate(ContactDetail("id-1"))
     compose.onNodeWithTag(ScreenTag.CONTACT_DETAIL).assertIsDisplayed()
