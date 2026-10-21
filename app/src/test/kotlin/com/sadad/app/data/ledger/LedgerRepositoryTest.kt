@@ -21,7 +21,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun compoundSaveShowsTheContactAndTheDebtAsPending() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
 
     repo.view.test {
@@ -60,7 +60,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun payContactSplitsTheAmountOldestFirstAndRefusesAnOverpayment() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.seed(
         contactCommand(),
@@ -85,7 +85,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun pendingParentsAreDependenciesOfTheirChildren() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
 
     val contactId = repo.addContact("سامي", null, null, null, null).getOrThrow()
@@ -104,7 +104,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun anAcceptedRowStaysPendingUntilThePageHoldsIt() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.addContact("سامي", null, null, null, null)
     val command = outbox.snapshot().single().command
@@ -123,7 +123,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun aPageOfAnotherEpochResetsTheStateAndKeepsTheOutbox() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.applyPage(Events.page(listOf(Events.accepted(contactCommand(name = "مؤكد"), 1))))
     repo.addContact("معلق", null, null, null, null)
@@ -141,7 +141,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun refusingBeforeQueueingWritesNothing() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
 
     session.origin = null
@@ -162,7 +162,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun archivingWhileOfflineIsOnlineOnly() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.seed(contactCommand())
 
@@ -175,7 +175,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun archivingAContactWithAnOpenBalanceIsRefused() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.seed(contactCommand(), debtCommand(amount = 10_000))
 
@@ -187,7 +187,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun archivingAContactWithAnOpenPayableIsRefused() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.seed(
         contactCommand(),
@@ -202,7 +202,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun aPendingContactCanBeEditedBeforeItIsConfirmed() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     val contactId = repo.addContact("سامي", null, null, null, null).getOrThrow()
     val created = outbox.snapshot().single { it.type == CommandType.CONTACT_CREATE }
@@ -217,7 +217,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun cancellingAQueuedCompoundHidesItFromTheView() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
     repo.addContact(
         "سامي",
@@ -239,7 +239,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
   fun anIdOutsideTheViewIsUnknown() = runTest {
-    val repo = repository(backgroundScope)
+    val repo = repository()
     repo.load()
 
     val added = repo.addDebt(newOperationId(), Direction.RECEIVABLE, Cents(1_000), null, null)

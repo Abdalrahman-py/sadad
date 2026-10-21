@@ -160,7 +160,10 @@ class HistoryViewModelTest {
 
   private suspend fun TestGraph.fold(command: LedgerCommand) {
     val repository = checkNotNull(graph.current.value).repository
+    val before = repository.view.value
     repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
+    // The view is projected on another thread; wait until it shows this command.
+    repository.view.first { it != null && it != before }
   }
 
   private suspend fun TestGraph.confirmedContact(name: String, at: Instant): String {
