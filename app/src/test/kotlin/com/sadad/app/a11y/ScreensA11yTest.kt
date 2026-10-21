@@ -28,7 +28,6 @@ import com.sadad.app.feature.reports.ReportsState
 import com.sadad.app.feature.reports.ReportsTags
 import com.sadad.app.feature.settings.SettingsKit
 import com.sadad.app.feature.settings.SettingsScreen
-import com.sadad.app.feature.settings.SettingsTags
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
@@ -206,7 +205,8 @@ class ScreensA11yTest {
     val model = SettingsKit(fixture).also(closeables::add).viewModel()
     awaiting { model.state.first { it.loaded } }
     compose.showAt(fontScale) { SettingsScreen(settingsViewModel = model) }
-    compose.assertAccessible(hasTestTag(SettingsTags.LIST))
+    // The last row of the list, so the whole list has to be reachable by scrolling.
+    compose.assertAccessible(hasText("المطور : orca"))
   }
 
   private fun recovery(fontScale: Float) {

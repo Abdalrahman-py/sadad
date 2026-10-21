@@ -1,8 +1,13 @@
 package com.sadad.app.a11y
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.feature.lock.BiometricAuth
 import com.sadad.app.feature.lock.LockGate
@@ -21,6 +26,8 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+
+private const val KEYBOARD_UP_DP = 480
 
 /** The lock screen (PIN field, open button, biometric button) at both font sizes (ticket 76). */
 @RunWith(RobolectricTestRunner::class)
@@ -44,7 +51,12 @@ class LockA11yTest {
             it.setBiometricEnabled(true)
           }
         }
-    compose.showAt(fontScale) { LockGate(lock, true, Sensor) { Text("المحتوى") } }
+    // A PIN is typed with the keyboard up, which leaves about this much of a phone screen.
+    compose.showAt(fontScale) {
+      Box(Modifier.height(KEYBOARD_UP_DP.dp).clipToBounds()) {
+        LockGate(lock, true, Sensor) { Text("المحتوى") }
+      }
+    }
     compose.waitUntil(5_000) { lockShown() }
     compose.assertAccessible(hasTestTag(LockTag.PIN), hasTestTag(LockTag.OPEN))
   }
