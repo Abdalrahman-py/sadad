@@ -11,6 +11,11 @@ name: Ticket scope
 # A branch named ticket-* must close an issue; other PRs (no "Closes #N") pass.
 
 on:
+  # Transitional: this file's own PR runs main's old workflow for `pull_request_target`, which has
+  # no such trigger, so `scope` would stay pending. Delete `pull_request` once a later PR has shown
+  # a `scope` run from `pull_request_target`; until then the gate is no weaker than before.
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
