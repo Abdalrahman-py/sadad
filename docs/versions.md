@@ -16,7 +16,7 @@ Decided 2026-10-15 by a version audit: the newest stable versions on Google Mave
 | --- | --- | --- |
 | Gradle | 9.7.1 | AGP 9.3 needs ≥ 9.5.0; KGP max tested 9.7.0 (patch above) |
 | AGP | 9.3.3 | newest with API 37 inside Kotlin's tested range (9.3.1 + patches); 9.4.1 is newest overall |
-| compileSdk / targetSdk / minSdk | 37 / 34 / 26 | targetSdk moves in Phase 4 |
+| compileSdk / targetSdk / minSdk | 37 / 36 / 26 | targetSdk 36 since ticket 68 |
 | JDK | 21 | AGP 9 needs ≥ 17 |
 | Kotlin (compose, serialization, jvm plugins) | 2.4.21 | |
 | KSP | 2.3.12 | |

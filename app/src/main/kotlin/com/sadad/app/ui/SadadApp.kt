@@ -2,6 +2,7 @@ package com.sadad.app.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -24,6 +25,7 @@ import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -65,7 +67,9 @@ fun SadadApp(
     LockGate {
       // Arabic-first, so the shell mirrors like the Java app did, whatever the device locale.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Scaffold(
+        SadadShell(
+            navController = navController,
+            startDestination = startDestination,
             topBar = {
               TopBarActions(
                   onOpenNotifications = {
@@ -79,75 +83,91 @@ fun SadadApp(
                   onNeedsLogin = { navController.navigateAuth(Login) },
               )
             },
-            bottomBar = { SadadBottomBar(navController) },
-        ) { insets ->
-          NavHost(
-              navController = navController,
-              startDestination = startDestination,
-              modifier = Modifier.padding(insets),
-          ) {
-            composable<Welcome> { WelcomeScreen(onNavigate = navController::navigateAuth) }
-            composable<Login> { LoginScreen(onNavigate = navController::navigateAuth) }
-            composable<PasswordChange> {
-              PasswordChangeScreen(onNavigate = navController::navigateAuth)
-            }
-            composable<AwaitingApproval> {
-              AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
-            }
-            composable<Home> {
-              HomeScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
-            }
-            composable<Contacts> {
-              ContactsScreen(
-                  onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) }
-              )
-            }
-            composable<ContactDetail> {
-              val contactId = it.toRoute<ContactDetail>().contactId
-              ContactDetailScreen(
-                  contactId = contactId,
-                  onBack = {
-                    // One entry back to the list the Contact was opened from; clearing the whole
-                    // graph here would drop the start destination.
-                    if (!navController.popBackStack()) {
-                      navController.navigate(Contacts) { launchSingleTop = true }
-                    }
-                  },
-                  onRecordDebt = { navController.navigate(DebtForm(contactId)) },
-                  onRecordPayment = { navController.navigate(PaymentForm(contactId)) },
-                  onEdit = { navController.navigate(ContactForm(contactId)) },
-              )
-            }
-            composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
-            composable<DebtForm> {
-              val contactId = it.toRoute<DebtForm>().contactId
-              DebtFormScreen(
-                  contactId = contactId,
-                  // Back to the Contact the Debt was recorded for, keeping its live detail state.
-                  onSaved = {
-                    if (!navController.popBackStack()) {
-                      navController.navigate(ContactDetail(contactId))
-                    }
-                  },
-              )
-            }
-            composable<PaymentForm> {
-              val route = it.toRoute<PaymentForm>()
-              PaymentFormScreen(route.contactId, route.debtId)
-            }
-            composable<History> {
-              if (accountActivityRequest > 0) AccountActivityScreen(accountActivityRequest)
-              else HistoryScreen()
-            }
-            composable<Reports> { ReportsScreen() }
-            composable<Notifications> { NotificationsScreen() }
-            composable<Settings> { SettingsScreen() }
-            composable<Trash> { TrashScreen() }
-            composable<Recovery> { RecoveryScreen() }
+        ) {
+          composable<Welcome> { WelcomeScreen(onNavigate = navController::navigateAuth) }
+          composable<Login> { LoginScreen(onNavigate = navController::navigateAuth) }
+          composable<PasswordChange> {
+            PasswordChangeScreen(onNavigate = navController::navigateAuth)
           }
+          composable<AwaitingApproval> {
+            AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
+          }
+          composable<Home> {
+            HomeScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
+          }
+          composable<Contacts> {
+            ContactsScreen(
+                onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) }
+            )
+          }
+          composable<ContactDetail> {
+            val contactId = it.toRoute<ContactDetail>().contactId
+            ContactDetailScreen(
+                contactId = contactId,
+                onBack = {
+                  // One entry back to the list the Contact was opened from; clearing the whole
+                  // graph here would drop the start destination.
+                  if (!navController.popBackStack()) {
+                    navController.navigate(Contacts) { launchSingleTop = true }
+                  }
+                },
+                onRecordDebt = { navController.navigate(DebtForm(contactId)) },
+                onRecordPayment = { navController.navigate(PaymentForm(contactId)) },
+                onEdit = { navController.navigate(ContactForm(contactId)) },
+            )
+          }
+          composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
+          composable<DebtForm> {
+            val contactId = it.toRoute<DebtForm>().contactId
+            DebtFormScreen(
+                contactId = contactId,
+                // Back to the Contact the Debt was recorded for, keeping its live detail state.
+                onSaved = {
+                  if (!navController.popBackStack()) {
+                    navController.navigate(ContactDetail(contactId))
+                  }
+                },
+            )
+          }
+          composable<PaymentForm> {
+            val route = it.toRoute<PaymentForm>()
+            PaymentFormScreen(route.contactId, route.debtId)
+          }
+          composable<History> {
+            if (accountActivityRequest > 0) AccountActivityScreen(accountActivityRequest)
+            else HistoryScreen()
+          }
+          composable<Reports> { ReportsScreen() }
+          composable<Notifications> { NotificationsScreen() }
+          composable<Settings> { SettingsScreen() }
+          composable<Trash> { TrashScreen() }
+          composable<Recovery> { RecoveryScreen() }
         }
       }
     }
+  }
+}
+
+/**
+ * The bars and the padded content area every destination lives in. Edge-to-edge is on, so the
+ * Scaffold hands the system-bar insets to the content as padding; no screen handles them itself.
+ * `internal` so the inset tests can render the real destinations in the real shell.
+ */
+@Composable
+internal fun SadadShell(
+    navController: NavHostController,
+    startDestination: Any,
+    topBar: @Composable () -> Unit,
+    destinations: NavGraphBuilder.() -> Unit,
+) {
+  Scaffold(topBar = topBar, bottomBar = { SadadBottomBar(navController) }) { insets ->
+    NavHost(
+        navController = navController,
+        startDestination = startDestination,
+        // Consumed, so a destination with its own Scaffold does not add the bar insets again.
+        modifier = Modifier.padding(insets).consumeWindowInsets(insets),
+        builder = destinations,
+    )
   }
 }
 

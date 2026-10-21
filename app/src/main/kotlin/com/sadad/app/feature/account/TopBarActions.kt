@@ -6,9 +6,16 @@ import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -114,7 +121,16 @@ private fun StoreTopBar(
   var appearance by rememberSaveable { mutableStateOf(false) }
   val avatarDescription = stringResource(R.string.account_avatar)
   Row(
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+      // The Scaffold hands the bars to content, not to its top bar slot, so this Row clears the
+      // status bar and the sides itself, the insets a TopAppBar takes by default.
+      modifier =
+          Modifier.windowInsetsPadding(
+                  WindowInsets.systemBars
+                      .union(WindowInsets.displayCutout)
+                      .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+              )
+              .fillMaxWidth()
+              .padding(horizontal = 12.dp, vertical = 4.dp),
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
   ) {

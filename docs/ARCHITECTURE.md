@@ -193,7 +193,7 @@ Rules:
   - Coil: one profile photo.
   - KMP.
   - Any MVI framework.
-- Build toolchain: AGP `9.3.3`, Gradle `9.7.1`, `compileSdk 37` (`targetSdk 34` until Phase 4) — Compose BOM `2026.09.00` (Compose 1.12) requires `compileSdk 37`, which requires AGP ≥ 9.2 and Gradle 9.
+- Build toolchain: AGP `9.3.3`, Gradle `9.7.1`, `compileSdk 37`, `targetSdk 36` (ticket 68) — Compose BOM `2026.09.00` (Compose 1.12) requires `compileSdk 37`, which requires AGP ≥ 9.2 and Gradle 9.
 
 **Backend (Supabase, consolidated)**
 - **One identity: Supabase Auth.** Store users and admins are Auth users. Role goes in `app_metadata` (`admin | support | store`) via a custom access-token hook. Device limit and subscription checks stay in SQL (`current_capability`).

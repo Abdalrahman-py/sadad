@@ -56,7 +56,7 @@ android {
     applicationId = "com.sadad.app"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     minSdk = 26
-    targetSdk = 34
+    targetSdk = 36
     versionCode = 40
     versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("3.0.0")
     buildConfigField("String", "SUPABASE_URL", quoted(supabaseUrl))
@@ -111,6 +111,11 @@ val contract = rootProject.layout.projectDirectory.dir("contract")
 tasks.withType<Test>().configureEach {
   inputs.dir(contract).withPropertyName("contract").withPathSensitivity(PathSensitivity.RELATIVE)
   systemProperty("sadad.fixtures", contract.dir("fixtures").asFile.absolutePath)
+  // targetSdk 36 runs Robolectric's Android 16 sandbox. Its ApplicationSharedMemory setup reaches
+  // FileDescriptor internals through reflection on jdk.internal.access, which JDK 21 keeps closed
+  // (stack trace: FileDescriptorInterceptor.setInt, "Failed to interact with raw FileDescriptor
+  // internals"). This is the one opening Robolectric's own build gives its tests for that.
+  jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
 }
 
 // `contract/errors.json` is the one source; the app reads it as the `errors.json` asset.
