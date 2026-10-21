@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -36,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -148,17 +151,23 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
     )
     VoiceDraft { viewModel.onNoteChange(it) }
     if (!state.edit) {
+      // The row is the one control, so the switch is announced with its label and the whole row
+      // taps.
       Row(
-          modifier = Modifier.fillMaxWidth(),
+          modifier =
+              Modifier.fillMaxWidth()
+                  .heightIn(min = 48.dp)
+                  .toggleable(
+                      value = state.withFirstDebt,
+                      enabled = !state.busy,
+                      role = Role.Switch,
+                      onValueChange = viewModel::onFirstDebtChange,
+                  ),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween,
       ) {
         Text(stringResource(R.string.contactform_first_debt))
-        Switch(
-            checked = state.withFirstDebt,
-            onCheckedChange = viewModel::onFirstDebtChange,
-            enabled = !state.busy,
-        )
+        Switch(checked = state.withFirstDebt, onCheckedChange = null, enabled = !state.busy)
       }
     }
     if (state.withFirstDebt && !state.edit) {
