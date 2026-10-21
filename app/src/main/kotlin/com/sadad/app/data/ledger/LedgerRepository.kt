@@ -1,5 +1,7 @@
 package com.sadad.app.data.ledger
 
+import android.os.Build
+import android.os.Trace
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Changes
@@ -14,6 +16,7 @@ import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.view
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +28,24 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+private val traceCookies = AtomicInteger()
+
+/**
+ * Marks a span for the Macrobenchmarks (`TraceSectionMetric`). Async, because a coroutine can
+ * resume on another thread and `Trace.beginSection` is bound to one; it needs API 29 and is a no-op
+ * below that.
+ */
+internal suspend fun <T> traced(name: String, block: suspend () -> T): T {
+  if (Build.VERSION.SDK_INT < 29) return block()
+  val cookie = traceCookies.incrementAndGet()
+  Trace.beginAsyncSection(name, cookie)
+  try {
+    return block()
+  } finally {
+    Trace.endAsyncSection(name, cookie)
+  }
+}
 
 /** A page from another epoch or store: the state was emptied, so sync must pull from 0 again. */
 class LedgerReset(cause: Throwable) : Exception(cause.message, cause)
@@ -237,7 +258,7 @@ class LedgerRepository(
             dueDate,
             dependsOn = if (contact.pending) listOf(contact.operationId) else emptyList(),
         )
-    enqueue(listOf(command))
+    traced("save_debt") { enqueue(listOf(command)) }
     command.entityId
   }
 

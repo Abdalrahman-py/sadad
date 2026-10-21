@@ -3,6 +3,7 @@ package com.sadad.app.data.sync
 import com.sadad.app.data.ledger.LedgerReset
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
+import com.sadad.app.data.ledger.traced
 import com.sadad.app.data.net.ApiException
 import com.sadad.app.data.net.AuthSession
 import com.sadad.app.data.net.LedgerApi
@@ -49,7 +50,7 @@ class SyncEngine(
       progress.status.value = SyncStatus.Running
       val result =
           try {
-            Pass(scope).run()
+            traced("sync_pass") { Pass(scope).run() }
           } catch (stopped: Stopped) {
             stopped.status
           } catch (refused: ApiException) {
@@ -139,7 +140,7 @@ class SyncEngine(
       }
       try {
         push()
-        pull()
+        traced("sync_pull") { pull() }
       } catch (refused: ApiException) {
         if (refused.code in REVOKED_CODES) confirmRevoked(account)
         throw refused
