@@ -60,6 +60,14 @@ jobs:
           SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
         run: |
           ./gradlew testReleaseUnitTest assembleRelease --console=plain
+      - name: Fail when R8 reports missing classes
+        run: |
+          missing=app/build/outputs/mapping/release/missing_rules.txt
+          if [[ -s "$missing" ]]; then
+            echo "::error::R8 reported missing classes; add a keep rule with a reason in app/proguard-rules.pro"
+            cat "$missing"
+            exit 1
+          fi
       - name: Verify production APK and create checksum
         run: |
           apk=app/build/outputs/apk/release/app-release.apk
