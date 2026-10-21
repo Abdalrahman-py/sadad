@@ -309,12 +309,14 @@ Written directly in Kotlin inside `app/` against the Phase 2 contract.
 
 ### Phase 4 — Production hardening (M)
 
-1. targetSdk 36 (edge-to-edge and predictive back come with Compose).
-2. Production signing key (open item); Play internal track; crash reporter live.
-3. Perf budgets in CI (APK size, Macrobenchmark on a Gradle Managed Device if the runner allows, else manual pre-release).
-4. Backup/restore drill on a Supabase branch; runbook in `docs/RUNBOOK.md`.
-5. Accessibility pass: 48dp targets, TalkBack labels, font scale; Compose semantics tests.
-   - Exit: Part 2 table all green; "done".
+Decisions of 2026-10-21: Sentry stays; no Play Console and no internal track (the signed APK is sideloaded); after the exit a teammate owns QA and polish and chooses how to report.
+
+1. targetSdk 36, edge-to-edge and predictive back (ticket 68).
+2. Crash reporter across app, Edge and dashboard with PII scrubbing (tickets 69–71); production signing key and the first signed release (ticket 72, human).
+3. Perf budgets in CI: APK size and Baseline Profile presence fail the build; Macrobenchmark on a Gradle Managed Device if the runner allows, else manual pre-release (ticket 73).
+4. `docs/RUNBOOK.md` (ticket 74) and a backup/restore drill on a Supabase branch (ticket 75, human).
+5. Accessibility pass: 48dp targets, TalkBack labels, font scale; Compose semantics tests (ticket 76).
+   - Exit: the signed release build passes the exit run (ticket 77, human); docs and `docs/QA.md` handoff (ticket 78). Part 2 table all green; "done".
 
 ---
 
