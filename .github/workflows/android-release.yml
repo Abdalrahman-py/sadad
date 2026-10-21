@@ -63,6 +63,7 @@ jobs:
       - name: Fail when R8 reports missing classes
         run: |
           missing=app/build/outputs/mapping/release/missing_rules.txt
+          [[ -f "$missing" ]] || { echo "::error::$missing not found; AGP moved it, so this gate checks nothing"; exit 1; }
           if [[ -s "$missing" ]]; then
             echo "::error::R8 reported missing classes; add a keep rule with a reason in app/proguard-rules.pro"
             cat "$missing"
