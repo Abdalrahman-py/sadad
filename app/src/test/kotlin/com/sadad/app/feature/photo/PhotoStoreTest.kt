@@ -40,7 +40,7 @@ class PhotoStoreTest {
   }
 
   @Test
-  fun aJpegWithExifOrientationSixLoadsAsAPortraitAndLargeSourcesAreSampled() = runBlocking {
+  fun aJpegWithExifOrientationSixLoadsAsAPortraitAndLargeSourcesAreSampled() = runBlocking<Unit> {
     val photos = PhotoStore(context)
     val file = File(context.cacheDir, "oriented-${UUID.randomUUID()}.jpg")
     val source = Bitmap.createBitmap(3000, 2000, Bitmap.Config.ARGB_8888)
