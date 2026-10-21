@@ -2,6 +2,8 @@ package com.sadad.app.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -20,11 +23,14 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.data.sync.SyncScheduler
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.feature.lock.BiometricAuth
 import com.sadad.app.feature.lock.rememberActivityBiometric
+import com.sadad.app.feature.photo.PhotoEditor
+import com.sadad.app.feature.photo.PhotoKind
 
 /** Stable handles the settings tests find the list and its rows by. */
 object SettingsTags {
@@ -59,6 +65,8 @@ internal fun SettingsScreen(
   val state by settingsViewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
   var showStores by rememberSaveable { mutableStateOf(false) }
+  var showStorePhoto by rememberSaveable { mutableStateOf(false) }
+  val photoStoreId = state.accounts.firstOrNull { it.active }?.storeUserId
   // Re-read on resume: a fingerprint enrolled in the system settings shows the toggle on return.
   var biometricAvailable by remember { mutableStateOf(biometric.available()) }
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { biometricAvailable = biometric.available() }
@@ -73,11 +81,21 @@ internal fun SettingsScreen(
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     storeSection(state, settingsViewModel)
+    item {
+      TextButton(onClick = { showStorePhoto = true }, enabled = photoStoreId != null) {
+        Text(stringResource(R.string.photo_store))
+      }
+    }
     dataSection(state, settingsViewModel, navigation, context)
     syncSection(state, settingsViewModel, navigation)
     lockSection(state, settingsViewModel, biometricAvailable)
     appearanceSection(state, settingsViewModel)
     accountSection(state, settingsViewModel, navigation, context) { showStores = true }
+  }
+  if (showStorePhoto && photoStoreId != null) {
+    PhotoEditor(photoStoreId, PhotoKind.STORE, { showStorePhoto = false }) {
+      settingsViewModel.state.value.accounts.firstOrNull { it.active }?.storeUserId
+    }
   }
   SettingsDialogs(
       state = state,

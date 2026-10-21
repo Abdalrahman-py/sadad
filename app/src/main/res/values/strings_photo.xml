@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="photo_title">معاينة وتعديل الصورة</string>
+    <string name="photo_preview">معاينة الصورة؛ اسحب للمحاذاة وقرّب بإصبعين</string>
+    <string name="photo_help">اسحب الصورة لمحاذاتها، وحرّك الشريط للتكبير</string>
+    <string name="photo_rotate">تدوير ٩٠°</string>
+    <string name="photo_center">توسيط</string>
+    <string name="photo_new">صورة جديدة</string>
+    <string name="photo_save">حفظ الصورة</string>
+    <string name="photo_cancel">إلغاء</string>
+    <string name="photo_delete">حذف الصورة</string>
+    <string name="photo_failed">تعذر فتح الصورة أو حفظها. حاول مجددًا.</string>
+    <string name="photo_store">صورة المتجر</string>
+</resources>
