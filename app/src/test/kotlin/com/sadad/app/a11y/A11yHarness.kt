@@ -83,8 +83,12 @@ private fun ComposeContentTestRule.sweepLists(problems: MutableMap<String, Strin
   val lists = onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes()
   lists.forEachIndexed { list, node ->
     val info = node.config.getOrNull(SemanticsProperties.CollectionInfo)
+    if (info == null) problems["list:$list"] = "list $list does not say how many items it has"
     repeat(maxOf(info?.rowCount ?: 0, info?.columnCount ?: 0)) { index ->
       runCatching { onAllNodes(hasScrollToIndexAction())[list].performScrollToIndex(index) }
+          .onFailure {
+            problems["list:$list:$index"] = "list $list cannot scroll to item $index: $it"
+          }
       waitForIdle()
       inspect(problems)
     }
@@ -110,6 +114,7 @@ private fun ComposeContentTestRule.inspect(problems: MutableMap<String, String>)
   val minimum = MIN_TARGET_DP * density.density
   onAllNodes(hasClickAction())
       .fetchSemanticsNodes()
+      .map(::bringIntoView)
       .filterNot { it.touchBoundsInRoot.isEmpty }
       .forEach { node ->
         val bounds = node.touchBoundsInRoot
@@ -129,6 +134,21 @@ private fun ComposeContentTestRule.inspect(problems: MutableMap<String, String>)
           problems["cut:${key(node)}"] = "text cut off: ${describe(node)}"
         }
       }
+}
+
+/**
+ * A node inside a plain scrolling container may sit below the fold; it is scrolled into view before
+ * it is measured, so that a half-hidden control is not mistaken for a small one. Lazy lists are
+ * covered by [sweepLists], and a node they merely composed ahead of the viewport stays unchecked.
+ */
+private fun ComposeContentTestRule.bringIntoView(node: SemanticsNode): SemanticsNode {
+  val scrollers = generateSequence(node.parent) { it.parent }.filter(::scrolls).toList()
+  if (scrollers.isEmpty() || scrollers.any { SemanticsActions.ScrollToIndex in it.config }) {
+    return node
+  }
+  val same = SemanticsMatcher("node ${node.id}") { it.id == node.id }
+  runCatching { onNode(same).performScrollTo() }
+  return runCatching { onNode(same).fetchSemanticsNode() }.getOrDefault(node)
 }
 
 private fun key(node: SemanticsNode): String {

@@ -12,6 +12,8 @@ import com.sadad.app.feature.auth.AuthTags
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.LoginViewModel
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contactform.ContactFormScreen
+import com.sadad.app.feature.contactform.ContactFormViewModel
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.debt.DebtFormScreen
@@ -20,6 +22,7 @@ import com.sadad.app.feature.debt.DebtTag
 import com.sadad.app.feature.payment.PaymentFormScreen
 import com.sadad.app.feature.payment.PaymentFormViewModel
 import com.sadad.app.feature.payment.PaymentTag
+import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
@@ -32,7 +35,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** Contact detail, the Debt and Payment forms and Login, at both font sizes (ticket 76). */
+/**
+ * Contact detail, the Contact, Debt and Payment forms and Login, at both font sizes (ticket 76).
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
 class FormsA11yTest {
@@ -44,6 +49,10 @@ class FormsA11yTest {
   @Test fun contactDetail() = contactDetail(NORMAL_FONT)
 
   @Test fun contactDetailAtLargestFont() = contactDetail(LARGEST_FONT)
+
+  @Test fun contactForm() = contactForm(NORMAL_FONT)
+
+  @Test fun contactFormAtLargestFont() = contactForm(LARGEST_FONT)
 
   @Test fun debtForm() = debtForm(NORMAL_FONT)
 
@@ -75,6 +84,18 @@ class FormsA11yTest {
       }
       compose.waitUntil(WAIT_MS) { model.state.value.loaded }
       compose.assertAccessible(hasText(context.getString(R.string.contacts_record_debt)))
+    }
+  }
+
+  /** The add-person form with the first-debt switch on, so its extra fields are checked too. */
+  private fun contactForm(fontScale: Float) {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      val scope = checkNotNull(fixture.graph.current.value) { "the fixture has no open store" }
+      val model = ContactFormViewModel(scope.repository, STORE_A, context, SavedStateHandle(), null)
+      model.onFirstDebtChange(true)
+      compose.showAt(fontScale) { ContactFormScreen(model) }
+      compose.assertAccessible(hasText(context.getString(R.string.contactform_save_add)))
     }
   }
 
