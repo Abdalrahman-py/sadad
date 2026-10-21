@@ -127,7 +127,7 @@ def main():
                 problems.append(f"{f.rsplit('/', 1)[-1]}: {', '.join(shared)}")
     elif cmd == "scope":
         ok = allowed(texts[0]) + also
-        problems = [p for p in sys.stdin.read().split() if not any(re.fullmatch(to_regex(a), p) for a in ok)]
+        problems = [p for p in sys.stdin.read().splitlines() if not any(re.fullmatch(to_regex(a), p) for a in ok)]
     print("\n".join(problems)) if problems else None
     sys.exit(1 if problems else 0)
 
