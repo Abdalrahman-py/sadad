@@ -40,18 +40,22 @@ class PhotoStoreTest {
   }
 
   @Test
-  fun aJpegWithExifOrientationSixLoadsAsAPortraitAndLargeSourcesAreSampled() = runBlocking<Unit> {
-    val photos = PhotoStore(context)
-    val file = File(context.cacheDir, "oriented-${UUID.randomUUID()}.jpg")
-    val source = Bitmap.createBitmap(3000, 2000, Bitmap.Config.ARGB_8888)
-    file.outputStream().use { source.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-    ExifInterface(file.path).apply {
-      setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString())
-      saveAttributes()
-    }
-    val loaded = photos.load(Uri.fromFile(file))
-    assertEquals(1000, loaded.width)
-    assertEquals(1500, loaded.height)
-    file.delete()
-  }
+  fun aJpegWithExifOrientationSixLoadsAsAPortraitAndLargeSourcesAreSampled() =
+      runBlocking<Unit> {
+        val photos = PhotoStore(context)
+        val file = File(context.cacheDir, "oriented-${UUID.randomUUID()}.jpg")
+        val source = Bitmap.createBitmap(3000, 2000, Bitmap.Config.ARGB_8888)
+        file.outputStream().use { source.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        ExifInterface(file.path).apply {
+          setAttribute(
+              ExifInterface.TAG_ORIENTATION,
+              ExifInterface.ORIENTATION_ROTATE_90.toString(),
+          )
+          saveAttributes()
+        }
+        val loaded = photos.load(Uri.fromFile(file))
+        assertEquals(1000, loaded.width)
+        assertEquals(1500, loaded.height)
+        file.delete()
+      }
 }
