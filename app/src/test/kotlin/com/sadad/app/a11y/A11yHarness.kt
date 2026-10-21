@@ -17,7 +17,6 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.ui.theme.SadadTheme
-import org.junit.Assert.assertTrue
 
 /** Phone width the font-scale checks run at (ticket 76). */
 internal const val PHONE_QUALIFIERS = "w360dp-h800dp-xxhdpi"
@@ -77,10 +76,21 @@ internal fun ComposeContentTestRule.assertAccessible(vararg primary: SemanticsMa
     }
         .onFailure { problems += "primary action not reachable (${matcher.description}): $it" }
   }
-  assertTrue(
-      "${problems.size} accessibility problems:\n" + problems.joinToString("\n"),
-      problems.isEmpty(),
-  )
+  if (problems.isNotEmpty()) {
+    // DIAGNOSTIC (temporary): Gradle's console shows only "Class at File.kt:line" for a failure, so
+    // the problem list rides in the frame's file name.
+    val text = "${problems.size} PROBLEMS: " + problems.joinToString(" || ").replace('\n', ' ')
+    throw AssertionError(text).also { error ->
+      error.stackTrace =
+          Throwable()
+              .stackTrace
+              .filter {
+                it.className.startsWith("com.sadad.app.a11y.") && "Harness" !in it.className
+              }
+              .map { StackTraceElement(it.className, it.methodName, text, it.lineNumber) }
+              .toTypedArray()
+    }
+  }
 }
 
 private fun scrolls(node: SemanticsNode): Boolean = SemanticsActions.ScrollBy in node.config
