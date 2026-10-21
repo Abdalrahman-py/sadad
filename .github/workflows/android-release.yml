@@ -69,6 +69,8 @@ jobs:
             cat "$missing"
             exit 1
           fi
+      - name: Fail when the release APK is over its size budget or has no Baseline Profile
+        run: python3 tools/apk_budget.py app/build/outputs/apk/release/app-release.apk
       - name: Verify production APK and create checksum
         run: |
           apk=app/build/outputs/apk/release/app-release.apk

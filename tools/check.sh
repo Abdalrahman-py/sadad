@@ -80,7 +80,16 @@ run_dashboard() {
 
 run_android() {
   echo "== android =="
+  # No bytecode cache: __pycache__ is not git-ignored and a `git add -A` would commit it.
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools/test_apk_budget.py
   ./gradlew :ledger-core:test testDebugUnitTest assembleDebug assembleRelease :benchmark:assemble --console=plain
+  # Signed when the release key is set, unsigned otherwise: either way the only APK in the folder.
+  local apks=(app/build/outputs/apk/release/*.apk)
+  if [[ ${#apks[@]} -ne 1 || ! -f ${apks[0]} ]]; then
+    echo "Expected exactly one release APK in app/build/outputs/apk/release, found: ${apks[*]}" >&2
+    return 1
+  fi
+  PYTHONDONTWRITEBYTECODE=1 python3 tools/apk_budget.py "${apks[0]}"
 }
 
 run_edge() {
@@ -108,6 +117,7 @@ changed_sections() {
       '') ;;
       tools/check.sh) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
       tools/*.ts) want[format]=1 want[edge]=1 ;;
+      tools/apk_budget.py | tools/test_apk_budget.py | tools/apk-budget.txt) want[android]=1 ;;
       # Only the docs gate reads these.
       *.md | docs/* | .claude/* | .agents/* | .opencode/* | .github/* | tools/* | opencode.json | .gitignore | .gitattributes | .editorconfig | Supabase-Setup/supabase/config.toml) ;;
       contract/*) want[android]=1 want[dashboard]=1 want[edge]=1 ;;
