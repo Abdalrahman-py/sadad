@@ -1,13 +1,17 @@
 name: Ticket scope
 
 # A ticket PR ("Closes #N") may change only the paths its issue lists under "Files you may edit".
-# The checker is tools/ticket_files.py from the base branch, so a PR cannot loosen its own check.
+# Runs on pull_request_target, so GitHub takes this workflow file from the base branch and a PR
+# cannot edit its own check. The job checks out only the base branch and never runs PR code: the
+# checker is tools/ticket_files.py from base, and the PR is read through the API. Keep it that way:
+# no PR checkout, no ${{ }} of PR text inside a run script.
+# A branch named ticket-NN must close the issue titled "NN: ...".
 # The repository owner can approve extra paths during review with a PR comment line
 # "scope-approved: `path`" (see docs/agents/issue-tracker.md); the job log shows which comment did.
 # A branch named ticket-* must close an issue; other PRs (no "Closes #N") pass.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
@@ -35,6 +39,11 @@ jobs:
           if [[ -z $issue ]]; then
             [[ $HEAD_REF != ticket-* ]] || { echo "::error::branch $HEAD_REF has no \"Closes #N\" in the PR body"; exit 1; }
             echo "no ticket issue; nothing to check"; exit 0
+          fi
+          if [[ $HEAD_REF =~ ^ticket-([0-9]+)$ ]]; then
+            n=$((10#${BASH_REMATCH[1]}))
+            title=$(gh issue view "$issue" --json title --jq .title)
+            [[ $title =~ ^0*$n: ]] || { echo "::error::branch $HEAD_REF is ticket $n but closes #$issue (\"$title\")"; exit 1; }
           fi
           gh issue view "$issue" --json body --jq .body > "$RUNNER_TEMP/ticket.md"
           grep -q '^Files you may edit' "$RUNNER_TEMP/ticket.md" || { echo "::error::#$issue has no \"Files you may edit:\" list"; exit 1; }
