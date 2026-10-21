@@ -20,15 +20,16 @@ class CropState(sourceWidth: Int, sourceHeight: Int) {
   var rotation: Int = 0
     private set
 
-  var zoom: Float = 1f
-    private set
+  private var zoomValue = 1f
+  val zoom: Float
+    get() = zoomValue
 
   private var offsetX = 0f
   private var offsetY = 0f
 
   fun setZoom(value: Float) {
     require(value.isFinite())
-    zoom = value.coerceIn(1f, 4f)
+    zoomValue = value.coerceIn(1f, 4f)
     clamp()
   }
 
@@ -49,7 +50,7 @@ class CropState(sourceWidth: Int, sourceHeight: Int) {
   }
 
   fun center() {
-    zoom = 1f
+    zoomValue = 1f
     offsetX = 0f
     offsetY = 0f
   }
