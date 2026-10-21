@@ -7,8 +7,9 @@ import java.time.LocalDate
 import java.time.YearMonth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -29,7 +30,7 @@ class ThemePreferenceTest {
       assertEquals(ThemeChoice.SYSTEM, preference.theme.first())
       assertEquals(ExportPeriod.Preset(PeriodPreset.MONTH), preference.exportPeriod.first())
     } finally {
-      scope.cancel()
+      scope.coroutineContext[Job]?.cancelAndJoin()
     }
   }
 
@@ -44,7 +45,8 @@ class ThemePreferenceTest {
           ExportPeriod.Custom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
       )
     } finally {
-      first.cancel()
+      // Joined: DataStore frees the file only when its scope completes.
+      first.coroutineContext[Job]?.cancelAndJoin()
     }
     val second = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     try {
@@ -56,7 +58,7 @@ class ThemePreferenceTest {
           reopened.exportPeriod.first(),
       )
     } finally {
-      second.cancel()
+      second.coroutineContext[Job]?.cancelAndJoin()
     }
   }
 

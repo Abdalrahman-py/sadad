@@ -22,8 +22,13 @@ import java.security.SecureRandom
 import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 
@@ -127,6 +132,7 @@ abstract class LedgerTestCase {
   protected lateinit var key: SecretKey
   protected lateinit var session: FakeSession
   protected lateinit var outbox: Outbox
+  private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
   @Before
   fun openDatabase() {
@@ -137,10 +143,20 @@ abstract class LedgerTestCase {
     outbox = Outbox(db.outboxDao(), key)
   }
 
-  @After fun closeDatabase() = db.close()
+  /**
+   * Joins the repository's collectors first: a Room query still running would throw once closed.
+   */
+  @After
+  fun closeDatabase() {
+    runBlocking { repositoryScope.coroutineContext[Job]?.cancelAndJoin() }
+    db.close()
+  }
 
-  protected fun repository(scope: CoroutineScope) =
-      LedgerRepository(LedgerStore(db), outbox, session, scope)
+  /**
+   * The scope is the fixture's own, not a test's `backgroundScope`: that one is cancelled but not
+   * joined when `runTest` returns, so a query could outlive the test and fail after `db.close()`.
+   */
+  protected fun repository() = LedgerRepository(LedgerStore(db), outbox, session, repositoryScope)
 }
 
 /** Waits through the [LedgerView] flow's initial `null` and stale emissions. */
