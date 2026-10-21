@@ -15,6 +15,7 @@
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="${allowCleartextTraffic}"
         android:icon="@drawable/sadad_logo"
         android:roundIcon="@drawable/sadad_logo"
