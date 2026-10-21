@@ -1,19 +1,9 @@
 name: Admin dashboard checks and GitHub Pages deploy
 
+# Manual only. Pushes and pull requests already get `./tools/check.sh dashboard` from the
+# `admin-site` job in android-ci.yml (required through `ci-ok`), so running it here as well only
+# added a duplicate run and a skipped `deploy` job to every PR.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/public/**'
-      - 'contract/**'
-      - 'tools/check.sh'
-      - '.github/workflows/admin-pages.yml'
-  pull_request:
-    paths:
-      - 'server/public/**'
-      - 'contract/**'
-      - 'tools/check.sh'
-      - '.github/workflows/admin-pages.yml'
   workflow_dispatch:
 
 permissions:
