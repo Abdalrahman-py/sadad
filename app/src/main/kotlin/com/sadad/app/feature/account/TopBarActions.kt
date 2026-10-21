@@ -57,21 +57,30 @@ fun TopBarActions(
     reminders: DueReminders = DueReminders.get(LocalContext.current),
 ) {
   val open by graph.current.collectAsStateWithLifecycle()
-  val store = open ?: return
+  var stores by rememberSaveable { mutableStateOf(false) }
+  var storesLoaded by rememberSaveable { mutableStateOf(false) }
+  val store = open
   // Starting a new composition for another store prevents one frame of its predecessor's
   // badge/photo.
-  key(store.account.storeUserId) {
-    StoreTopBar(
-        graph,
-        reminders,
-        store.account.storeUserId,
-        store.account.storeName,
-        onOpenNotifications,
-        onOpenActivityLog,
-        onAddStore,
-        onNeedsLogin,
-    )
-  }
+  if (store != null)
+      key(store.account.storeUserId) {
+        StoreTopBar(
+            graph,
+            reminders,
+            store.account.storeUserId,
+            store.account.storeName,
+            onOpenNotifications,
+            onOpenActivityLog,
+            onStores = {
+              storesLoaded = true
+              stores = true
+            },
+        )
+      }
+  // Switching closes current before the settings model can emit NEEDS_LOGIN.
+  // Keep its observer alive even while there is no open store or the account key changes.
+  if (storesLoaded)
+      SavedStoresController(graph, stores, { stores = false }, onAddStore, onNeedsLogin)
 }
 
 @Composable
@@ -82,8 +91,7 @@ private fun StoreTopBar(
     storeName: String,
     onOpenNotifications: () -> Unit,
     onOpenActivityLog: () -> Unit,
-    onAddStore: () -> Unit,
-    onNeedsLogin: () -> Unit,
+    onStores: () -> Unit,
 ) {
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
@@ -104,8 +112,6 @@ private fun StoreTopBar(
   var menu by rememberSaveable { mutableStateOf(false) }
   var photo by rememberSaveable { mutableStateOf(false) }
   var appearance by rememberSaveable { mutableStateOf(false) }
-  var stores by rememberSaveable { mutableStateOf(false) }
-  var storesLoaded by rememberSaveable { mutableStateOf(false) }
   val avatarDescription = stringResource(R.string.account_avatar)
   Row(
       modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -146,10 +152,7 @@ private fun StoreTopBar(
                   .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
           )
         },
-        onStores = {
-          storesLoaded = true
-          stores = true
-        },
+        onStores = onStores,
         onSync = {
           scope.launch {
             withContext(Dispatchers.IO) { SyncScheduler(context).syncNow(storeUserId) }
@@ -164,6 +167,4 @@ private fun StoreTopBar(
         graph.current.value?.account?.storeUserId
       }
   if (appearance) AppearanceDialog { appearance = false }
-  if (storesLoaded)
-      SavedStoresController(graph, stores, { stores = false }, onAddStore, onNeedsLogin)
 }
