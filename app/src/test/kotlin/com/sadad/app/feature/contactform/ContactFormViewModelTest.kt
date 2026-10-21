@@ -16,6 +16,9 @@ import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.Direction
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -273,7 +276,10 @@ class ContactFormViewModelTest {
             online = false
             offline = false
           }
-      val offline = LedgerRepository(scope.store, scope.outbox, session, backgroundScope)
+      // Joined by the fixture before it closes the store; `backgroundScope` is not joined.
+      val offlineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+      fixture.closeWithStore(offlineScope)
+      val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
       offline.view.first { view -> view?.contacts?.any { it.id == existing } == true }
 

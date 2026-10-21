@@ -6,7 +6,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -73,7 +75,13 @@ class SettingsScreenTest {
           ExportPeriod.Preset(PeriodPreset.YEAR),
           runBlocking { kit.preferences.exportPeriod.first() },
       )
-      compose.onNodeWithTag(HistoryTags.PERIOD_YEAR).assertIsSelected()
+      // The chip follows the preference through a flow, so it can lag the file.
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose
+            .onAllNodes(hasTestTag(HistoryTags.PERIOD_YEAR) and isSelected())
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
     }
   }
 
