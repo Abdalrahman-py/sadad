@@ -82,7 +82,6 @@ class TopBarActionsTest {
         compose.onNodeWithText(text).assertIsDisplayed()
       }
     } finally {
-      compose.setContent {}
       fixture.close()
       runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
     }

@@ -11,6 +11,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -28,6 +31,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.sadad.app.R
+import com.sadad.app.feature.account.AccountActivityScreen
+import com.sadad.app.feature.account.TopBarActions
 import com.sadad.app.feature.auth.AwaitingApprovalScreen
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.PasswordChangeScreen
@@ -55,11 +60,27 @@ fun SadadApp(
     dark: Boolean = isSystemInDarkTheme(),
     navController: NavHostController = rememberNavController(),
 ) {
+  var accountActivityRequest by rememberSaveable { mutableIntStateOf(0) }
   SadadTheme(dark = dark) {
     LockGate {
       // Arabic-first, so the shell mirrors like the Java app did, whatever the device locale.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Scaffold(bottomBar = { SadadBottomBar(navController) }) { insets ->
+        Scaffold(
+            topBar = {
+              TopBarActions(
+                  onOpenNotifications = {
+                    navController.navigate(Notifications) { launchSingleTop = true }
+                  },
+                  onOpenActivityLog = {
+                    accountActivityRequest++
+                    navController.navigate(History) { launchSingleTop = true }
+                  },
+                  onAddStore = { navController.navigateAuth(Login) },
+                  onNeedsLogin = { navController.navigateAuth(Login) },
+              )
+            },
+            bottomBar = { SadadBottomBar(navController) },
+        ) { insets ->
           NavHost(
               navController = navController,
               startDestination = startDestination,
@@ -114,7 +135,10 @@ fun SadadApp(
               val route = it.toRoute<PaymentForm>()
               PaymentFormScreen(route.contactId, route.debtId)
             }
-            composable<History> { HistoryScreen() }
+            composable<History> {
+              if (accountActivityRequest > 0) AccountActivityScreen(accountActivityRequest)
+              else HistoryScreen()
+            }
             composable<Reports> { ReportsScreen() }
             composable<Notifications> { NotificationsScreen() }
             composable<Settings> { SettingsScreen() }
