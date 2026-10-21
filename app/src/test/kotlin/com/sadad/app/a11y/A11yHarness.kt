@@ -12,9 +12,11 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
@@ -51,13 +53,14 @@ internal fun ComposeContentTestRule.showAt(fontScale: Float, content: @Composabl
  * - each [primary] action is displayed once the screen is scrolled to it, and what is on screen at
  *   that scroll position is checked too.
  *
- * Nodes a lazy list composes ahead of the viewport are not placed (0 x 0) and are not checked until
- * scrolled to.
+ * Every lazy list is scrolled item by item. A node that is composed but scrolled out of view has
+ * empty bounds and is not checked until it is on screen.
  */
 internal fun ComposeContentTestRule.assertAccessible(vararg primary: SemanticsMatcher) {
   waitForIdle()
   val problems = linkedMapOf<String, String>()
   inspect(problems)
+  sweepLists(problems)
   primary.forEach { matcher ->
     runCatching {
       reveal(matcher).assertIsDisplayed()
@@ -82,6 +85,19 @@ internal fun ComposeContentTestRule.assertAccessible(vararg primary: SemanticsMa
               }
               .map { StackTraceElement(it.className, it.methodName, text, it.lineNumber) }
               .toTypedArray()
+    }
+  }
+}
+
+/** Brings each item of every lazy list on screen in turn, so rows far down are checked too. */
+private fun ComposeContentTestRule.sweepLists(problems: MutableMap<String, String>) {
+  val lists = onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes()
+  lists.forEachIndexed { list, node ->
+    val info = node.config.getOrNull(SemanticsProperties.CollectionInfo)
+    repeat(maxOf(info?.rowCount ?: 0, info?.columnCount ?: 0)) { index ->
+      runCatching { onAllNodes(hasScrollToIndexAction())[list].performScrollToIndex(index) }
+      waitForIdle()
+      inspect(problems)
     }
   }
 }

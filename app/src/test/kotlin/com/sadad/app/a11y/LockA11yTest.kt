@@ -27,7 +27,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-private const val KEYBOARD_UP_DP = 480
+private const val KEYBOARD_UP_DP = 360
 
 /** The lock screen (PIN field, open button, biometric button) at both font sizes (ticket 76). */
 @RunWith(RobolectricTestRunner::class)
@@ -51,7 +51,8 @@ class LockA11yTest {
             it.setBiometricEnabled(true)
           }
         }
-    // A PIN is typed with the keyboard up, which leaves about this much of a phone screen.
+    // A PIN is typed with the keyboard up: a 640 dp tall phone keeps about this much for the
+    // screen.
     compose.showAt(fontScale) {
       Box(Modifier.height(KEYBOARD_UP_DP.dp).clipToBounds()) {
         LockGate(lock, true, Sensor) { Text("المحتوى") }
