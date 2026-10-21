@@ -121,7 +121,7 @@ private fun ComposeContentTestRule.inspect(problems: MutableMap<String, String>)
   val minimum = MIN_TARGET_DP * density.density
   onAllNodes(hasClickAction())
       .fetchSemanticsNodes()
-      .filter { it.layoutInfo.isPlaced }
+      .filterNot { it.touchBoundsInRoot.isEmpty }
       .forEach { node ->
         val bounds = node.touchBoundsInRoot
         if (bounds.width + 0.5f < minimum || bounds.height + 0.5f < minimum) {
