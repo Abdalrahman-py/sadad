@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
+import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.Reminder
 import com.sadad.app.testing.STORE_A
@@ -34,6 +35,7 @@ import org.robolectric.annotation.Config
 @Config(application = UiTestApplication::class)
 class TopBarActionsTest {
   @get:Rule val compose = createComposeRule()
+  @get:Rule val main = MainDispatcherRule()
   @get:Rule val temporary = TemporaryFolder()
 
   @Test
