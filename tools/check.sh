@@ -80,7 +80,8 @@ run_dashboard() {
 
 run_android() {
   echo "== android =="
-  python3 -m unittest tools/test_apk_budget.py
+  # No bytecode cache: __pycache__ is not git-ignored and a `git add -A` would commit it.
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools/test_apk_budget.py
   ./gradlew :ledger-core:test testDebugUnitTest assembleDebug assembleRelease :benchmark:assemble --console=plain
   # Signed when the release key is set, unsigned otherwise: either way the only APK in the folder.
   local apks=(app/build/outputs/apk/release/*.apk)
@@ -88,7 +89,7 @@ run_android() {
     echo "Expected exactly one release APK in app/build/outputs/apk/release, found: ${apks[*]}" >&2
     return 1
   fi
-  python3 tools/apk_budget.py "${apks[0]}"
+  PYTHONDONTWRITEBYTECODE=1 python3 tools/apk_budget.py "${apks[0]}"
 }
 
 run_edge() {

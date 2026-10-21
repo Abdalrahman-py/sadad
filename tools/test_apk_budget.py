@@ -20,13 +20,13 @@ class ApkBudgetTest(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
 
-    def apk(self, name="app.apk", profile=True, padding=0):
+    def apk(self, name="app.apk", profile=True, padding=0, profile_bytes="prof"):
         """A tiny zip standing in for an APK; `padding` bytes of incompressible data grow it."""
         path = os.path.join(self.dir.name, name)
         with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as z:
             z.writestr("classes.dex", "dex")
             if profile:
-                z.writestr(PROFILE, "prof")
+                z.writestr(PROFILE, profile_bytes)
             if padding:
                 z.writestr("assets/padding.bin", os.urandom(padding))
         return path
@@ -66,6 +66,13 @@ class ApkBudgetTest(unittest.TestCase):
 
     def test_an_apk_without_the_baseline_profile_fails(self):
         apk = self.apk(profile=False)
+        budget = self.budget_file(str(os.path.getsize(apk) + 100))
+        code, output = self.run_script(apk, "--budget-file", budget)
+        self.assertNotEqual(code, 0)
+        self.assertIn(PROFILE, output)
+
+    def test_an_apk_with_an_empty_baseline_profile_fails(self):
+        apk = self.apk(profile_bytes="")
         budget = self.budget_file(str(os.path.getsize(apk) + 100))
         code, output = self.run_script(apk, "--budget-file", budget)
         self.assertNotEqual(code, 0)

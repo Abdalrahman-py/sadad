@@ -5,6 +5,10 @@ Usage: python3 tools/apk_budget.py APK [--budget-file FILE]
 
 The budget is one whole number of bytes in tools/apk-budget.txt (the compressed APK file, as
 `ls -l` shows it). Raising it is a reviewed edit of that one file.
+
+The profile check shows that a non-empty assets/dexopt/baseline.prof ships. Library profiles
+(Compose, androidx) are merged into that file too, so it does not prove the app's own profile
+rules are in it.
 """
 
 import argparse
@@ -39,7 +43,9 @@ def check(apk, budget):
     try:
         with zipfile.ZipFile(apk) as z:
             if PROFILE not in z.namelist():
-                problems.append("APK has no %s (the Baseline Profile): %s" % (PROFILE, apk))
+                problems.append("APK has no %s (Baseline Profile): %s" % (PROFILE, apk))
+            elif z.getinfo(PROFILE).file_size == 0:
+                problems.append("APK has an empty %s (Baseline Profile): %s" % (PROFILE, apk))
     except zipfile.BadZipFile:
         problems.append("APK is not a valid zip file: %s" % apk)
     return problems
