@@ -17,7 +17,7 @@ private const val WAIT_MS = 15_000L
 // benchmark fails with a clear message; update it here.
 private const val NAV_CONTACTS = "الأشخاص"
 private const val NAV_SETTINGS = "الإعدادات"
-private const val CONTACT_ROW = "الدين الحالي"
+private const val CONTACTS_EMPTY = "لا يوجد زبائن مسجلون بعد"
 private const val RECORD_DEBT = "＋ تسجيل دين"
 private const val SAVE_DEBT = "حفظ الدين"
 private const val CONFIRM_DEBT = "تأكيد تسجيل الدين"
@@ -31,35 +31,44 @@ val unprofiled = CompilationMode.None()
 
 private fun precondition(): Nothing =
     error(
-        "The phone must have the benchmark build of :app installed, signed into the seeded store " +
-            "(ticket 62), approved and synced. Do that by hand once, then rerun."
+        "The bottom bar did not appear. The phone must have the benchmark build of :app installed, " +
+            "signed into the seeded store (ticket 62), approved, synced and unlocked. " +
+            "Do that by hand once, then rerun."
     )
 
-/** Cold or warm start, then fail with a clear message unless the app reached a synced store. */
+/**
+ * Starts the app (cold or warm, as the caller set up) and fails unless it reached a signed-in
+ * store.
+ */
 fun MacrobenchmarkScope.startToHome() {
-  pressHome()
   startActivityAndWait()
   if (!device.wait(Until.hasObject(By.text(NAV_CONTACTS)), WAIT_MS)) precondition()
 }
 
 fun MacrobenchmarkScope.openContacts() {
   device.findObject(By.text(NAV_CONTACTS)).click()
-  if (!device.wait(Until.hasObject(By.textStartsWith(CONTACT_ROW)), WAIT_MS)) {
+  if (!device.wait(Until.hasObject(By.scrollable(true)), WAIT_MS)) {
+    error("The Contacts list did not appear.")
+  }
+  if (device.hasObject(By.text(CONTACTS_EMPTY))) {
     error("The Contacts list is empty. Seed the store first (ticket 62).")
   }
 }
 
+/** Flings down and up alternately, so a short list still moves on every fling. */
 fun MacrobenchmarkScope.flingContacts(times: Int) {
   val list = device.findObject(By.scrollable(true)) ?: error("No scrollable Contacts list.")
   list.setGestureMargin(device.displayWidth / 5)
-  repeat(times) {
-    list.fling(Direction.DOWN)
+  repeat(times) { index ->
+    list.fling(if (index % 2 == 0) Direction.DOWN else Direction.UP)
     device.waitForIdle()
   }
 }
 
 fun MacrobenchmarkScope.openFirstContact() {
-  device.findObject(By.textStartsWith(CONTACT_ROW)).click()
+  val list = device.findObject(By.scrollable(true)) ?: error("No scrollable Contacts list.")
+  val row = list.findObject(By.clickable(true)) ?: error("The Contacts list has no row.")
+  row.click()
   if (!device.wait(Until.hasObject(By.text(RECORD_DEBT)), WAIT_MS)) {
     error("The Contact detail did not open.")
   }
@@ -86,11 +95,16 @@ fun MacrobenchmarkScope.openSettings() {
   if (!device.wait(Until.hasObject(By.text(DOWNLOAD_LATEST)), WAIT_MS)) error("No Settings screen.")
 }
 
-/** One idle pass from Settings; waits until the status is back to idle so the span has closed. */
+/**
+ * One idle pass from Settings. Waits up to 2 s for the "running" status, then for it to go away, so
+ * the `sync_pass` span has closed before the iteration ends. A pass faster than 2 s that never
+ * shows "running" is still covered: the wait itself keeps the iteration open for 2 s.
+ */
 fun MacrobenchmarkScope.syncOnce() {
   device.findObject(By.text(DOWNLOAD_LATEST)).click()
-  device.wait(Until.hasObject(By.textContains(SYNC_RUNNING)), 2_000L)
-  if (!device.wait(Until.hasObject(By.textContains(SYNC_IDLE)), 30_000L)) {
+  val started = device.wait(Until.hasObject(By.textContains(SYNC_RUNNING)), 2_000L)
+  if (started && !device.wait(Until.gone(By.textContains(SYNC_RUNNING)), 30_000L)) {
     error("The sync pass did not finish within 30 s.")
   }
+  if (!device.hasObject(By.textContains(SYNC_IDLE))) error("The sync pass did not end idle.")
 }

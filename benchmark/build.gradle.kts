@@ -42,4 +42,10 @@ dependencies {
   implementation(libs.benchmark.macro.junit4)
 }
 
-androidComponents { beforeVariants(selector().all()) { it.enable = it.buildType == "benchmark" } }
+// `benchmark` runs the Macrobenchmarks; `nonMinifiedRelease` (added by the baselineprofile plugin)
+// is what `:app:generateBaselineProfile` collects from, so the rules keep the source names.
+androidComponents {
+  beforeVariants(selector().all()) {
+    it.enable = it.buildType == "benchmark" || it.buildType == "nonMinifiedRelease"
+  }
+}

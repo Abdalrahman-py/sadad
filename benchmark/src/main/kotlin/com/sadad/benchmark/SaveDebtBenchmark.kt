@@ -28,6 +28,7 @@ class SaveDebtBenchmark {
           startupMode = StartupMode.WARM,
           iterations = 5,
           setupBlock = {
+            pressHome()
             startToHome()
             openContacts()
             openFirstContact()

@@ -14,6 +14,7 @@ class BaselineProfileGenerator {
   @Test
   fun generate() =
       rule.collect(packageName = PACKAGE) {
+        pressHome()
         startToHome()
         openContacts()
         flingContacts(times = 3)

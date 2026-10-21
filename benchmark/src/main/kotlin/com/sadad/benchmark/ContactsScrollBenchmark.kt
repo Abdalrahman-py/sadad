@@ -23,6 +23,7 @@ class ContactsScrollBenchmark {
           startupMode = StartupMode.WARM,
           iterations = 5,
           setupBlock = {
+            pressHome()
             startToHome()
             openContacts()
           },

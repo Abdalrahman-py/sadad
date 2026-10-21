@@ -29,6 +29,7 @@ class SyncBenchmark {
           startupMode = StartupMode.WARM,
           iterations = 5,
           setupBlock = {
+            pressHome()
             startToHome()
             openSettings()
           },
