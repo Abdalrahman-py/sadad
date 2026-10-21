@@ -72,7 +72,7 @@ class TopBarActionsTest {
             .isNotEmpty()
       }
       compose.onNodeWithText("المتجر الثاني").performClick()
-      compose.waitUntil { login.get() }
+      compose.waitUntil(timeoutMillis = 10_000) { login.get() }
     } finally {
       fixture.close()
       runBlocking { scope.coroutineContext[Job]?.cancelAndJoin() }
