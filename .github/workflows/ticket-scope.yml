@@ -39,11 +39,13 @@ jobs:
           gh issue view "$issue" --json body --jq .body > "$RUNNER_TEMP/ticket.md"
           grep -q '^Files you may edit' "$RUNNER_TEMP/ticket.md" || { echo "::error::#$issue has no \"Files you may edit:\" list"; exit 1; }
           # Extra paths the repository owner approved during review: a PR comment line
-          # "scope-approved: `path` `path`". Only the owner's comments count; after commenting, re-run this job.
-          gh api --paginate "repos/$GH_REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.OWNER and .author_association == "OWNER") | .id as $id | .body | split("\n")[] | select(startswith("scope-approved:")) | "\($id)\t\(.)"' > "$RUNNER_TEMP/approvals.tsv"
+          # "scope-approved: `path` `path`" and nothing else on the line. Only the owner's comments
+          # count, and an edited comment is ignored (post a new one); after commenting, re-run this job.
+          gh api --paginate "repos/$GH_REPO/issues/$PR/comments" --jq '.[] | select(.user.login == env.OWNER and .author_association == "OWNER" and .created_at == .updated_at) | .id as $id | .body | split("\n")[] | select(test("^scope-approved: (`[^`]+`\\s*)+$")) | "\($id)\t\(.)"' > "$RUNNER_TEMP/approvals.tsv"
           cut -f2- "$RUNNER_TEMP/approvals.tsv" > "$RUNNER_TEMP/approved.txt"
           if [[ -s $RUNNER_TEMP/approvals.tsv ]]; then echo "owner-approved extra paths (comment id, line):"; cat "$RUNNER_TEMP/approvals.tsv"; fi
-          if out=$(gh pr diff "$PR" --name-only | python3 tools/ticket_files.py scope "$RUNNER_TEMP/ticket.md" --also "$RUNNER_TEMP/approved.txt"); then
+          # The files API lists a rename's old path too (`gh pr diff --name-only` lists only the new one).
+          if out=$(gh api --paginate "repos/$GH_REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' | python3 tools/ticket_files.py scope "$RUNNER_TEMP/ticket.md" --also "$RUNNER_TEMP/approved.txt"); then
             echo "every changed file is allowed by #$issue"
           else
             echo "::error::files outside #$issue \"Files you may edit\":"; echo "$out"; exit 1

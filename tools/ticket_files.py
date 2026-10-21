@@ -59,9 +59,11 @@ def to_regex(p):
             j = p.find(">", i)
             r += "[^/]*"
             i = j if j > 0 else i
+        elif c == "{" and p.find("}", i) < 0:
+            r += re.escape(c)
         elif c == "{":
             j = p.find("}", i)
-            r += "(" + "|".join(map(re.escape, p[i + 1 : j].split(","))) + ")"
+            r +="(" + "|".join(map(re.escape, p[i + 1 : j].split(","))) + ")"
             i = j
         else:
             r += re.escape(c)
