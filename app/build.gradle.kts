@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
   alias(libs.plugins.android.application)
+  alias(libs.plugins.baselineprofile)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.ksp)
@@ -85,6 +86,14 @@ android {
       if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
+    // What the :benchmark module measures: the release build (R8 on) signed with the debug key so a
+    // phone installs it without the production key. Not debuggable, or the timings are wrong.
+    create("benchmark") {
+      initWith(getByName("release"))
+      signingConfig = signingConfigs.getByName("debug")
+      isDebuggable = false
+      matchingFallbacks += "release"
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -144,7 +153,9 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.serialization.json)
+  implementation(libs.profileinstaller)
   implementation(project(":ledger-core"))
+  baselineProfile(project(":benchmark"))
 
   ksp(libs.room.compiler)
 
