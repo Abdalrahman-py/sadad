@@ -91,9 +91,10 @@ jobs:
 
       # This step exists because the first CI run caught a real one: a device set to UTC produced a
       # different createdAt shape ("Z") than a device at +03:00, and only the runner's zone exposed
-      # it. Running the suite in a non-UTC zone as well keeps that class of bug visible.
+      # it. Running the suite in a non-UTC zone as well keeps that class of bug visible. `--rerun`
+      # forces just the two test tasks (it also bypasses the build cache); compile output is reused.
       - name: JVM unit tests under a non-UTC device zone
-        run: ./gradlew :ledger-core:test testDebugUnitTest --rerun-tasks --console=plain
+        run: ./gradlew :ledger-core:test --rerun testDebugUnitTest --rerun --console=plain
         env:
           TZ: Asia/Gaza
 
