@@ -3,7 +3,9 @@
 
   ticket_files.py lint TICKET          paths named in Test first / Steps but absent from the Files section
   ticket_files.py overlap T1 T2 ...    editable paths shared between tickets (T1 against the rest)
-  ticket_files.py scope TICKET         changed paths on stdin that "Files you may edit" does not allow
+  ticket_files.py scope TICKET [--also FILE]
+                                       changed paths on stdin that "Files you may edit" (plus the backticked
+                                       paths in FILE, the owner's scope-approved comments) does not allow
 Exit 1 when anything is printed.
 """
 import re
@@ -57,9 +59,11 @@ def to_regex(p):
             j = p.find(">", i)
             r += "[^/]*"
             i = j if j > 0 else i
+        elif c == "{" and p.find("}", i) < 0:
+            r += re.escape(c)
         elif c == "{":
             j = p.find("}", i)
-            r += "(" + "|".join(map(re.escape, p[i + 1 : j].split(","))) + ")"
+            r +="(" + "|".join(map(re.escape, p[i + 1 : j].split(","))) + ")"
             i = j
         else:
             r += re.escape(c)
@@ -98,6 +102,11 @@ def allowed(text):
 
 def main():
     cmd, files = sys.argv[1], sys.argv[2:]
+    also = []
+    if "--also" in files:  # file of owner-approved extra paths (backticked), see ticket-scope.yml
+        i = files.index("--also")
+        also = paths(open(files[i + 1]).read(), bare=True)
+        del files[i : i + 2]
     texts = [open(f).read() for f in files]
     problems = []
     if cmd == "lint":
@@ -117,8 +126,8 @@ def main():
             if shared:
                 problems.append(f"{f.rsplit('/', 1)[-1]}: {', '.join(shared)}")
     elif cmd == "scope":
-        ok = allowed(texts[0])
-        problems = [p for p in sys.stdin.read().split() if not any(re.fullmatch(to_regex(a), p) for a in ok)]
+        ok = allowed(texts[0]) + also
+        problems = [p for p in sys.stdin.read().splitlines() if not any(re.fullmatch(to_regex(a), p) for a in ok)]
     print("\n".join(problems)) if problems else None
     sys.exit(1 if problems else 0)
 
