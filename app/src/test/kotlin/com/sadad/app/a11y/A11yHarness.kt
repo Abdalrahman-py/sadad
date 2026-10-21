@@ -22,6 +22,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.ui.theme.SadadTheme
+import org.junit.Assert.assertTrue
 
 /** Phone width the font-scale checks run at (ticket 76). */
 internal const val PHONE_QUALIFIERS = "w360dp-h800dp-xxhdpi"
@@ -71,22 +72,10 @@ internal fun ComposeContentTestRule.assertAccessible(vararg primary: SemanticsMa
               "primary action not reachable (${matcher.description}): $it"
         }
   }
-  if (problems.isNotEmpty()) {
-    // DIAGNOSTIC (temporary): Gradle's console shows only "Class at File.kt:line" for a failure, so
-    // the problem list rides in the frame's file name.
-    val text =
-        "${problems.size} PROBLEMS: " + problems.values.joinToString(" || ").replace('\n', ' ')
-    throw AssertionError(text).also { error ->
-      error.stackTrace =
-          Throwable()
-              .stackTrace
-              .filter {
-                it.className.startsWith("com.sadad.app.a11y.") && "Harness" !in it.className
-              }
-              .map { StackTraceElement(it.className, it.methodName, text, it.lineNumber) }
-              .toTypedArray()
-    }
-  }
+  assertTrue(
+      "${problems.size} accessibility problems:\n" + problems.values.joinToString("\n"),
+      problems.isEmpty(),
+  )
 }
 
 /** Brings each item of every lazy list on screen in turn, so rows far down are checked too. */
