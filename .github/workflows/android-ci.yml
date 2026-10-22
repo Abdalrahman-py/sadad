@@ -42,7 +42,7 @@ concurrency:
 
 jobs:
   docs-and-format:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -64,7 +64,8 @@ jobs:
         run: ./tools/check.sh docs format
 
   admin-site:
-    runs-on: ubuntu-latest
+    # Every job pins ubuntu-24.04: on ubuntu-latest (26.04) Playwright 1.56 cannot install Chromium.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -74,7 +75,7 @@ jobs:
         run: ./tools/check.sh dashboard
 
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -110,7 +111,7 @@ jobs:
           if-no-files-found: warn
 
   edge-functions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -123,7 +124,7 @@ jobs:
         run: ./tools/check.sh edge
 
   database:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -136,7 +137,7 @@ jobs:
   ci-ok:
     if: always()
     needs: [docs-and-format, admin-site, android, edge-functions, database]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Fail unless every check job succeeded
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
