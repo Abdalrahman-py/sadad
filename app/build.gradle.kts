@@ -29,9 +29,16 @@ val releaseSigningReady =
 
 fun quoted(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
-// The pinned offline-lease key; empty means no offline write is allowed (ticket 47).
-val leaseKeyX = providers.gradleProperty("SADAD_LEASE_KEY_X").getOrElse("")
-val leaseKeyY = providers.gradleProperty("SADAD_LEASE_KEY_Y").getOrElse("")
+// The pinned offline-lease key: the public half of the api's SADAD_LEASE_PRIVATE_JWK secret (ticket
+// 27). An empty key means no offline write is allowed (ticket 47).
+val leaseKeyX =
+    providers
+        .gradleProperty("SADAD_LEASE_KEY_X")
+        .getOrElse("w1NJG8ul9K-a0cPomIp5m0qPFBlQXoWTfd6504pGzIY")
+val leaseKeyY =
+    providers
+        .gradleProperty("SADAD_LEASE_KEY_Y")
+        .getOrElse("g9oiLjzP9j6aZMAk_X_Q45PKvEc5vYPRAfsfbFFdvSk")
 
 android {
   namespace = "com.sadad.app"
