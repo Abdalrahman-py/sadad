@@ -15,7 +15,6 @@ import { type MobileDeps, registerMobileRoutes, routePath } from "./mobile.ts";
 
 export const DEFAULT_ALLOWED_ORIGINS: readonly string[] = [
   "https://abdalrahman-py.github.io",
-  "https://ibrahem57.github.io",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
 ];

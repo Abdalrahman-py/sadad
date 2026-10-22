@@ -30,7 +30,8 @@ These change what the data layer must do, so they come first.
    (`grep` over `functions/` and `server/public/src`). The app does not need them either: history comes
    from `changes` events, and a resent command returns its first receipt. Dead interface; the clean-cut
    rule says delete.
-5. **The lease key is derived from the service-role key** (`api/index.ts` `leaseSigner`). The lease
+5. **The lease key is its own function secret** (`SADAD_LEASE_PRIVATE_JWK`, `api/index.ts` `leaseSigner`;
+   until 2026-10-22 it was derived from the service-role key). The lease
    response carries its own public key, so checking the signature against that key proves nothing; the
    Java app did exactly that (`SignedLedgerSync.verifyLease`). The server never checks leases: they are a
    client-side policy only.

@@ -1,15 +1,28 @@
 import { createClient } from "@supabase/supabase-js";
-import { createECDH, createHash } from "node:crypto";
 import { createApp, DEFAULT_ALLOWED_ORIGINS } from "./app.ts";
 import { authSignInError } from "./account.ts";
 import { makeSupabaseLookupStoreId } from "./auth.ts";
 import type { LeaseSigner } from "./mobile.ts";
 
-const url = Deno.env.get("SUPABASE_URL")!;
-const publishableKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-// Service role stays in this function: installation keys, capabilities, sadid_create_store and
+function env(name: string): string {
+  const value = Deno.env.get(name);
+  if (!value) throw new Error(`${name} is not set`);
+  return value;
+}
+
+const url = env("SUPABASE_URL");
+// The platform's publishable and secret API keys, both named "default"; the legacy anon and
+// service_role keys stop working at the end of 2026.
+const publishableKey: string =
+  JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS")).default;
+// The secret key stays in this function: installation keys, capabilities, sadid_create_store and
 // the Auth admin API (store users), each after the caller was checked.
-const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const serviceKey: string = JSON.parse(env("SUPABASE_SECRET_KEYS")).default;
+if (!publishableKey || !serviceKey) {
+  throw new Error(
+    'SUPABASE_PUBLISHABLE_KEYS and SUPABASE_SECRET_KEYS need a "default" key',
+  );
+}
 
 const rawOrigins = Deno.env.get("SADAD_ALLOWED_ORIGINS");
 const allowedOrigins = rawOrigins
@@ -35,31 +48,19 @@ const userClient = (jwt: string, capability?: string) =>
     auth: noSession,
   });
 
-// The lease key is derived from the service key and separated by purpose, so there is no extra
-// secret to deploy. Only the public half leaves here.
+// SADAD_LEASE_PRIVATE_JWK is a P-256 private JWK set as a function secret. It is its own secret so
+// rotating an API key never changes the public key the app build pins. Only the public half leaves.
 async function leaseSigner(): Promise<LeaseSigner> {
-  const curve = createECDH("prime256v1");
-  curve.setPrivateKey(
-    createHash("sha256")
-      .update("sadid-offline-lease-v1\0")
-      .update(serviceKey)
-      .digest(),
-  );
-  const point = curve.getPublicKey(undefined, "uncompressed");
-  const b64 = (bytes: Uint8Array) =>
-    btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-  const publicKey: JsonWebKey = {
-    kty: "EC",
-    crv: "P-256",
-    x: b64(point.subarray(1, 33)),
-    y: b64(point.subarray(33)),
-  };
+  const { kty, crv, x, y, d } = JSON.parse(
+    env("SADAD_LEASE_PRIVATE_JWK"),
+  ) as JsonWebKey;
+  if (kty !== "EC" || crv !== "P-256" || !x || !y || !d) {
+    throw new Error("SADAD_LEASE_PRIVATE_JWK must be a P-256 private JWK");
+  }
+  const publicKey: JsonWebKey = { kty, crv, x, y };
   const signingKey = await crypto.subtle.importKey(
     "jwk",
-    { ...publicKey, d: b64(curve.getPrivateKey()) },
+    { ...publicKey, d },
     { name: "ECDSA", namedCurve: "P-256" },
     false,
     ["sign"],
