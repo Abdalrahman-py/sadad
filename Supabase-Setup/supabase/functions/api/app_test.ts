@@ -169,6 +169,8 @@ Deno.test("every code in contract/errors.json has an Arabic message and OpenAPI 
       new URL("../../../../contract/errors.json", import.meta.url),
     ),
   ) as Record<string, unknown>;
+  // api/errors.json is a deployable copy; on failure copy contract/errors.json over it.
+  assertEqual(errorMessages, rawErrors);
   const codes = Object.keys(rawErrors);
   assert(codes.length >= 30, "expected seeded contract error codes");
 

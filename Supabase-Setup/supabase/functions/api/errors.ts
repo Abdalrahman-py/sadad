@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import rawErrors from "../../../../contract/errors.json" with { type: "json" };
+// A copy of contract/errors.json: the deploy uploads only files under Supabase-Setup/.
+import rawErrors from "./errors.json" with { type: "json" };
 
 export const errorMessages = rawErrors;
 export type ErrorCode = keyof typeof errorMessages;
