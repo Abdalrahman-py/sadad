@@ -9,9 +9,9 @@ language sql stable security definer set search_path = '' as $$
     and s.subscription_mode <> 'paused'
     and (s.subscription_mode <> 'timed' or s.subscription_expires_at > (extract(epoch from statement_timestamp()) * 1000)::bigint)
   where c.token_hash = pg_catalog.sha256(pg_catalog.convert_to(coalesce(nullif(current_setting('request.headers', true), '')::jsonb ->> 'x-sadad-capability', ''), 'UTF8'))
-    and c.user_id = (select auth.uid())
-    and c.auth_session_id = ((select auth.jwt()) ->> 'session_id')::uuid
-    and coalesce(((select auth.jwt()) -> 'app_metadata' ->> 'force_password_change')::boolean, false) = false
+    and c.user_id = ((select sadid_private.jwt_claims()) ->> 'sub')::uuid
+    and c.auth_session_id = ((select sadid_private.jwt_claims()) ->> 'session_id')::uuid
+    and coalesce(((select sadid_private.jwt_claims()) -> 'app_metadata' ->> 'force_password_change')::boolean, false) = false
     and c.expires_at > statement_timestamp()
     and sadid_private.session_active(c.user_id, c.auth_session_id)
   limit 1

@@ -194,6 +194,18 @@ try {
     }
   });
 
+  // On Supabase, postgres holds USAGE on auth without grant option, so a grant to these roles is
+  // a no-op there; the checks below must pass without it, as the cloud runs them.
+  await check('Internal roles have no USAGE on schema auth', async () => {
+    for (const role of ['sadid_ledger_executor', 'sadid_auth_reader', 'sadid_support_reader']) {
+      assert.equal(
+        (await db.query("select has_schema_privilege($1, 'auth', 'USAGE') as allowed", [role])).rows[0].allowed,
+        false,
+        `${role} must not need schema auth`,
+      );
+    }
+  });
+
   // Seed users and stores
   await db.query('insert into auth.users(id, email) values ($1, $2), ($3, $4), ($5, $6), ($7, $8)', [
     storeUser, 'test@stores.sadad.invalid',

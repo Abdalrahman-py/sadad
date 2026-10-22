@@ -19,7 +19,7 @@ jobs:
   checks:
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@v4
@@ -33,7 +33,7 @@ jobs:
     # live site never switches backends on a merge (docs/adr/003-dashboard-hosting.md). Publish from
     # the project repository only; any other fork stays quiet.
     if: github.event_name == 'workflow_dispatch' && github.repository == 'Abdalrahman-py/sadad'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
