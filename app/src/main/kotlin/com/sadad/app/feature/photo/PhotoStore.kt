@@ -29,7 +29,9 @@ enum class PhotoKind(val suffix: String) {
 /** Two small photos per store. Every decode, EXIF read and file write stays off the UI thread. */
 class PhotoStore(context: Context) {
   private val app = context.applicationContext
-  private val directory = File(app.filesDir, "photos")
+  // filesDir touches the disk and the top bar builds this store on the main thread; every use of
+  // directory is inside an IO block, so it resolves there.
+  private val directory by lazy { File(app.filesDir, "photos") }
   private val mutex = Mutex()
   private val revision = MutableStateFlow(0L)
   val changes = revision.asStateFlow()
