@@ -13,7 +13,12 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Robolectric: below SDK 26 DataStore replaces its file with File.renameTo, which Windows
+// refuses over an existing file, so a second write fails off-device.
+@RunWith(RobolectricTestRunner::class)
 class DueRemindersTest {
   @get:Rule val temporary = TemporaryFolder()
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
