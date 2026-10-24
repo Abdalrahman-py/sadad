@@ -51,6 +51,7 @@ import com.sadad.app.feature.notifications.NotificationsScreen
 import com.sadad.app.feature.payment.PaymentFormScreen
 import com.sadad.app.feature.recovery.RecoveryScreen
 import com.sadad.app.feature.reports.ReportsScreen
+import com.sadad.app.feature.settings.SettingsNavigation
 import com.sadad.app.feature.settings.SettingsScreen
 import com.sadad.app.feature.trash.TrashScreen
 import com.sadad.app.ui.theme.SadadTheme
@@ -97,7 +98,8 @@ fun SadadApp(
           }
           composable<Contacts> {
             ContactsScreen(
-                onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) }
+                onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) },
+                onAddContact = { navController.navigate(ContactForm()) },
             )
           }
           composable<ContactDetail> {
@@ -131,15 +133,46 @@ fun SadadApp(
           }
           composable<PaymentForm> {
             val route = it.toRoute<PaymentForm>()
-            PaymentFormScreen(route.contactId, route.debtId)
+            PaymentFormScreen(
+                route.contactId,
+                route.debtId,
+                // Back to the Contact the payment was recorded for, as the debt form does.
+                onSaved = {
+                  if (!navController.popBackStack()) {
+                    navController.navigate(ContactDetail(route.contactId))
+                  }
+                },
+            )
           }
           composable<History> {
             if (accountActivityRequest > 0) AccountActivityScreen(accountActivityRequest)
-            else HistoryScreen()
+            else
+                HistoryScreen(
+                    onOpenContact = { navController.navigate(ContactDetail(it)) },
+                    onOpenReports = { navController.navigate(Reports) },
+                )
           }
           composable<Reports> { ReportsScreen() }
           composable<Notifications> { NotificationsScreen() }
-          composable<Settings> { SettingsScreen() }
+          composable<Settings> {
+            SettingsScreen(
+                navigation =
+                    SettingsNavigation(
+                        onOpenTrash = { navController.navigate(Trash) },
+                        onOpenNotifications = {
+                          navController.navigate(Notifications) { launchSingleTop = true }
+                        },
+                        onOpenActivityLog = {
+                          accountActivityRequest++
+                          navController.navigate(History) { launchSingleTop = true }
+                        },
+                        onOpenRecovery = { navController.navigate(Recovery) },
+                        onChangePassword = { navController.navigate(PasswordChange) },
+                        onAddStore = { navController.navigateAuth(Login) },
+                        onNeedsLogin = { navController.navigateAuth(Login) },
+                    )
+            )
+          }
           composable<Trash> { TrashScreen() }
           composable<Recovery> { RecoveryScreen() }
         }

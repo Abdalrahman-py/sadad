@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,8 +19,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -36,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
@@ -62,15 +66,20 @@ import kotlinx.coroutines.launch
 internal object ContactsTag {
   const val LIST = "contacts:list"
   const val SEARCH = "contacts:search"
+  const val ADD = "contacts:add"
   const val MOVEMENTS = "contact:movements"
 
   fun row(id: String) = "contacts:row:$id"
 }
 
 @Composable
-fun ContactsScreen(modifier: Modifier = Modifier, onOpenContact: (String) -> Unit = {}) {
+fun ContactsScreen(
+    modifier: Modifier = Modifier,
+    onOpenContact: (String) -> Unit = {},
+    onAddContact: () -> Unit = {},
+) {
   val viewModel = contactsViewModel()
-  ContactsScreen(viewModel, onOpenContact, modifier)
+  ContactsScreen(viewModel, onOpenContact, modifier, onAddContact)
 }
 
 @Composable
@@ -78,9 +87,27 @@ internal fun ContactsScreen(
     viewModel: ContactsViewModel,
     onOpenContact: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onAddContact: () -> Unit = {},
 ) {
   val state by viewModel.state.collectAsState()
-  Column(modifier.fillMaxSize()) {
+  Box(modifier.fillMaxSize()) {
+    ContactsList(state, viewModel, onOpenContact)
+    ExtendedFloatingActionButton(
+        onClick = onAddContact,
+        icon = { Icon(painterResource(R.drawable.ic_person_add), contentDescription = null) },
+        text = { Text(stringResource(R.string.contactform_add_title)) },
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag(ContactsTag.ADD),
+    )
+  }
+}
+
+@Composable
+private fun ContactsList(
+    state: ContactsState,
+    viewModel: ContactsViewModel,
+    onOpenContact: (String) -> Unit,
+) {
+  Column(Modifier.fillMaxSize()) {
     Column(
         Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -123,7 +150,11 @@ internal fun ContactsScreen(
         )
       }
     }
-    LazyColumn(Modifier.fillMaxSize().testTag(ContactsTag.LIST)) {
+    // The bottom padding keeps the last row clear of the add button.
+    LazyColumn(
+        Modifier.fillMaxSize().testTag(ContactsTag.LIST),
+        contentPadding = PaddingValues(bottom = 88.dp),
+    ) {
       if (state.loaded && state.rows.isEmpty()) {
         item {
           EmptyState(
