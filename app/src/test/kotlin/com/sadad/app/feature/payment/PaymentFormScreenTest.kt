@@ -18,7 +18,9 @@ import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,6 +43,30 @@ class PaymentFormScreenTest {
 
       compose.onNodeWithText(text(R.string.payment_no_open_balance)).assertIsDisplayed()
       compose.onNodeWithText(text(R.string.payment_no_open_balance_detail)).assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun selectingAPaymentMethodFromTheMenuUpdatesTheReview() {
+    val (fixture, contact) = graphWithDebts(10_000)
+    fixture.use {
+      val model = PaymentFormViewModel(fixture.graph, contact, SavedStateHandle())
+      compose.setContent { SadadTheme { PaymentFormScreen(viewModel = model, onSaved = {}) } }
+      compose.waitUntil(10_000) { model.state.value.openBalance == Cents(10_000) }
+
+      compose.onNodeWithTag(PaymentTag.METHOD).performScrollTo().performClick()
+      compose.onNodeWithText(text(R.string.payment_method_bank)).performClick()
+      compose.runOnIdle { assertEquals(PaymentMethod.BANK, model.state.value.method) }
+
+      compose.onNodeWithTag(PaymentTag.AMOUNT).performScrollTo().performTextInput("25")
+      compose.onNodeWithTag(PaymentTag.SAVE).performScrollTo().performClick()
+      compose.onNodeWithText(text(R.string.payment_review_title)).assertIsDisplayed()
+      compose
+          .onNodeWithText(
+              text(R.string.payment_review_method).format(text(R.string.payment_method_bank)),
+              substring = true,
+          )
+          .assertIsDisplayed()
     }
   }
 

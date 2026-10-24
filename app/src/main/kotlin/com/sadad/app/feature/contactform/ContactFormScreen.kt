@@ -2,29 +2,20 @@ package com.sadad.app.feature.contactform
 
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -34,11 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -52,6 +41,12 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.feature.notifications.DueReminderWorker
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.ui.components.SadadChoiceField
+import com.sadad.app.ui.components.SadadField
+import com.sadad.app.ui.components.SadadPageHeading
+import com.sadad.app.ui.components.SadadSwitchRow
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseDueDate
@@ -69,106 +64,88 @@ fun ContactFormScreen(contactId: String?, modifier: Modifier = Modifier) {
 fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modifier) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
+  val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
   LaunchedEffect(state.savedContactId) {
     state.savedContactId?.let { openContact(context, viewModel.storeUserId, it) }
   }
 
   Column(
-      modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+      modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    Text(
-        text =
+    SadadPageHeading(
+        title =
             stringResource(
                 if (state.edit) R.string.contactform_edit_title else R.string.contactform_add_title
             ),
-        style = MaterialTheme.typography.headlineSmall,
+        subtitle = stringResource(R.string.contactform_subtitle),
+        onBack = { back?.onBackPressed() },
     )
-    Text(
-        text = stringResource(R.string.contactform_subtitle),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    OutlinedTextField(
+    SadadField(
         value = state.name,
         onValueChange = viewModel::onNameChange,
-        label = { Text(stringResource(R.string.contactform_name)) },
+        label = stringResource(R.string.contactform_name),
+        placeholder = stringResource(R.string.contactform_name_hint),
         singleLine = true,
         enabled = !state.busy,
         isError = state.nameError != null,
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
     )
     state.nameError?.let {
       Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
-    Text(stringResource(R.string.contactform_prefix), style = MaterialTheme.typography.labelLarge)
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-      val prefixes =
-          listOf(
-              "970" to stringResource(R.string.contactform_prefix_970),
-              "972" to stringResource(R.string.contactform_prefix_972),
-          )
-      prefixes.forEachIndexed { index, (prefix, label) ->
-        SegmentedButton(
-            selected = state.prefix == prefix,
-            onClick = { viewModel.onPrefixChange(prefix) },
-            shape = SegmentedButtonDefaults.itemShape(index = index, count = prefixes.size),
-            enabled = !state.busy,
-        ) {
-          Text(label)
-        }
-      }
-    }
-    OutlinedTextField(
+    SadadChoiceField(
+        label = stringResource(R.string.contactform_prefix),
+        options =
+            listOf(
+                "970" to stringResource(R.string.contactform_prefix_970),
+                "972" to stringResource(R.string.contactform_prefix_972),
+            ),
+        selected = state.prefix,
+        onSelect = viewModel::onPrefixChange,
+        enabled = !state.busy,
+    )
+    SadadField(
         value = state.phone,
         onValueChange = viewModel::onPhoneChange,
-        label = { Text(stringResource(R.string.contactform_phone)) },
+        label = stringResource(R.string.contactform_phone),
+        placeholder = stringResource(R.string.contactform_phone_hint),
         singleLine = true,
         enabled = !state.busy,
         isError = state.phoneError != null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
     )
     state.phoneError?.let {
       Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
-    OutlinedTextField(
+    SadadField(
         value = state.category,
         onValueChange = viewModel::onCategoryChange,
-        label = { Text(stringResource(R.string.contactform_category)) },
-        placeholder = { Text(stringResource(R.string.contactform_category_hint)) },
+        label = stringResource(R.string.contactform_category),
+        placeholder = stringResource(R.string.contactform_category_hint),
         singleLine = true,
         enabled = !state.busy,
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
     )
-    OutlinedTextField(
+    SadadField(
         value = state.note,
         onValueChange = viewModel::onNoteChange,
-        label = { Text(stringResource(R.string.contactform_note)) },
+        label = stringResource(R.string.contactform_note),
+        placeholder = stringResource(R.string.contactform_note_hint),
         minLines = 2,
         enabled = !state.busy,
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
+        singleLine = false,
     )
     VoiceDraft { viewModel.onNoteChange(it) }
     if (!state.edit) {
-      // The row is the one control, so the switch is announced with its label and the whole row
-      // taps.
-      Row(
-          modifier =
-              Modifier.fillMaxWidth()
-                  .heightIn(min = 48.dp)
-                  .toggleable(
-                      value = state.withFirstDebt,
-                      enabled = !state.busy,
-                      role = Role.Switch,
-                      onValueChange = viewModel::onFirstDebtChange,
-                  ),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.SpaceBetween,
-      ) {
-        Text(stringResource(R.string.contactform_first_debt))
-        Switch(checked = state.withFirstDebt, onCheckedChange = null, enabled = !state.busy)
-      }
+      SadadSwitchRow(
+          title = stringResource(R.string.contactform_first_debt),
+          checked = state.withFirstDebt,
+          onCheckedChange = viewModel::onFirstDebtChange,
+          enabled = !state.busy,
+      )
     }
     if (state.withFirstDebt && !state.edit) {
       FirstDebtFields(state, viewModel)
@@ -176,17 +153,15 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
     state.message?.let {
       Text(it, color = MaterialTheme.colorScheme.error)
     }
-    Button(
+    SadadButton(
+        text =
+            stringResource(
+                if (state.edit) R.string.contactform_save_edit else R.string.contactform_save_add
+            ),
         onClick = viewModel::save,
         enabled = !state.busy,
         modifier = Modifier.fillMaxWidth(),
-    ) {
-      Text(
-          stringResource(
-              if (state.edit) R.string.contactform_save_edit else R.string.contactform_save_add
-          )
-      )
-    }
+    )
   }
 
   state.review?.let { review ->
@@ -224,27 +199,27 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
 @Composable
 private fun FirstDebtFields(state: ContactFormState, viewModel: ContactFormViewModel) {
   var picking by remember { mutableStateOf(false) }
-  OutlinedTextField(
+  SadadField(
       value = state.debtAmount,
       onValueChange = viewModel::onDebtAmountChange,
-      label = { Text(stringResource(R.string.contactform_debt_amount)) },
+      label = stringResource(R.string.contactform_debt_amount),
       singleLine = true,
       enabled = !state.busy,
       isError = state.debtError != null,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-      modifier = Modifier.fillMaxWidth(),
+      fieldModifier = Modifier.fillMaxWidth(),
   )
   state.debtError?.let {
     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
   }
   Text(stringResource(R.string.contactform_debt_due), style = MaterialTheme.typography.labelLarge)
-  OutlinedButton(
+  SadadButton(
+      text = state.debtDue ?: stringResource(R.string.contactform_pick_date),
+      style = SadadButtonStyle.SURFACE,
       onClick = { picking = true },
       enabled = !state.busy,
       modifier = Modifier.fillMaxWidth(),
-  ) {
-    Text(state.debtDue ?: stringResource(R.string.contactform_pick_date))
-  }
+  )
   if (picking) {
     val initial =
         state.debtDue
@@ -282,13 +257,15 @@ private fun FirstDebtFields(state: ContactFormState, viewModel: ContactFormViewM
       DatePicker(state = picker)
     }
   }
-  OutlinedTextField(
+  SadadField(
       value = state.debtNote,
       onValueChange = viewModel::onDebtNoteChange,
-      label = { Text(stringResource(R.string.contactform_debt_details)) },
+      label = stringResource(R.string.contactform_debt_details),
+      placeholder = stringResource(R.string.contactform_debt_details_hint),
       minLines = 2,
       enabled = !state.busy,
-      modifier = Modifier.fillMaxWidth(),
+      fieldModifier = Modifier.fillMaxWidth(),
+      singleLine = false,
   )
   VoiceDraft { viewModel.onDebtNoteChange(it) }
 }

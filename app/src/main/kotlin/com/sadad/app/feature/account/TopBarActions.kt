@@ -4,23 +4,28 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.provider.Settings
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,15 +36,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadad.app.AppGraph
 import com.sadad.app.R
@@ -49,6 +59,9 @@ import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.photo.PhotoEditor
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.photo.PhotoStore
+import com.sadad.app.ui.components.SadadLogo
+import com.sadad.app.ui.components.SadadRoundIcon
+import com.sadad.app.ui.theme.sadadPalette
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -56,6 +69,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun TopBarActions(
+    screenTitle: String = "",
     onOpenNotifications: () -> Unit,
     onOpenActivityLog: () -> Unit,
     onAddStore: () -> Unit = {},
@@ -76,6 +90,7 @@ fun TopBarActions(
             reminders,
             store.account.storeUserId,
             store.account.storeName,
+            screenTitle,
             onOpenNotifications,
             onOpenActivityLog,
             onStores = {
@@ -96,6 +111,7 @@ private fun StoreTopBar(
     reminders: DueReminders,
     storeUserId: String,
     storeName: String,
+    screenTitle: String,
     onOpenNotifications: () -> Unit,
     onOpenActivityLog: () -> Unit,
     onStores: () -> Unit,
@@ -120,42 +136,80 @@ private fun StoreTopBar(
   var photo by rememberSaveable { mutableStateOf(false) }
   var appearance by rememberSaveable { mutableStateOf(false) }
   val avatarDescription = stringResource(R.string.account_avatar)
-  Row(
-      // The Scaffold hands the bars to content, not to its top bar slot, so this Row clears the
+  val p = sadadPalette
+  val bell = stringResource(R.string.account_bell)
+  Column(
+      // The Scaffold hands the bars to content, not to its top bar slot, so the header clears the
       // status bar and the sides itself, the insets a TopAppBar takes by default.
       modifier =
-          Modifier.windowInsetsPadding(
+          Modifier.background(p.bg)
+              .windowInsetsPadding(
                   WindowInsets.systemBars
                       .union(WindowInsets.displayCutout)
                       .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
               )
-              .fillMaxWidth()
-              .padding(horizontal = 12.dp, vertical = 4.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
-      verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
   ) {
-    IconButton(
-        onClick = { menu = true },
-        modifier = Modifier.semantics { contentDescription = avatarDescription },
+    // The Java header: logo, «سدد» over the screen's name, then the bell and the account portrait.
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .heightIn(min = 64.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-      val image = portrait
-      if (image == null) Icon(painterResource(R.drawable.ic_person), contentDescription = null)
-      else
-          Image(
-              image.asImageBitmap(),
-              contentDescription = null,
-              modifier = Modifier.size(38.dp).clip(CircleShape),
-          )
-    }
-    Text(
-        storeName.ifBlank { stringResource(R.string.account_default_store) },
-        modifier = Modifier.weight(1f),
-    )
-    IconButton(onClick = onOpenNotifications) {
-      BadgedBox(badge = { if (unread > 0) Badge { Text(unread.toString()) } }) {
-        Icon(painterResource(R.drawable.ic_notifications), stringResource(R.string.account_bell))
+      SadadLogo(42.dp, dark = p.isDark)
+      Spacer(Modifier.width(10.dp))
+      Column(Modifier.weight(1f)) {
+        Text(
+            stringResource(R.string.brand_name),
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+            color = if (p.isDark) p.accent else p.primary,
+            maxLines = 1,
+        )
+        Text(
+            screenTitle.ifEmpty {
+              storeName.ifBlank { stringResource(R.string.account_default_store) }
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = p.muted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+      }
+      SadadRoundIcon(
+          painterResource(R.drawable.ic_notifications),
+          bell,
+          onOpenNotifications,
+          badge = unread,
+      )
+      Spacer(Modifier.width(6.dp))
+      Box(
+          modifier =
+              Modifier.size(38.dp)
+                  .clip(CircleShape)
+                  .background(p.soft)
+                  .clickable(role = Role.Button) { menu = true }
+                  .semantics { contentDescription = avatarDescription },
+          contentAlignment = Alignment.Center,
+      ) {
+        val image = portrait
+        if (image == null)
+            Icon(
+                painterResource(R.drawable.ic_person),
+                contentDescription = null,
+                tint = if (p.isDark) p.text else p.primary,
+                modifier = Modifier.size(22.dp),
+            )
+        else
+            Image(
+                image.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.size(38.dp).clip(CircleShape),
+                contentScale = ContentScale.Crop,
+            )
       }
     }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(p.line.copy(alpha = 72 / 255f)))
   }
   if (menu) {
     AccountMenu(

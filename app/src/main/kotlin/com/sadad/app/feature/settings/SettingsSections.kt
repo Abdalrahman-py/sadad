@@ -9,18 +9,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,11 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.sadad.app.R
 import com.sadad.app.feature.history.PeriodFilter
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.ui.components.SadadSwitchRow
 import java.time.LocalDate
 
 internal fun LazyListScope.storeSection(state: SettingsState, model: SettingsViewModel) {
@@ -228,29 +226,23 @@ private fun Heading(
 
 @Composable
 private fun Action(label: Int, onClick: () -> Unit, enabled: Boolean = true) {
-  OutlinedButton(
+  SadadButton(
+      text = stringResource(label),
+      style = SadadButtonStyle.SURFACE,
       onClick = onClick,
       enabled = enabled,
       modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-  ) {
-    Text(stringResource(label))
-  }
+  )
 }
 
 @Composable
 private fun SwitchRow(label: Int, checked: Boolean, onChange: (Boolean) -> Unit) {
-  // The row is the one control, so the switch is announced with its label and the whole row taps.
-  Row(
-      modifier =
-          Modifier.fillMaxWidth()
-              .heightIn(min = 48.dp)
-              .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-              .padding(horizontal = 16.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-    Switch(checked = checked, onCheckedChange = null)
-  }
+  SadadSwitchRow(
+      title = stringResource(label),
+      checked = checked,
+      onCheckedChange = onChange,
+      modifier = Modifier.padding(horizontal = 16.dp),
+  )
 }
 
 @Composable

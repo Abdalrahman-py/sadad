@@ -114,6 +114,8 @@ private fun ComposeContentTestRule.inspect(problems: MutableMap<String, String>)
   val minimum = MIN_TARGET_DP * density.density
   onAllNodes(hasClickAction())
       .fetchSemanticsNodes()
+      // Measure each control before scrolling to the next one changes its visible bounds.
+      .asSequence()
       .map(::bringIntoView)
       .filterNot { it.touchBoundsInRoot.isEmpty }
       .forEach { node ->

@@ -8,9 +8,11 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /** What a session needs from the graph that owns the open store. */
 interface SessionHost {
@@ -142,7 +144,7 @@ class Sessions(
     if (account.installation?.status != "revoked") return@withLock false
     val installationId = UUID.randomUUID().toString()
     val keyAlias = nextAlias(account)
-    installations.create(keyAlias, installationId)
+    keystore { installations.create(keyAlias, installationId) }
     val fresh =
         account.copy(installationId = installationId, keyAlias = keyAlias, installation = null)
     // Only the identity changes: a name or label saved meanwhile is kept.
@@ -153,7 +155,7 @@ class Sessions(
     host.open(fresh)
     // Only once the new identity opens is the old key disposable; failing to delete it is not a
     // failed registration.
-    runCatching { installations.delete(account.keyAlias) }
+    runCatching { keystore { installations.delete(account.keyAlias) } }
     true
   }
 
@@ -182,10 +184,16 @@ class Sessions(
             keyAlias = "installation-$storeUserId",
             label = deviceLabel,
         )
-    installations.create(account.keyAlias, account.installationId)
+    keystore { installations.create(account.keyAlias, account.installationId) }
     accounts.add(account)
     return account
   }
+
+  /**
+   * Keystore calls are slow and StrictMode flags key generation; sign-in is launched from the UI,
+   * so every [installations] call here leaves the main thread.
+   */
+  private suspend fun <T> keystore(block: () -> T): T = withContext(Dispatchers.IO) { block() }
 
   private suspend fun storeLocked(session: AuthSession) {
     accounts.saveRefreshToken(session.userId, session.refreshToken)

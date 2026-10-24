@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -41,8 +40,10 @@ import com.sadad.app.SadadApplication
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.SadadCard
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
+import com.sadad.app.ui.theme.sadadPalette
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -250,13 +251,14 @@ private fun PeopleTab(
 
 @Composable
 private fun PersonRow(person: HistoryPerson, onOpenContact: (String) -> Unit) {
-  Card(
+  SadadCard(
       onClick = { onOpenContact(person.contactId) },
       modifier =
           Modifier.fillMaxWidth()
               .padding(horizontal = 16.dp)
               .testTag("history:person:${person.contactId}"),
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+      color = sadadPalette.card,
+      contentPadding = PaddingValues(0.dp),
   ) {
     Row(
         modifier = Modifier.padding(15.dp),

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_payment">تسجيل دفعة</string>
+    <string name="title_payment">دفعة</string>
     <string name="payment_subtitle">دفعة من إجمالي حساب %1$s</string>
     <string name="payment_balance">الرصيد الإجمالي الحالي: %1$s\nتُخصم الدفعة من إجمالي الحساب وتوزّع على الديون الأقدم أولاً.</string>
     <string name="payment_amount_label">مبلغ الدفعة بالشيكل</string>

@@ -33,9 +33,9 @@ class PlumbingTest {
   }
 
   @Test
-  fun leaseKeyIsEmptyWithoutTheGradleProperty() {
-    assertEquals("", BuildConfig.LEASE_PUBLIC_KEY_X)
-    assertEquals("", BuildConfig.LEASE_PUBLIC_KEY_Y)
+  fun leaseKeyDefaultsToTheProjectKey() {
+    assertEquals("w1NJG8ul9K-a0cPomIp5m0qPFBlQXoWTfd6504pGzIY", BuildConfig.LEASE_PUBLIC_KEY_X)
+    assertEquals("g9oiLjzP9j6aZMAk_X_Q45PKvEc5vYPRAfsfbFFdvSk", BuildConfig.LEASE_PUBLIC_KEY_Y)
   }
 
   @Test

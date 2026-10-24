@@ -76,18 +76,24 @@ class ThemePreference private constructor(private val store: DataStore<Preferenc
 
     @Volatile private var instance: ThemePreference? = null
 
-    fun create(scope: CoroutineScope, file: File): ThemePreference =
-        ThemePreference(PreferenceDataStoreFactory.create(scope = scope) { file })
+    fun create(scope: CoroutineScope, file: File): ThemePreference = create(scope) { file }
 
-    /** One per process: a second DataStore on the same file is refused. */
+    /** [produceFile] runs on the DataStore's thread at the first read, never on the caller's. */
+    private fun create(scope: CoroutineScope, produceFile: () -> File): ThemePreference =
+        ThemePreference(PreferenceDataStoreFactory.create(scope = scope, produceFile = produceFile))
+
+    /**
+     * One per process: a second DataStore on the same file is refused. `filesDir` touches the disk,
+     * so it is resolved lazily: the activity calls this on the main thread during the first frame.
+     */
     fun get(context: Context): ThemePreference =
         instance
             ?: synchronized(this) {
+              val app = context.applicationContext
               instance
-                  ?: create(
-                          CoroutineScope(SupervisorJob() + Dispatchers.IO),
-                          File(context.applicationContext.filesDir, FILE_NAME),
-                      )
+                  ?: create(CoroutineScope(SupervisorJob() + Dispatchers.IO)) {
+                        File(app.filesDir, FILE_NAME)
+                      }
                       .also { instance = it }
             }
 

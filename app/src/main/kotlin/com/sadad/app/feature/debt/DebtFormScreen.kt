@@ -1,5 +1,6 @@
 package com.sadad.app.feature.debt
 
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,13 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -29,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -42,6 +41,10 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.ui.components.ConfirmDialog
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.ui.components.SadadField
+import com.sadad.app.ui.components.SadadPageHeading
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseDueDate
@@ -76,6 +79,7 @@ internal fun DebtFormScreen(
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
+  val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
   val snackbar = remember { SnackbarHostState() }
   val success = stringResource(R.string.debt_success)
   val noPhone = stringResource(R.string.debt_phone_none)
@@ -92,36 +96,44 @@ internal fun DebtFormScreen(
     snackbar.showSnackbar(success, duration = SnackbarDuration.Short)
     onSaved()
   }
-  Scaffold(modifier = modifier, snackbarHost = { SnackbarHost(snackbar) }) { insets ->
+  Scaffold(
+      modifier = modifier,
+      containerColor = Color.Transparent,
+      snackbarHost = { SnackbarHost(snackbar) },
+  ) { insets ->
     Column(
-        Modifier.fillMaxSize().padding(insets).verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier.fillMaxSize().padding(insets).verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Text(stringResource(R.string.title_debt), style = MaterialTheme.typography.headlineSmall)
+      SadadPageHeading(
+          title = stringResource(R.string.title_debt),
+          subtitle =
+              if (state.missing) null else stringResource(R.string.debt_subtitle, state.name),
+          onBack = { back?.onBackPressed() },
+      )
       if (state.missing) {
         Text(stringResource(R.string.debt_no_contact), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(R.string.debt_no_contact_detail))
         return@Column
       }
-      Text(stringResource(R.string.debt_subtitle, state.name))
-      OutlinedTextField(
+      SadadField(
           value = state.amount,
           onValueChange = viewModel::onAmountChange,
           singleLine = true,
           enabled = !state.busy && !state.saved,
-          label = { Text(stringResource(R.string.debt_amount_label)) },
-          placeholder = { Text(stringResource(R.string.debt_amount_placeholder)) },
+          label = stringResource(R.string.debt_amount_label),
+          placeholder = stringResource(R.string.debt_amount_placeholder),
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-          modifier = Modifier.fillMaxWidth().testTag(DebtTag.AMOUNT),
+          fieldModifier = Modifier.fillMaxWidth().testTag(DebtTag.AMOUNT),
       )
       Text(stringResource(R.string.debt_due_label), style = MaterialTheme.typography.bodyMedium)
-      OutlinedButton(
+      SadadButton(
+          text = state.dueDate ?: stringResource(R.string.debt_due_hint),
+          style = SadadButtonStyle.SURFACE,
           onClick = { pickingDate = true },
           enabled = !state.busy && !state.saved,
           modifier = Modifier.fillMaxWidth().testTag(DebtTag.DUE_DATE),
-      ) {
-        Text(state.dueDate ?: stringResource(R.string.debt_due_hint))
-      }
+      )
       if (state.dueDate != null) {
         TextButton(
             onClick = viewModel::removeDueDate,
@@ -131,26 +143,27 @@ internal fun DebtFormScreen(
           Text(stringResource(R.string.debt_due_remove))
         }
       }
-      OutlinedTextField(
+      SadadField(
           value = state.note,
           onValueChange = viewModel::onNoteChange,
           enabled = !state.busy && !state.saved,
           minLines = 2,
-          label = { Text(stringResource(R.string.debt_note_label)) },
-          modifier = Modifier.fillMaxWidth().testTag(DebtTag.NOTE),
+          label = stringResource(R.string.debt_note_label),
+          placeholder = stringResource(R.string.debt_note_hint),
+          fieldModifier = Modifier.fillMaxWidth().testTag(DebtTag.NOTE),
+          singleLine = false,
       )
       // Locking is skipped before the recognizer opens, so coming back does not ask for the PIN.
       VoiceDraftButton(
           onText = viewModel::onNoteChange,
           onLaunch = { AppLock.get(context).skipNextLock() },
       )
-      Button(
+      SadadButton(
+          text = stringResource(R.string.debt_save),
           onClick = { viewModel.save(context) },
           enabled = !state.busy && !state.saved && state.loaded && !state.missing,
           modifier = Modifier.fillMaxWidth().testTag(DebtTag.SAVE),
-      ) {
-        Text(stringResource(R.string.debt_save))
-      }
+      )
     }
   }
   if (state.anomaly != null) {

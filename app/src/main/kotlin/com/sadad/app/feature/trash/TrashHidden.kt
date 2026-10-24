@@ -16,8 +16,11 @@ import kotlinx.coroutines.flow.map
  * The ids this phone removed from its trash list for good. The server keeps the archived Contact;
  * the Java app behaved the same way, so another phone still lists it.
  */
-class TrashHidden(file: File, scope: CoroutineScope) {
-  private val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+class TrashHidden(produceFile: () -> File, scope: CoroutineScope) {
+  constructor(file: File, scope: CoroutineScope) : this({ file }, scope)
+
+  // produceFile runs on the DataStore's thread at the first read, never on the caller's.
+  private val store = PreferenceDataStoreFactory.create(scope = scope, produceFile = produceFile)
 
   val ids: Flow<Set<String>> = store.data.map { it[IDS].orEmpty() }
 
@@ -32,7 +35,7 @@ class TrashHidden(file: File, scope: CoroutineScope) {
     fun get(context: Context, storeUserId: String): TrashHidden =
         instances.computeIfAbsent(storeUserId) {
           TrashHidden(
-              File(context.applicationContext.filesDir, "trash-$it.preferences_pb"),
+              { File(context.applicationContext.filesDir, "trash-$it.preferences_pb") },
               CoroutineScope(SupervisorJob() + Dispatchers.IO),
           )
         }

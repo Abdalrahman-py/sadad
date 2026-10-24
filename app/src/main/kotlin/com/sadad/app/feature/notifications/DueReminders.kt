@@ -34,8 +34,11 @@ data class Reminder(
 }
 
 /** The sent key stays in the file when a reminder is read, dismissed or restored. */
-class DueReminders(file: File, scope: CoroutineScope) {
-  private val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+class DueReminders(produceFile: () -> File, scope: CoroutineScope) {
+  constructor(file: File, scope: CoroutineScope) : this({ file }, scope)
+
+  // produceFile runs on the DataStore's thread at the first read, never on the caller's.
+  private val store = PreferenceDataStoreFactory.create(scope = scope, produceFile = produceFile)
   private val serializer = ListSerializer(Reminder.serializer())
 
   private fun decode(text: String?): List<Reminder> =
@@ -110,7 +113,7 @@ class DueReminders(file: File, scope: CoroutineScope) {
             ?: synchronized(this) {
               instance
                   ?: DueReminders(
-                          File(context.applicationContext.filesDir, "reminders.preferences_pb"),
+                          { File(context.applicationContext.filesDir, "reminders.preferences_pb") },
                           CoroutineScope(SupervisorJob() + Dispatchers.IO),
                       )
                       .also { instance = it }

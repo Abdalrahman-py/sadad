@@ -1,11 +1,13 @@
 package com.sadad.app.feature.debt
 
 import android.content.Context
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
@@ -37,7 +39,10 @@ class DebtFormScreenTest {
       compose.waitUntil(10_000) { model.state.value.loaded }
 
       compose.onNodeWithTag(DebtTag.AMOUNT).performTextInput("5000")
-      compose.onNodeWithTag(DebtTag.SAVE).performClick()
+      compose
+          .onNodeWithTag(DebtTag.AMOUNT)
+          .assertContentDescriptionEquals(text(R.string.debt_amount_label))
+      compose.onNodeWithTag(DebtTag.SAVE).performScrollTo().performClick()
 
       compose.onNodeWithText(text(R.string.debt_anomaly_title)).assertIsDisplayed()
       compose.onNodeWithText(text(R.string.debt_anomaly_confirm)).performClick()
