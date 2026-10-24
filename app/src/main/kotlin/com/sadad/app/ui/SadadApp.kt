@@ -225,11 +225,19 @@ internal fun SadadShell(
     topBar: @Composable (screenTitle: String) -> Unit,
     destinations: NavGraphBuilder.() -> Unit,
 ) {
-  val destination = navController.currentBackStackEntryAsState().value?.destination
-  val title = stringResource(screenTitle(destination))
+  val entry = navController.currentBackStackEntryAsState().value
+  val destination = entry?.destination
+  val editingContact =
+      destination.isAny(listOf(ContactForm::class)) &&
+          entry?.toRoute<ContactForm>()?.contactId != null
+  val title =
+      stringResource(
+          if (editingContact) R.string.contactform_edit_title else screenTitle(destination)
+      )
   Scaffold(
       modifier = Modifier.sadadPageBackground(),
       containerColor = Color.Transparent,
+      contentColor = sadadPalette.text,
       topBar = { topBar(title) },
       bottomBar = { if (showsBottomBar(destination)) SadadBottomBar(navController) },
   ) { insets ->
@@ -347,7 +355,7 @@ private fun RowScope.BottomItem(
     onClick: () -> Unit,
 ) {
   val p = sadadPalette
-  val ink = if (selected) (if (isSystemInDarkTheme()) p.text else p.primary) else p.muted
+  val ink = if (selected) (if (p.isDark) p.text else p.primary) else p.muted
   // The halo fades in over 580ms when the tab becomes the chosen one, as the Java animator did.
   val halo by animateFloatAsState(if (selected) 0.94f else 0f, tween(580), label = "halo")
   val glow =

@@ -6,7 +6,6 @@ import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -158,13 +157,13 @@ private fun StoreTopBar(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      SadadLogo(42.dp, dark = isSystemInDarkTheme())
+      SadadLogo(42.dp, dark = p.isDark)
       Spacer(Modifier.width(10.dp))
       Column(Modifier.weight(1f)) {
         Text(
             stringResource(R.string.brand_name),
             style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
-            color = if (isSystemInDarkTheme()) p.accent else p.primary,
+            color = if (p.isDark) p.accent else p.primary,
             maxLines = 1,
         )
         Text(
@@ -198,7 +197,7 @@ private fun StoreTopBar(
             Icon(
                 painterResource(R.drawable.ic_person),
                 contentDescription = null,
-                tint = if (isSystemInDarkTheme()) p.text else p.primary,
+                tint = if (p.isDark) p.text else p.primary,
                 modifier = Modifier.size(22.dp),
             )
         else

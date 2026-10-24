@@ -12,6 +12,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,7 +47,10 @@ data class SadadPalette(
     val debt: Color,
     val debtSoft: Color,
     val badge: Color,
-)
+) {
+  val isDark: Boolean
+    get() = bg.luminance() < 0.5f
+}
 
 val SadadLightPalette =
     SadadPalette(

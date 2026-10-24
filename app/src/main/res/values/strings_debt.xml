@@ -11,7 +11,8 @@
     <string name="debt_due_none">غير محدد</string>
     <string name="debt_picker_confirm">موافق</string>
     <string name="debt_picker_cancel">إلغاء</string>
-    <string name="debt_note_label">سبب الدين أو تفاصيله</string>
+    <string name="debt_note_label">البيان</string>
+    <string name="debt_note_hint">سبب الدين أو تفاصيله</string>
     <string name="debt_save">حفظ الدين</string>
     <string name="debt_anomaly_title">مراجعة مبلغ الدين</string>
     <string name="debt_anomaly_message">المبلغ مرتفع بشكل غير معتاد. راجع القيمة قبل تسجيلها.</string>

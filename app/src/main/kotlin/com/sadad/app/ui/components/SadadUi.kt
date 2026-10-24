@@ -27,6 +27,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -37,7 +39,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -154,6 +158,50 @@ enum class SadadButtonStyle {
   DANGER,
 }
 
+/** The old app's filled selection field, with a native accessible menu and unchanged values. */
+@Composable
+fun <T> SadadChoiceField(
+    label: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+  var expanded by remember { mutableStateOf(false) }
+  Column(Modifier.fillMaxWidth()) {
+    if (label.isNotEmpty()) {
+      Text(
+          label,
+          style = MaterialTheme.typography.labelMedium,
+          color = sadadPalette.text,
+          modifier = Modifier.padding(top = 3.dp, bottom = 6.dp),
+      )
+    }
+    Box(Modifier.fillMaxWidth()) {
+      SadadButton(
+          text = options.firstOrNull { it.first == selected }?.second.orEmpty(),
+          onClick = { expanded = true },
+          style = SadadButtonStyle.SURFACE,
+          enabled = enabled,
+          modifier = modifier.fillMaxWidth(),
+          trailing = painterResource(R.drawable.ic_chevron_down_wide),
+      )
+      DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        options.forEach { (value, text) ->
+          DropdownMenuItem(
+              text = { Text(text) },
+              onClick = {
+                expanded = false
+                onSelect(value)
+              },
+          )
+        }
+      }
+    }
+  }
+}
+
 /** A bold 13sp label above a filled 13dp-corner field, as `addField(title, input(hint))`. */
 @Composable
 fun SadadField(
@@ -234,7 +282,7 @@ fun SadadTextField(
       enabled = enabled,
       readOnly = readOnly,
       singleLine = singleLine,
-      minLines = if (singleLine) 1 else minLines.coerceAtLeast(3),
+      minLines = if (singleLine) 1 else minLines,
       isError = isError,
       textStyle = MaterialTheme.typography.bodyLarge,
       placeholder = placeholder?.let { { Text(it, style = MaterialTheme.typography.bodyLarge) } },

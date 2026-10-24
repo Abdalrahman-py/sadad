@@ -3,6 +3,7 @@
     <string name="undo">تراجع</string>
     <string name="voice_draft">إملاء صوتي كمسودة</string>
     <string name="voice_prompt">أمْلِ تفاصيل الحركة لمراجعتها</string>
+    <string name="voice_review_hint">راجع النص بعد الإملاء وعدّله قبل الحفظ.</string>
     <string name="pending_badge">بانتظار التأكيد</string>
     <string name="common_back">رجوع إلى الشاشة السابقة</string>
     <string name="brand_logo">شعار سدد</string>
