@@ -41,6 +41,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -92,11 +94,18 @@ internal fun ContactsScreen(
   val state by viewModel.state.collectAsState()
   Box(modifier.fillMaxSize()) {
     ContactsList(state, viewModel, onOpenContact)
+    val addLabel = stringResource(R.string.contactform_add_title)
     ExtendedFloatingActionButton(
         onClick = onAddContact,
         icon = { Icon(painterResource(R.drawable.ic_person_add), contentDescription = null) },
-        text = { Text(stringResource(R.string.contactform_add_title)) },
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag(ContactsTag.ADD),
+        text = { Text(addLabel) },
+        // A uiautomator dump showed this button unlabeled (its animated text is not exposed), so
+        // TalkBack would read nothing; name it explicitly.
+        modifier =
+            Modifier.align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .semantics { contentDescription = addLabel }
+                .testTag(ContactsTag.ADD),
     )
   }
 }
