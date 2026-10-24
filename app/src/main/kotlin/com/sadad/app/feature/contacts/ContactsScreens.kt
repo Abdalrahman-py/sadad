@@ -23,7 +23,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,7 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -51,6 +52,11 @@ import com.sadad.app.ui.ScreenTag
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.PendingBadge
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.ui.components.SadadPageHeading
+import com.sadad.app.ui.components.SadadSearchField
+import com.sadad.app.ui.components.SadadSegments
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
@@ -103,43 +109,32 @@ private fun ContactsList(
         Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      Text(
-          text = stringResource(R.string.title_contacts),
-          style = MaterialTheme.typography.headlineSmall,
-          modifier = Modifier.testTag(ScreenTag.CONTACTS),
+      SadadPageHeading(
+          title = stringResource(R.string.title_contacts),
+          subtitle =
+              pluralStringResource(
+                  R.plurals.contacts_registered,
+                  state.registered,
+                  state.registered,
+              ),
+          titleModifier = Modifier.testTag(ScreenTag.CONTACTS),
       )
-      Text(
-          text = stringResource(R.string.contacts_registered, state.registered),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-      OutlinedTextField(
+      SadadSearchField(
           value = state.queryInput,
           onValueChange = viewModel::onQueryChange,
-          singleLine = true,
-          placeholder = { Text(stringResource(R.string.contacts_search)) },
+          placeholder = stringResource(R.string.contacts_search),
           modifier = Modifier.fillMaxWidth().testTag(ContactsTag.SEARCH),
       )
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SortChip(
-            ContactSort.NAME,
-            R.string.contacts_sort_name,
-            state.sortChoice,
-            viewModel::onSortChange,
-        )
-        SortChip(
-            ContactSort.HIGHEST_DEBT,
-            R.string.contacts_sort_debt,
-            state.sortChoice,
-            viewModel::onSortChange,
-        )
-        SortChip(
-            ContactSort.NEWEST,
-            R.string.contacts_sort_newest,
-            state.sortChoice,
-            viewModel::onSortChange,
-        )
-      }
+      SadadSegments(
+          options =
+              listOf(
+                  ContactSort.NAME to stringResource(R.string.contacts_sort_name),
+                  ContactSort.HIGHEST_DEBT to stringResource(R.string.contacts_sort_debt),
+                  ContactSort.NEWEST to stringResource(R.string.contacts_sort_newest),
+              ),
+          selected = state.sortChoice,
+          onSelect = viewModel::onSortChange,
+      )
     }
     // The bottom padding keeps the last row clear of the add button.
     LazyColumn(
@@ -171,20 +166,6 @@ private fun ContactsList(
 }
 
 @Composable
-private fun SortChip(
-    sort: ContactSort,
-    label: Int,
-    selected: ContactSort,
-    onSelect: (ContactSort) -> Unit,
-) {
-  FilterChip(
-      selected = sort == selected,
-      onClick = { onSelect(sort) },
-      label = { Text(stringResource(label)) },
-  )
-}
-
-@Composable
 private fun ContactRowItem(row: ContactRow, onOpenContact: (String) -> Unit) {
   Row(
       modifier =
@@ -204,7 +185,7 @@ private fun ContactRowItem(row: ContactRow, onOpenContact: (String) -> Unit) {
       }
       Text(
           text = row.phone.ifBlank { stringResource(R.string.contacts_no_phone) },
-          style = MaterialTheme.typography.bodySmall,
+          style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Ltr),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
     }
@@ -411,15 +392,19 @@ private fun DetailHeader(state: ContactDetailState) {
         style = MaterialTheme.typography.headlineSmall,
         modifier = Modifier.testTag(ScreenTag.CONTACT_DETAIL),
     )
-    val details =
-        listOfNotNull(state.category.ifBlank { null }, state.phone.ifBlank { null })
-            .joinToString("  ·  ")
-    if (details.isNotEmpty()) {
-      Text(
-          text = details,
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      if (state.category.isNotBlank())
+          Text(
+              text = state.category,
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+      if (state.phone.isNotBlank())
+          Text(
+              text = state.phone,
+              style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Ltr),
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
     }
     if (state.note.isNotBlank()) {
       Text(
@@ -453,13 +438,17 @@ private fun DetailActions(
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Button(onClick = onRecordDebt, modifier = Modifier.weight(1f)) {
-        Text(stringResource(R.string.contacts_record_debt))
-      }
+      SadadButton(
+          text = stringResource(R.string.contacts_record_debt),
+          onClick = onRecordDebt,
+          modifier = Modifier.weight(1f),
+      )
       if (state.canRegisterPayments) {
-        Button(onClick = onRecordPayment, modifier = Modifier.weight(1f)) {
-          Text(stringResource(R.string.contacts_record_payment))
-        }
+        SadadButton(
+            text = stringResource(R.string.contacts_record_payment),
+            onClick = onRecordPayment,
+            modifier = Modifier.weight(1f),
+        )
       } else {
         Text(
             text = stringResource(R.string.contacts_payments_restricted),
@@ -469,12 +458,18 @@ private fun DetailActions(
       }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) {
-        Text(stringResource(R.string.contacts_edit))
-      }
-      OutlinedButton(onClick = onWhatsApp, modifier = Modifier.weight(1f)) {
-        Text(stringResource(R.string.contacts_whatsapp))
-      }
+      SadadButton(
+          text = stringResource(R.string.contacts_edit),
+          onClick = onEdit,
+          style = SadadButtonStyle.SURFACE,
+          modifier = Modifier.weight(1f),
+      )
+      SadadButton(
+          text = stringResource(R.string.contacts_whatsapp),
+          onClick = onWhatsApp,
+          style = SadadButtonStyle.SURFACE,
+          modifier = Modifier.weight(1f),
+      )
     }
   }
 }

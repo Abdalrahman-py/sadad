@@ -155,6 +155,8 @@ dependencies {
   implementation(libs.activity.compose)
   implementation(libs.core.ktx)
   implementation(libs.biometric)
+  // MainActivity uses FragmentActivity; biometric's transitive 1.2.5 rejects Activity Result codes.
+  implementation(libs.fragment)
   implementation(libs.datastore.preferences)
   implementation(libs.lifecycle.viewmodel.compose)
   implementation(libs.lifecycle.runtime.compose)

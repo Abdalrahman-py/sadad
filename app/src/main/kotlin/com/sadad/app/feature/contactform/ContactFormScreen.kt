@@ -14,13 +14,11 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -52,6 +50,8 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.feature.notifications.DueReminderWorker
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadField
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseDueDate
@@ -89,14 +89,14 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    OutlinedTextField(
+    SadadField(
         value = state.name,
         onValueChange = viewModel::onNameChange,
-        label = { Text(stringResource(R.string.contactform_name)) },
+        label = stringResource(R.string.contactform_name),
         singleLine = true,
         enabled = !state.busy,
         isError = state.nameError != null,
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
     )
     state.nameError?.let {
       Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -119,35 +119,36 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
         }
       }
     }
-    OutlinedTextField(
+    SadadField(
         value = state.phone,
         onValueChange = viewModel::onPhoneChange,
-        label = { Text(stringResource(R.string.contactform_phone)) },
+        label = stringResource(R.string.contactform_phone),
         singleLine = true,
         enabled = !state.busy,
         isError = state.phoneError != null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
     )
     state.phoneError?.let {
       Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
-    OutlinedTextField(
+    SadadField(
         value = state.category,
         onValueChange = viewModel::onCategoryChange,
-        label = { Text(stringResource(R.string.contactform_category)) },
-        placeholder = { Text(stringResource(R.string.contactform_category_hint)) },
+        label = stringResource(R.string.contactform_category),
+        placeholder = stringResource(R.string.contactform_category_hint),
         singleLine = true,
         enabled = !state.busy,
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
     )
-    OutlinedTextField(
+    SadadField(
         value = state.note,
         onValueChange = viewModel::onNoteChange,
-        label = { Text(stringResource(R.string.contactform_note)) },
+        label = stringResource(R.string.contactform_note),
         minLines = 2,
         enabled = !state.busy,
-        modifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth(),
+        singleLine = false,
     )
     VoiceDraft { viewModel.onNoteChange(it) }
     if (!state.edit) {
@@ -176,17 +177,15 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
     state.message?.let {
       Text(it, color = MaterialTheme.colorScheme.error)
     }
-    Button(
+    SadadButton(
+        text =
+            stringResource(
+                if (state.edit) R.string.contactform_save_edit else R.string.contactform_save_add
+            ),
         onClick = viewModel::save,
         enabled = !state.busy,
         modifier = Modifier.fillMaxWidth(),
-    ) {
-      Text(
-          stringResource(
-              if (state.edit) R.string.contactform_save_edit else R.string.contactform_save_add
-          )
-      )
-    }
+    )
   }
 
   state.review?.let { review ->
@@ -224,15 +223,15 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
 @Composable
 private fun FirstDebtFields(state: ContactFormState, viewModel: ContactFormViewModel) {
   var picking by remember { mutableStateOf(false) }
-  OutlinedTextField(
+  SadadField(
       value = state.debtAmount,
       onValueChange = viewModel::onDebtAmountChange,
-      label = { Text(stringResource(R.string.contactform_debt_amount)) },
+      label = stringResource(R.string.contactform_debt_amount),
       singleLine = true,
       enabled = !state.busy,
       isError = state.debtError != null,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-      modifier = Modifier.fillMaxWidth(),
+      fieldModifier = Modifier.fillMaxWidth(),
   )
   state.debtError?.let {
     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -282,13 +281,14 @@ private fun FirstDebtFields(state: ContactFormState, viewModel: ContactFormViewM
       DatePicker(state = picker)
     }
   }
-  OutlinedTextField(
+  SadadField(
       value = state.debtNote,
       onValueChange = viewModel::onDebtNoteChange,
-      label = { Text(stringResource(R.string.contactform_debt_details)) },
+      label = stringResource(R.string.contactform_debt_details),
       minLines = 2,
       enabled = !state.busy,
-      modifier = Modifier.fillMaxWidth(),
+      fieldModifier = Modifier.fillMaxWidth(),
+      singleLine = false,
   )
   VoiceDraft { viewModel.onDebtNoteChange(it) }
 }

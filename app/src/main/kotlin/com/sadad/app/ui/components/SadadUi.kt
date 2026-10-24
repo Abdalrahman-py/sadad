@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -194,7 +196,7 @@ fun SadadField(
         leadingIcon = leadingIcon,
         trailingIcon = trailingIcon,
         readOnly = readOnly,
-        modifier = fieldModifier.fillMaxWidth(),
+        modifier = fieldModifier.fillMaxWidth().semantics { contentDescription = label },
     )
     supportingText?.let {
       Text(
@@ -300,7 +302,12 @@ fun SadadSwitchRow(
               .clip(RowShape)
               .background(p.surface)
               .border(1.dp, p.line, RowShape)
-              .clickable(enabled = enabled, role = Role.Switch) { onCheckedChange(!checked) }
+              .toggleable(
+                  value = checked,
+                  enabled = enabled,
+                  role = Role.Switch,
+                  onValueChange = onCheckedChange,
+              )
               .padding(horizontal = 14.dp, vertical = 9.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -552,23 +559,21 @@ fun SadadHeroCard(
     content: @Composable RowScope.() -> Unit,
 ) {
   val p = sadadPalette
-  val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-  // TR_BL in the Java app: from the top-right corner to the bottom-left one.
-  val brush =
-      remember(p, rtl) {
-        Brush.linearGradient(
-            listOf(p.primary, p.heroEnd),
-            start = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f),
-            end = androidx.compose.ui.geometry.Offset(0f, Float.POSITIVE_INFINITY),
-        )
-      }
   Row(
       modifier =
           modifier
               .fillMaxWidth()
               .shadow(4.dp, shape)
               .clip(shape)
-              .background(brush)
+              .drawWithCache {
+                val brush =
+                    Brush.linearGradient(
+                        listOf(p.primary, p.heroEnd),
+                        start = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                        end = androidx.compose.ui.geometry.Offset(0f, size.height),
+                    )
+                onDrawBehind { drawRect(brush) }
+              }
               .padding(horizontal = 20.dp, vertical = 22.dp),
       verticalAlignment = Alignment.CenterVertically,
       content = content,

@@ -4,7 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,13 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -53,7 +54,12 @@ import com.sadad.app.export.MovementKind
 import com.sadad.app.ui.ScreenTag
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.PendingBadge
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.ui.components.SadadHeroCard
+import com.sadad.app.ui.components.SadadMetricCard
 import com.sadad.app.ui.components.formatCents
+import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import java.time.ZoneId
@@ -94,8 +100,8 @@ fun HomeContent(
 ) {
   val storeName = state.storeName.ifBlank { stringResource(R.string.home_default_store) }
   var historyOpen by rememberSaveable { mutableStateOf(false) }
-  val debtColor = if (isSystemInDarkTheme()) Color(0xFFF59A9F) else Color(0xFFAB323A)
-  val paymentColor = MaterialTheme.colorScheme.secondary
+  val debtColor = sadadPalette.debt
+  val paymentColor = sadadPalette.accent
 
   Column(
       modifier =
@@ -108,18 +114,15 @@ fun HomeContent(
   ) {
     Text(
         text = stringResource(R.string.home_greeting, storeName),
-        style = MaterialTheme.typography.titleLarge,
+        style = MaterialTheme.typography.headlineSmall,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 12.dp),
     )
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-    ) {
-      Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    SadadHeroCard {
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = stringResource(R.string.home_total_debts),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             color = Color.White,
         )
         Text(
@@ -130,12 +133,17 @@ fun HomeContent(
         )
         Text(
             text = formatCents(state.totalReceivable),
-            style = MaterialTheme.typography.headlineLarge,
+            style = MaterialTheme.typography.displaySmall,
             fontWeight = FontWeight.Bold,
             color = Color.White,
             modifier = Modifier.testTag(HomeTags.TOTAL),
         )
       }
+      Image(
+          painter = painterResource(R.drawable.ledger_art),
+          contentDescription = null,
+          modifier = Modifier.size(width = 100.dp, height = 110.dp),
+      )
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -169,13 +177,19 @@ fun HomeContent(
           modifier = Modifier.weight(1f),
       )
     }
-    TextButton(onClick = { historyOpen = !historyOpen }) {
-      Text(
-          stringResource(
-              if (historyOpen) R.string.home_hide_history else R.string.home_show_history
-          )
-      )
-    }
+    SadadButton(
+        text =
+            stringResource(
+                if (historyOpen) R.string.home_hide_history else R.string.home_show_history
+            ),
+        onClick = { historyOpen = !historyOpen },
+        style = SadadButtonStyle.SOFT,
+        modifier = Modifier.fillMaxWidth(),
+        trailing =
+            painterResource(
+                if (historyOpen) R.drawable.ic_chevron_up_wide else R.drawable.ic_chevron_down_wide
+            ),
+    )
     if (historyOpen) {
       if (state.recent.isEmpty()) {
         EmptyState(
@@ -208,29 +222,17 @@ private fun MonthMetric(
     color: Color,
     modifier: Modifier = Modifier,
 ) {
-  Card(
+  SadadMetricCard(
+      title = title,
+      figure = formatCents(value),
+      figureColor = color,
       modifier = modifier,
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
-    Column(Modifier.padding(15.dp).padding(bottom = 10.dp)) {
-      Text(
-          text = title,
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-      Text(
-          text = formatCents(value),
-          style = MaterialTheme.typography.titleLarge,
-          fontWeight = FontWeight.Bold,
-          color = color,
-          modifier = Modifier.padding(top = 5.dp),
-      )
-      MonthlyProgressBar(
-          ratio = ratio,
-          color = color,
-          modifier = Modifier.padding(top = 8.dp),
-      )
-    }
+    MonthlyProgressBar(
+        ratio = ratio,
+        color = color,
+        modifier = Modifier.padding(top = 8.dp),
+    )
   }
 }
 

@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_contacts">الزبائن</string>
-    <string name="contacts_registered">%1$d أشخاص مسجلين</string>
+    <plurals name="contacts_registered">
+        <item quantity="zero">لا يوجد أشخاص مسجلون</item>
+        <item quantity="one">شخص واحد مسجل</item>
+        <item quantity="two">شخصان مسجلان</item>
+        <item quantity="few">%1$d أشخاص مسجلون</item>
+        <item quantity="many">%1$d شخصًا مسجلًا</item>
+        <item quantity="other">%1$d شخص مسجل</item>
+    </plurals>
     <string name="contacts_search">ابحث بالاسم أو رقم الهاتف</string>
     <string name="contacts_sort_name">حسب الاسم</string>
     <string name="contacts_sort_debt">الأعلى دينًا</string>

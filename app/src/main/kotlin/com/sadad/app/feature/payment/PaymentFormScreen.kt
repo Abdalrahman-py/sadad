@@ -10,10 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -39,6 +37,8 @@ import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadField
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
@@ -122,15 +122,15 @@ internal fun PaymentFormScreen(
           stringResource(R.string.payment_balance, formatCents(state.openBalance)),
           style = MaterialTheme.typography.bodyMedium,
       )
-      OutlinedTextField(
+      SadadField(
           value = state.amount,
           onValueChange = viewModel::onAmountChange,
           singleLine = true,
           enabled = !state.busy && !state.saved,
-          label = { Text(stringResource(R.string.payment_amount_label)) },
-          placeholder = { Text(stringResource(R.string.payment_amount_placeholder)) },
+          label = stringResource(R.string.payment_amount_label),
+          placeholder = stringResource(R.string.payment_amount_placeholder),
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-          modifier = Modifier.fillMaxWidth().testTag(PaymentTag.AMOUNT),
+          fieldModifier = Modifier.fillMaxWidth().testTag(PaymentTag.AMOUNT),
       )
       Text(
           stringResource(R.string.payment_method_label),
@@ -149,27 +149,27 @@ internal fun PaymentFormScreen(
           }
         }
       }
-      OutlinedTextField(
+      SadadField(
           value = state.note,
           onValueChange = viewModel::onNoteChange,
           enabled = !state.busy && !state.saved,
           minLines = 2,
-          label = { Text(stringResource(R.string.payment_note_label)) },
-          placeholder = { Text(stringResource(R.string.payment_note_placeholder)) },
-          modifier = Modifier.fillMaxWidth().testTag(PaymentTag.NOTE),
+          label = stringResource(R.string.payment_note_label),
+          placeholder = stringResource(R.string.payment_note_placeholder),
+          fieldModifier = Modifier.fillMaxWidth().testTag(PaymentTag.NOTE),
+          singleLine = false,
       )
       // Locking is skipped before the recognizer opens, so coming back does not ask for the PIN.
       VoiceDraftButton(
           onText = viewModel::onNoteChange,
           onLaunch = { AppLock.get(context).skipNextLock() },
       )
-      Button(
+      SadadButton(
+          text = stringResource(R.string.payment_save),
           onClick = { viewModel.save(context) },
           enabled = !state.busy && !state.saved && state.loaded,
           modifier = Modifier.fillMaxWidth().testTag(PaymentTag.SAVE),
-      ) {
-        Text(stringResource(R.string.payment_save))
-      }
+      )
     }
   }
   val review = state.review
