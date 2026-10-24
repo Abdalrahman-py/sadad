@@ -2,9 +2,12 @@ package com.sadad.app
 
 import android.app.Application
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.StrictMode
 import androidx.work.Configuration
 import com.sadad.app.feature.notifications.DueReminderWorker
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +40,20 @@ class SadadApplication : Application(), Configuration.Provider {
               .detectCleartextNetwork()
               .detectContentUriWithoutPermission()
               .penaltyLog()
-              .penaltyDeath()
+      // The platform leaks closeables of its own (a SurfacePackage parcelled in for keyboard
+      // autofill suggestions); dying on those hides our own findings, so only a violation that
+      // names Sadad code kills the app. Each one is still logged.
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        vmPolicy.penaltyListener(Executors.newSingleThreadExecutor()) { violation ->
+          if (namesOurCode(violation)) {
+            Handler(Looper.getMainLooper()).post {
+              throw RuntimeException("StrictMode VmPolicy violation", violation)
+            }
+          }
+        }
+      } else {
+        vmPolicy.penaltyDeath()
+      }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         vmPolicy.detectCredentialProtectedWhileLocked()
       }
@@ -50,5 +66,17 @@ class SadadApplication : Application(), Configuration.Provider {
       StrictMode.setVmPolicy(vmPolicy.build())
     }
     reminderScope.launch { DueReminderWorker.schedule(this@SadadApplication) }
+  }
+
+  /** A violation's own stack, its causes' stacks (the allocation site of a leak) or its message. */
+  private fun namesOurCode(violation: Throwable): Boolean =
+      generateSequence(violation) { it.cause }
+          .any { cause ->
+            cause.message?.contains(OUR_PACKAGE) == true ||
+                cause.stackTrace.any { it.className.startsWith(OUR_PACKAGE) }
+          }
+
+  private companion object {
+    const val OUR_PACKAGE = "com.sadad."
   }
 }
