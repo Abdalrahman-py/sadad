@@ -26,9 +26,22 @@ class SadadApplication : Application(), Configuration.Provider {
   override fun onCreate() {
     super.onCreate()
     if (BuildConfig.DEBUG) {
-      StrictMode.setThreadPolicy(
-          StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog().penaltyDeath().build()
-      )
+      // The OEM layer reads disk on the main thread inside Activity.onCreate (MIUI's font settings
+      // do), so a thread violation kills the app only when its blocking call comes from Sadad code.
+      // Each one is still logged.
+      val threadPolicy = StrictMode.ThreadPolicy.Builder().detectAll().penaltyLog()
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        threadPolicy.penaltyListener(Executors.newSingleThreadExecutor()) { violation ->
+          if (blockingCallIsOurs(violation)) {
+            Handler(Looper.getMainLooper()).post {
+              throw RuntimeException("StrictMode ThreadPolicy violation", violation)
+            }
+          }
+        }
+      } else {
+        threadPolicy.penaltyDeath()
+      }
+      StrictMode.setThreadPolicy(threadPolicy.build())
       // Spell out VM checks because detectAll also flags OkHttp's untagged sockets.
       val vmPolicy =
           StrictMode.VmPolicy.Builder()
@@ -80,3 +93,29 @@ class SadadApplication : Application(), Configuration.Provider {
     const val OUR_PACKAGE = "com.sadad."
   }
 }
+
+private const val SADAD_PACKAGE = "com.sadad."
+private val PASS_THROUGH =
+    listOf(
+        "java.",
+        "javax.",
+        "libcore.",
+        "dalvik.",
+        "sun.",
+        "android.",
+        "com.android.",
+        "androidx.",
+        "kotlin.",
+        "kotlinx.",
+    )
+
+/**
+ * The frame that made the blocking call is the topmost one outside the JDK, the platform and the
+ * androidx and Kotlin libraries those pass through. Frames below it only say who started the
+ * activity or message, which is every Sadad launch.
+ */
+internal fun blockingCallIsOurs(violation: Throwable): Boolean =
+    violation.stackTrace
+        .firstOrNull { frame -> PASS_THROUGH.none { frame.className.startsWith(it) } }
+        ?.className
+        ?.startsWith(SADAD_PACKAGE) == true
