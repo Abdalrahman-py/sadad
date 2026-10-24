@@ -38,12 +38,20 @@ sealed interface PinResult {
 
 /** The phone-wide PIN verifier. Plain PINs are never written to disk. */
 class AppLock(
-    file: File,
+    produceFile: () -> File,
     scope: CoroutineScope,
     private val elapsedRealtime: () -> Long,
     private val bootCount: () -> Int,
 ) {
-  private val data = PreferenceDataStoreFactory.create(scope = scope) { file }
+  constructor(
+      file: File,
+      scope: CoroutineScope,
+      elapsedRealtime: () -> Long,
+      bootCount: () -> Int,
+  ) : this({ file }, scope, elapsedRealtime, bootCount)
+
+  // produceFile runs on the DataStore's thread at the first read, never on the caller's.
+  private val data = PreferenceDataStoreFactory.create(scope = scope, produceFile = produceFile)
   private val mutableLocked = MutableStateFlow(true)
   private val skip = AtomicBoolean(false)
   private var leftAt: Long? = null
@@ -204,7 +212,7 @@ class AppLock(
             ?: synchronized(this) {
               instance
                   ?: AppLock(
-                          File(context.applicationContext.filesDir, "lock.preferences_pb"),
+                          { File(context.applicationContext.filesDir, "lock.preferences_pb") },
                           CoroutineScope(SupervisorJob() + Dispatchers.IO),
                           SystemClock::elapsedRealtime,
                           {
