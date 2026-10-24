@@ -139,14 +139,14 @@ const debts = await admin(
   }`,
 );
 if (debts.status !== 200) fail("admin ledger", debts);
-const debt = debts.body.rows[0];
+const debt = debts.body.ledger.rows[0];
 if (
-  debts.body.rows.length !== 1 || debt.amountCents !== 1000 ||
+  debts.body.ledger.rows.length !== 1 || debt.amountCents !== 1000 ||
   debt.paidCents !== 400 || debt.remainingCents !== 600
 ) {
   fail(
     "admin sees the smoke debt (1000 cents, 400 paid, 600 left)",
-    debts.body,
+    debts.body.ledger,
   );
 }
 console.log("admin ledger shows the debt: 1000 cents, 400 paid, 600 left");
