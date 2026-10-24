@@ -12,4 +12,5 @@ object ScreenTag {
   const val NAV_CONTACTS = "nav:contacts"
   const val NAV_HISTORY = "nav:history"
   const val NAV_SETTINGS = "nav:settings"
+  const val NAV_ADD = "nav:add"
 }

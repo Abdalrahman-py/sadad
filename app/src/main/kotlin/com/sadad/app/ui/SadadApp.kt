@@ -1,26 +1,54 @@
 package com.sadad.app.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -54,7 +82,9 @@ import com.sadad.app.feature.reports.ReportsScreen
 import com.sadad.app.feature.settings.SettingsNavigation
 import com.sadad.app.feature.settings.SettingsScreen
 import com.sadad.app.feature.trash.TrashScreen
+import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.SadadTheme
+import com.sadad.app.ui.theme.sadadPalette
 import kotlin.reflect.KClass
 
 @Composable
@@ -71,8 +101,9 @@ fun SadadApp(
         SadadShell(
             navController = navController,
             startDestination = startDestination,
-            topBar = {
+            topBar = { screenTitle ->
               TopBarActions(
+                  screenTitle = screenTitle,
                   onOpenNotifications = {
                     navController.navigate(Notifications) { launchSingleTop = true }
                   },
@@ -99,7 +130,6 @@ fun SadadApp(
           composable<Contacts> {
             ContactsScreen(
                 onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) },
-                onAddContact = { navController.navigate(ContactForm()) },
             )
           }
           composable<ContactDetail> {
@@ -184,16 +214,25 @@ fun SadadApp(
 /**
  * The bars and the padded content area every destination lives in. Edge-to-edge is on, so the
  * Scaffold hands the system-bar insets to the content as padding; no screen handles them itself.
- * `internal` so the inset tests can render the real destinations in the real shell.
+ * The top bar gets the current screen's title, as the Java header showed it under «سدد»; the bottom
+ * bar is hidden on the forms and the sign-in screens, as `showBottomNav()` did. `internal` so the
+ * inset tests can render the real destinations in the real shell.
  */
 @Composable
 internal fun SadadShell(
     navController: NavHostController,
     startDestination: Any,
-    topBar: @Composable () -> Unit,
+    topBar: @Composable (screenTitle: String) -> Unit,
     destinations: NavGraphBuilder.() -> Unit,
 ) {
-  Scaffold(topBar = topBar, bottomBar = { SadadBottomBar(navController) }) { insets ->
+  val destination = navController.currentBackStackEntryAsState().value?.destination
+  val title = stringResource(screenTitle(destination))
+  Scaffold(
+      modifier = Modifier.sadadPageBackground(),
+      containerColor = Color.Transparent,
+      topBar = { topBar(title) },
+      bottomBar = { if (showsBottomBar(destination)) SadadBottomBar(navController) },
+  ) { insets ->
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -204,10 +243,52 @@ internal fun SadadShell(
   }
 }
 
-/** The four tabs; `internal` so the shell test can render them without the real screens. */
+private val FORMS = listOf(ContactForm::class, DebtForm::class, PaymentForm::class)
+private val AUTH =
+    listOf(Welcome::class, Login::class, PasswordChange::class, AwaitingApproval::class)
+
+private fun NavDestination?.isAny(routes: List<KClass<*>>) =
+    this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
+
+private fun showsBottomBar(destination: NavDestination?) =
+    destination != null && !destination.isAny(FORMS) && !destination.isAny(AUTH)
+
+/** `titleFor(page)` of the Java app. */
+private fun screenTitle(destination: NavDestination?): Int =
+    when {
+      destination == null -> R.string.brand_name
+      destination.isAny(listOf(Home::class)) -> R.string.nav_home
+      destination.isAny(listOf(Contacts::class)) -> R.string.nav_contacts
+      destination.isAny(listOf(ContactDetail::class)) -> R.string.screen_contact_detail
+      destination.isAny(listOf(ContactForm::class)) -> R.string.contactform_add_title
+      destination.isAny(listOf(DebtForm::class)) -> R.string.screen_debt
+      destination.isAny(listOf(PaymentForm::class)) -> R.string.screen_payment
+      destination.isAny(listOf(History::class)) -> R.string.screen_history
+      destination.isAny(listOf(Reports::class)) -> R.string.screen_reports
+      destination.isAny(listOf(Settings::class)) -> R.string.nav_settings
+      destination.isAny(listOf(Trash::class)) -> R.string.screen_trash
+      destination.isAny(listOf(Notifications::class)) -> R.string.title_notifications
+      destination.isAny(listOf(Recovery::class)) -> R.string.screen_recovery
+      else -> R.string.brand_name
+    }
+
+/** The tab a destination belongs to, as `activeTab(page)`. */
+private fun activeTab(destination: NavDestination?): KClass<*> =
+    when {
+      destination.isAny(listOf(Contacts::class, ContactDetail::class) + FORMS) -> Contacts::class
+      destination.isAny(listOf(History::class, Reports::class)) -> History::class
+      destination.isAny(listOf(Settings::class, Trash::class, Recovery::class)) -> Settings::class
+      else -> Home::class
+    }
+
+/**
+ * The Java app's bottom bar: home, people, the raised round «＋ إضافة», history, settings. The
+ * chosen tab has an accent halo behind its glyph. `internal` so the shell test can render it alone.
+ */
 @Composable
 internal fun SadadBottomBar(navController: NavHostController) {
   val currentDestination = navController.currentBackStackEntryAsState().value?.destination
+  val active = activeTab(currentDestination)
   val navigate: (Any) -> Unit = { destination ->
     navController.navigate(destination) {
       popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -215,31 +296,34 @@ internal fun SadadBottomBar(navController: NavHostController) {
       restoreState = true
     }
   }
-  NavigationBar {
-    BottomItem(
-        R.string.nav_home,
-        R.drawable.ic_home,
-        ScreenTag.NAV_HOME,
-        Home::class,
-        currentDestination,
-    ) {
+  val p = sadadPalette
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .shadow(8.dp)
+              .background(p.surface)
+              .windowInsetsPadding(WindowInsets.navigationBars)
+              .padding(horizontal = 8.dp, vertical = 7.dp)
+              .selectableGroup(),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    BottomItem(R.string.nav_home, R.drawable.ic_home, ScreenTag.NAV_HOME, active == Home::class) {
       navigate(Home)
     }
     BottomItem(
         R.string.nav_contacts,
         R.drawable.ic_people,
         ScreenTag.NAV_CONTACTS,
-        Contacts::class,
-        currentDestination,
+        active == Contacts::class,
     ) {
       navigate(Contacts)
     }
+    AddItem { navController.navigate(ContactForm()) }
     BottomItem(
         R.string.nav_history,
         R.drawable.ic_history,
         ScreenTag.NAV_HISTORY,
-        History::class,
-        currentDestination,
+        active == History::class,
     ) {
       navigate(History)
     }
@@ -247,8 +331,7 @@ internal fun SadadBottomBar(navController: NavHostController) {
         R.string.nav_settings,
         R.drawable.ic_settings,
         ScreenTag.NAV_SETTINGS,
-        Settings::class,
-        currentDestination,
+        active == Settings::class,
     ) {
       navigate(Settings)
     }
@@ -260,15 +343,79 @@ private fun RowScope.BottomItem(
     labelRes: Int,
     iconRes: Int,
     tag: String,
-    route: KClass<*>,
-    currentDestination: NavDestination?,
+    selected: Boolean,
     onClick: () -> Unit,
 ) {
-  NavigationBarItem(
-      selected = currentDestination?.hierarchy?.any { it.hasRoute(route) } == true,
-      onClick = onClick,
-      icon = { Icon(painter = painterResource(iconRes), contentDescription = null) },
-      label = { Text(stringResource(labelRes)) },
-      modifier = Modifier.testTag(tag),
-  )
+  val p = sadadPalette
+  val ink = if (selected) (if (isSystemInDarkTheme()) p.text else p.primary) else p.muted
+  // The halo fades in over 580ms when the tab becomes the chosen one, as the Java animator did.
+  val halo by animateFloatAsState(if (selected) 0.94f else 0f, tween(580), label = "halo")
+  val glow =
+      remember(p) {
+        Brush.radialGradient(
+            listOf(
+                p.accent.copy(alpha = 112 / 255f),
+                p.accent.copy(alpha = 42 / 255f),
+                Color.Transparent,
+            )
+        )
+      }
+  Column(
+      modifier =
+          Modifier.weight(1f)
+              .height(68.dp)
+              .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+              .testTag(tag),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+  ) {
+    Box(Modifier.height(40.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+      Box(Modifier.size(48.dp, 46.dp).graphicsLayer { alpha = halo }.background(glow, CircleShape))
+      Icon(
+          painterResource(iconRes),
+          contentDescription = null,
+          tint = ink,
+          modifier = Modifier.size(23.dp),
+      )
+    }
+    Text(
+        stringResource(labelRes),
+        style =
+            MaterialTheme.typography.labelSmall.copy(
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+            ),
+        color = ink,
+        modifier = Modifier.padding(top = 3.dp),
+    )
+  }
+}
+
+@Composable
+private fun RowScope.AddItem(onClick: () -> Unit) {
+  val p = sadadPalette
+  val description = stringResource(R.string.nav_add_description)
+  Column(
+      modifier = Modifier.weight(1f).height(68.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+  ) {
+    Box(
+        modifier =
+            Modifier.size(48.dp)
+                .shadow(6.dp, CircleShape)
+                .background(p.primary, CircleShape)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics { contentDescription = description }
+                .testTag(ScreenTag.NAV_ADD),
+        contentAlignment = Alignment.Center,
+    ) {
+      Text("＋", color = Color.White, fontSize = 26.sp, lineHeight = 26.sp)
+    }
+    Text(
+        stringResource(R.string.nav_add),
+        style = MaterialTheme.typography.labelSmall,
+        color = p.muted,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+  }
 }

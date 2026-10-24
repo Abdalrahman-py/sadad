@@ -4,4 +4,16 @@
     <string name="voice_draft">إملاء صوتي كمسودة</string>
     <string name="voice_prompt">أمْلِ تفاصيل الحركة لمراجعتها</string>
     <string name="pending_badge">بانتظار التأكيد</string>
+    <string name="common_back">رجوع إلى الشاشة السابقة</string>
+    <string name="brand_logo">شعار سدد</string>
+    <string name="brand_name">سدد</string>
+    <string name="nav_add">إضافة</string>
+    <string name="nav_add_description">إضافة شخص جديد</string>
+    <string name="screen_contact_detail">تفاصيل الشخص</string>
+    <string name="screen_debt">تسجيل دين</string>
+    <string name="screen_payment">تسجيل دفعة</string>
+    <string name="screen_history">سجل الحركات</string>
+    <string name="screen_reports">التقارير</string>
+    <string name="screen_trash">سلة المحذوفات</string>
+    <string name="screen_recovery">مزامنة السجلات والاسترداد</string>
 </resources>

@@ -19,10 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -39,10 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,19 +89,6 @@ internal fun ContactsScreen(
   val state by viewModel.state.collectAsState()
   Box(modifier.fillMaxSize()) {
     ContactsList(state, viewModel, onOpenContact)
-    val addLabel = stringResource(R.string.contactform_add_title)
-    ExtendedFloatingActionButton(
-        onClick = onAddContact,
-        icon = { Icon(painterResource(R.drawable.ic_person_add), contentDescription = null) },
-        text = { Text(addLabel) },
-        // A uiautomator dump showed this button unlabeled (its animated text is not exposed), so
-        // TalkBack would read nothing; name it explicitly.
-        modifier =
-            Modifier.align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .semantics { contentDescription = addLabel }
-                .testTag(ContactsTag.ADD),
-    )
   }
 }
 
