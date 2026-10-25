@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>شريط لوحة الإدارة</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<header dir="rtl" style="box-sizing: border-box; width: 100%; min-height: 68px; padding: 10px 24px; background: #FFFFFF; border-bottom: 1px solid #D5E5D9; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; font-family: Tajawal, 'Noto Sans Arabic', system-ui, sans-serif; color: #142C24">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="36" height="36" viewBox="0 0 56.69 56.69" aria-hidden="true"><path fill="#064B42" d="M5.18,0 H51.51 A5.18,5.18 0 0 1 56.69,5.18 V51.51 A5.18,5.18 0 0 1 51.51,56.69 H5.18 A5.18,5.18 0 0 1 0,51.51 V5.18 A5.18,5.18 0 0 1 5.18,0 Z"/><path fill="#e6fcf9" d="m28.37,13.25c-1.25.97-2.28,2.15-3.03,3.46-.53.93-4.55,9.09-5,10.01v.02s-2.51,5.43-2.51,5.43c-2.95,6.38-5.69,9.05-7.8,10.25-1.19.67-2.54,1.02-3.9,1.02h-3.82c-.17,0-.3-.14-.3-.3v-7.74c0-.26.13-.51.35-.67,2.14-1.55,3.52-3.12,5.31-5.97.31-.49.64-.96.9-1.47l3.33-6.42c1.84-3.44,3.18-5.75,6.69-6.98,1.12-.39,2.29-.59,3.47-.63h6.32Z"/><path fill="#1ba892" d="m43.06,13.25c-1.34,1.01-2.46,2.19-3.22,3.41-.94,1.51-4.62,9.2-5.03,10.07l-2.5,5.43c-3.41,7.36-6.52,9.87-9.23,10.84-.78.28-1.61.42-2.45.42h-7.06c-.09,0-.13-.11-.06-.17,2.44-2.1,4.66-5.35,6.79-9.94l2.49-5.4c1.78-3.61,4.54-9.2,4.91-9.85,1.56-2.71,4.8-4.69,7.89-4.82h7.48Z"/><path fill="#96ead4" d="m54.69,14.06v7.23c0,.26-.13.51-.34.67-2.14,1.55-3.52,3.12-5.31,5.97-.31.49-.64.96-.9,1.47l-3.33,6.42c-1.84,3.44-3.18,5.75-6.69,6.98-1.25.44-2.58.64-3.91.64h-6.19c-.1,0-.14-.12-.07-.19,2.46-2.1,4.7-5.35,6.82-9.95l2.49-5.4c1.12-2.34,4.15-8.63,4.88-9.8,1.57-2.53,5.19-4.75,7.91-4.86h3.92c.4.05.71.4.71.82Z"/></svg>
+<div style="display: flex; flex-direction: column; line-height: 1.2">
+<strong style="font-size: 18px">سدد</strong>
+<span style="font-size: 12px; color: #5B6F63">لوحة الإدارة</span>
+</div>
+</div>
+<nav aria-label="أقسام اللوحة" style="display: flex; gap: 4px; flex-wrap: wrap">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<a href="{{t.href}}" aria-current="{{t.current}}" style="min-height: 44px; padding: 0 14px; border-radius: 10px; display: flex; align-items: center; gap: 8px; text-decoration: none; font-size: 15px; font-weight: {{t.weight}}; color: {{t.ink}}; background: {{t.bg}}">{{t.label}}<sc-if value="{{t.hasCount}}" hint-placeholder-val="{{ false }}"><span style="min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box; border-radius: 11px; background: #AB323A; color: #FFFFFF; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">{{t.count}}</span></sc-if></a>
+</sc-for>
+</nav>
+<div style="margin-inline-start: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span style="padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: {{roleBg}}; color: {{roleFg}}">{{roleLabel}}</span>
+<span dir="ltr" style="font-size: 13px; color: #5B6F63">{{email}}</span>
+<a href="AdminSignIn.dc.html" style="min-height: 44px; padding: 0 10px; display: flex; align-items: center; font-size: 14px; font-weight: 700; color: #064B42; text-decoration: none">خروج</a>
+</div>
+</header>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["tasks","stores","audit"],"default":"tasks"},"role":{"editor":"enum","options":["admin","support"],"default":"admin"},"$preview":{"width":1440,"height":68}}'>
+class Component extends DCLogic {
+renderVals() {
+const active = this.props.active ?? 'tasks';
+const support = (this.props.role ?? 'admin') === 'support';
+const tab = (id, label, href, count) => {
+const on = id === active;
+return { label, href, count, hasCount: !!count, current: on ? 'page' : 'false', weight: on ? 700 : 500, ink: on ? '#064B42' : '#5B6F63', bg: on ? '#D6EFE4' : 'transparent' };
+};
+return {
+tabs: [
+tab('tasks', 'المهام', 'AdminTasks.dc.html', support ? 0 : 4),
+tab('stores', 'المتاجر', 'AdminStores.dc.html', 0),
+tab('audit', 'سجل الإدارة', '#audit', 0),
+],
+roleLabel: support ? 'دعم · قراءة فقط' : 'إدارة',
+roleBg: support ? '#FFF1DD' : '#E7F3ED',
+roleFg: support ? '#9A5A13' : '#064B42',
+email: support ? 'support@sadad.app' : 'admin@sadad.app',
+};
+}
+}
+</script>
+</body>
+</html>

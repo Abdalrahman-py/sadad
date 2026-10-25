@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>لوحة الإدارة — إنشاء متجر</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="min-height: 960px; background: #F5F8F3; font-family: Tajawal, 'Noto Sans Arabic', system-ui, sans-serif; color: #142C24">
+<dc-import name="AdminBar" active="stores" hint-size="100%,68px"></dc-import>
+
+<div style="box-sizing: border-box; padding: 32px 16px 56px; display: flex; justify-content: center">
+<div role="dialog" aria-labelledby="cr-title" style="width: 100%; max-width: 640px; box-sizing: border-box; border-radius: 20px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 24px; display: flex; flex-direction: column; gap: 18px">
+
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 13px; font-weight: 700; color: #5B6F63">{{stepLabel}}</span>
+<h1 id="cr-title" style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 700">{{title}}</h1>
+</div>
+<a href="AdminStores.dc.html" aria-label="إغلاق" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: #142C24">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+</a>
+</div>
+
+<sc-if value="{{isForm}}" hint-placeholder-val="{{ true }}">
+<form style="margin: 0; display: flex; flex-direction: column; gap: 18px">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">اسم المتجر<input value="{{name}}" onChange="{{onName}}" required maxlength="120" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">اسم الدخول<input dir="ltr" value="{{user}}" onChange="{{onUser}}" autocomplete="off" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid {{userBorder}}; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24; text-align: right"><span style="font-size: 12px; font-weight: 400; color: {{userHintColor}}">{{userHint}}</span></label>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span id="cr-mode" style="font-size: 14px; font-weight: 700">الاشتراك</span>
+<div role="group" aria-labelledby="cr-mode" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #E7F3ED">
+<sc-for list="{{modes}}" as="m" hint-placeholder-count="3">
+<button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="min-height: 44px; border: 0; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; background: {{m.bg}}; color: {{m.fg}}">{{m.label}}</button>
+</sc-for>
+</div>
+<sc-if value="{{timed}}" hint-placeholder-val="{{ true }}">
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px">المدة<input inputmode="numeric" value="30" style="width: 96px; min-height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; color: #142C24">يومًا · ينتهي 24 نوفمبر</label>
+</sc-if>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">الأجهزة المسموحة<input inputmode="numeric" value="1" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">حد الأشخاص النشطين<input inputmode="numeric" value="5000" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"></label>
+</div>
+
+<details style="border-radius: 12px; border: 1px solid #D5E5D9">
+<summary style="min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 700; cursor: pointer; list-style: none">الصلاحيات <span style="font-size: 13px; font-weight: 500; color: #5B6F63">كلها مفعّلة · تعديل</span></summary>
+<div style="padding: 0 14px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px">
+<sc-for list="{{perms}}" as="p" hint-placeholder-count="8">
+<label style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; display: flex; align-items: center; gap: 10px; font-size: 15px; cursor: pointer"><input type="checkbox" checked="{{ true }}" style="width: 18px; height: 18px; accent-color: #064B42">{{p}}</label>
+</sc-for>
+</div>
+</details>
+
+<button type="button" disabled="{{notReady}}" onClick="{{create}}" style="min-height: 52px; border: 0; border-radius: 12px; background: {{btnBg}}; color: {{btnFg}}; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer">إنشاء الحساب</button>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: #5B6F63">ينشئ الخادم كلمة مرور مؤقتة تظهر مرة واحدة بعد الإنشاء.</p>
+</form>
+</sc-if>
+
+<sc-if value="{{isDone}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<div role="status" style="border-radius: 14px; padding: 16px; background: #D6EFE4; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 15px; line-height: 23px">بيانات الدخول لـ <b>{{name}}</b>. تظهر كلمة المرور الآن فقط.</span>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+<code dir="ltr" style="padding: 10px 14px; border-radius: 10px; background: #FFFFFF; font-size: 16px">{{user}}</code>
+<code dir="ltr" style="padding: 10px 14px; border-radius: 10px; background: #FFFFFF; font-size: 18px; letter-spacing: 0.06em">Hq3v-81ke-Zp7w</code>
+<button type="button" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">نسخ الاثنين</button>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<b style="font-size: 16px">ما يحدث بعد ذلك</b>
+<ol style="margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 23px">
+<li>أرسل البيانات لصاحب المتجر بطريقة آمنة.</li>
+<li>يدخل من التطبيق ويغيّر كلمة المرور المؤقتة.</li>
+<li>يظهر طلب هاتفه في «المهام» فتعتمده، ويبدأ العمل.</li>
+</ol>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<a href="AdminStore.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 12px; background: #064B42; color: #FFFFFF; text-decoration: none; font-size: 15px; font-weight: 700; display: flex; align-items: center">فتح صفحة المتجر</a>
+<button type="button" onClick="{{again}}" style="min-height: 48px; padding: 0 18px; border: 0; border-radius: 12px; background: #E7F3ED; color: #064B42; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">إنشاء متجر آخر</button>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { step: 'form', name: 'مطعم الوادي', user: 'alwadi', mode: 'timed' };
+}
+renderVals() {
+const s = this.state;
+// Same rule as the server: 3 to 64 of A-Z a-z 0-9 . _ -
+const okUser = /^[A-Za-z0-9._-]{3,64}$/.test(s.user);
+const taken = ['alnoor', 'alhay.market', 'amal.bakery', 'aburami', 'shifa', 'test.store'].indexOf(s.user.toLowerCase()) !== -1;
+const ready = s.name.trim() !== '' && okUser && !taken;
+return {
+isForm: s.step === 'form',
+isDone: s.step === 'done',
+stepLabel: s.step === 'form' ? 'حساب جديد' : 'تم الإنشاء',
+title: s.step === 'form' ? 'إنشاء حساب متجر' : 'سلّم البيانات لصاحب المتجر',
+name: s.name,
+user: s.user,
+onName: (e) => this.setState({ name: e.target.value }),
+onUser: (e) => this.setState({ user: e.target.value }),
+userBorder: okUser && !taken ? '#D5E5D9' : '#AB323A',
+userHint: taken ? 'هذا الاسم مستخدم لمتجر آخر' : (okUser ? 'هذا ما يكتبه صاحب المتجر عند الدخول' : 'من 3 إلى 64: أحرف إنجليزية وأرقام و . _ -'),
+userHintColor: okUser && !taken ? '#5B6F63' : '#AB323A',
+modes: [['timed', 'بعدد أيام'], ['permanent', 'دائم'], ['paused', 'يبدأ موقوفًا']].map(([id, label]) => ({
+label, on: s.mode === id,
+bg: s.mode === id ? '#064B42' : 'transparent',
+fg: s.mode === id ? '#FFFFFF' : '#5B6F63',
+pick: () => this.setState({ mode: id }),
+})),
+timed: s.mode === 'timed',
+perms: ['جهات الاتصال', 'الديون', 'الدفعات', 'الكشوفات والتقارير', 'الإحصائيات', 'التصدير', 'WhatsApp', 'قفل التطبيق'],
+notReady: !ready,
+btnBg: ready ? '#064B42' : '#D6EFE4',
+btnFg: ready ? '#FFFFFF' : '#5B6F63',
+create: () => ready && this.setState({ step: 'done' }),
+again: () => this.setState({ step: 'form', name: '', user: '' }),
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>لوحة الإدارة — صفحة المتجر</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="min-height: 1300px; background: #F5F8F3; font-family: Tajawal, 'Noto Sans Arabic', system-ui, sans-serif; color: #142C24">
+<dc-import name="AdminBar" active="stores" role="{{role}}" hint-size="100%,68px"></dc-import>
+
+<div style="max-width: 1280px; margin: 0 auto; box-sizing: border-box; padding: 20px 24px 56px; display: flex; flex-direction: column; gap: 20px">
+
+<a href="AdminStores.dc.html" style="align-self: flex-start; min-height: 40px; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: #064B42; text-decoration: none">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+المتاجر
+</a>
+
+<sc-if value="{{readOnly}}" hint-placeholder-val="{{ false }}">
+<div role="note" style="border-radius: 12px; padding: 12px 16px; background: #FFF1DD; font-size: 15px">حسابك للدعم: تعرض كل شيء، والتعديل للإدارة فقط. قراءة الدفتر تُسجَّل باسمك مع السبب.</div>
+</sc-if>
+
+<header style="display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 700">بقالة النور</h1>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; color: #5B6F63">
+<span dir="ltr">alnoor</span><span aria-hidden="true">·</span><span>أُنشئ 2 سبتمبر 2026</span>
+<span style="padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: #D6EFE4; color: #064B42">نشط</span>
+<span style="padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: #FFF1DD; color: #9A5A13">{{subPill}}</span>
+</div>
+</div>
+<sc-if value="{{canWrite}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" onClick="{{extend30}}" style="min-height: 48px; padding: 0 18px; border: 0; border-radius: 12px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">تمديد 30 يومًا</button>
+<button type="button" onClick="{{makeTemp}}" style="min-height: 48px; padding: 0 18px; border: 0; border-radius: 12px; background: #E7F3ED; color: #064B42; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">كلمة مرور مؤقتة</button>
+</div>
+</sc-if>
+</header>
+
+<sc-if value="{{showSecret}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="border-radius: 16px; padding: 18px 20px; background: #FFFFFF; border: 2px solid #064B42; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 4px">
+<b style="font-size: 16px">كلمة المرور المؤقتة لـ <span dir="ltr">alnoor</span></b>
+<span style="font-size: 14px; line-height: 21px; color: #5B6F63">تظهر مرة واحدة فقط. انسخها وأرسلها لصاحب المتجر بطريقة آمنة. انتهت جلساته الحالية، وسيُطلب منه تغييرها عند الدخول.</span>
+</div>
+<code dir="ltr" style="padding: 10px 14px; border-radius: 10px; background: #E7F3ED; font-size: 18px; letter-spacing: 0.06em">K7mq-29xd-Rt4p</code>
+<button type="button" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">نسخ</button>
+<button type="button" onClick="{{hideSecret}}" style="min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: #064B42; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">تم، إخفاء</button>
+</div>
+</sc-if>
+
+<nav role="tablist" aria-label="أقسام المتجر" style="display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid #D5E5D9">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="7">
+<button type="button" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="flex-shrink: 0; min-height: 48px; padding: 0 16px; border: 0; border-bottom: 3px solid {{t.line}}; background: transparent; color: {{t.ink}}; font: inherit; font-size: 15px; font-weight: {{t.weight}}; cursor: pointer; display: flex; align-items: center; gap: 6px">{{t.label}}<sc-if value="{{t.dot}}" hint-placeholder-val="{{ false }}"><span style="width: 8px; height: 8px; border-radius: 4px; background: #AB323A" aria-label="يحتاج إجراء"></span></sc-if></button>
+</sc-for>
+</nav>
+
+<sc-if value="{{tOverview}}" hint-placeholder-val="{{ true }}">
+<section style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px">
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #5B6F63">الأشخاص النشطون</span><span style="font-size: 28px; font-weight: 700">142 <span style="font-size: 15px; font-weight: 500; color: #5B6F63">من حد 300</span></span></div>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #5B6F63">ديون مفتوحة</span><span style="font-size: 28px; font-weight: 700">38 <span dir="ltr" style="font-size: 15px; font-weight: 500; color: #5B6F63">₪ 12,480</span></span></div>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #5B6F63">الأجهزة</span><span style="font-size: 28px; font-weight: 700">2 <span style="font-size: 15px; font-weight: 500; color: #5B6F63">من 3 · طلب ينتظر</span></span></div>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #5B6F63">الاشتراك</span><span style="font-size: 28px; font-weight: 700; color: #9A5A13">6 أيام <span style="font-size: 15px; font-weight: 500; color: #5B6F63">حتى 31 أكتوبر</span></span></div>
+</div>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1.5px solid #9A5A13; padding: 18px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px">
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 16px">جهاز ينتظر الاعتماد</b><span style="font-size: 14px; color: #5B6F63">سامر · جهاز الكاشير · منذ 4 دقائق · يصبح 3 من 3</span></div>
+<sc-if value="{{canWrite}}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{goDevices}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">مراجعة واعتماد</button></sc-if>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{tDevices}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<p style="margin: 0; font-size: 15px; color: #5B6F63">مسموح <b style="color: #142C24">3 أجهزة</b>. الاعتماد لا يلغي جهازًا آخر تلقائيًا.</p>
+<sc-if value="{{canWrite}}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{goSettings}}" style="min-height: 40px; padding: 0 14px; border: 1px solid #D5E5D9; border-radius: 10px; background: #FFFFFF; color: #064B42; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">تغيير الحد</button></sc-if>
+</div>
+<sc-for list="{{devices}}" as="d" hint-placeholder-count="3">
+<article style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<div style="display: flex; align-items: center; gap: 8px"><b style="font-size: 16px">{{d.who}}</b><span style="padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: {{d.pillBg}}; color: {{d.pillFg}}">{{d.state}}</span></div>
+<span style="font-size: 14px; color: #5B6F63">{{d.meta}}</span>
+<code dir="ltr" style="font-size: 12px; color: #5B6F63; text-align: right">{{d.id}}</code>
+</div>
+<sc-if value="{{d.actions}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px">
+<sc-if value="{{d.pending}}" hint-placeholder-val="{{ false }}"><button type="button" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">اعتماد</button></sc-if>
+<button type="button" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: #AB323A; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">{{d.revokeLabel}}</button>
+</div>
+</sc-if>
+</article>
+</sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{tSub}}" hint-placeholder-val="{{ false }}">
+<section style="max-width: 640px; border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; font-size: 16px; line-height: 24px">متبقي <b>{{daysLeft}} يومًا</b>، وينتهي {{endDate}}. بعده يحتاج الحساب تجديدًا.</p>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 14px; font-weight: 700">تمديد سريع</span>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-for list="{{extends}}" as="x" hint-placeholder-count="3">
+<button type="button" disabled="{{readOnly}}" onClick="{{x.add}}" style="min-height: 44px; padding: 0 18px; border: 1px solid #D5E5D9; border-radius: 10px; background: #E7F3ED; color: #064B42; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">+ {{x.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<span id="mode-l" style="font-size: 14px; font-weight: 700">نوع الاشتراك</span>
+<div role="group" aria-labelledby="mode-l" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #E7F3ED">
+<button type="button" style="min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: #5B6F63; font: inherit; font-size: 14px; font-weight: 700">دائم</button>
+<button type="button" aria-pressed="true" style="min-height: 44px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 700">بعدد أيام</button>
+<button type="button" style="min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: #5B6F63; font: inherit; font-size: 14px; font-weight: 700">إيقاف مؤقت</button>
+</div>
+<span style="font-size: 13px; line-height: 20px; color: #5B6F63">الإيقاف المؤقت يحفظ المدة المتبقية ويعيدها عند الاستئناف.</span>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{tSettings}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+<form style="margin: 0; flex: 999 1 480px; min-width: 0; border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 700">بيانات الحساب وصلاحياته</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">اسم المتجر<input value="بقالة النور" disabled="{{readOnly}}" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">اسم الدخول<input dir="ltr" value="alnoor" disabled="{{readOnly}}" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24; text-align: right"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">حد الأشخاص النشطين<input inputmode="numeric" value="300" disabled="{{readOnly}}" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">الأجهزة المسموحة<input inputmode="numeric" value="3" disabled="{{readOnly}}" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"><span style="font-size: 12px; font-weight: 400; color: #5B6F63">لا يقل عن الأجهزة المعتمدة حاليًا (2).</span></label>
+</div>
+<fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px">
+<legend style="padding: 0 0 8px; font-size: 14px; font-weight: 700">ما يستطيع المتجر فعله</legend>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px">
+<sc-for list="{{perms}}" as="p" hint-placeholder-count="8">
+<label style="min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; display: flex; align-items: center; gap: 10px; font-size: 15px; cursor: pointer"><input type="checkbox" checked="{{p.on}}" disabled="{{readOnly}}" style="width: 18px; height: 18px; accent-color: #064B42">{{p.label}}</label>
+</sc-for>
+</div>
+</fieldset>
+<label style="min-height: 44px; display: flex; align-items: center; gap: 10px; font-size: 15px"><input type="checkbox" disabled="{{readOnly}}" style="width: 18px; height: 18px; accent-color: #064B42">حساب موثّق <span style="font-size: 13px; color: #5B6F63">(شارة تظهر لهذا المتجر)</span></label>
+<sc-if value="{{canWrite}}" hint-placeholder-val="{{ true }}"><button type="button" style="align-self: flex-start; min-height: 48px; padding: 0 20px; border: 0; border-radius: 12px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">حفظ التغييرات</button></sc-if>
+</form>
+
+<sc-if value="{{canWrite}}" hint-placeholder-val="{{ true }}">
+<section aria-labelledby="danger-h" style="flex: 1 1 320px; min-width: 0; border-radius: 16px; background: #FFFFFF; border: 1.5px solid #AB323A; padding: 20px; display: flex; flex-direction: column; gap: 4px">
+<h2 id="danger-h" style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #AB323A">إجراءات حساسة</h2>
+<sc-for list="{{danger}}" as="x" hint-placeholder-count="5">
+<div style="padding: 12px 0; border-top: {{x.divider}}; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px">
+<div style="flex: 1 1 180px; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 15px">{{x.label}}</b><span style="font-size: 13px; line-height: 19px; color: #5B6F63">{{x.why}}</span></div>
+<button type="button" onClick="{{x.ask}}" style="min-height: 40px; padding: 0 14px; border: 1px solid {{x.border}}; border-radius: 10px; background: #FFFFFF; color: {{x.ink}}; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">{{x.btn}}</button>
+</div>
+</sc-for>
+</section>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{tLedger}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 14px">
+<sc-if value="{{ledgerLocked}}" hint-placeholder-val="{{ true }}">
+<form style="margin: 0; max-width: 640px; border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center; gap: 10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#064B42" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><h2 style="margin: 0; font-size: 18px; font-weight: 700">دفتر المتجر خاص بصاحبه</h2></div>
+<p style="margin: 0; font-size: 15px; line-height: 23px; color: #5B6F63">كل قراءة تُسجَّل باسمك مع السبب في «سجل النشاط» تحت «قراءات الدفتر».</p>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">سبب القراءة<textarea rows="2" style="box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24; resize: vertical">شكوى من صاحب المتجر حول رصيد زبون</textarea></label>
+<button type="button" onClick="{{openLedger}}" style="align-self: flex-start; min-height: 48px; padding: 0 20px; border: 0; border-radius: 12px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">عرض الدفتر وتسجيل القراءة</button>
+</form>
+</sc-if>
+<sc-if value="{{ledgerOpen}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<span style="font-size: 14px; color: #5B6F63">سُجّلت القراءة · السبب: شكوى من صاحب المتجر حول رصيد زبون</span>
+<button type="button" style="min-height: 40px; padding: 0 14px; border: 1px solid #D5E5D9; border-radius: 10px; background: #FFFFFF; color: #064B42; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">تنزيل CSV</button>
+</div>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; overflow-x: auto">
+<table style="width: 100%; min-width: 720px; border-collapse: collapse; font-size: 15px">
+<thead><tr style="text-align: right; font-size: 13px; color: #5B6F63"><th scope="col" style="padding: 12px 20px">الشخص</th><th scope="col" style="padding: 12px">النوع</th><th scope="col" style="padding: 12px">عليه</th><th scope="col" style="padding: 12px">له</th><th scope="col" style="padding: 12px 20px 12px 12px">آخر حركة</th></tr></thead>
+<tbody>
+<tr style="border-top: 1px solid #D5E5D9"><td style="padding: 12px 20px; font-weight: 700">مريم حسن</td><td style="padding: 12px">زبون</td><td dir="ltr" style="padding: 12px; text-align: right; color: #AB323A">₪ 1,120.00</td><td style="padding: 12px">—</td><td style="padding: 12px 20px 12px 12px">22 أكتوبر</td></tr>
+<tr style="border-top: 1px solid #D5E5D9"><td style="padding: 12px 20px; font-weight: 700">أحمد ناصر</td><td style="padding: 12px">زبون</td><td style="padding: 12px">—</td><td dir="ltr" style="padding: 12px; text-align: right; color: #9A5A13">₪ 150.00</td><td style="padding: 12px 20px 12px 12px">20 أكتوبر</td></tr>
+<tr style="border-top: 1px solid #D5E5D9"><td style="padding: 12px 20px; font-weight: 700">مخبز الأمل</td><td style="padding: 12px">مورد</td><td style="padding: 12px">—</td><td dir="ltr" style="padding: 12px; text-align: right; color: #9A5A13">₪ 1,240.00</td><td style="padding: 12px 20px 12px 12px">22 أكتوبر</td></tr>
+</tbody>
+</table>
+</div>
+</sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{tRecovery}}" hint-placeholder-val="{{ false }}">
+<section style="max-width: 760px; border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 20px; display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; font-size: 15px; line-height: 23px; color: #5B6F63">حين يغيّر صاحب المتجر هاتفه وعليه إدخالات لم تُرسل، يرسل لك «قائمة اعتماد» من التطبيق. تعتمدها هنا فتُقبل إدخالات الهاتف القديم.</p>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px">
+<li style="display: flex; flex-direction: column; gap: 6px"><b style="font-size: 15px">1 · الهاتفان</b>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5B6F63">الهاتف القديم<select disabled="{{readOnly}}" style="min-height: 46px; padding: 0 10px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; color: #142C24"><option>هاتف المالك القديم · الجيل 1 · ملغى</option></select></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5B6F63">الهاتف المعتمد الآن<select disabled="{{readOnly}}" style="min-height: 46px; padding: 0 10px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; color: #142C24"><option>هاتف المالك · الجيل 2 · معتمد</option></select></label>
+</div></li>
+<li style="display: flex; flex-direction: column; gap: 6px"><b style="font-size: 15px">2 · قائمة الاعتماد</b>
+<div style="min-height: 72px; border-radius: 12px; border: 1.5px dashed #D5E5D9; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; color: #064B42; font-weight: 700">اسحب ملف القائمة هنا أو اختره</div>
+<div style="border-radius: 12px; background: #D6EFE4; padding: 12px 14px; font-size: 14px; line-height: 21px">قُرئت القائمة: <b>3 إدخالات صالحة</b> · من 12 إلى 20 أكتوبر · لا مشاكل في الصيغة</div></li>
+<li style="display: flex; flex-direction: column; gap: 6px"><b style="font-size: 15px">3 · السبب والاعتماد</b>
+<textarea rows="2" disabled="{{readOnly}}" style="box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; color: #142C24">تغيير هاتف صاحب المتجر بعد عطل</textarea>
+<sc-if value="{{canWrite}}" hint-placeholder-val="{{ true }}"><button type="button" style="align-self: flex-start; min-height: 48px; padding: 0 20px; border: 0; border-radius: 12px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">اعتماد الاسترداد</button></sc-if></li>
+</ol>
+</section>
+</sc-if>
+
+<sc-if value="{{tAudit}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 12px">
+<div role="group" aria-label="نوع السجل" style="display: flex; gap: 6px">
+<button type="button" aria-pressed="true" style="min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid #064B42; background: #064B42; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 700">إجراءات الإدارة</button>
+<button type="button" aria-pressed="false" style="min-height: 40px; padding: 0 14px; border-radius: 20px; border: 1px solid #D5E5D9; background: #FFFFFF; color: #142C24; font: inherit; font-size: 14px; font-weight: 700">قراءات الدفتر</button>
+</div>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; overflow: hidden">
+<sc-for list="{{audit}}" as="a" hint-placeholder-count="4">
+<div style="padding: 14px 20px; border-top: {{a.divider}}; display: flex; flex-direction: column; gap: 2px"><b style="font-size: 15px">{{a.what}}</b><span style="font-size: 13px; color: #5B6F63">{{a.meta}}</span></div>
+</sc-for>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{confirming}}" hint-placeholder-val="{{ false }}">
+<div style="position: fixed; inset: 0; background: rgba(20, 44, 36, 0.45); display: flex; align-items: center; justify-content: center; padding: 16px">
+<div role="alertdialog" aria-labelledby="dz-title" style="width: 100%; max-width: 460px; box-sizing: border-box; border-radius: 20px; background: #FFFFFF; padding: 24px; display: flex; flex-direction: column; gap: 12px">
+<h2 id="dz-title" style="margin: 0; font-size: 20px; font-weight: 700">{{confirmTitle}}</h2>
+<p style="margin: 0; font-size: 15px; line-height: 23px; color: #5B6F63">{{confirmWhy}}</p>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">اكتب <span dir="ltr">alnoor</span> للتأكيد<input dir="ltr" value="{{typed}}" onChange="{{onTyped}}" style="min-height: 46px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; font: inherit; font-size: 15px; text-align: right"></label>
+<div style="display: flex; gap: 8px; justify-content: flex-end">
+<button type="button" onClick="{{cancel}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: #E7F3ED; color: #064B42; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">إلغاء</button>
+<button type="button" disabled="{{notTyped}}" onClick="{{cancel}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: {{confirmBg}}; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">{{confirmBtn}}</button>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["admin","support"],"default":"admin"},"tab":{"editor":"enum","options":["overview","devices","sub","settings","ledger","recovery","audit"],"default":"overview"},"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { tab: props.tab ?? 'overview', secret: false, ledger: false, days: 6, confirm: null, typed: '' };
+}
+renderVals() {
+const s = this.state;
+const readOnly = (this.props.role ?? 'admin') === 'support';
+const defs = [['overview', 'نظرة عامة'], ['devices', 'الأجهزة'], ['sub', 'الاشتراك'], ['settings', 'الإعدادات'], ['ledger', 'الدفتر'], ['recovery', 'الاسترداد'], ['audit', 'سجل النشاط']];
+const go = (id) => () => this.setState({ tab: id });
+const end = new Date(2026, 9, 25 + s.days);
+const endDate = end.getDate() + ' ' + ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'][end.getMonth()] + ' ' + end.getFullYear();
+const dangerDefs = [
+{ id: 'freeze', label: 'تجميد الحساب', why: 'يوقف الحساب وينهي جلساته فورًا. الدفتر يبقى.', btn: 'تجميد', strong: true },
+{ id: 'sessions', label: 'إنهاء جلسات الدخول', why: 'يُطلب من كل الأجهزة تسجيل الدخول من جديد.', btn: 'إنهاء الجلسات' },
+{ id: 'revoke', label: 'إلغاء اعتماد كل الأجهزة', why: 'تحتاج الأجهزة موافقة جديدة قبل الحفظ.', btn: 'إلغاء الكل', strong: true },
+{ id: 'archive', label: 'أرشفة الحساب', why: 'يوقف الحساب وأجهزته ويحفظ دفتره وسجله. يمكن إعادته.', btn: 'أرشفة', strong: true },
+];
+const cur = dangerDefs.find((d) => d.id === s.confirm);
+return {
+role: readOnly ? 'support' : 'admin',
+readOnly: readOnly,
+canWrite: !readOnly,
+subPill: 'متبقي ' + s.days + ' يومًا',
+daysLeft: s.days,
+endDate: endDate,
+extend30: () => this.setState({ days: s.days + 30 }),
+extends: [['30 يومًا', 30], ['90 يومًا', 90], ['سنة', 365]].map(([label, n]) => ({ label, add: () => this.setState({ days: s.days + n }) })),
+makeTemp: () => this.setState({ secret: true }),
+showSecret: s.secret,
+hideSecret: () => this.setState({ secret: false }),
+tabs: defs.map(([id, label]) => {
+const on = s.tab === id;
+return { label, on, pick: go(id), line: on ? '#064B42' : 'transparent', ink: on ? '#064B42' : '#5B6F63', weight: on ? 700 : 500, dot: id === 'devices' };
+}),
+tOverview: s.tab === 'overview', tDevices: s.tab === 'devices', tSub: s.tab === 'sub', tSettings: s.tab === 'settings',
+tLedger: s.tab === 'ledger', tRecovery: s.tab === 'recovery', tAudit: s.tab === 'audit',
+goDevices: go('devices'),
+goSettings: go('settings'),
+devices: [
+{ who: 'سامر · جهاز الكاشير', state: 'ينتظر الاعتماد', k: 'pending', meta: 'الجيل 1 · سُجّل اليوم 9:58 ص', id: '3f1c…a92e' },
+{ who: 'أبو خالد · هاتف المالك', state: 'معتمد', k: 'ok', meta: 'الجيل 2 · اعتمده admin@sadad.app في 14 أكتوبر', id: '8b07…41d0' },
+{ who: 'هاتف المالك القديم', state: 'ملغى', k: 'revoked', meta: 'الجيل 1 · أُلغي في 14 أكتوبر · عطل في الهاتف', id: 'c52e…07ab' },
+].map((d) => ({
+...d,
+pending: d.k === 'pending',
+actions: !readOnly && d.k !== 'revoked',
+revokeLabel: d.k === 'pending' ? 'رفض' : 'إلغاء الاعتماد',
+pillBg: d.k === 'pending' ? '#FFF1DD' : (d.k === 'ok' ? '#D6EFE4' : '#E7F3ED'),
+pillFg: d.k === 'pending' ? '#9A5A13' : (d.k === 'ok' ? '#064B42' : '#5B6F63'),
+})),
+perms: [['جهات الاتصال', true], ['الديون', true], ['الدفعات', true], ['الكشوفات والتقارير', true], ['الإحصائيات', true], ['التصدير', true], ['WhatsApp', true], ['قفل التطبيق', true]].map(([label, on]) => ({ label, on })),
+danger: dangerDefs.map((d, i) => ({
+...d,
+divider: i === 0 ? '0' : '1px solid #D5E5D9',
+border: d.strong ? '#AB323A' : '#D5E5D9',
+ink: d.strong ? '#AB323A' : '#142C24',
+ask: () => this.setState({ confirm: d.id, typed: '' }),
+})),
+ledgerLocked: !s.ledger,
+ledgerOpen: s.ledger,
+openLedger: () => this.setState({ ledger: true }),
+audit: [
+{ what: 'تمديد الاشتراك 30 يومًا', meta: 'admin@sadad.app · 1 أكتوبر 10:20 ص' },
+{ what: 'كلمة مرور مؤقتة', meta: 'admin@sadad.app · 24 أكتوبر 11:03 ص · السبب: نسي كلمة المرور' },
+{ what: 'اعتماد هاتف · أبو خالد', meta: 'admin@sadad.app · 14 أكتوبر 6:41 م' },
+{ what: 'إلغاء اعتماد هاتف · الهاتف القديم', meta: 'admin@sadad.app · 14 أكتوبر 6:39 م · عطل في الهاتف' },
+].map((a, i) => ({ ...a, divider: i === 0 ? '0' : '1px solid #D5E5D9' })),
+confirming: !!cur,
+confirmTitle: cur ? cur.label + '؟' : '',
+confirmWhy: cur ? cur.why : '',
+confirmBtn: cur ? cur.btn : '',
+typed: s.typed,
+onTyped: (e) => this.setState({ typed: e.target.value }),
+notTyped: s.typed.trim() !== 'alnoor',
+confirmBg: s.typed.trim() === 'alnoor' ? '#AB323A' : '#D9A3A6',
+cancel: () => this.setState({ confirm: null, typed: '' }),
+};
+}
+}
+</script>
+</body>
+</html>

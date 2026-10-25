@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الحركات</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="{{vars}} width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--bg), var(--bg2)); font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: var(--text); overflow: hidden">
+
+<div style="flex-shrink: 0; box-sizing: border-box; padding: 0 18px 8px; display: flex; flex-direction: column; gap: 12px">
+<header style="height: 64px; display: flex; align-items: center; justify-content: space-between">
+<h1 style="margin: 0; font-size: 23px; line-height: 32px; font-weight: 700">الحركات</h1>
+<button type="button" style="height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); color: var(--link); font: inherit; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg>
+تصدير PDF / Excel
+</button>
+</header>
+<div role="group" aria-label="الفترة" style="display: flex; gap: 6px; overflow-x: auto; margin: 0 -18px; padding: 0 18px 2px">
+<sc-for list="{{periods}}" as="f" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{f.on}}" onClick="{{f.pick}}" style="flex-shrink: 0; height: 36px; padding: 0 14px; border-radius: 18px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.fg}}">{{f.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<main style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 18px 20px; display: flex; flex-direction: column; gap: 14px">
+
+<section aria-label="ملخص الفترة" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<div style="border-radius: 13px; padding: 12px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 12px; color: var(--muted)">ديون</span>
+<span dir="ltr" style="font-size: 17px; font-weight: 700; color: var(--owes); text-align: right">₪ {{t.debts}}</span>
+<span style="font-size: 11px; color: var(--muted)">{{t.debtsN}}</span>
+</div>
+<div style="border-radius: 13px; padding: 12px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 12px; color: var(--muted)">تحصيل</span>
+<span dir="ltr" style="font-size: 17px; font-weight: 700; color: var(--link); text-align: right">₪ {{t.paid}}</span>
+<span style="font-size: 11px; color: var(--muted)">{{t.paidN}}</span>
+</div>
+<div style="border-radius: 13px; padding: 12px; background: var(--soft); display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 12px; color: var(--muted)">صافي</span>
+<span dir="ltr" style="font-size: 17px; font-weight: 700; text-align: right">₪ {{t.net}}</span>
+<span style="font-size: 11px; color: var(--muted)">{{t.netWord}}</span>
+</div>
+</section>
+<div style="margin-top: -6px; font-size: 12px; line-height: 18px; color: var(--muted)">للموردين في الفترة: بضاعة بالدين <bdi dir="ltr">₪ {{t.suppIn}}</bdi> · دُفع <bdi dir="ltr">₪ {{t.suppOut}}</bdi></div>
+
+<div style="display: flex; gap: 8px">
+<button type="button" style="height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer">كل الأنواع <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+<button type="button" style="height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); font: inherit; font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer">كل الأجهزة والموظفين <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+</div>
+
+<sc-for list="{{feed}}" as="it" hint-placeholder-count="8">
+<sc-if value="{{it.isHead}}" hint-placeholder-val="{{ false }}">
+<div style="padding-top: 4px; display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--muted)"><span>{{it.label}}</span><span>{{it.sum}}</span></div>
+</sc-if>
+<sc-if value="{{it.isRow}}" hint-placeholder-val="{{ true }}">
+<a href="Contact.dc.html" style="min-height: 64px; box-sizing: border-box; padding: 10px 12px; border-radius: 13px; background: var(--card); border: 1px solid var(--line); color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px">
+<span style="width: 36px; height: 36px; flex-shrink: 0; border-radius: 18px; background: {{it.iconBg}}; color: {{it.iconFg}}; display: flex; align-items: center; justify-content: center">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{it.icon}}"/></svg>
+</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 15px; line-height: 22px; font-weight: 700">{{it.name}}</span>
+<span style="font-size: 12px; line-height: 18px; color: var(--muted)">{{it.kind}} · <bdi dir="ltr">{{it.time}}</bdi> · {{it.who}}</span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0">
+<span dir="ltr" style="font-size: 15px; line-height: 22px; font-weight: 700; color: {{it.color}}">₪ {{it.amount}}</span>
+<sc-if value="{{it.pending}}" hint-placeholder-val="{{ false }}">
+<span style="font-size: 11px; line-height: 16px; font-weight: 700; color: var(--credit); display: flex; align-items: center; gap: 3px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>بانتظار الإرسال</span>
+</sc-if>
+</span>
+</a>
+</sc-if>
+</sc-for>
+</main>
+
+<dc-import name="Nav" active="activity" sync="pending" hint-size="390px,96px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { period: 'today' };
+}
+theme() {
+const t = { bg: '#F5F8F3', bg2: '#EDF6EF', surface: '#E7F3ED', soft: '#D6EFE4', link: '#064B42', primary: '#064B42', text: '#142C24', muted: '#5B6F63', line: '#D5E5D9', card: '#FFFFFF', owes: '#AB323A', owesSoft: '#FFE1E1', credit: '#9A5A13' };
+return Object.keys(t).map((k) => '--' + k + ':' + t[k]).join(';') + ';';
+}
+renderVals() {
+const per = this.state.period;
+const totals = {
+today: { debts: '205.00', debtsN: 'عمليتان', paid: '500.00', paidN: 'دفعتان', net: '295.00', netWord: 'انخفض ما لك', suppIn: '0.00', suppOut: '450.00' },
+week: { debts: '1,480.00', debtsN: '11 عملية', paid: '1,920.00', paidN: '9 دفعات', net: '440.00', netWord: 'انخفض ما لك', suppIn: '940.00', suppOut: '1,050.00' },
+month: { debts: '3,200.00', debtsN: '28 عملية', paid: '1,950.00', paidN: '14 دفعة', net: '1,250.00', netWord: 'زاد ما لك', suppIn: '1,840.00', suppOut: '1,050.00' },
+custom: { debts: '3,200.00', debtsN: '28 عملية', paid: '1,950.00', paidN: '14 دفعة', net: '1,250.00', netWord: 'زاد ما لك', suppIn: '1,840.00', suppOut: '1,050.00' },
+};
+const defs = [['today', 'اليوم'], ['week', 'هذا الأسبوع'], ['month', 'هذا الشهر'], ['custom', 'مخصص…']];
+const PLUS = 'M12 5v14M5 12h14';
+const DOWN = 'M12 4v11M7 10l5 5 5-5';
+const UP = 'M12 20V9M7 14l5-5 5 5';
+const raw = [
+{ head: 'اليوم · السبت 25 أكتوبر', sum: '6 حركات' },
+{ name: 'خالد يوسف', kind: 'دين', time: '10:24', who: 'سامر · جهاز الكاشير', amount: '85.00', t: 'debt' },
+{ name: 'أحمد سالم', kind: 'دفعة نقدية', time: '10:02', who: 'سامر · جهاز الكاشير', amount: '200.00', t: 'pay' },
+{ name: 'مريم حسن', kind: 'دفعة بنكية', time: '09:41', who: 'صاحب المتجر', amount: '300.00', t: 'pay' },
+{ name: 'سارة محمود', kind: 'دين', time: '09:15', who: 'سامر · جهاز الكاشير', amount: '120.00', t: 'debt', pending: true },
+{ name: 'أبو رامي للخضار', kind: 'دفع للمورد', time: '08:30', who: 'صاحب المتجر', amount: '450.00', t: 'out' },
+{ head: 'أمس · الجمعة 24 أكتوبر', sum: '4 حركات' },
+{ name: 'أحمد ناصر', kind: 'دين · خُصم من رصيده', time: '18:12', who: 'صاحب المتجر', amount: '100.00', t: 'debt' },
+{ name: 'مخبز الأمل', kind: 'بضاعة بالدين', time: '07:40', who: 'سامر · جهاز الكاشير', amount: '940.00', t: 'debt' },
+];
+return {
+vars: this.theme(),
+t: totals[per],
+periods: defs.map(([id, label]) => {
+const on = id === per;
+return { label, on, bg: on ? 'var(--primary)' : 'var(--card)', fg: on ? '#FFFFFF' : 'var(--text)', border: on ? 'var(--primary)' : 'var(--line)', pick: () => this.setState({ period: id }) };
+}),
+feed: raw.map((r) => r.head
+? { isHead: true, isRow: false, label: r.head, sum: r.sum }
+: {
+isHead: false, isRow: true, name: r.name, kind: r.kind, time: r.time, who: r.who, amount: r.amount, pending: !!r.pending,
+icon: r.t === 'debt' ? PLUS : (r.t === 'pay' ? DOWN : UP),
+iconBg: r.t === 'debt' ? 'var(--owesSoft)' : 'var(--soft)',
+iconFg: r.t === 'debt' ? 'var(--owes)' : 'var(--link)',
+color: r.t === 'debt' ? 'var(--owes)' : 'var(--link)',
+}),
+};
+}
+}
+</script>
+</body>
+</html>

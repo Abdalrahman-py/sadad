@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>لوحة الإدارة — المهام</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="position: relative; min-height: 1000px; background: #F5F8F3; font-family: Tajawal, 'Noto Sans Arabic', system-ui, sans-serif; color: #142C24">
+<dc-import name="AdminBar" active="tasks" hint-size="100%,68px"></dc-import>
+
+<div style="max-width: 1280px; margin: 0 auto; box-sizing: border-box; padding: 28px 24px 48px; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 700">صباح الخير</h1>
+<p style="margin: 0; font-size: 16px; line-height: 24px; color: #5B6F63">{{summary}}</p>
+</div>
+<a href="AdminCreate.dc.html" style="min-height: 48px; padding: 0 20px; border-radius: 12px; background: #064B42; color: #FFFFFF; text-decoration: none; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+إنشاء حساب متجر
+</a>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+
+<section aria-labelledby="dev-h" style="display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: baseline; gap: 10px">
+<h2 id="dev-h" style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 700">أجهزة تنتظر الاعتماد</h2>
+<span style="font-size: 14px; color: #5B6F63">صاحب المتجر غالبًا ينتظر الآن على هاتفه</span>
+</div>
+<sc-for list="{{devices}}" as="d" hint-placeholder-count="2">
+<article style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px">
+<div style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<a href="AdminStore.dc.html" style="font-size: 17px; line-height: 24px; font-weight: 700; color: #142C24; text-decoration: none">{{d.store}}</a>
+<span style="font-size: 14px; line-height: 21px; color: #5B6F63">{{d.who}} · {{d.when}}</span>
+<span style="font-size: 13px; line-height: 20px; font-weight: 700; color: {{d.slotColor}}">{{d.slots}}</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<sc-if value="{{d.fits}}" hint-placeholder-val="{{ true }}">
+<button type="button" onClick="{{d.approve}}" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">اعتماد الجهاز</button>
+</sc-if>
+<sc-if value="{{d.full}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{d.approve}}" style="min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #064B42; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">رفع الحد إلى {{d.next}} واعتماد</button>
+<a href="AdminStore.dc.html" style="min-height: 44px; padding: 0 14px; border-radius: 10px; background: #E7F3ED; color: #064B42; text-decoration: none; font-size: 15px; font-weight: 700; display: flex; align-items: center">استبدال جهاز قديم</a>
+</sc-if>
+<button type="button" onClick="{{d.reject}}" style="min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: transparent; color: #AB323A; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">رفض</button>
+</div>
+</article>
+</sc-for>
+<sc-if value="{{noDevices}}" hint-placeholder-val="{{ false }}">
+<div style="border-radius: 16px; border: 1.5px dashed #D5E5D9; padding: 20px; font-size: 15px; color: #5B6F63">لا أجهزة تنتظر. تظهر الطلبات هنا فور تسجيلها.</div>
+</sc-if>
+</section>
+
+<section aria-labelledby="sub-h" style="display: flex; flex-direction: column; gap: 12px">
+<h2 id="sub-h" style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 700">اشتراكات تحتاج قرارًا</h2>
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; overflow: hidden">
+<sc-for list="{{subs}}" as="s" hint-placeholder-count="3">
+<div style="padding: 16px 20px; border-top: {{s.divider}}; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px">
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<a href="AdminStore.dc.html" style="font-size: 16px; line-height: 24px; font-weight: 700; color: #142C24; text-decoration: none">{{s.store}}</a>
+<span style="font-size: 14px; line-height: 21px; font-weight: 500; color: {{s.color}}">{{s.state}}</span>
+</div>
+<button type="button" onClick="{{s.act}}" style="min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: {{s.btnBg}}; color: {{s.btnFg}}; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer">{{s.btn}}</button>
+</div>
+</sc-for>
+</div>
+</section>
+</main>
+
+<aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<section aria-label="المنصة" style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column"><span style="font-size: 13px; color: #5B6F63">متاجر نشطة</span><span style="font-size: 28px; font-weight: 700">4 <span style="font-size: 15px; font-weight: 500; color: #5B6F63">من 6</span></span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 13px; color: #5B6F63">أجهزة معتمدة</span><span style="font-size: 28px; font-weight: 700">7</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 13px; color: #5B6F63">موثقة</span><span style="font-size: 28px; font-weight: 700">1</span></div>
+<div style="display: flex; flex-direction: column"><span style="font-size: 13px; color: #5B6F63">مجمّدة</span><span style="font-size: 28px; font-weight: 700; color: #AB323A">1</span></div>
+</section>
+<section aria-labelledby="log-h" style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<h2 id="log-h" style="margin: 0; font-size: 17px; font-weight: 700">آخر إجراءات الإدارة</h2>
+<a href="#audit" style="min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 700; color: #064B42; text-decoration: none">السجل كاملًا</a>
+</div>
+<sc-for list="{{log}}" as="l" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 21px">
+<span><b>{{l.what}}</b> · {{l.store}}</span>
+<span style="font-size: 13px; color: #5B6F63">{{l.meta}}</span>
+</div>
+</sc-for>
+</section>
+</aside>
+</div>
+</div>
+
+<sc-if value="{{toast}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="position: fixed; left: 24px; bottom: 24px; max-width: calc(100% - 48px); box-sizing: border-box; padding: 14px 18px; border-radius: 12px; background: #142C24; color: #FFFFFF; display: flex; align-items: center; gap: 18px; font-size: 15px">{{toast}}<button type="button" onClick="{{undo}}" style="min-height: 36px; border: 0; background: transparent; color: #78DEC0; font: inherit; font-weight: 700; cursor: pointer">تراجع</button></div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { done: {}, toast: '', last: null };
+}
+renderVals() {
+const s = this.state;
+const devices = [
+{ id: 'd1', store: 'بقالة النور', who: 'سامر · جهاز الكاشير', when: 'منذ 4 دقائق', used: 2, limit: 3 },
+{ id: 'd2', store: 'ملحمة أبو رامي', who: 'أبو رامي · هاتف جديد', when: 'منذ ساعة', used: 1, limit: 1 },
+].filter((d) => !s.done[d.id]);
+const subs = [
+{ id: 's1', store: 'سوبر ماركت الحي', state: 'ينتهي خلال 3 أيام · 28 أكتوبر', urgent: false, btn: 'تمديد 30 يومًا' },
+{ id: 's2', store: 'صيدلية الشفاء', state: 'انتهى قبل 5 أيام · الحساب مجمّد', urgent: true, btn: 'تجديد 30 يومًا وتفعيل' },
+{ id: 's3', store: 'بقالة النور', state: 'ينتهي خلال 6 أيام · 31 أكتوبر', urgent: false, btn: 'تمديد 30 يومًا' },
+].filter((x) => !s.done[x.id]);
+const finish = (id, msg) => this.setState({ done: { ...s.done, [id]: true }, toast: msg, last: id });
+const n = devices.length + subs.length;
+return {
+summary: n ? n + ' مهام تنتظرك: ' + devices.length + ' أجهزة و' + subs.length + ' اشتراكات.' : 'لا مهام الآن. كل المتاجر تعمل.',
+devices: devices.map((d) => {
+const full = d.used >= d.limit;
+return {
+store: d.store, who: d.who, when: d.when,
+fits: !full, full: full, next: d.limit + 1,
+slots: full ? 'الحد ممتلئ: ' + d.used + ' من ' + d.limit + ' أجهزة معتمدة' : 'يصبح ' + (d.used + 1) + ' من ' + d.limit + ' أجهزة',
+slotColor: full ? '#9A5A13' : '#5B6F63',
+approve: () => finish(d.id, 'اعتُمد جهاز ' + d.store + '. يستطيع البدء الآن.'),
+reject: () => finish(d.id, 'رُفض طلب جهاز ' + d.store + '.'),
+};
+}),
+noDevices: devices.length === 0,
+subs: subs.map((x, i) => ({
+...x,
+divider: i === 0 ? '0' : '1px solid #D5E5D9',
+color: x.urgent ? '#AB323A' : '#9A5A13',
+btnBg: x.urgent ? '#064B42' : '#E7F3ED',
+btnFg: x.urgent ? '#FFFFFF' : '#064B42',
+act: () => finish(x.id, 'تم: ' + x.btn + ' · ' + x.store),
+})),
+log: [
+{ what: 'تمديد الاشتراك 30 يومًا', store: 'مخبز الأمل', meta: 'admin@sadad.app · أمس 4:12 م' },
+{ what: 'كلمة مرور مؤقتة', store: 'بقالة النور', meta: 'admin@sadad.app · أمس 11:03 ص' },
+{ what: 'قراءة الدفتر', store: 'سوبر ماركت الحي', meta: 'support@sadad.app · السبب: شكوى رصيد · 23 أكتوبر' },
+{ what: 'تجميد الحساب', store: 'صيدلية الشفاء', meta: 'admin@sadad.app · 20 أكتوبر' },
+],
+toast: s.toast,
+undo: () => this.setState({ done: { ...s.done, [s.last]: false }, toast: '' }),
+};
+}
+}
+</script>
+</body>
+</html>

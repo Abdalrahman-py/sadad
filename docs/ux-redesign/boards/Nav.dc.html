@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الشريط السفلي</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav dir="rtl" aria-label="التنقل الرئيسي" style="{{vars}} width: 390px; height: 96px; box-sizing: border-box; padding: 14px 6px 10px; background: var(--bar); box-shadow: 0 -4px 16px rgba(6, 75, 66, 0.10); display: flex; align-items: flex-end; font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: var(--muted)">
+<sc-for list="{{left}}" as="t" hint-placeholder-count="2">
+<a href="{{t.href}}" aria-current="{{t.current}}" style="flex: 1; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-decoration: none; color: {{t.ink}}">
+<span style="position: relative; width: 52px; height: 34px; border-radius: 17px; background: {{t.halo}}; display: flex; align-items: center; justify-content: center">
+<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"/></svg>
+</span>
+<span style="font-size: 11px; line-height: 16px; font-weight: {{t.weight}}">{{t.label}}</span>
+</a>
+</sc-for>
+<a href="QuickAdd.dc.html" aria-label="تسجيل دين أو دفعة" style="flex: 1; height: 72px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; text-decoration: none; color: var(--link)">
+<span style="width: 60px; height: 60px; border-radius: 30px; background: var(--primary); color: #FFFFFF; border: 4px solid var(--bg); box-shadow: 0 8px 18px rgba(6, 75, 66, 0.35); display: flex; align-items: center; justify-content: center">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+</span>
+<span style="font-size: 11px; line-height: 16px; font-weight: 700">تسجيل</span>
+</a>
+<sc-for list="{{right}}" as="t" hint-placeholder-count="2">
+<a href="{{t.href}}" aria-current="{{t.current}}" aria-label="{{t.aria}}" style="flex: 1; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-decoration: none; color: {{t.ink}}">
+<span style="position: relative; width: 52px; height: 34px; border-radius: 17px; background: {{t.halo}}; display: flex; align-items: center; justify-content: center">
+<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"/></svg>
+<sc-if value="{{t.dot}}" hint-placeholder-val="{{ false }}">
+<span style="position: absolute; top: 3px; left: 10px; width: 10px; height: 10px; border-radius: 5px; border: 2px solid var(--bar); background: {{t.dotColor}}"></span>
+</sc-if>
+</span>
+<span style="font-size: 11px; line-height: 16px; font-weight: {{t.weight}}">{{t.label}}</span>
+</a>
+</sc-for>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["home","people","activity","store"],"default":"home"},"sync":{"editor":"enum","options":["ok","pending","offline"],"default":"ok"},"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":96}}'>
+class Component extends DCLogic {
+theme(d) {
+const t = d
+? { bg: '#102721', bar: '#1C3931', primary: '#256C5A', link: '#78DEC0', text: '#F0F7EF', muted: '#B5CEC0', halo: 'rgba(120, 222, 192, 0.20)' }
+: { bg: '#F5F8F3', bar: '#E7F3ED', primary: '#064B42', link: '#064B42', text: '#142C24', muted: '#5B6F63', halo: 'rgba(21, 157, 137, 0.22)' };
+return Object.keys(t).map((k) => '--' + k + ':' + t[k]).join(';') + ';';
+}
+renderVals() {
+const active = this.props.active ?? 'home';
+const sync = this.props.sync ?? 'ok';
+const tab = (id, label, href, icon) => {
+const on = id === active;
+return {
+label, href, icon,
+current: on ? 'page' : 'false',
+ink: on ? 'var(--link)' : 'var(--muted)',
+halo: on ? 'var(--halo)' : 'transparent',
+weight: on ? 700 : 500,
+dot: false, dotColor: 'transparent', aria: label,
+};
+};
+const store = tab('store', 'المتجر', 'Store.dc.html', 'M4 10h16l-1.5-5h-13zM5 10v10h14V10M9 20v-5h6v5');
+if (sync !== 'ok') {
+store.dot = true;
+store.dotColor = sync === 'offline' ? '#C13634' : '#E0A23A';
+store.aria = sync === 'offline' ? 'المتجر، لا يوجد اتصال' : 'المتجر، إدخالات بانتظار الإرسال';
+}
+return {
+vars: this.theme(this.props.dark ?? false),
+left: [
+tab('home', 'الرئيسية', 'Home.dc.html', 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z'),
+tab('people', 'الأشخاص', 'People.dc.html', 'M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c1.9.7 3.1 2.4 3.5 5.2'),
+],
+right: [
+tab('activity', 'الحركات', 'Activity.dc.html', 'M4 6h16M4 12h10M4 18h13'),
+store,
+],
+};
+}
+}
+</script>
+</body>
+</html>

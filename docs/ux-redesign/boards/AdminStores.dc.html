@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>لوحة الإدارة — المتاجر</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="min-height: 900px; background: #F5F8F3; font-family: Tajawal, 'Noto Sans Arabic', system-ui, sans-serif; color: #142C24">
+<dc-import name="AdminBar" active="stores" hint-size="100%,68px"></dc-import>
+
+<div style="max-width: 1280px; margin: 0 auto; box-sizing: border-box; padding: 28px 24px 48px; display: flex; flex-direction: column; gap: 18px">
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<h1 style="margin: 0; font-size: 30px; line-height: 38px; font-weight: 700">المتاجر</h1>
+<a href="AdminCreate.dc.html" style="min-height: 48px; padding: 0 20px; border-radius: 12px; background: #064B42; color: #FFFFFF; text-decoration: none; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+إنشاء حساب متجر
+</a>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+<label for="st-search" style="flex: 1 1 320px; min-height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 12px; background: #FFFFFF; border: 1px solid #D5E5D9; display: flex; align-items: center; gap: 10px; color: #5B6F63">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+<input id="st-search" aria-label="بحث باسم المتجر أو اسم الدخول" placeholder="بحث باسم المتجر أو اسم الدخول" value="{{q}}" onChange="{{onQ}}" style="flex: 1; min-width: 0; height: 46px; border: 0; background: transparent; font: inherit; font-size: 15px; color: #142C24; outline: none">
+</label>
+<div role="group" aria-label="تصفية" style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="6">
+<button type="button" aria-pressed="{{f.on}}" onClick="{{f.pick}}" style="min-height: 40px; padding: 0 14px; border-radius: 20px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.fg}}">{{f.label}} <span style="font-weight: 500">{{f.count}}</span></button>
+</sc-for>
+</div>
+</div>
+
+<div style="border-radius: 16px; background: #FFFFFF; border: 1px solid #D5E5D9; overflow-x: auto">
+<table style="width: 100%; min-width: 880px; border-collapse: collapse; font-size: 15px">
+<thead>
+<tr style="text-align: right; font-size: 13px; color: #5B6F63">
+<th scope="col" style="padding: 14px 20px; font-weight: 700">المتجر</th>
+<th scope="col" style="padding: 14px 12px; font-weight: 700">الحالة</th>
+<th scope="col" style="padding: 14px 12px; font-weight: 700">الاشتراك</th>
+<th scope="col" style="padding: 14px 12px; font-weight: 700">الأجهزة</th>
+<th scope="col" style="padding: 14px 12px; font-weight: 700">الأشخاص</th>
+<th scope="col" style="padding: 14px 20px 14px 12px; font-weight: 700">الديون المفتوحة</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<tr style="border-top: 1px solid #D5E5D9">
+<td style="padding: 14px 20px">
+<a href="AdminStore.dc.html" style="display: flex; flex-direction: column; color: #142C24; text-decoration: none">
+<span style="font-weight: 700; display: flex; align-items: center; gap: 6px">{{r.name}}<sc-if value="{{r.verified}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#064B42" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="موثّق"><path d="M5 12.5l4.5 4.5L19 7"/></svg></sc-if></span>
+<span dir="ltr" style="font-size: 13px; color: #5B6F63; text-align: right">{{r.user}}</span>
+</a>
+</td>
+<td style="padding: 14px 12px"><span style="padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; background: {{r.statusBg}}; color: {{r.statusFg}}">{{r.status}}</span></td>
+<td style="padding: 14px 12px; font-weight: 500; color: {{r.subColor}}">{{r.sub}}</td>
+<td style="padding: 14px 12px"><span dir="ltr">{{r.devices}}</span><sc-if value="{{r.pending}}" hint-placeholder-val="{{ false }}"><span style="margin-inline-start: 8px; padding: 2px 8px; border-radius: 999px; background: #FFF1DD; color: #9A5A13; font-size: 12px; font-weight: 700">طلب ينتظر</span></sc-if></td>
+<td style="padding: 14px 12px">{{r.contacts}}</td>
+<td style="padding: 14px 20px 14px 12px">{{r.debts}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+<sc-if value="{{none}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 32px 20px; text-align: center; color: #5B6F63">لا توجد متاجر مطابقة.</div>
+</sc-if>
+</div>
+<p style="margin: 0; font-size: 13px; color: #5B6F63">الأحدث إنشاءً أولًا · البحث على الخادم · المؤرشفة تظهر من مرشح «مؤرشفة» فقط.</p>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { filter: 'all', q: '' };
+}
+renderVals() {
+const s = this.state;
+const all = [
+{ name: 'بقالة النور', user: 'alnoor', st: 'active', sub: 'متبقي 6 أيام', subK: 'soon', devices: '2 / 3', pending: true, contacts: '142', debts: '38 · ₪ 12,480' },
+{ name: 'سوبر ماركت الحي', user: 'alhay.market', st: 'active', sub: 'متبقي 3 أيام', subK: 'soon', devices: '3 / 3', contacts: '310', debts: '92 · ₪ 41,200' },
+{ name: 'مخبز الأمل', user: 'amal.bakery', st: 'active', verified: true, sub: 'فعال دائمًا', subK: 'ok', devices: '1 / 2', contacts: '54', debts: '9 · ₪ 2,150' },
+{ name: 'ملحمة أبو رامي', user: 'aburami', st: 'active', sub: 'متبقي 61 يومًا', subK: 'ok', devices: '1 / 1', pending: true, contacts: '67', debts: '21 · ₪ 5,930' },
+{ name: 'صيدلية الشفاء', user: 'shifa', st: 'suspended', sub: 'انتهى قبل 5 أيام', subK: 'over', devices: '0 / 2', contacts: '88', debts: '30 · ₪ 9,410' },
+{ name: 'متجر تجريبي', user: 'test.store', st: 'archived', sub: '—', subK: 'ok', devices: '0 / 1', contacts: '—', debts: '—' },
+];
+const tests = {
+all: (r) => r.st !== 'archived',
+active: (r) => r.st === 'active',
+soon: (r) => r.subK === 'soon',
+over: (r) => r.subK === 'over',
+suspended: (r) => r.st === 'suspended',
+archived: (r) => r.st === 'archived',
+};
+const defs = [['all', 'الكل'], ['active', 'نشطة'], ['soon', 'تنتهي قريبًا'], ['over', 'منتهية'], ['suspended', 'مجمّدة'], ['archived', 'مؤرشفة']];
+const q = s.q.trim();
+const rows = all.filter(tests[s.filter]).filter((r) => !q || r.name.indexOf(q) !== -1 || r.user.indexOf(q.toLowerCase()) !== -1);
+const st = { active: ['نشط', '#D6EFE4', '#064B42'], suspended: ['مجمّد', '#FFE1E1', '#AB323A'], archived: ['مؤرشف', '#E7F3ED', '#5B6F63'] };
+return {
+q: s.q,
+onQ: (e) => this.setState({ q: e.target.value }),
+filters: defs.map(([id, label]) => {
+const on = id === s.filter;
+return { label, count: all.filter(tests[id]).length, on, bg: on ? '#064B42' : '#FFFFFF', fg: on ? '#FFFFFF' : '#142C24', border: on ? '#064B42' : '#D5E5D9', pick: () => this.setState({ filter: id }) };
+}),
+none: rows.length === 0,
+rows: rows.map((r) => ({
+...r,
+verified: !!r.verified, pending: !!r.pending,
+status: st[r.st][0], statusBg: st[r.st][1], statusFg: st[r.st][2],
+subColor: r.subK === 'over' ? '#AB323A' : (r.subK === 'soon' ? '#9A5A13' : '#142C24'),
+})),
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الإشعارات</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="{{vars}} width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--bg), var(--bg2)); font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: var(--text); overflow: hidden">
+
+<header style="height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 10px; display: flex; align-items: center; gap: 4px">
+<a href="Home.dc.html" aria-label="رجوع إلى الرئيسية" style="width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; color: var(--text)">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+</a>
+<h1 style="margin: 0; font-size: 21px; line-height: 30px; font-weight: 700">الإشعارات</h1>
+</header>
+
+<main style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 18px 24px; display: flex; flex-direction: column; gap: 18px">
+
+<sc-if value="{{showRejected}}" hint-placeholder-val="{{ true }}">
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--owes)">تحتاج إجراء</h2>
+<div role="alert" style="border-radius: 13px; padding: 14px; background: var(--card); border: 1.5px solid var(--owes); display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<span style="width: 36px; height: 36px; flex-shrink: 0; border-radius: 18px; background: var(--owesSoft); color: var(--owes); display: flex; align-items: center; justify-content: center">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v5M12 16.5h.01"/><circle cx="12" cy="12" r="9"/></svg>
+</span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 15px; line-height: 22px; font-weight: 700">لم تُقبل: دفعة <bdi dir="ltr">₪ 120.00</bdi> من سارة محمود</span>
+<span style="font-size: 13px; line-height: 20px; color: var(--muted)">الدفعة تتجاوز المتبقي على الدين. سُجّلت من جهاز الكاشير أمس 6:40 م، والرصيد لم يتغير.</span>
+</div>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="Contact.dc.html" style="height: 44px; flex: 1; border-radius: 10px; background: var(--primary); color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center">مراجعة سجل سارة</a>
+<button type="button" onClick="{{dismiss}}" style="height: 44px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--surface); color: var(--link); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">تجاهل</button>
+</div>
+</div>
+</section>
+</sc-if>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--muted)">مواعيد الاستحقاق</h2>
+<sc-for list="{{reminders}}" as="r" hint-placeholder-count="4">
+<div style="border-radius: 13px; padding: 12px 14px; background: var(--card); border: 1px solid var(--line); display: flex; align-items: center; gap: 12px; opacity: {{r.opacity}}">
+<span style="width: 8px; height: 8px; flex-shrink: 0; border-radius: 4px; background: {{r.dot}}" aria-hidden="true"></span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 15px; line-height: 22px; font-weight: 700">{{r.name}} · <span style="color: var(--owes)">عليه <bdi dir="ltr">₪ {{r.amount}}</bdi></span></span>
+<span style="font-size: 12px; line-height: 18px; color: {{r.whenColor}}">{{r.when}}</span>
+</div>
+<button type="button" aria-label="{{r.aria}}" onClick="{{r.remind}}" style="height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface); color: var(--link); font: inherit; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1.4-4.2A8 8 0 1 1 8.6 19z"/></svg>
+{{r.btn}}
+</button>
+</div>
+</sc-for>
+</section>
+<p style="margin: 0; font-size: 12px; line-height: 18px; color: var(--muted)">تصلك تذكيرات الاستحقاق قبل الموعد بيوم وفي يومه. يمكن تغييرها من «المتجر».</p>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { rejected: true, sent: { 3: true } };
+}
+theme() {
+const t = { bg: '#F5F8F3', bg2: '#EDF6EF', surface: '#E7F3ED', primary: '#064B42', link: '#064B42', text: '#142C24', muted: '#5B6F63', line: '#D5E5D9', card: '#FFFFFF', owes: '#AB323A', owesSoft: '#FFE1E1', credit: '#9A5A13' };
+return Object.keys(t).map((k) => '--' + k + ':' + t[k]).join(';') + ';';
+}
+renderVals() {
+const s = this.state;
+const raw = [
+{ name: 'مريم حسن', amount: '1,120.00', when: 'متأخر 3 أيام · كان يستحق 22 أكتوبر', late: true },
+{ name: 'أحمد سالم', amount: '250.00', when: 'يستحق اليوم' },
+{ name: 'خالد يوسف', amount: '85.00', when: 'يستحق اليوم' },
+{ name: 'سارة محمود', amount: '120.00', when: 'يستحق غدًا · أُرسل التذكير 9:00 ص' },
+];
+return {
+vars: this.theme(),
+showRejected: s.rejected,
+dismiss: () => this.setState({ rejected: false }),
+reminders: raw.map((r, i) => {
+const done = !!s.sent[i];
+return {
+...r,
+opacity: done ? 0.6 : 1,
+dot: done ? 'transparent' : (r.late ? 'var(--credit)' : 'var(--link)'),
+whenColor: r.late ? 'var(--credit)' : 'var(--muted)',
+btn: done ? 'أُرسل' : 'تذكير',
+aria: 'تذكير ' + r.name + ' على واتساب',
+remind: () => this.setState({ sent: { ...s.sent, [i]: true } }),
+};
+}),
+};
+}
+}
+</script>
+</body>
+</html>
