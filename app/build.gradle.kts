@@ -16,6 +16,7 @@ plugins {
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.ksp)
   alias(libs.plugins.room)
+  alias(libs.plugins.sentry)
 }
 
 val releaseStoreFile = System.getenv("SADAD_KEYSTORE_FILE")
@@ -39,6 +40,8 @@ val leaseKeyY =
     providers
         .gradleProperty("SADAD_LEASE_KEY_Y")
         .getOrElse("g9oiLjzP9j6aZMAk_X_Q45PKvEc5vYPRAfsfbFFdvSk")
+val sentryDsn = providers.gradleProperty("SADAD_SENTRY_DSN").getOrElse("")
+val sentryAuthToken = providers.environmentVariable("SENTRY_AUTH_TOKEN")
 
 android {
   namespace = "com.sadad.app"
@@ -71,6 +74,7 @@ android {
     buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", quoted(supabasePublishableKey))
     buildConfigField("String", "LEASE_PUBLIC_KEY_X", quoted(leaseKeyX))
     buildConfigField("String", "LEASE_PUBLIC_KEY_Y", quoted(leaseKeyY))
+    buildConfigField("String", "SENTRY_DSN", quoted(sentryDsn))
     manifestPlaceholders["allowCleartextTraffic"] = "false"
   }
   signingConfigs {
@@ -107,6 +111,17 @@ android {
     targetCompatibility = JavaVersion.VERSION_11
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+}
+
+sentry {
+  org.set(providers.environmentVariable("SENTRY_ORG"))
+  projectName.set(providers.environmentVariable("SENTRY_PROJECT"))
+  authToken.set(sentryAuthToken)
+  autoUploadProguardMapping.set(sentryAuthToken.map { it.isNotBlank() }.getOrElse(false))
+  ignoredBuildTypes.set(setOf("debug", "benchmark"))
+  autoInstallation.enabled.set(false)
+  tracingInstrumentation.enabled.set(false)
+  includeSourceContext.set(false)
 }
 
 // Exported Room schemas are committed once ticket 42 adds the database.
@@ -168,6 +183,7 @@ dependencies {
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.serialization.json)
   implementation(libs.profileinstaller)
+  implementation(libs.sentry.android)
   implementation(project(":ledger-core"))
   baselineProfile(project(":benchmark"))
 

@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.StrictMode
 import androidx.work.Configuration
+import com.sadad.app.crash.CrashReporting
 import com.sadad.app.feature.notifications.DueReminderWorker
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,7 @@ class SadadApplication : Application(), Configuration.Provider {
 
   override fun onCreate() {
     super.onCreate()
+    CrashReporting.init(this)
     if (BuildConfig.DEBUG) {
       // The OEM layer reads disk on the main thread inside Activity.onCreate (MIUI's font settings
       // do), so a thread violation kills the app only when its blocking call comes from Sadad code.

@@ -58,8 +58,12 @@ jobs:
           SADAD_KEYSTORE_PASSWORD: ${{ secrets.SADAD_KEYSTORE_PASSWORD }}
           SADAD_KEY_ALIAS: ${{ secrets.SADAD_KEY_ALIAS }}
           SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
+          SADAD_SENTRY_DSN: ${{ secrets.SADAD_SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          ./gradlew testReleaseUnitTest assembleRelease --console=plain
+          ./gradlew testReleaseUnitTest assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN"
       - name: Fail when R8 reports missing classes
         run: |
           missing=app/build/outputs/mapping/release/missing_rules.txt
@@ -68,6 +72,16 @@ jobs:
             echo "::error::R8 reported missing classes; add a keep rule with a reason in app/proguard-rules.pro"
             cat "$missing"
             exit 1
+          fi
+      - name: Verify Sentry mapping metadata when crash reporting is enabled
+        env:
+          SADAD_SENTRY_DSN: ${{ secrets.SADAD_SENTRY_DSN }}
+        run: |
+          if [[ -n "$SADAD_SENTRY_DSN" ]]; then
+            if ! unzip -Z1 app/build/outputs/apk/release/app-release.apk | grep -Fxq 'assets/sentry-debug-meta.properties'; then
+              echo '::error::Crash reporting is enabled, but the release APK has no Sentry mapping UUID (assets/sentry-debug-meta.properties).'
+              exit 1
+            fi
           fi
       - name: Fail when the release APK is over its size budget or has no Baseline Profile
         run: python3 tools/apk_budget.py app/build/outputs/apk/release/app-release.apk
