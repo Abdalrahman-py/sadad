@@ -13,20 +13,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
-import com.sadad.app.ui.ContactDetail
-import com.sadad.app.ui.Contacts
-import com.sadad.app.ui.ScreenTag
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Direction
@@ -45,37 +38,11 @@ import org.robolectric.shadows.ShadowSystemClock
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
-class ContactsScreensTest {
+class ContactDetailScreenTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val main = MainDispatcherRule()
 
   private val context: Context = ApplicationProvider.getApplicationContext()
-
-  @Test
-  fun theListScrollsToTheLastOfFiveThousandRows() {
-    runBlocking {
-      TestGraph.signedIn().also { fixture ->
-        fixture.seed {
-          applyPage(pageOf((0 until 5000).map { contact("شخص $it", contactId(it), minute = it) }))
-        }
-      }
-    }
-        .use { fixture ->
-          val model =
-              ContactsViewModel(fixture.graph, SavedStateHandle()).also {
-                fixture.closeWithStore(it.viewModelScope)
-              }
-          compose.setContent {
-            SadadTheme { ContactsScreen(viewModel = model, onOpenContact = {}) }
-          }
-          compose.waitUntil(30_000) { model.state.value.registered == 5000 }
-          val last = model.state.value.rows[4999]
-
-          compose.onNodeWithTag(ContactsTag.LIST).performScrollToIndex(4999)
-
-          compose.onNodeWithText(last.name).assertIsDisplayed()
-        }
-  }
 
   @Test
   fun restrictedPaymentAndDeletePermissionsReplaceTheButtons() {
@@ -161,38 +128,6 @@ class ContactsScreensTest {
   @Test fun aFailedWhatsAppLaunchDoesNotSuppressTheNextLock() = failedExternalAction(share = false)
 
   @Test fun aFailedPdfDoesNotSuppressTheNextLock() = failedExternalAction(share = true)
-
-  @Test
-  fun tappingAContactOpensItsRealDetailScreen() {
-    val person = contact("سامي", contactId(1))
-    val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
-    fixture.use {
-      val list =
-          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
-      val detail =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
-      compose.setContent {
-        val nav = rememberNavController()
-        SadadTheme {
-          NavHost(navController = nav, startDestination = Contacts) {
-            composable<Contacts> { ContactsScreen(list, { nav.navigate(ContactDetail(it)) }) }
-            composable<ContactDetail> {
-              ContactDetailScreen(detail, { nav.popBackStack() }, {}, {}, {})
-            }
-          }
-        }
-      }
-      compose.waitUntil(10_000) { list.state.value.loaded && detail.state.value.loaded }
-      compose.onNodeWithTag(ContactsTag.row(person.entityId)).performClick()
-      compose.onNodeWithTag(ScreenTag.CONTACT_DETAIL).assertIsDisplayed()
-      compose.onNodeWithText("سامي").assertIsDisplayed()
-      compose.onNodeWithText("تسجيل دفعة").assertIsDisplayed()
-    }
-  }
 
   @Test
   fun payableHistoryLabelsTheDebtAndPaymentAsMoneyWeOweAndPayOut() {

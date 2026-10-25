@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="quickadd_title">تسجيل دين أو دفعة</string>
+    <string name="quickadd_placeholder">قيد الإنشاء</string>
+    <string name="quickadd_close">إغلاق</string>
+</resources>

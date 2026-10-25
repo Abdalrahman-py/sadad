@@ -114,7 +114,7 @@ class HomeScreenTest {
     show()
 
     compose.onNodeWithText("سامي").assertDoesNotExist()
-    compose.onNodeWithText("عرض سجل الحركات").performClick()
+    compose.onNodeWithText("عرض سجل الحركات").performScrollTo().performClick()
     compose.onNodeWithText("سامي").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("إغلاق سجل الحركات").performClick()
     compose.onNodeWithText("سامي").assertDoesNotExist()
@@ -124,7 +124,7 @@ class HomeScreenTest {
   fun aPendingMovementShowsThePendingBadge() {
     show()
 
-    compose.onNodeWithText("عرض سجل الحركات").performClick()
+    compose.onNodeWithText("عرض سجل الحركات").performScrollTo().performClick()
     compose.onNodeWithContentDescription("بانتظار التأكيد").performScrollTo().assertIsDisplayed()
   }
 
@@ -133,7 +133,7 @@ class HomeScreenTest {
     var opened: String? = null
     show(onOpenContact = { opened = it })
 
-    compose.onNodeWithText("عرض سجل الحركات").performClick()
+    compose.onNodeWithText("عرض سجل الحركات").performScrollTo().performClick()
     compose.onNodeWithText("سامي").performScrollTo().performClick()
 
     assertEquals("c1", opened)
@@ -190,7 +190,7 @@ class HomeScreenTest {
             model.state.value.recent.any { it.kind == MovementKind.PAYMENT }
           }
 
-          compose.onNodeWithText("عرض سجل الحركات").performClick()
+          compose.onNodeWithText("عرض سجل الحركات").performScrollTo().performClick()
 
           compose
               .onNodeWithText("دفعة مدفوعة", substring = true)

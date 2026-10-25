@@ -2,7 +2,11 @@
 <resources>
     <string name="app_name">سدد</string>
     <string name="nav_home">الرئيسية</string>
-    <string name="nav_contacts">الأشخاص</string>
-    <string name="nav_history">السجل</string>
-    <string name="nav_settings">الإعدادات</string>
+    <string name="nav_people">الأشخاص</string>
+    <string name="nav_record">تسجيل</string>
+    <string name="nav_record_description">تسجيل دين أو دفعة</string>
+    <string name="nav_activity">الحركات</string>
+    <string name="nav_store">المتجر</string>
+    <string name="nav_store_pending">المتجر، إدخالات بانتظار الإرسال</string>
+    <string name="nav_store_offline">المتجر، لا يوجد اتصال</string>
 </resources>

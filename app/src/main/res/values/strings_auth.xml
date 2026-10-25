@@ -1,14 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_welcome">أهلاً بك في سدد</string>
     <string name="title_login">تسجيل الدخول</string>
     <string name="title_password_change">غيّر كلمة المرور المؤقتة</string>
     <string name="title_awaiting_approval">بانتظار الموافقة</string>
 
-    <string name="welcome_eyebrow">إدارة أسهل لمتجرك</string>
-    <string name="welcome_subtitle">حسابات واضحة، وسجل مرتب، ومتابعة أسرع</string>
-    <string name="welcome_start">ابدأ استخدام التطبيق</string>
-    <string name="welcome_footer">أدخل حساب المتجر الذي أنشأه الأدمن</string>
 
     <string name="login_eyebrow">إدارة حسابات المتجر</string>
     <string name="login_subtitle">أدخل بيانات حسابك للمتابعة</string>

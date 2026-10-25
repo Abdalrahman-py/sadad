@@ -2,9 +2,7 @@ package com.sadad.app.ui
 
 import kotlinx.serialization.Serializable
 
-// Every Phase 3 screen, as a type-safe route. Feature tickets replace only their own placeholder.
-@Serializable data object Welcome
-
+// The redesign's routes. Each calls one screen function in its own feature folder.
 @Serializable data object Login
 
 @Serializable data object PasswordChange
@@ -13,23 +11,23 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object Home
 
-@Serializable data object Contacts
+/** [filter] is `owes`, `credit`, `late`, `suppliers` or null for everyone. */
+@Serializable data class People(val filter: String? = null)
 
 @Serializable data class ContactDetail(val contactId: String)
 
-@Serializable data class ContactForm(val contactId: String? = null)
+/** Edit only: a new person is created in quick add. */
+@Serializable data class ContactForm(val contactId: String)
 
-@Serializable data class DebtForm(val contactId: String)
+@Serializable data class QuickAdd(val contactId: String? = null, val payment: Boolean = false)
 
-@Serializable data class PaymentForm(val contactId: String, val debtId: String? = null)
+@Serializable data object Activity
 
-@Serializable data object History
+@Serializable data object OperationsLog
 
-@Serializable data object Reports
+@Serializable data object Store
 
 @Serializable data object Notifications
-
-@Serializable data object Settings
 
 @Serializable data object Trash
 

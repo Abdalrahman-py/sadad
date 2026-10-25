@@ -21,7 +21,12 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.theme.SadadTheme
+import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertTrue
 
 /** Phone width the font-scale checks run at (ticket 76). */
@@ -31,6 +36,42 @@ internal const val NORMAL_FONT = 1.0f
 internal const val LARGEST_FONT = 2.0f
 
 private const val MIN_TARGET_DP = 48f
+
+internal const val AWAIT_MS = 10_000L
+
+/** Waits on a store or flow without hanging the suite if a regression stops it from finishing. */
+internal fun <T> awaiting(block: suspend () -> T): T = runBlocking {
+  withTimeout(AWAIT_MS) { block() }
+}
+
+/** One signed-in store for [body]; the composition is left before the store closes under it. */
+internal fun ComposeContentTestRule.withStore(body: (TestGraph) -> Unit) {
+  awaiting { TestGraph.signedIn() }
+      .use { fixture ->
+        body(fixture)
+        waitForIdle()
+      }
+}
+
+/** Eight settled Contacts. */
+internal suspend fun seedContacts(fixture: TestGraph) {
+  val repository = checkNotNull(fixture.graph.current.value).repository
+  (1..8).forEach { repository.addContact("شخص $it", null, null, null, null).getOrThrow() }
+  fixture.settleAll()
+}
+
+/** One signed-in store with one settled Contact who owes 150 in two Debts. */
+internal fun graphWithDebt(): Pair<TestGraph, String> = awaiting {
+  val fixture = TestGraph.signedIn()
+  val repository = checkNotNull(fixture.graph.current.value).repository
+  val contact = repository.addContact("سامي", "+970599123456", null, null, null).getOrThrow()
+  fixture.settleAll()
+  for (amount in listOf(10_000L, 5_000L)) {
+    repository.addDebt(contact, Direction.RECEIVABLE, Cents(amount), null, null).getOrThrow()
+    fixture.settleAll()
+  }
+  fixture to contact
+}
 
 /** Renders [content] like the shell does (Arabic, RTL) at the given system font scale. */
 internal fun ComposeContentTestRule.showAt(fontScale: Float, content: @Composable () -> Unit) {

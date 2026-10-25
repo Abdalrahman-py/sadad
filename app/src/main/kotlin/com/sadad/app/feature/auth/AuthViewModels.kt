@@ -8,42 +8,13 @@ import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.net.ApiException
 import com.sadad.app.data.sync.SyncStatus
-import com.sadad.app.ui.Login
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-data class WelcomeState(
-    val showWelcome: Boolean = false,
-    val destination: Any? = null,
-)
-
-class WelcomeViewModel(private val graph: AppGraph) : ViewModel() {
-  private val mutable = MutableStateFlow(WelcomeState())
-  val state: StateFlow<WelcomeState> = mutable.asStateFlow()
-
-  init {
-    viewModelScope.launch {
-      if (graph.accounts.welcomeShown.first()) {
-        mutable.update { it.copy(destination = Login) }
-      } else {
-        mutable.update { it.copy(showWelcome = true) }
-      }
-    }
-  }
-
-  fun continueToLogin() {
-    viewModelScope.launch {
-      graph.accounts.setWelcomeShown()
-      mutable.update { it.copy(showWelcome = false, destination = Login) }
-    }
-  }
-}
 
 data class LoginState(
     val username: String = "",

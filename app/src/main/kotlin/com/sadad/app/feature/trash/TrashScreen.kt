@@ -26,11 +26,15 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.ui.components.ConfirmDialog
+import com.sadad.app.ui.components.ScreenHeader
 import com.sadad.app.ui.components.formatCents
 
 @Composable
-fun TrashScreen(modifier: Modifier = Modifier) {
-  TrashScreen(trashViewModel(), modifier)
+fun TrashScreen(onBack: () -> Unit) {
+  Column(Modifier.fillMaxSize()) {
+    ScreenHeader(stringResource(R.string.title_trash), onBack = onBack)
+    TrashScreen(trashViewModel(), Modifier.weight(1f))
+  }
 }
 
 @Composable
@@ -41,7 +45,6 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
       modifier = modifier.fillMaxSize().padding(24.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    Text(stringResource(R.string.title_trash), style = MaterialTheme.typography.headlineSmall)
     Text(
         stringResource(R.string.trash_subtitle),
         style = MaterialTheme.typography.bodyMedium,

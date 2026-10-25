@@ -31,7 +31,6 @@ import com.sadad.app.ui.AwaitingApproval
 import com.sadad.app.ui.Home
 import com.sadad.app.ui.Login
 import com.sadad.app.ui.PasswordChange
-import com.sadad.app.ui.Welcome
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -132,12 +131,12 @@ internal constructor(
   val current: StateFlow<StoreScope?> = mutableCurrent.asStateFlow()
 
   /**
-   * The first screen: Welcome when no store was ever added, Login without a session, then the
-   * password change the server asked for, then approval, then Home.
+   * The first screen: Login without a store or a session, then the password change the server asked
+   * for, then approval, then Home.
    */
   suspend fun startRoute(): Any {
     val file = accounts.file()
-    if (file.accounts.isEmpty()) return if (file.welcomeShown) Login else Welcome
+    if (file.accounts.isEmpty()) return Login
     val activeId = file.activeStoreUserId ?: file.accounts.first().storeUserId
     val account = file.accounts.firstOrNull { it.storeUserId == activeId } ?: return Login
     val session = sessions.inMemorySession(activeId)

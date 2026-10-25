@@ -3,11 +3,9 @@ package com.sadad.app.feature.contacts
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,11 +34,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -48,15 +44,12 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.lock.AppLock
-import com.sadad.app.ui.ScreenTag
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
-import com.sadad.app.ui.components.SadadPageHeading
-import com.sadad.app.ui.components.SadadSearchField
-import com.sadad.app.ui.components.SadadSegments
+import com.sadad.app.ui.components.ScreenHeader
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
@@ -67,143 +60,27 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal object ContactsTag {
-  const val LIST = "contacts:list"
-  const val SEARCH = "contacts:search"
-  const val ADD = "contacts:add"
+  const val TITLE = "contact:title"
   const val MOVEMENTS = "contact:movements"
-
-  fun row(id: String) = "contacts:row:$id"
-}
-
-@Composable
-fun ContactsScreen(
-    modifier: Modifier = Modifier,
-    onOpenContact: (String) -> Unit = {},
-    onAddContact: () -> Unit = {},
-) {
-  val viewModel = contactsViewModel()
-  ContactsScreen(viewModel, onOpenContact, modifier, onAddContact)
-}
-
-@Composable
-internal fun ContactsScreen(
-    viewModel: ContactsViewModel,
-    onOpenContact: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    onAddContact: () -> Unit = {},
-) {
-  val state by viewModel.state.collectAsState()
-  Box(modifier.fillMaxSize()) {
-    ContactsList(state, viewModel, onOpenContact)
-  }
-}
-
-@Composable
-private fun ContactsList(
-    state: ContactsState,
-    viewModel: ContactsViewModel,
-    onOpenContact: (String) -> Unit,
-) {
-  Column(Modifier.fillMaxSize()) {
-    Column(
-        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      SadadPageHeading(
-          title = stringResource(R.string.title_contacts),
-          subtitle =
-              pluralStringResource(
-                  R.plurals.contacts_registered,
-                  state.registered,
-                  state.registered,
-              ),
-          titleModifier = Modifier.testTag(ScreenTag.CONTACTS),
-      )
-      SadadSearchField(
-          value = state.queryInput,
-          onValueChange = viewModel::onQueryChange,
-          placeholder = stringResource(R.string.contacts_search),
-          modifier = Modifier.fillMaxWidth().testTag(ContactsTag.SEARCH),
-      )
-      SadadSegments(
-          options =
-              listOf(
-                  ContactSort.NAME to stringResource(R.string.contacts_sort_name),
-                  ContactSort.HIGHEST_DEBT to stringResource(R.string.contacts_sort_debt),
-                  ContactSort.NEWEST to stringResource(R.string.contacts_sort_newest),
-              ),
-          selected = state.sortChoice,
-          onSelect = viewModel::onSortChange,
-      )
-    }
-    // The bottom padding keeps the last row clear of the add button.
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(ContactsTag.LIST),
-        contentPadding = PaddingValues(bottom = 88.dp),
-    ) {
-      if (state.loaded && state.rows.isEmpty()) {
-        item {
-          EmptyState(
-              title =
-                  stringResource(
-                      if (state.query.isBlank()) R.string.contacts_empty
-                      else R.string.contacts_no_results
-                  ),
-              detail =
-                  stringResource(
-                      if (state.query.isBlank()) R.string.contacts_empty_detail
-                      else R.string.contacts_no_results_detail
-                  ),
-          )
-        }
-      }
-      items(state.rows, key = { it.id }) { row ->
-        ContactRowItem(row, onOpenContact)
-        HorizontalDivider()
-      }
-    }
-  }
-}
-
-@Composable
-private fun ContactRowItem(row: ContactRow, onOpenContact: (String) -> Unit) {
-  Row(
-      modifier =
-          Modifier.fillMaxWidth()
-              .clickable { onOpenContact(row.id) }
-              .padding(horizontal = 16.dp, vertical = 10.dp)
-              .testTag(ContactsTag.row(row.id)),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Column(Modifier.weight(1f)) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = row.name, style = MaterialTheme.typography.titleMedium)
-        if (row.pending) {
-          Spacer(Modifier.width(6.dp))
-          PendingBadge()
-        }
-      }
-      Text(
-          text = row.phone.ifBlank { stringResource(R.string.contacts_no_phone) },
-          style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Ltr),
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-    }
-    Text(text = formatCents(row.balance), style = MaterialTheme.typography.titleMedium)
-  }
 }
 
 @Composable
 fun ContactDetailScreen(
     contactId: String,
+    onBack: () -> Unit,
+    onRecord: (contactId: String, payment: Boolean) -> Unit,
+    onEdit: () -> Unit,
     modifier: Modifier = Modifier,
-    onBack: () -> Unit = {},
-    onRecordDebt: () -> Unit = {},
-    onRecordPayment: () -> Unit = {},
-    onEdit: () -> Unit = {},
 ) {
   val viewModel = contactDetailViewModel(contactId)
-  ContactDetailScreen(viewModel, onBack, onRecordDebt, onRecordPayment, onEdit, modifier)
+  ContactDetailScreen(
+      viewModel,
+      onBack,
+      { onRecord(contactId, false) },
+      { onRecord(contactId, true) },
+      onEdit,
+      modifier,
+  )
 }
 
 @Composable
@@ -225,115 +102,118 @@ internal fun ContactDetailScreen(
       viewModel.clearError()
     }
   }
-  Box(modifier.fillMaxSize()) {
-    LazyColumn(Modifier.fillMaxSize().testTag(ContactsTag.MOVEMENTS)) {
-      item { DetailHeader(state) }
-      item {
-        DetailActions(
-            state = state,
-            onRecordDebt = onRecordDebt,
-            onRecordPayment = onRecordPayment,
-            onEdit = onEdit,
-            onWhatsApp = {
-              val number = viewModel.whatsAppNumber()
-              if (number == null) {
-                viewModel.reportError(context.getString(R.string.contacts_whatsapp_invalid))
-                return@DetailActions
-              }
-              try {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$number"))
-                )
-                // Armed only after a successful launch: a failed one must not bypass the PIN.
-                AppLock.get(context).skipNextLock()
-              } catch (_: ActivityNotFoundException) {
-                viewModel.reportError(context.getString(R.string.contacts_whatsapp_missing))
-              }
-            },
-        )
-      }
-      item {
-        Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          Text(
-              text =
-                  if (state.movements.isEmpty()) stringResource(R.string.contacts_movements_title)
-                  else
-                      stringResource(R.string.contacts_movements_title) +
-                          " · " +
-                          stringResource(R.string.contacts_movements_count, state.movements.size),
-              style = MaterialTheme.typography.titleMedium,
-          )
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = state.newestFirst,
-                onClick = { if (!state.newestFirst) viewModel.toggleOrder() },
-                label = { Text(stringResource(R.string.contacts_newest)) },
-            )
-            FilterChip(
-                selected = !state.newestFirst,
-                onClick = { if (state.newestFirst) viewModel.toggleOrder() },
-                label = { Text(stringResource(R.string.contacts_oldest)) },
-            )
-          }
-        }
-      }
-      if (state.movements.isEmpty()) {
+  Column(modifier.fillMaxSize()) {
+    ScreenHeader(stringResource(R.string.screen_contact_detail), onBack = onBack)
+    Box(Modifier.weight(1f)) {
+      LazyColumn(Modifier.fillMaxSize().testTag(ContactsTag.MOVEMENTS)) {
+        item { DetailHeader(state) }
         item {
-          EmptyState(
-              title = stringResource(R.string.contacts_no_movements),
-              detail = stringResource(R.string.contacts_no_movements_detail),
+          DetailActions(
+              state = state,
+              onRecordDebt = onRecordDebt,
+              onRecordPayment = onRecordPayment,
+              onEdit = onEdit,
+              onWhatsApp = {
+                val number = viewModel.whatsAppNumber()
+                if (number == null) {
+                  viewModel.reportError(context.getString(R.string.contacts_whatsapp_invalid))
+                  return@DetailActions
+                }
+                try {
+                  context.startActivity(
+                      Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$number"))
+                  )
+                  // Armed only after a successful launch: a failed one must not bypass the PIN.
+                  AppLock.get(context).skipNextLock()
+                } catch (_: ActivityNotFoundException) {
+                  viewModel.reportError(context.getString(R.string.contacts_whatsapp_missing))
+                }
+              },
           )
         }
-      } else {
-        items(state.movements, key = { "movement:${it.id}" }) { movement ->
-          MovementRow(movement)
-          HorizontalDivider()
-        }
-      }
-      item {
-        Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          OutlinedButton(
-              onClick = { scope.launch { viewModel.share(context) } },
-              enabled = state.loaded && !state.missing,
-              modifier = Modifier.fillMaxWidth(),
+        item {
+          Column(
+              Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp),
           ) {
-            Text(stringResource(R.string.contacts_share))
+            Text(
+                text =
+                    if (state.movements.isEmpty()) stringResource(R.string.contacts_movements_title)
+                    else
+                        stringResource(R.string.contacts_movements_title) +
+                            " · " +
+                            stringResource(R.string.contacts_movements_count, state.movements.size),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              FilterChip(
+                  selected = state.newestFirst,
+                  onClick = { if (!state.newestFirst) viewModel.toggleOrder() },
+                  label = { Text(stringResource(R.string.contacts_newest)) },
+              )
+              FilterChip(
+                  selected = !state.newestFirst,
+                  onClick = { if (state.newestFirst) viewModel.toggleOrder() },
+                  label = { Text(stringResource(R.string.contacts_oldest)) },
+              )
+            }
           }
-          if (state.canDeleteContacts) {
-            Button(
-                onClick = viewModel::requestDelete,
+        }
+        if (state.movements.isEmpty()) {
+          item {
+            EmptyState(
+                title = stringResource(R.string.contacts_no_movements),
+                detail = stringResource(R.string.contacts_no_movements_detail),
+            )
+          }
+        } else {
+          items(state.movements, key = { "movement:${it.id}" }) { movement ->
+            MovementRow(movement)
+            HorizontalDivider()
+          }
+        }
+        item {
+          Column(
+              Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            OutlinedButton(
+                onClick = { scope.launch { viewModel.share(context) } },
+                enabled = state.loaded && !state.missing,
                 modifier = Modifier.fillMaxWidth(),
-                colors =
-                    ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
             ) {
-              Text(stringResource(R.string.contacts_delete))
+              Text(stringResource(R.string.contacts_share))
+            }
+            if (state.canDeleteContacts) {
+              Button(
+                  onClick = viewModel::requestDelete,
+                  modifier = Modifier.fillMaxWidth(),
+                  colors =
+                      ButtonDefaults.buttonColors(
+                          containerColor = MaterialTheme.colorScheme.errorContainer,
+                          contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                      ),
+              ) {
+                Text(stringResource(R.string.contacts_delete))
+              }
             }
           }
         }
       }
-    }
-    state.error?.let { message ->
-      Snackbar(modifier = Modifier.align(Alignment.BottomCenter)) { Text(message) }
-    }
-    // The five-second window lives in the ViewModel, so leaving this screen still queues the
-    // archive the confirm dialog promised.
-    state.undoName?.let { name ->
-      UndoSnackbar(
-          message = stringResource(R.string.contacts_delete_undo, name),
-          onUndo = viewModel::undoDelete,
-          onCommit = viewModel::commitDelete,
-          onDismiss = viewModel::clearUndo,
-          modifier = Modifier.align(Alignment.BottomCenter),
-      )
+      state.error?.let { message ->
+        Snackbar(modifier = Modifier.align(Alignment.BottomCenter)) { Text(message) }
+      }
+      // The five-second window lives in the ViewModel, so leaving this screen still queues the
+      // archive the confirm dialog promised.
+      state.undoName?.let { name ->
+        UndoSnackbar(
+            message = stringResource(R.string.contacts_delete_undo, name),
+            onUndo = viewModel::undoDelete,
+            onCommit = viewModel::commitDelete,
+            onDismiss = viewModel::clearUndo,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+      }
     }
   }
   state.settleFirst?.let { amount ->
@@ -382,7 +262,7 @@ private fun DetailHeader(state: ContactDetailState) {
       Text(
           text = stringResource(R.string.contacts_missing),
           style = MaterialTheme.typography.headlineSmall,
-          modifier = Modifier.testTag(ScreenTag.CONTACT_DETAIL),
+          modifier = Modifier.testTag(ContactsTag.TITLE),
       )
       Text(stringResource(R.string.contacts_missing_detail))
       return@Column
@@ -390,7 +270,7 @@ private fun DetailHeader(state: ContactDetailState) {
     Text(
         text = state.name,
         style = MaterialTheme.typography.headlineSmall,
-        modifier = Modifier.testTag(ScreenTag.CONTACT_DETAIL),
+        modifier = Modifier.testTag(ContactsTag.TITLE),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       if (state.category.isNotBlank())
@@ -526,17 +406,6 @@ private fun methodLabel(method: PaymentMethod): String =
           PaymentMethod.WALLET_PALPAY -> R.string.contacts_method_palpay
         }
     )
-
-@Composable
-private fun contactsViewModel(): ContactsViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
-  return viewModel(
-      factory =
-          viewModelFactory {
-            initializer { ContactsViewModel(app.graph, createSavedStateHandle()) }
-          }
-  )
-}
 
 @Composable
 private fun contactDetailViewModel(contactId: String): ContactDetailViewModel {

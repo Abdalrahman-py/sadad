@@ -1,8 +1,12 @@
 package com.sadad.app.ui.components
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextDirection
 import com.sadad.ledger.Cents
 
 /**
@@ -65,9 +69,34 @@ fun parseCents(text: String): Cents? {
   return Cents(cents)
 }
 
+/**
+ * The redesign's money format: `₪` first, grouped, always two decimals («₪ 1,234.50»). Screens move
+ * to it from [formatCents] as tickets 81–87 redesign them.
+ */
+fun formatShekels(cents: Cents): String {
+  val magnitude = Math.abs(cents.value)
+  val fraction = (magnitude % 100).toString().padStart(2, '0')
+  return (if (cents.value < 0) "-" else "") +
+      "₪ " +
+      groupThousands(magnitude / 100) +
+      "." +
+      fraction
+}
+
+/** [formatShekels], laid out left to right inside the Arabic page. */
 @Composable
-fun MoneyText(cents: Cents, modifier: Modifier = Modifier) {
-  Text(text = formatCents(cents), modifier = modifier)
+fun MoneyText(
+    cents: Cents,
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+    color: Color = Color.Unspecified,
+) {
+  Text(
+      text = formatShekels(cents),
+      modifier = modifier,
+      style = style.copy(textDirection = TextDirection.Ltr),
+      color = color,
+  )
 }
 
 private val WHOLE = Regex("|[0-9]+|[0-9]{1,3}(,[0-9]{3})+")

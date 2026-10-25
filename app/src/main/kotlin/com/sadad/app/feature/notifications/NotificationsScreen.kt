@@ -11,12 +11,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
+import com.sadad.app.ui.components.ScreenHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun NotificationsScreen(modifier: Modifier = Modifier) {
+fun NotificationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
   val context = LocalContext.current
   val storeUserId by
       produceState<String?>(null) {
@@ -26,7 +27,7 @@ fun NotificationsScreen(modifier: Modifier = Modifier) {
       }
   val reminders =
       remember(context.applicationContext) { DueReminders.get(context.applicationContext) }
-  NotificationsScreen(reminders, storeUserId.orEmpty(), modifier)
+  NotificationsScreen(reminders, storeUserId.orEmpty(), modifier, onBack)
 }
 
 @Composable
@@ -34,6 +35,7 @@ fun NotificationsScreen(
     reminders: DueReminders,
     storeUserId: String,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
 ) {
   val context = LocalContext.current
   val inbox = remember(reminders, storeUserId) { reminders.inbox(storeUserId) }
@@ -46,15 +48,15 @@ fun NotificationsScreen(
   LaunchedEffect(storeUserId, events.map { it.id }) {
     if (storeUserId.isNotEmpty()) reminders.markAllRead(storeUserId)
   }
-  Scaffold(modifier = modifier, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+  Scaffold(
+      modifier = modifier,
+      topBar = { ScreenHeader(stringResource(R.string.reminders_title), onBack = onBack) },
+      snackbarHost = { SnackbarHost(snackbar) },
+  ) { padding ->
     Column(
         Modifier.fillMaxSize().padding(padding).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Text(
-          stringResource(R.string.reminders_title),
-          style = MaterialTheme.typography.headlineMedium,
-      )
       Text(stringResource(R.string.reminders_subtitle))
       if (events.isEmpty()) Text(stringResource(R.string.reminders_empty))
       else
