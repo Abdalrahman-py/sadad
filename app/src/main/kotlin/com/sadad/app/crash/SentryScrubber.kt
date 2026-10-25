@@ -13,9 +13,12 @@ internal object SentryScrubber {
     event.setExtras(null)
     event.request = null
     event.user = null
-    event.contexts.entrySet().map { it.key }.forEach { key ->
-      if (key !in allowedContexts) event.contexts.remove(key)
-    }
+    event.contexts
+        .entrySet()
+        .map { it.key }
+        .forEach { key ->
+          if (key !in allowedContexts) event.contexts.remove(key)
+        }
     event.breadcrumbs = event.breadcrumbs?.mapNotNull(::beforeBreadcrumb)
     event.exceptions?.forEach { it.value = it.type }
     return event
@@ -33,9 +36,5 @@ internal object SentryScrubber {
   }
 
   private fun routeClass(route: String): String =
-      route
-          .substringBefore('/')
-          .substringBefore('?')
-          .substringBefore('(')
-          .substringAfterLast('.')
+      route.substringBefore('/').substringBefore('?').substringBefore('(').substringAfterLast('.')
 }

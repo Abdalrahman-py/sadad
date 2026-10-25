@@ -15,12 +15,12 @@ internal object CrashReporting {
     SentryAndroid.init(context) { options ->
       options.dsn = dsn
       options.isSendDefaultPii = false
-      options.beforeSend =
-          SentryOptions.BeforeSendCallback { event, _ -> SentryScrubber.beforeSend(event) }
-      options.beforeBreadcrumb =
-          SentryOptions.BeforeBreadcrumbCallback { crumb, _ ->
-            SentryScrubber.beforeBreadcrumb(crumb)
-          }
+      options.beforeSend = SentryOptions.BeforeSendCallback { event, _ ->
+        SentryScrubber.beforeSend(event)
+      }
+      options.beforeBreadcrumb = SentryOptions.BeforeBreadcrumbCallback { crumb, _ ->
+        SentryScrubber.beforeBreadcrumb(crumb)
+      }
     }
   }
 }
