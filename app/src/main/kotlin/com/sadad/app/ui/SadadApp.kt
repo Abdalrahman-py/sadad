@@ -346,20 +346,23 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
   val description = stringResource(R.string.nav_record_description)
   Column(
       modifier =
+          // The pill, gap and label (72dp) stand 8dp taller than the tabs, bottoms aligned.
           Modifier.weight(1f)
-              .height(72.dp)
               .clickable(role = Role.Button, onClick = onClick)
               .semantics { contentDescription = description }
               .testTag(ScreenTag.NAV_RECORD),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom),
   ) {
+    // As the board renders it: flexbox squeezes the 60px disc to 46px tall, so a 60x46 pill in a
+    // 4dp ring of the page colour (68x54), with a green-tinted drop shadow.
     Box(
         modifier =
-            Modifier.size(60.dp)
-                .shadow(8.dp, CircleShape)
-                .background(p.primary, CircleShape)
-                .border(4.dp, p.bg, CircleShape),
+            Modifier.size(68.dp, 54.dp)
+                .shadow(10.dp, PILL, ambientColor = RECORD_SHADOW, spotColor = RECORD_SHADOW)
+                .background(p.bg, PILL)
+                .padding(4.dp)
+                .background(p.primary, PILL),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
@@ -380,5 +383,7 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
 }
 
 private val HALO_SHAPE = RoundedCornerShape(17.dp)
+private val PILL = RoundedCornerShape(percent = 50)
+private val RECORD_SHADOW = Color(0x59064B42)
 private val PENDING_AMBER = Color(0xFFE0A23A)
 private val OFFLINE_RED = Color(0xFFC13634)
