@@ -54,13 +54,20 @@ run_docs() {
       return 1
     fi
   done
-  # The cutover deploy runs `supabase db push`, which must apply exactly the baseline.
+  # Keep the deployed baseline first; later schema changes ship as ordered migrations.
   migrations=$(git ls-files Supabase-Setup/supabase/migrations)
-  if [[ $(wc -l <<< "$migrations") -ne 1 || "$migrations" != *_baseline.sql ]]; then
-    echo "Supabase-Setup/supabase/migrations/ must hold only one *_baseline.sql:" >&2
+  if [[ "${migrations%%$'\n'*}" != Supabase-Setup/supabase/migrations/20261015000000_baseline.sql ]]; then
+    echo "The first migration must be 20261015000000_baseline.sql:" >&2
     echo "$migrations" >&2
     return 1
   fi
+  local migration
+  while IFS= read -r migration; do
+    if [[ ! "${migration##*/}" =~ ^[0-9]{14}_[a-z0-9_]+\.sql$ ]]; then
+      echo "Invalid migration name: $migration" >&2
+      return 1
+    fi
+  done <<< "$migrations"
 }
 
 run_dashboard() {

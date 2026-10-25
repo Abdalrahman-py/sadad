@@ -93,8 +93,86 @@ async function applyBatch(cmds, permit = null) {
   return (await db.query('select public.sadid_apply_batch($1) as result', [JSON.stringify(cmds)])).rows[0].result;
 }
 
+async function fingerprint(database) {
+  const { rows } = await database.query(`
+    with relations as (
+      select c.*, n.nspname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname in ('public','sadid_private')
+    ), routines as (
+      select p.*, n.nspname, pg_get_function_identity_arguments(p.oid) as args
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname in ('public','sadid_private')
+    )
+    select jsonb_build_array('relation',nspname,relname,relkind,relrowsecurity,relforcerowsecurity)::text as fact
+      from relations where relkind in ('r','p','v','m','S')
+    union all
+    select jsonb_build_array('column',c.nspname,c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,
+      pg_get_expr(d.adbin,d.adrelid),a.attidentity,a.attgenerated)::text
+      from relations c join pg_attribute a on a.attrelid=c.oid
+      left join pg_attrdef d on d.adrelid=c.oid and d.adnum=a.attnum where a.attnum>0 and not a.attisdropped
+    union all
+    select jsonb_build_array('constraint',n.nspname,c.relname,k.conname,pg_get_constraintdef(k.oid))::text
+      from pg_constraint k join pg_namespace n on n.oid=k.connamespace
+      left join pg_class c on c.oid=k.conrelid where n.nspname in ('public','sadid_private')
+    union all
+    select jsonb_build_array('index',c.nspname,c.relname,pg_get_indexdef(i.indexrelid))::text
+      from pg_index i join relations c on c.oid=i.indrelid
+    union all
+    select jsonb_build_array('function',nspname,proname,args,pg_get_userbyid(proowner),pg_get_functiondef(oid))::text from routines
+    union all
+    select jsonb_build_array('trigger',c.nspname,c.relname,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid))::text
+      from pg_trigger t join relations c on c.oid=t.tgrelid
+    union all
+    select jsonb_build_array('policy',schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check)::text
+      from pg_policies where schemaname in ('public','sadid_private')
+    union all
+    select jsonb_build_array('table grant',c.nspname,c.relname,pg_get_userbyid(g.grantor),
+      case when g.grantee=0 then 'PUBLIC' else pg_get_userbyid(g.grantee) end,g.privilege_type,g.is_grantable)::text
+      from relations c cross join lateral aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) g
+      where c.relkind in ('r','p','v','m')
+    union all
+    select jsonb_build_array('column grant',c.nspname,c.relname,a.attname,pg_get_userbyid(g.grantor),
+      case when g.grantee=0 then 'PUBLIC' else pg_get_userbyid(g.grantee) end,g.privilege_type,g.is_grantable)::text
+      from relations c join pg_attribute a on a.attrelid=c.oid
+      cross join lateral aclexplode(a.attacl) g where a.attnum>0 and not a.attisdropped
+    union all
+    select jsonb_build_array('routine grant',p.nspname,p.proname,p.args,pg_get_userbyid(g.grantor),
+      case when g.grantee=0 then 'PUBLIC' else pg_get_userbyid(g.grantee) end,g.privilege_type,g.is_grantable)::text
+      from routines p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) g
+    union all
+    select jsonb_build_array('role',rolname,rolsuper,rolinherit,rolcreaterole,rolcreatedb,rolcanlogin,
+      rolreplication,rolconnlimit,rolvaliduntil,rolbypassrls,rolconfig)::text from pg_roles where rolname like 'sadid\\_%' escape '\\'
+    union all
+    select jsonb_build_array('membership',r.rolname,m.rolname,a.admin_option)::text
+      from pg_auth_members a join pg_roles r on r.oid=a.roleid join pg_roles m on m.oid=a.member
+      where r.rolname like 'sadid\\_%' escape '\\' or m.rolname like 'sadid\\_%' escape '\\'
+  `);
+  return rows.map(row => row.fact).sort();
+}
+
+function firstDifference(a, b) {
+  const index = a.findIndex((line, i) => line !== b[i]);
+  const i = index < 0 ? Math.min(a.length, b.length) : index;
+  return a.length === b.length && index < 0 ? '' : `A: ${a[i] ?? '<end>'}\nB: ${b[i] ?? '<end>'}`;
+}
+
 try {
-  await db.exec(`
+  await check('Fingerprint detects an added table, changed function body and dropped grant', async () => {
+    const probe = new PGlite();
+    try {
+      await probe.exec('create role sadid_probe nologin; create function public.fingerprint_function() returns int language sql as $$select 1$$; grant execute on function public.fingerprint_function() to sadid_probe');
+      const original = await fingerprint(probe);
+      await probe.exec('create table public.fingerprint_probe(id int)');
+      assert.match(firstDifference(original, await fingerprint(probe)), /fingerprint_probe/);
+      await probe.exec('drop table public.fingerprint_probe; create or replace function public.fingerprint_function() returns int language sql as $$select 2$$');
+      assert.match(firstDifference(original, await fingerprint(probe)), /fingerprint_function/);
+      await probe.exec('create or replace function public.fingerprint_function() returns int language sql as $$select 1$$; revoke execute on function public.fingerprint_function() from sadid_probe');
+      assert.match(firstDifference(original, await fingerprint(probe)), /fingerprint_function/);
+    } finally {
+      await probe.close();
+    }
+  });
+  const setup = `
     create role anon nologin;
     create role authenticated nologin;
     create role service_role nologin bypassrls;
@@ -112,19 +190,28 @@ try {
     grant usage on schema auth to anon, authenticated, service_role;
     grant execute on function auth.uid(), auth.jwt() to anon, authenticated, service_role;
     grant usage on schema public to authenticated, service_role;
-  `);
+  `;
+  await db.exec(setup);
 
-  // Verify baseline migration matches concatenated schemas byte-for-byte
+  // Compare applied migrations with the desired schema; deployed migrations stay frozen.
   const schemaFiles = readdirSync(schemasDir).filter(f => f.endsWith('.sql')).sort();
   assert.ok(schemaFiles.length > 0, 'schemas directory must contain SQL files');
   const expectedBaseline = schemaFiles.map(f => readFileSync(new URL(f, schemasDir), 'utf8')).join('');
   assert.ok(existsSync(baselineDir), 'baseline directory must exist');
-  const baselineFiles = readdirSync(baselineDir).filter(f => f.endsWith('_baseline.sql')).sort();
-  assert.equal(baselineFiles.length, 1, 'exactly one baseline migration must exist');
-  const actualBaseline = readFileSync(new URL(baselineFiles[0], baselineDir), 'utf8');
-  assert.equal(actualBaseline, expectedBaseline, 'baseline migration must match concatenated schemas/');
-
-  await db.exec(actualBaseline);
+  const migrationFiles = readdirSync(baselineDir).sort();
+  assert.equal(migrationFiles[0], '20261015000000_baseline.sql', 'the frozen baseline must be first');
+  for (const file of migrationFiles) {
+    assert.match(file, /^[0-9]{14}_[a-z0-9_]+\.sql$/, 'invalid migration name');
+    await db.exec(readFileSync(new URL(file, baselineDir), 'utf8'));
+  }
+  const desired = new PGlite();
+  try {
+    await desired.exec(setup);
+    await desired.exec(expectedBaseline);
+    assert.equal(firstDifference(await fingerprint(db), await fingerprint(desired)), '', 'migrations and schemas catalog drift');
+  } finally {
+    await desired.close();
+  }
 
   await check('Omitted legacy objects do not exist in the baseline', async () => {
     const omittedTables = [

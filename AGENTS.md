@@ -30,7 +30,7 @@
 | مسارات الإدارة والحساب | `functions/api/admin.ts` + `admin/` + `account.ts` | `registerAdminRoutes()`، `registerAccountRoutes()` |
 | العقد (OpenAPI ورموز الأخطاء) | `contract/` | `openapi.json` يولَّد بـ`functions/api/generate_openapi.ts` |
 | لوحة الإدارة | `server/public/src/main.ts` | `npm run build` داخل `server/public/` |
-| المخطط | `Supabase-Setup/supabase/schemas/*.sql` | الأساس `migrations/*_baseline.sql` = ملفات `schemas/` مدمجة بترتيب الاسم |
+| المخطط | `Supabase-Setup/supabase/schemas/*.sql` | عدّل `schemas/` وأضف ترحيلًا بعد الأساس المجمد في `migrations/`؛ شغّل فحص قاعدة البيانات بعد موافقة الإنسان |
 
 ## البناء والفحص
 
