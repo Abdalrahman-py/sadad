@@ -13,12 +13,7 @@ internal object SentryScrubber {
     event.setExtras(null)
     event.request = null
     event.user = null
-    event.contexts
-        .entrySet()
-        .map { it.key }
-        .forEach { key ->
-          if (key !in allowedContexts) event.contexts.remove(key)
-        }
+    event.contexts.entrySet().removeIf { it.key !in allowedContexts }
     event.breadcrumbs = event.breadcrumbs?.mapNotNull(::beforeBreadcrumb)
     event.exceptions?.forEach { it.value = it.type }
     return event
