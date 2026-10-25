@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الأشخاص</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="{{vars}} width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--bg), var(--bg2)); font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: var(--text); overflow: hidden">
+
+<div style="flex-shrink: 0; box-sizing: border-box; padding: 0 18px 10px; display: flex; flex-direction: column; gap: 12px">
+<header style="height: 64px; display: flex; align-items: center; justify-content: space-between">
+<h1 style="margin: 0; font-size: 23px; line-height: 32px; font-weight: 700">الأشخاص <span style="font-size: 15px; font-weight: 500; color: var(--muted)">7</span></h1>
+<button type="button" onClick="{{cycleSort}}" aria-label="{{sortAria}}" style="height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); color: var(--link); font: inherit; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; cursor: pointer">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>
+{{sortLabel}}
+</button>
+</header>
+<label for="people-search" style="height: 48px; box-sizing: border-box; padding: 0 14px; display: flex; align-items: center; gap: 10px; border-radius: 13px; background: var(--card); border: 1px solid var(--line); color: var(--muted)">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+<input id="people-search" aria-label="ابحث بالاسم أو رقم الهاتف" placeholder="ابحث بالاسم أو رقم الهاتف" value="{{query}}" onChange="{{onQuery}}" style="flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; font: inherit; font-size: 15px; color: var(--text); outline: none">
+</label>
+<div role="group" aria-label="تصفية" style="display: flex; gap: 6px; overflow-x: auto; margin: 0 -18px; padding: 0 18px 2px">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{f.on}}" onClick="{{f.pick}}" style="flex-shrink: 0; height: 36px; padding: 0 12px; border-radius: 18px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid {{f.border}}; background: {{f.bg}}; color: {{f.fg}}">{{f.label}} <span style="font-weight: 500; opacity: 0.85">{{f.count}}</span></button>
+</sc-for>
+</div>
+<sc-if value="{{hasTotal}}" hint-placeholder-val="{{ false }}">
+<div style="font-size: 13px; line-height: 20px; color: var(--muted)">{{totalLine}}</div>
+</sc-if>
+</div>
+
+<main style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 0 18px 20px; display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{rows}}" as="p" hint-placeholder-count="7">
+<a href="Contact.dc.html" style="min-height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 8px 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--card); color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 12px">
+<span style="width: 42px; height: 42px; flex-shrink: 0; border-radius: {{p.avatarRadius}}; background: var(--soft); color: var(--link); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700">{{p.initials}}</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 15px; line-height: 22px; font-weight: 700; display: flex; align-items: center; gap: 6px">{{p.name}}<sc-if value="{{p.supplier}}" hint-placeholder-val="{{ false }}"><span style="padding: 0 6px; border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 11px; line-height: 18px; font-weight: 700">مورد</span></sc-if></span>
+<span style="font-size: 12px; line-height: 18px; color: {{p.subColor}}"><bdi dir="ltr">…{{p.tail}}</bdi> · {{p.last}}</span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0">
+<span style="font-size: 11px; line-height: 14px; font-weight: 700; color: {{p.color}}">{{p.word}}</span>
+<span dir="ltr" style="font-size: 15px; line-height: 22px; font-weight: 700; color: {{p.color}}">{{p.amountText}}</span>
+</span>
+</a>
+</sc-for>
+<sc-if value="{{none}}" hint-placeholder-val="{{ false }}">
+<div style="padding: 32px 12px; text-align: center; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 17px; font-weight: 700">لا توجد نتائج</span>
+<span style="font-size: 14px; line-height: 21px; color: var(--muted)">جرّب اسمًا أو رقمًا آخر، أو أضف الشخص من زر «تسجيل».</span>
+</div>
+</sc-if>
+</main>
+
+<dc-import name="Nav" active="people" hint-size="390px,96px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { filter: 'all', sort: 'recent', query: '' };
+}
+theme() {
+const t = { bg: '#F5F8F3', bg2: '#EDF6EF', surface: '#E7F3ED', soft: '#D6EFE4', primary: '#064B42', link: '#064B42', text: '#142C24', muted: '#5B6F63', line: '#D5E5D9', card: '#FFFFFF', owes: '#AB323A', credit: '#9A5A13' };
+return Object.keys(t).map((k) => '--' + k + ':' + t[k]).join(';') + ';';
+}
+fmt(n) {
+return Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+norm(s) {
+return s.replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660)).replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').trim();
+}
+renderVals() {
+const s = this.state;
+const all = [
+{ name: 'خالد يوسف', phone: '0599123482', type: 'c', bal: 85, last: 'اليوم 10:24', rank: 1 },
+{ name: 'أحمد سالم', phone: '0598440905', type: 'c', bal: 250, last: 'أمس', rank: 2 },
+{ name: 'مريم حسن', phone: '0599871117', type: 'c', bal: 1120, last: 'متأخر 3 أيام', late: true, rank: 3 },
+{ name: 'أحمد ناصر', phone: '0597220331', type: 'c', bal: -150, last: 'قبل 5 أيام', rank: 4 },
+{ name: 'مخبز الأمل', phone: '0592300208', type: 's', bal: -1240, last: 'قبل أسبوع', rank: 5 },
+{ name: 'سارة محمود', phone: '0599335640', type: 'c', bal: 0, last: 'قبل أسبوعين', rank: 6 },
+{ name: 'أبو رامي للخضار', phone: '0595118076', type: 's', bal: 0, last: 'الشهر الماضي', rank: 7 },
+];
+const tests = {
+all: () => true,
+owe: (p) => p.bal > 0,
+credit: (p) => p.bal < 0,
+late: (p) => !!p.late,
+supp: (p) => p.type === 's',
+};
+const defs = [['all', 'الكل'], ['owe', 'عليهم'], ['credit', 'لهم'], ['late', 'متأخرون'], ['supp', 'موردون']];
+const q = this.norm(s.query);
+let rows = all.filter(tests[s.filter]).filter((p) => !q || this.norm(p.name).indexOf(q) !== -1 || (q.length >= 2 && p.phone.indexOf(q) !== -1));
+const sorts = { recent: (a, b) => a.rank - b.rank, balance: (a, b) => Math.abs(b.bal) - Math.abs(a.bal), name: (a, b) => a.name.localeCompare(b.name, 'ar') };
+rows = rows.slice().sort(sorts[s.sort]);
+const sortNames = { recent: 'آخر حركة', balance: 'الأعلى رصيدًا', name: 'الاسم' };
+const next = { recent: 'balance', balance: 'name', name: 'recent' };
+const sum = rows.reduce((t, p) => t + Math.abs(p.bal), 0);
+const totals = { owe: 'عليهم معًا ₪ ' + this.fmt(sum), credit: 'لهم عندك معًا ₪ ' + this.fmt(sum), late: 'متأخر عن موعده ₪ ' + this.fmt(sum) };
+return {
+vars: this.theme(),
+query: s.query,
+onQuery: (e) => this.setState({ query: e.target.value }),
+sortLabel: sortNames[s.sort],
+sortAria: 'الترتيب: ' + sortNames[s.sort] + '. اضغط للتغيير',
+cycleSort: () => this.setState({ sort: next[s.sort] }),
+filters: defs.map(([id, label]) => {
+const on = id === s.filter;
+return { label, count: all.filter(tests[id]).length, on, bg: on ? 'var(--primary)' : 'var(--card)', fg: on ? '#FFFFFF' : 'var(--text)', border: on ? 'var(--primary)' : 'var(--line)', pick: () => this.setState({ filter: id }) };
+}),
+hasTotal: !!totals[s.filter],
+totalLine: totals[s.filter] || '',
+none: rows.length === 0,
+rows: rows.map((p) => {
+const parts = p.name.split(' ');
+const word = p.bal > 0 ? 'عليه' : (p.bal < 0 ? 'له' : 'مسدد');
+return {
+name: p.name,
+initials: parts[0][0] + (parts[1] ? parts[1][0] : ''),
+tail: p.phone.slice(-3),
+last: p.last,
+subColor: p.late ? 'var(--credit)' : 'var(--muted)',
+supplier: p.type === 's',
+avatarRadius: p.type === 's' ? '12px' : '21px',
+word,
+color: p.bal > 0 ? 'var(--owes)' : (p.bal < 0 ? 'var(--credit)' : 'var(--muted)'),
+amountText: p.bal === 0 ? '' : '₪ ' + this.fmt(p.bal),
+};
+}),
+};
+}
+}
+</script>
+</body>
+</html>

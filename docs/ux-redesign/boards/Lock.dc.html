@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>التطبيق مقفل</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="width: 390px; height: 844px; box-sizing: border-box; padding: 64px 18px 28px; display: flex; flex-direction: column; gap: 20px; background: linear-gradient(180deg, #F5F8F3, #EDF6EF); font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: #142C24; overflow: hidden">
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center">
+<svg width="64" height="64" viewBox="0 0 56.69 56.69" role="img" aria-label="شعار سدد"><path fill="#e6fcf9" d="M5.18,0 H51.51 A5.18,5.18 0 0 1 56.69,5.18 V51.51 A5.18,5.18 0 0 1 51.51,56.69 H5.18 A5.18,5.18 0 0 1 0,51.51 V5.18 A5.18,5.18 0 0 1 5.18,0 Z"/><path fill="#094842" d="m28.37,13.25c-1.25.97-2.28,2.15-3.03,3.46-.53.93-4.55,9.09-5,10.01v.02s-2.51,5.43-2.51,5.43c-2.95,6.38-5.69,9.05-7.8,10.25-1.19.67-2.54,1.02-3.9,1.02h-3.82c-.17,0-.3-.14-.3-.3v-7.74c0-.26.13-.51.35-.67,2.14-1.55,3.52-3.12,5.31-5.97.31-.49.64-.96.9-1.47l3.33-6.42c1.84-3.44,3.18-5.75,6.69-6.98,1.12-.39,2.29-.59,3.47-.63h6.32Z"/><path fill="#1ba892" d="m43.06,13.25s0,0,0,.01c-1.34,1.01-2.46,2.19-3.22,3.41-.94,1.51-4.62,9.2-5.03,10.07l-2.5,5.43c-3.41,7.36-6.52,9.870-9.23,10.84-.78.28-1.61.42-2.45.42h-7.06c-.09,0-.13-.11-.06-.17,2.44-2.1,4.66-5.35,6.79-9.94l2.49-5.4c1.78-3.61,4.54-9.2,4.91-9.85,1.56-2.71,4.8-4.69,7.89-4.82h7.48Z"/><path fill="#96ead4" d="m54.69,14.06v7.23c0,.26-.13.51-.34.67-2.14,1.55-3.52,3.12-5.31,5.97-.31.49-.64.96-.9,1.47l-3.33,6.42c-1.84,3.44-3.18,5.75-6.69,6.98-1.25.44-2.58.64-3.91.64h-6.19c-.1,0-.14-.12-.07-.19,2.46-2.1,4.7-5.35,6.82-9.95l2.49-5.4c1.12-2.34,4.15-8.63,4.88-9.8,1.57-2.53,5.19-4.75,7.910-4.86h3.92c.4.05.71.4.71.82Z"/></svg>
+<h1 style="margin: 0; font-size: 23px; line-height: 32px; font-weight: 700; display: flex; align-items: center; gap: 8px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#064B42" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>متجري مقفل</h1>
+<p style="margin: 0; font-size: 14px; line-height: 21px; color: #5B6F63">أدخل رمز القفل، أو استخدم البصمة.</p>
+</div>
+
+<div role="status" aria-label="{{dotsLabel}}" style="height: 28px; display: flex; align-items: center; justify-content: center; gap: 12px" dir="ltr">
+<sc-for list="{{dots}}" as="d" hint-placeholder-count="4">
+<span style="width: 14px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid #064B42; background: {{d.fill}}"></span>
+</sc-for>
+</div>
+<div style="min-height: 20px; text-align: center; font-size: 13px; color: #5B6F63">{{hint}}</div>
+
+<div dir="ltr" style="margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{keys}}" as="k" hint-placeholder-count="12">
+<button type="button" aria-label="{{k.aria}}" onClick="{{k.press}}" style="height: 60px; border: 0; border-radius: 13px; background: {{k.bg}}; color: #064B42; font-family: Roboto, system-ui, sans-serif; font-size: 26px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: {{k.shadow}}">
+<sc-if value="{{k.isBio}}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 11v3a8 8 0 0 1-1.5 4.7M8.5 8.6A4 4 0 0 1 16 11v1.5M16 16c-.2 1.4-.6 2.7-1.2 3.9M5 15.5V11a7 7 0 0 1 11.6-5.3M19 11v2"/></svg></sc-if>
+<sc-if value="{{k.isDel}}" hint-placeholder-val="{{ false }}"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M12 9l6 6M18 9l-6 6"/></svg></sc-if>
+<sc-if value="{{k.isDigit}}" hint-placeholder-val="{{ true }}">{{k.label}}</sc-if>
+</button>
+</sc-for>
+</div>
+<a href="{{openHref}}" aria-disabled="{{notReady}}" style="height: 56px; border-radius: 13px; background: {{openBg}}; color: {{openFg}}; text-decoration: none; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center">فتح التطبيق</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { pin: '' };
+}
+renderVals() {
+const pin = this.state.pin;
+const n = Math.max(4, pin.length);
+const ready = pin.length >= 4;
+const press = (k) => {
+if (k === 'del') this.setState({ pin: pin.slice(0, -1) });
+else if (k !== 'bio' && pin.length < 12) this.setState({ pin: pin + k });
+};
+const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'bio', '0', 'del'];
+return {
+dots: Array.from({ length: n }, (_, i) => ({ fill: i < pin.length ? '#064B42' : 'transparent' })),
+dotsLabel: pin.length + ' أرقام مُدخلة',
+hint: pin.length === 0 ? 'من 4 إلى 12 رقمًا' : '',
+keys: keys.map((k) => ({
+label: k,
+isBio: k === 'bio', isDel: k === 'del', isDigit: k !== 'bio' && k !== 'del',
+aria: k === 'bio' ? 'استخدام البصمة أو الوجه' : (k === 'del' ? 'حذف' : k),
+bg: k === 'bio' || k === 'del' ? 'transparent' : '#FFFFFF',
+shadow: k === 'bio' || k === 'del' ? 'none' : '0 1px 0 #D5E5D9',
+press: () => press(k),
+})),
+notReady: !ready,
+openHref: ready ? 'Home.dc.html' : '#',
+openBg: ready ? '#064B42' : '#D6EFE4',
+openFg: ready ? '#FFFFFF' : '#5B6F63',
+};
+}
+}
+</script>
+</body>
+</html>

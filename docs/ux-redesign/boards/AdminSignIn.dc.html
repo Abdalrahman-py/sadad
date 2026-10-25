@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>لوحة الإدارة — الدخول</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="min-height: 900px; box-sizing: border-box; padding: 48px 16px; background: #F5F8F3; font-family: Tajawal, 'Noto Sans Arabic', system-ui, sans-serif; color: #142C24; display: flex; align-items: center; justify-content: center">
+<div style="width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; gap: 12px">
+<svg width="48" height="48" viewBox="0 0 56.69 56.69" role="img" aria-label="شعار سدد"><path fill="#064B42" d="M5.18,0 H51.51 A5.18,5.18 0 0 1 56.69,5.18 V51.51 A5.18,5.18 0 0 1 51.51,56.69 H5.18 A5.18,5.18 0 0 1 0,51.51 V5.18 A5.18,5.18 0 0 1 5.18,0 Z"/><path fill="#e6fcf9" d="m28.37,13.25c-1.25.97-2.28,2.15-3.03,3.46-.53.93-4.55,9.09-5,10.01v.02s-2.51,5.43-2.51,5.43c-2.95,6.38-5.69,9.05-7.8,10.25-1.19.67-2.54,1.02-3.9,1.02h-3.82c-.17,0-.3-.14-.3-.3v-7.74c0-.26.13-.51.35-.67,2.14-1.55,3.52-3.12,5.31-5.97.31-.49.64-.96.9-1.47l3.33-6.42c1.84-3.44,3.18-5.75,6.69-6.98,1.12-.39,2.29-.59,3.47-.63h6.32Z"/><path fill="#1ba892" d="m43.06,13.25c-1.34,1.01-2.46,2.19-3.22,3.41-.94,1.51-4.62,9.2-5.03,10.07l-2.5,5.43c-3.41,7.36-6.52,9.87-9.23,10.84-.78.28-1.61.42-2.45.42h-7.06c-.09,0-.13-.11-.06-.17,2.44-2.1,4.66-5.35,6.79-9.94l2.49-5.4c1.78-3.61,4.54-9.2,4.91-9.85,1.56-2.71,4.8-4.690,7.89-4.82h7.48Z"/><path fill="#96ead4" d="m54.69,14.06v7.23c0,.26-.13.51-.34.67-2.14,1.55-3.52,3.12-5.31,5.97-.31.49-.64.96-.9,1.47l-3.33,6.42c-1.84,3.44-3.18,5.75-6.69,6.98-1.25.44-2.58.64-3.91.64h-6.19c-.1,0-.14-.12-.07-.19,2.46-2.1,4.7-5.35,6.82-9.95l2.49-5.4c1.12-2.34,4.15-8.63,4.88-9.8,1.57-2.53,5.19-4.75,7.91-4.86h3.92c.4.05.71.4.71.82Z"/></svg>
+<div style="display: flex; flex-direction: column"><strong style="font-size: 20px">سدد</strong><span style="font-size: 14px; color: #5B6F63">لوحة الإدارة</span></div>
+</div>
+<form style="margin: 0; border-radius: 20px; background: #FFFFFF; border: 1px solid #D5E5D9; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<h1 style="margin: 0; font-size: 24px; line-height: 32px; font-weight: 700">دخول الإدارة</h1>
+<p style="margin: 0; font-size: 14px; color: #5B6F63">لحسابات الإدارة والدعم فقط.</p>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">البريد الإلكتروني<input type="email" dir="ltr" autocomplete="username" placeholder="name@sadad.app" style="min-height: 48px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24; text-align: right"></label>
+<label style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; font-weight: 700">كلمة المرور<input type="password" dir="ltr" autocomplete="current-password" style="min-height: 48px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D5E5D9; background: #F5F8F3; font: inherit; font-size: 15px; font-weight: 400; color: #142C24"></label>
+<a href="AdminTasks.dc.html" style="min-height: 52px; margin-top: 4px; border-radius: 12px; background: #064B42; color: #FFFFFF; text-decoration: none; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center">دخول آمن</a>
+</form>
+<p style="margin: 0; font-size: 13px; line-height: 20px; color: #5B6F63">لا يوجد تسجيل عام. حسابات المتاجر تُنشأ من هنا فقط.</p>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

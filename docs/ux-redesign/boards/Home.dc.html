@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>الرئيسية</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="{{vars}} width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--bg), var(--bg2)); font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: var(--text); overflow: hidden">
+
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center; justify-content: space-between">
+<div style="display: flex; flex-direction: column">
+<span style="font-size: 12px; line-height: 16px; color: var(--muted)">السبت، 25 أكتوبر</span>
+<span style="font-size: 21px; line-height: 28px; font-weight: 700">متجري</span>
+</div>
+<a href="Notifications.dc.html" aria-label="{{bellLabel}}" style="position: relative; width: 44px; height: 44px; border-radius: 22px; background: var(--card); border: 1px solid var(--line); box-sizing: border-box; color: var(--text); display: flex; align-items: center; justify-content: center">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+<sc-if value="{{hasBadge}}" hint-placeholder-val="{{ true }}">
+<span style="position: absolute; top: -2px; left: -2px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: #C13634; color: #FFFFFF; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">2</span>
+</sc-if>
+</a>
+</header>
+
+<main style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 4px 18px 24px; display: flex; flex-direction: column; gap: 18px">
+
+<sc-if value="{{offline}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="border-radius: 13px; padding: 12px 14px; background: var(--creditSoft); display: flex; align-items: center; gap: 12px">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--credit)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 4.2-2.5M19 12.9a10 10 0 0 0-2.1-1.5M2 8.8a15 15 0 0 1 4.1-2.5M12 5a15 15 0 0 1 10 3.8M12 20h.01"/></svg>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 14px; line-height: 20px; font-weight: 700">لا يوجد اتصال · 3 إدخالات بانتظار الإرسال</span>
+<span style="font-size: 12px; line-height: 18px; color: var(--muted)">يمكنك متابعة التسجيل حتى 8:00 م؛ تُرسل تلقائيًا عند عودة الاتصال.</span>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasData}}" hint-placeholder-val="{{ true }}">
+<section aria-label="رصيد المتجر" style="border-radius: 18px; padding: 20px; background: linear-gradient(135deg, var(--heroA), var(--heroB)); color: #FFFFFF; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 28px rgba(2, 48, 43, 0.22)">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px; line-height: 20px; color: #C6F0E0">لك عند الناس</span>
+<span dir="ltr" style="font-size: 34px; line-height: 42px; font-weight: 700; text-align: right">₪ 12,480.50</span>
+<span style="font-size: 14px; line-height: 20px; color: #C6F0E0">عليك للناس <b dir="ltr" style="color: #FFFFFF">₪ 1,240.00</b></span>
+</div>
+<a href="Activity.dc.html" style="border-radius: 13px; padding: 12px 14px; background: rgba(198, 240, 224, 0.12); color: #FFFFFF; text-decoration: none; display: flex; flex-direction: column; gap: 8px">
+<span style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; line-height: 18px; color: #C6F0E0">
+<span>هذا الشهر · ديون <b dir="ltr" style="color: #FFFFFF">₪ 3,200</b></span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+</span>
+<span style="height: 8px; border-radius: 4px; background: rgba(198, 240, 224, 0.22); overflow: hidden; display: block">
+<span style="width: 61%; height: 100%; border-radius: 4px; background: #78DEC0; display: block"></span>
+</span>
+<span style="display: flex; justify-content: space-between; font-size: 14px; line-height: 20px">
+<span>تحصيل <b dir="ltr">₪ 1,950</b> · 14 دفعة</span>
+<span style="color: #C6F0E0">61٪ من ديون الشهر</span>
+</span>
+</a>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<h2 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 700; display: flex; align-items: center; gap: 8px">تحتاج متابعة <span style="min-width: 24px; height: 22px; padding: 0 7px; box-sizing: border-box; border-radius: 11px; background: var(--owesSoft); color: var(--owes); font-size: 12px; display: inline-flex; align-items: center; justify-content: center">3</span></h2>
+<a href="People.dc.html" style="min-height: 44px; display: flex; align-items: center; font-size: 13px; font-weight: 700; color: var(--link); text-decoration: none">عرض الكل</a>
+</div>
+<div style="background: var(--card); border: 1px solid var(--line); border-radius: 13px; display: flex; flex-direction: column; overflow: hidden">
+<sc-for list="{{follow}}" as="f" hint-placeholder-count="3">
+<div style="padding: 12px 14px; display: flex; align-items: center; gap: 12px; border-top: {{f.divider}}">
+<a href="Contact.dc.html" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text)">
+<span style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 20px; background: var(--soft); color: var(--link); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700">{{f.initials}}</span>
+<span style="min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 15px; line-height: 22px; font-weight: 700">{{f.name}}</span>
+<span style="font-size: 12px; line-height: 18px; font-weight: 500; color: {{f.statusColor}}">{{f.status}}</span>
+</span>
+<span style="margin-inline-start: auto; display: flex; flex-direction: column; align-items: flex-end">
+<span style="font-size: 11px; line-height: 14px; color: var(--owes); font-weight: 700">عليه</span>
+<span dir="ltr" style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--owes)">₪ {{f.amount}}</span>
+</span>
+</a>
+<button type="button" aria-label="{{f.remindLabel}}" style="width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 13px; background: var(--surface); color: var(--link); display: flex; align-items: center; justify-content: center; cursor: pointer">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1.4-4.2A8 8 0 1 1 8.6 19z"/><path d="M9 10h6M9 13.5h4"/></svg>
+</button>
+</div>
+</sc-for>
+</div>
+<p style="margin: 0; font-size: 12px; line-height: 18px; color: var(--muted)">زر التذكير يفتح واتساب برسالة جاهزة فيها الرصيد، تراجعها قبل الإرسال.</p>
+</section>
+</sc-if>
+
+<sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+<section style="border-radius: 18px; padding: 24px 20px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center">
+<span style="width: 72px; height: 72px; border-radius: 22px; background: var(--soft); color: var(--link); display: flex; align-items: center; justify-content: center">
+<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6"/></svg>
+</span>
+<h2 style="margin: 0; font-size: 21px; line-height: 30px; font-weight: 700">دفترك جاهز</h2>
+<p style="margin: 0; font-size: 15px; line-height: 24px; color: var(--muted)">سجّل أول دين خلال ثوانٍ: اختر الشخص، اكتب المبلغ، احفظ. يظهر هنا ما لك عند الناس ومن يحتاج متابعة.</p>
+<a href="QuickAdd.dc.html" style="align-self: stretch; height: 52px; border-radius: 13px; background: var(--primary); color: #FFFFFF; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 700">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+سجّل أول دين
+</a>
+</section>
+<section style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 700; color: var(--muted)">بعد أول تسجيل</h2>
+<div style="display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 21px"><span style="width: 28px; height: 28px; flex-shrink: 0; border-radius: 14px; background: var(--surface); color: var(--link); display: flex; align-items: center; justify-content: center; font-weight: 700">1</span><span>يظهر رصيد المتجر هنا: ما لك وما عليك.</span></div>
+<div style="display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 21px"><span style="width: 28px; height: 28px; flex-shrink: 0; border-radius: 14px; background: var(--surface); color: var(--link); display: flex; align-items: center; justify-content: center; font-weight: 700">2</span><span>من يتأخر عن موعده يظهر في «تحتاج متابعة» مع زر تذكير.</span></div>
+<div style="display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 21px"><span style="width: 28px; height: 28px; flex-shrink: 0; border-radius: 14px; background: var(--surface); color: var(--link); display: flex; align-items: center; justify-content: center; font-weight: 700">3</span><span>كل حركة تجدها في «الحركات»، وكشف كل شخص في صفحته.</span></div>
+</section>
+</sc-if>
+
+</main>
+
+<dc-import name="Nav" active="home" dark="{{dark}}" sync="{{sync}}" hint-size="390px,96px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["normal","empty","offline"],"default":"normal"},"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+theme(d) {
+const t = d
+? { bg: '#102721', bg2: '#142E25', surface: '#1C3931', soft: '#2A4E42', primary: '#256C5A', link: '#78DEC0', text: '#F0F7EF', muted: '#B5CEC0', line: '#375A4B', card: '#1C3931', owes: '#F59A9F', owesSoft: '#583B3D', credit: '#FFD08A', creditSoft: '#4A3A22', heroA: '#1F5E4F', heroB: '#02302B' }
+: { bg: '#F5F8F3', bg2: '#EDF6EF', surface: '#E7F3ED', soft: '#D6EFE4', primary: '#064B42', link: '#064B42', text: '#142C24', muted: '#5B6F63', line: '#D5E5D9', card: '#FFFFFF', owes: '#AB323A', owesSoft: '#FFE1E1', credit: '#9A5A13', creditSoft: '#FFF1DD', heroA: '#064B42', heroB: '#02302B' };
+return Object.keys(t).map((k) => '--' + k + ':' + t[k]).join(';') + ';';
+}
+renderVals() {
+const state = this.props.state ?? 'normal';
+const dark = this.props.dark ?? false;
+const empty = state === 'empty';
+const follow = [
+{ name: 'مريم حسن', initials: 'مح', status: 'متأخر 3 أيام', late: true, amount: '1,120.00' },
+{ name: 'أحمد سالم', initials: 'أس', status: 'يستحق اليوم', late: false, amount: '250.00' },
+{ name: 'خالد يوسف', initials: 'خي', status: 'يستحق اليوم', late: false, amount: '85.00' },
+];
+return {
+vars: this.theme(dark),
+dark: dark,
+sync: state === 'offline' ? 'offline' : 'ok',
+offline: state === 'offline',
+hasData: !empty,
+empty: empty,
+hasBadge: !empty,
+bellLabel: empty ? 'الإشعارات' : 'الإشعارات، 2 جديدة',
+follow: follow.map((f, i) => ({
+...f,
+statusColor: f.late ? 'var(--credit)' : 'var(--muted)',
+divider: i === 0 ? '0' : '1px solid var(--line)',
+remindLabel: 'تذكير ' + f.name + ' على واتساب',
+})),
+};
+}
+}
+</script>
+</body>
+</html>

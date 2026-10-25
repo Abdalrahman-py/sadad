@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>المتجر</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;700&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div dir="rtl" style="{{vars}} width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--bg), var(--bg2)); font-family: 'Noto Sans Arabic', Roboto, system-ui, sans-serif; color: var(--text); overflow: hidden">
+
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 18px; display: flex; align-items: center">
+<h1 style="margin: 0; font-size: 23px; line-height: 32px; font-weight: 700">المتجر</h1>
+</header>
+
+<main style="flex: 1; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: 0 18px 24px; display: flex; flex-direction: column; gap: 18px">
+
+<section style="border-radius: 18px; background: var(--card); border: 1px solid var(--line); overflow: hidden">
+<div style="padding: 16px; display: flex; align-items: center; gap: 12px">
+<span style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 14px; background: var(--primary); color: #FFFFFF; display: flex; align-items: center; justify-content: center">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h16l-1.5-5h-13zM5 10v10h14V10M9 20v-5h6v5"/></svg>
+</span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 17px; line-height: 24px; font-weight: 700">متجري</span>
+<span style="font-size: 13px; line-height: 20px; color: var(--muted)">صاحب المتجر: أبو خالد · هذا الهاتف</span>
+</div>
+<button type="button" aria-expanded="{{switchOpen}}" onClick="{{toggleSwitch}}" style="height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface); color: var(--link); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">تبديل</button>
+</div>
+<sc-if value="{{switchOpen}}" hint-placeholder-val="{{ false }}">
+<div style="border-top: 1px solid var(--line); padding: 6px">
+<button type="button" style="width: 100%; height: 52px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font: inherit; font-size: 15px; text-align: right; display: flex; align-items: center; gap: 10px; cursor: pointer">
+<span style="width: 32px; height: 32px; border-radius: 10px; background: var(--soft); color: var(--link); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700">سح</span>
+سوبر ماركت الحي <span style="margin-inline-start: auto; font-size: 12px; color: var(--muted)">موظف</span>
+</button>
+<button type="button" style="width: 100%; height: 52px; padding: 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--link); font: inherit; font-size: 15px; font-weight: 700; text-align: right; display: flex; align-items: center; gap: 10px; cursor: pointer">
+<span style="width: 32px; height: 32px; border-radius: 10px; border: 1.5px dashed var(--muted); box-sizing: border-box; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+إضافة متجر
+</button>
+</div>
+</sc-if>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--muted)">الأجهزة والمزامنة</h2>
+<div style="border-radius: 13px; background: var(--card); border: 1px solid var(--line); overflow: hidden">
+<div style="padding: 14px; display: flex; align-items: center; gap: 12px; background: var(--creditSoft)">
+<span style="width: 10px; height: 10px; flex-shrink: 0; border-radius: 5px; background: #E0A23A" aria-hidden="true"></span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<span style="font-size: 15px; line-height: 22px; font-weight: 700">إدخال واحد بانتظار الإرسال</span>
+<span style="font-size: 12px; line-height: 18px; color: var(--muted)">دين سارة محمود ₪120 · يُرسل تلقائيًا · آخر مزامنة 10:24</span>
+</div>
+<button type="button" style="height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--card); color: var(--link); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">مزامنة الآن</button>
+</div>
+<a href="#ops-log" style="min-height: 56px; padding: 0 14px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--link)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">سجل عمليات الدفتر</span><span style="font-size: 12px; color: var(--muted)">من سجّل ماذا ومن أي جهاز، والمرفوض</span></span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+</a>
+<a href="Recovery.dc.html" style="min-height: 56px; padding: 0 14px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--link)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">تغيير الهاتف والاسترداد</span><span style="font-size: 12px; color: var(--muted)">انقل الإدخالات غير المرسلة بأمان</span></span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+</a>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--muted)">الأمان</h2>
+<div style="border-radius: 13px; background: var(--card); border: 1px solid var(--line); overflow: hidden">
+<sc-for list="{{switches}}" as="s" hint-placeholder-count="2">
+<div style="min-height: 56px; padding: 0 14px; border-top: {{s.divider}}; display: flex; align-items: center; gap: 12px">
+<span style="flex: 1; display: flex; flex-direction: column"><span id="{{s.id}}" style="font-size: 15px">{{s.label}}</span><span style="font-size: 12px; color: var(--muted)">{{s.sub}}</span></span>
+<button type="button" role="switch" aria-checked="{{s.on}}" aria-labelledby="{{s.id}}" onClick="{{s.flip}}" style="width: 52px; height: 32px; flex-shrink: 0; padding: 3px; box-sizing: border-box; border: 0; border-radius: 16px; background: {{s.track}}; display: flex; justify-content: {{s.justify}}; cursor: pointer">
+<span style="width: 26px; height: 26px; border-radius: 13px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2)"></span>
+</button>
+</div>
+</sc-for>
+<a href="Lock.dc.html" style="min-height: 52px; padding: 0 14px; border-top: 1px solid var(--line); display: flex; align-items: center; color: var(--text); text-decoration: none; font-size: 15px">تغيير رمز القفل<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-inline-start: auto"><path d="M15 6l-6 6 6 6"/></svg></a>
+<a href="PasswordChange.dc.html" style="min-height: 52px; padding: 0 14px; border-top: 1px solid var(--line); display: flex; align-items: center; color: var(--text); text-decoration: none; font-size: 15px">تغيير كلمة المرور<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-inline-start: auto"><path d="M15 6l-6 6 6 6"/></svg></a>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--muted)">البيانات</h2>
+<div style="border-radius: 13px; background: var(--card); border: 1px solid var(--line); overflow: hidden">
+<a href="Trash.dc.html" style="min-height: 56px; padding: 0 14px; display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none">
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 15px">سلة المحذوفات</span><span style="font-size: 12px; color: var(--muted)">عنصران · الكشوفات تُصدَّر من «الحركات»</span></span>
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+</a>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 id="theme-label" style="margin: 0; font-size: 13px; line-height: 20px; font-weight: 700; color: var(--muted)">المظهر</h2>
+<div role="group" aria-labelledby="theme-label" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 13px; background: var(--surface)">
+<sc-for list="{{themes}}" as="t" hint-placeholder-count="3">
+<button type="button" aria-pressed="{{t.on}}" onClick="{{t.pick}}" style="height: 44px; border: 0; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; background: {{t.bg}}; color: {{t.fg}}">{{t.label}}</button>
+</sc-for>
+</div>
+</section>
+
+<a href="https://wa.me/" style="min-height: 56px; padding: 0 14px; border-radius: 13px; background: var(--card); border: 1px solid var(--line); display: flex; align-items: center; gap: 12px; color: var(--link); text-decoration: none; font-size: 15px; font-weight: 700">
+<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1.4-4.2A8 8 0 1 1 8.6 19z"/></svg>
+تواصل معنا على واتساب
+</a>
+<p style="margin: 0; text-align: center; font-size: 12px; color: var(--muted)">سدد · الإصدار 3.0</p>
+</main>
+
+<dc-import name="Nav" active="store" sync="pending" hint-size="390px,96px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { lock: true, bio: true, theme: 'system', switchOpen: false };
+}
+theme() {
+const t = { bg: '#F5F8F3', bg2: '#EDF6EF', surface: '#E7F3ED', soft: '#D6EFE4', primary: '#064B42', link: '#064B42', text: '#142C24', muted: '#5B6F63', line: '#D5E5D9', card: '#FFFFFF', creditSoft: '#FFF1DD' };
+return Object.keys(t).map((k) => '--' + k + ':' + t[k]).join(';') + ';';
+}
+renderVals() {
+const s = this.state;
+const sw = (id, label, sub, key, first) => ({
+id, label, sub, on: s[key],
+divider: first ? '0' : '1px solid var(--line)',
+track: s[key] ? 'var(--primary)' : '#B9C9BF',
+// RTL switch: the thumb sits on the left when on, as Material mirrors it.
+justify: s[key] ? 'flex-end' : 'flex-start',
+flip: () => this.setState({ [key]: !s[key] }),
+});
+return {
+vars: this.theme(),
+switchOpen: s.switchOpen,
+toggleSwitch: () => this.setState({ switchOpen: !s.switchOpen }),
+switches: [
+sw('sw-lock', 'قفل التطبيق', 'يُطلب الرمز عند العودة للتطبيق', 'lock', true),
+sw('sw-bio', 'فتح بالبصمة أو الوجه', 'أسرع من كتابة الرمز', 'bio', false),
+],
+themes: [['system', 'حسب النظام'], ['light', 'فاتح'], ['dark', 'داكن']].map(([id, label]) => ({
+label, on: s.theme === id,
+bg: s.theme === id ? 'var(--primary)' : 'transparent',
+fg: s.theme === id ? '#FFFFFF' : 'var(--muted)',
+pick: () => this.setState({ theme: id }),
+})),
+};
+}
+}
+</script>
+</body>
+</html>
