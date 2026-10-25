@@ -3,6 +3,7 @@ package com.sadad.app.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,23 +23,21 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -61,26 +62,22 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.sadad.app.R
-import com.sadad.app.feature.account.AccountActivityScreen
-import com.sadad.app.feature.account.TopBarActions
+import com.sadad.app.SadadApplication
+import com.sadad.app.feature.activity.ActivityScreen
+import com.sadad.app.feature.activity.OperationsLogScreen
 import com.sadad.app.feature.auth.AwaitingApprovalScreen
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.PasswordChangeScreen
-import com.sadad.app.feature.auth.WelcomeScreen
 import com.sadad.app.feature.auth.navigateAuth
 import com.sadad.app.feature.contactform.ContactFormScreen
 import com.sadad.app.feature.contacts.ContactDetailScreen
-import com.sadad.app.feature.contacts.ContactsScreen
-import com.sadad.app.feature.debt.DebtFormScreen
-import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.home.HomeScreen
 import com.sadad.app.feature.lock.LockGate
 import com.sadad.app.feature.notifications.NotificationsScreen
-import com.sadad.app.feature.payment.PaymentFormScreen
+import com.sadad.app.feature.people.PeopleScreen
+import com.sadad.app.feature.quickadd.QuickAddScreen
 import com.sadad.app.feature.recovery.RecoveryScreen
-import com.sadad.app.feature.reports.ReportsScreen
-import com.sadad.app.feature.settings.SettingsNavigation
-import com.sadad.app.feature.settings.SettingsScreen
+import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.feature.trash.TrashScreen
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.SadadTheme
@@ -93,30 +90,15 @@ fun SadadApp(
     dark: Boolean = isSystemInDarkTheme(),
     navController: NavHostController = rememberNavController(),
 ) {
-  var accountActivityRequest by rememberSaveable { mutableIntStateOf(0) }
+  val graph = (LocalContext.current.applicationContext as SadadApplication).graph
+  val syncDot by remember(graph) { syncDot(graph) }.collectAsStateWithLifecycle(SyncDot.NONE)
+  // One step back, or nowhere when this is the first screen.
+  val back: () -> Unit = { navController.navigateUp() }
   SadadTheme(dark = dark) {
     LockGate {
       // Arabic-first, so the shell mirrors like the Java app did, whatever the device locale.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        SadadShell(
-            navController = navController,
-            startDestination = startDestination,
-            topBar = { screenTitle ->
-              TopBarActions(
-                  screenTitle = screenTitle,
-                  onOpenNotifications = {
-                    navController.navigate(Notifications) { launchSingleTop = true }
-                  },
-                  onOpenActivityLog = {
-                    accountActivityRequest++
-                    navController.navigate(History) { launchSingleTop = true }
-                  },
-                  onAddStore = { navController.navigateAuth(Login) },
-                  onNeedsLogin = { navController.navigateAuth(Login) },
-              )
-            },
-        ) {
-          composable<Welcome> { WelcomeScreen(onNavigate = navController::navigateAuth) }
+        SadadShell(navController, startDestination, syncDot) {
           composable<Login> { LoginScreen(onNavigate = navController::navigateAuth) }
           composable<PasswordChange> {
             PasswordChangeScreen(onNavigate = navController::navigateAuth)
@@ -125,86 +107,62 @@ fun SadadApp(
             AwaitingApprovalScreen(onNavigate = navController::navigateAuth)
           }
           composable<Home> {
-            HomeScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
-          }
-          composable<Contacts> {
-            ContactsScreen(
-                onOpenContact = { contactId -> navController.navigate(ContactDetail(contactId)) },
+            HomeScreen(
+                onOpenContact = { navController.navigate(ContactDetail(it)) },
+                onOpenPeople = { navController.navigateTab(People(it)) },
+                onOpenNotifications = {
+                  navController.navigate(Notifications) { launchSingleTop = true }
+                },
+                onRecord = { navController.navigate(QuickAdd()) },
             )
+          }
+          composable<People> {
+            PeopleScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
           }
           composable<ContactDetail> {
             val contactId = it.toRoute<ContactDetail>().contactId
             ContactDetailScreen(
                 contactId = contactId,
-                onBack = {
-                  // One entry back to the list the Contact was opened from; clearing the whole
-                  // graph here would drop the start destination.
-                  if (!navController.popBackStack()) {
-                    navController.navigate(Contacts) { launchSingleTop = true }
-                  }
-                },
-                onRecordDebt = { navController.navigate(DebtForm(contactId)) },
-                onRecordPayment = { navController.navigate(PaymentForm(contactId)) },
+                // A Contact opened from a reminder is the first screen: back goes to People.
+                onBack = { if (!navController.navigateUp()) navController.navigateTab(People()) },
+                onRecord = { id, payment -> navController.navigate(QuickAdd(id, payment)) },
                 onEdit = { navController.navigate(ContactForm(contactId)) },
             )
           }
           composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
-          composable<DebtForm> {
-            val contactId = it.toRoute<DebtForm>().contactId
-            DebtFormScreen(
-                contactId = contactId,
-                // Back to the Contact the Debt was recorded for, keeping its live detail state.
-                onSaved = {
-                  if (!navController.popBackStack()) {
-                    navController.navigate(ContactDetail(contactId))
+          composable<QuickAdd> {
+            val route = it.toRoute<QuickAdd>()
+            QuickAddScreen(
+                contactId = route.contactId,
+                payment = route.payment,
+                onClose = back,
+                onOpenContact = { id ->
+                  navController.navigate(ContactDetail(id)) {
+                    popUpTo<QuickAdd> { inclusive = true }
                   }
                 },
             )
           }
-          composable<PaymentForm> {
-            val route = it.toRoute<PaymentForm>()
-            PaymentFormScreen(
-                route.contactId,
-                route.debtId,
-                // Back to the Contact the payment was recorded for, as the debt form does.
-                onSaved = {
-                  if (!navController.popBackStack()) {
-                    navController.navigate(ContactDetail(route.contactId))
-                  }
+          composable<Activity> {
+            ActivityScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
+          }
+          composable<OperationsLog> { OperationsLogScreen(onBack = back) }
+          composable<Store> {
+            StoreScreen(
+                onOpenTrash = { navController.navigate(Trash) },
+                onOpenRecovery = { navController.navigate(Recovery) },
+                onChangePassword = { navController.navigate(PasswordChange) },
+                onAddStore = { navController.navigateAuth(Login) },
+                onNeedsLogin = { navController.navigateAuth(Login) },
+                onOpenOperationsLog = { navController.navigate(OperationsLog) },
+                onOpenNotifications = {
+                  navController.navigate(Notifications) { launchSingleTop = true }
                 },
             )
           }
-          composable<History> {
-            if (accountActivityRequest > 0) AccountActivityScreen(accountActivityRequest)
-            else
-                HistoryScreen(
-                    onOpenContact = { navController.navigate(ContactDetail(it)) },
-                    onOpenReports = { navController.navigate(Reports) },
-                )
-          }
-          composable<Reports> { ReportsScreen() }
-          composable<Notifications> { NotificationsScreen() }
-          composable<Settings> {
-            SettingsScreen(
-                navigation =
-                    SettingsNavigation(
-                        onOpenTrash = { navController.navigate(Trash) },
-                        onOpenNotifications = {
-                          navController.navigate(Notifications) { launchSingleTop = true }
-                        },
-                        onOpenActivityLog = {
-                          accountActivityRequest++
-                          navController.navigate(History) { launchSingleTop = true }
-                        },
-                        onOpenRecovery = { navController.navigate(Recovery) },
-                        onChangePassword = { navController.navigate(PasswordChange) },
-                        onAddStore = { navController.navigateAuth(Login) },
-                        onNeedsLogin = { navController.navigateAuth(Login) },
-                    )
-            )
-          }
-          composable<Trash> { TrashScreen() }
-          composable<Recovery> { RecoveryScreen() }
+          composable<Notifications> { NotificationsScreen(onBack = back) }
+          composable<Trash> { TrashScreen(onBack = back) }
+          composable<Recovery> { RecoveryScreen(onBack = back) }
         }
       }
     }
@@ -212,34 +170,24 @@ fun SadadApp(
 }
 
 /**
- * The bars and the padded content area every destination lives in. Edge-to-edge is on, so the
- * Scaffold hands the system-bar insets to the content as padding; no screen handles them itself.
- * The top bar gets the current screen's title, as the Java header showed it under «سدد»; the bottom
- * bar is hidden on the forms and the sign-in screens, as `showBottomNav()` did. `internal` so the
- * inset tests can render the real destinations in the real shell.
+ * The bar and the padded content area every destination lives in. There is no top bar: each screen
+ * draws its own header. Edge-to-edge is on, so the Scaffold hands the system-bar insets to the
+ * content as padding; no screen handles them itself. `internal` so the shell and inset tests can
+ * render real or stub destinations in the real shell.
  */
 @Composable
 internal fun SadadShell(
     navController: NavHostController,
     startDestination: Any,
-    topBar: @Composable (screenTitle: String) -> Unit,
+    syncDot: SyncDot,
     destinations: NavGraphBuilder.() -> Unit,
 ) {
-  val entry = navController.currentBackStackEntryAsState().value
-  val destination = entry?.destination
-  val editingContact =
-      destination.isAny(listOf(ContactForm::class)) &&
-          entry?.toRoute<ContactForm>()?.contactId != null
-  val title =
-      stringResource(
-          if (editingContact) R.string.contactform_edit_title else screenTitle(destination)
-      )
+  val destination = navController.currentBackStackEntryAsState().value?.destination
   Scaffold(
       modifier = Modifier.sadadPageBackground(),
       containerColor = Color.Transparent,
       contentColor = sadadPalette.text,
-      topBar = { topBar(title) },
-      bottomBar = { if (showsBottomBar(destination)) SadadBottomBar(navController) },
+      bottomBar = { if (destination.isAny(WITH_BAR)) SadadBottomBar(navController, syncDot) },
   ) { insets ->
     NavHost(
         navController = navController,
@@ -251,59 +199,47 @@ internal fun SadadShell(
   }
 }
 
-private val FORMS = listOf(ContactForm::class, DebtForm::class, PaymentForm::class)
-private val AUTH =
-    listOf(Welcome::class, Login::class, PasswordChange::class, AwaitingApproval::class)
+/** The four tabs and the contact page show the bar; quick add, forms and sub-pages hide it. */
+private val WITH_BAR =
+    listOf(Home::class, People::class, ContactDetail::class, Activity::class, Store::class)
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
 
-private fun showsBottomBar(destination: NavDestination?) =
-    destination != null && !destination.isAny(FORMS) && !destination.isAny(AUTH)
+private enum class Tab {
+  HOME,
+  PEOPLE,
+  ACTIVITY,
+  STORE,
+}
 
-/** `titleFor(page)` of the Java app. */
-private fun screenTitle(destination: NavDestination?): Int =
+/** The tab a destination belongs to. */
+private fun activeTab(destination: NavDestination?): Tab =
     when {
-      destination == null -> R.string.brand_name
-      destination.isAny(listOf(Home::class)) -> R.string.nav_home
-      destination.isAny(listOf(Contacts::class)) -> R.string.nav_contacts
-      destination.isAny(listOf(ContactDetail::class)) -> R.string.screen_contact_detail
-      destination.isAny(listOf(ContactForm::class)) -> R.string.contactform_add_title
-      destination.isAny(listOf(DebtForm::class)) -> R.string.screen_debt
-      destination.isAny(listOf(PaymentForm::class)) -> R.string.screen_payment
-      destination.isAny(listOf(History::class)) -> R.string.screen_history
-      destination.isAny(listOf(Reports::class)) -> R.string.screen_reports
-      destination.isAny(listOf(Settings::class)) -> R.string.nav_settings
-      destination.isAny(listOf(Trash::class)) -> R.string.screen_trash
-      destination.isAny(listOf(Notifications::class)) -> R.string.title_notifications
-      destination.isAny(listOf(Recovery::class)) -> R.string.screen_recovery
-      else -> R.string.brand_name
+      destination.isAny(listOf(People::class, ContactDetail::class)) -> Tab.PEOPLE
+      destination.isAny(listOf(Activity::class)) -> Tab.ACTIVITY
+      destination.isAny(
+          listOf(Store::class, OperationsLog::class, Trash::class, Recovery::class)
+      ) -> Tab.STORE
+      else -> Tab.HOME
     }
 
-/** The tab a destination belongs to, as `activeTab(page)`. */
-private fun activeTab(destination: NavDestination?): KClass<*> =
-    when {
-      destination.isAny(listOf(Contacts::class, ContactDetail::class) + FORMS) -> Contacts::class
-      destination.isAny(listOf(History::class, Reports::class)) -> History::class
-      destination.isAny(listOf(Settings::class, Trash::class, Recovery::class)) -> Settings::class
-      else -> Home::class
-    }
-
-/**
- * The Java app's bottom bar: home, people, the raised round «＋ إضافة», history, settings. The
- * chosen tab has an accent halo behind its glyph. `internal` so the shell test can render it alone.
- */
-@Composable
-internal fun SadadBottomBar(navController: NavHostController) {
-  val currentDestination = navController.currentBackStackEntryAsState().value?.destination
-  val active = activeTab(currentDestination)
-  val navigate: (Any) -> Unit = { destination ->
-    navController.navigate(destination) {
-      popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+/** A tab switch keeps one copy of each tab and its saved state, as bottom bars do. */
+private fun NavHostController.navigateTab(destination: Any) =
+    navigate(destination) {
+      popUpTo(graph.findStartDestination().id) { saveState = true }
       launchSingleTop = true
       restoreState = true
     }
-  }
+
+/**
+ * الرئيسية · الأشخاص · «+» تسجيل · الحركات · المتجر, right to left (the Nav board). The chosen tab
+ * has a halo behind its icon; المتجر carries the [syncDot]. `internal` so the shell tests can
+ * render it alone.
+ */
+@Composable
+internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) {
+  val active = activeTab(navController.currentBackStackEntryAsState().value?.destination)
   val p = sadadPalette
   Row(
       modifier =
@@ -311,119 +247,138 @@ internal fun SadadBottomBar(navController: NavHostController) {
               .shadow(8.dp)
               .background(p.surface)
               .windowInsetsPadding(WindowInsets.navigationBars)
-              .padding(horizontal = 8.dp, vertical = 7.dp)
+              .padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 10.dp)
               .selectableGroup(),
-      verticalAlignment = Alignment.CenterVertically,
+      verticalAlignment = Alignment.Bottom,
   ) {
-    BottomItem(R.string.nav_home, R.drawable.ic_home, ScreenTag.NAV_HOME, active == Home::class) {
-      navigate(Home)
+    TabItem(R.string.nav_home, R.drawable.ic_home, ScreenTag.NAV_HOME, active == Tab.HOME) {
+      navController.navigateTab(Home)
     }
-    BottomItem(
-        R.string.nav_contacts,
-        R.drawable.ic_people,
-        ScreenTag.NAV_CONTACTS,
-        active == Contacts::class,
-    ) {
-      navigate(Contacts)
+    TabItem(R.string.nav_people, R.drawable.ic_people, ScreenTag.NAV_PEOPLE, active == Tab.PEOPLE) {
+      navController.navigateTab(People())
     }
-    AddItem { navController.navigate(ContactForm()) }
-    BottomItem(
-        R.string.nav_history,
-        R.drawable.ic_history,
-        ScreenTag.NAV_HISTORY,
-        active == History::class,
+    RecordItem { navController.navigate(QuickAdd()) }
+    TabItem(
+        R.string.nav_activity,
+        R.drawable.ic_activity,
+        ScreenTag.NAV_ACTIVITY,
+        active == Tab.ACTIVITY,
     ) {
-      navigate(History)
+      navController.navigateTab(Activity)
     }
-    BottomItem(
-        R.string.nav_settings,
-        R.drawable.ic_settings,
-        ScreenTag.NAV_SETTINGS,
-        active == Settings::class,
+    TabItem(
+        R.string.nav_store,
+        R.drawable.ic_store,
+        ScreenTag.NAV_STORE,
+        active == Tab.STORE,
+        syncDot,
     ) {
-      navigate(Settings)
+      navController.navigateTab(Store)
     }
   }
 }
 
 @Composable
-private fun RowScope.BottomItem(
+private fun RowScope.TabItem(
     labelRes: Int,
     iconRes: Int,
     tag: String,
     selected: Boolean,
+    syncDot: SyncDot = SyncDot.NONE,
     onClick: () -> Unit,
 ) {
   val p = sadadPalette
-  val ink = if (selected) (if (p.isDark) p.text else p.primary) else p.muted
+  val ink = if (selected) (if (p.isDark) p.accent else p.primary) else p.muted
   // The halo fades in over 580ms when the tab becomes the chosen one, as the Java animator did.
-  val halo by animateFloatAsState(if (selected) 0.94f else 0f, tween(580), label = "halo")
-  val glow =
-      remember(p) {
-        Brush.radialGradient(
-            listOf(
-                p.accent.copy(alpha = 112 / 255f),
-                p.accent.copy(alpha = 42 / 255f),
-                Color.Transparent,
-            )
-        )
-      }
+  val halo by animateFloatAsState(if (selected) 1f else 0f, tween(580), label = "halo")
+  val description =
+      stringResource(
+          when (syncDot) {
+            SyncDot.NONE -> labelRes
+            SyncDot.PENDING -> R.string.nav_store_pending
+            SyncDot.OFFLINE -> R.string.nav_store_offline
+          }
+      )
   Column(
       modifier =
           Modifier.weight(1f)
-              .height(68.dp)
+              .height(64.dp)
               .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+              .semantics { contentDescription = description }
               .testTag(tag),
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.Center,
+      verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
   ) {
-    Box(Modifier.height(40.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-      Box(Modifier.size(48.dp, 46.dp).graphicsLayer { alpha = halo }.background(glow, CircleShape))
-      Icon(
-          painterResource(iconRes),
-          contentDescription = null,
-          tint = ink,
-          modifier = Modifier.size(23.dp),
+    Box(Modifier.size(52.dp, 34.dp), contentAlignment = Alignment.Center) {
+      Box(
+          Modifier.matchParentSize()
+              .graphicsLayer { alpha = halo }
+              .background(p.accent.copy(alpha = if (p.isDark) 0.20f else 0.22f), HALO_SHAPE)
       )
+      Icon(painterResource(iconRes), null, tint = ink, modifier = Modifier.size(23.dp))
+      if (syncDot != SyncDot.NONE) {
+        Box(
+            Modifier.align(AbsoluteAlignment.TopLeft)
+                .absoluteOffset(x = 10.dp, y = 3.dp)
+                .size(10.dp)
+                .background(
+                    if (syncDot == SyncDot.OFFLINE) OFFLINE_RED else PENDING_AMBER,
+                    CircleShape,
+                )
+                .border(2.dp, p.surface, CircleShape)
+        )
+      }
     }
     Text(
         stringResource(labelRes),
-        style =
-            MaterialTheme.typography.labelSmall.copy(
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-            ),
         color = ink,
-        modifier = Modifier.padding(top = 3.dp),
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
     )
   }
 }
 
+/** The raised round «تسجيل»: a debt or a payment, starting from the person. */
 @Composable
-private fun RowScope.AddItem(onClick: () -> Unit) {
+private fun RowScope.RecordItem(onClick: () -> Unit) {
   val p = sadadPalette
-  val description = stringResource(R.string.nav_add_description)
+  val description = stringResource(R.string.nav_record_description)
   Column(
-      modifier = Modifier.weight(1f).height(68.dp),
+      modifier =
+          Modifier.weight(1f)
+              .height(72.dp)
+              .clickable(role = Role.Button, onClick = onClick)
+              .semantics { contentDescription = description }
+              .testTag(ScreenTag.NAV_RECORD),
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.Center,
+      verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom),
   ) {
     Box(
         modifier =
-            Modifier.size(48.dp)
-                .shadow(6.dp, CircleShape)
+            Modifier.size(60.dp)
+                .shadow(8.dp, CircleShape)
                 .background(p.primary, CircleShape)
-                .clickable(role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = description }
-                .testTag(ScreenTag.NAV_ADD),
+                .border(4.dp, p.bg, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-      Text("＋", color = Color.White, fontSize = 26.sp, lineHeight = 26.sp)
+      Icon(
+          painterResource(R.drawable.ic_record),
+          null,
+          tint = Color.White,
+          modifier = Modifier.size(28.dp),
+      )
     }
     Text(
-        stringResource(R.string.nav_add),
-        style = MaterialTheme.typography.labelSmall,
-        color = p.muted,
-        modifier = Modifier.padding(top = 4.dp),
+        stringResource(R.string.nav_record),
+        color = if (p.isDark) p.accent else p.primary,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        fontWeight = FontWeight.Bold,
     )
   }
 }
+
+private val HALO_SHAPE = RoundedCornerShape(17.dp)
+private val PENDING_AMBER = Color(0xFFE0A23A)
+private val OFFLINE_RED = Color(0xFFC13634)

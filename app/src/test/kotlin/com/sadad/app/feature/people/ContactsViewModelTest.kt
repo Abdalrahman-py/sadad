@@ -1,15 +1,14 @@
-package com.sadad.app.feature.contacts
+package com.sadad.app.feature.people
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.debt
+import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.testing.TestGraph
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Commands
-import com.sadad.ledger.Direction
-import com.sadad.ledger.LedgerCommand
-import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -176,64 +175,3 @@ class ContactsViewModelTest {
     }
   }
 }
-
-internal suspend fun TestGraph.seedCommands(commands: List<LedgerCommand>) {
-  seed { applyPage(pageOf(commands)) }
-}
-
-internal fun pageOf(commands: List<LedgerCommand>) =
-    Events.page(commands.mapIndexed { index, command -> Events.accepted(command, index + 1L) })
-
-internal fun contactId(index: Int): String =
-    UUID.nameUUIDFromBytes("contact-$index".toByteArray()).toString()
-
-internal fun contact(
-    name: String,
-    id: String = UUID.nameUUIDFromBytes(name.toByteArray()).toString(),
-    phone: String? = null,
-    minute: Int = 0,
-    operationId: String = UUID.randomUUID().toString(),
-): LedgerCommand =
-    Commands.contactCreate(
-        Events.origin,
-        Events.at(minute),
-        name = name,
-        phone = phone,
-        entityId = id,
-        operationId = operationId,
-    )
-
-internal fun debt(
-    contactId: String,
-    amount: Long,
-    direction: Direction = Direction.RECEIVABLE,
-    id: String = UUID.randomUUID().toString(),
-    minute: Int = 0,
-    operationId: String = UUID.randomUUID().toString(),
-): LedgerCommand =
-    Commands.debtCreate(
-        Events.origin,
-        Events.at(minute),
-        contactId = contactId,
-        direction = direction,
-        amount = Cents(amount),
-        entityId = id,
-        operationId = operationId,
-    )
-
-internal fun payment(
-    debtId: String,
-    amount: Long,
-    id: String = UUID.randomUUID().toString(),
-    minute: Int = 0,
-    operationId: String = UUID.randomUUID().toString(),
-): LedgerCommand =
-    Commands.paymentCreate(
-        Events.origin,
-        Events.at(minute),
-        debtId = debtId,
-        amount = Cents(amount),
-        method = com.sadad.ledger.PaymentMethod.CASH,
-        entityId = id,
-        operationId = operationId,
-    )

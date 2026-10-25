@@ -1,14 +1,14 @@
-package com.sadad.app.feature.contacts
+package com.sadad.app.feature.people
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.AppGraph
+import com.sadad.app.feature.contacts.searchText
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import java.time.Instant
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -162,16 +162,3 @@ class ContactsViewModel(
     const val SORT = "contacts:sort"
   }
 }
-
-/** Arabic-Indic digits and the two Arabic decimal/grouping marks read as their Latin forms. */
-internal fun searchText(value: String): String =
-    buildString(value.length) {
-          for (character in value.trim()) {
-            when {
-              character in '\u0660'..'\u0669' -> append('0' + (character - '\u0660'))
-              character in '\u06F0'..'\u06F9' -> append('0' + (character - '\u06F0'))
-              else -> append(character)
-            }
-          }
-        }
-        .lowercase(Locale.ROOT)

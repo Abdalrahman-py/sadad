@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.ui.components.ConfirmDialog
+import com.sadad.app.ui.components.ScreenHeader
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,6 +62,7 @@ private enum class OriginUse {
 
 @Composable
 fun RecoveryScreen(
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: RecoveryViewModel = recoveryViewModel(),
 ) {
@@ -118,16 +120,19 @@ fun RecoveryScreen(
     }
   }
 
-  RecoveryContent(
-      status = state.status,
-      message = state.message,
-      onExport = { passphraseUse = PassphraseUse.EXPORT },
-      onImport = { openFile.launch(arrayOf(JSON)) },
-      onManifest = { chooseOrigin(OriginUse.MANIFEST) },
-      onPermit = { chooseOrigin(OriginUse.PERMIT) },
-      onRegisterAgain = { confirmRegister = true },
-      modifier = modifier,
-  )
+  Column(modifier.fillMaxSize()) {
+    ScreenHeader(stringResource(R.string.title_recovery), onBack = onBack)
+    RecoveryContent(
+        status = state.status,
+        message = state.message,
+        onExport = { passphraseUse = PassphraseUse.EXPORT },
+        onImport = { openFile.launch(arrayOf(JSON)) },
+        onManifest = { chooseOrigin(OriginUse.MANIFEST) },
+        onPermit = { chooseOrigin(OriginUse.PERMIT) },
+        onRegisterAgain = { confirmRegister = true },
+        modifier = Modifier.weight(1f),
+    )
+  }
 
   passphraseUse?.let { use ->
     val exporting = use == PassphraseUse.EXPORT
@@ -272,10 +277,6 @@ fun RecoveryContent(
       modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    Text(
-        text = stringResource(R.string.title_recovery),
-        style = MaterialTheme.typography.headlineSmall,
-    )
     Text(
         text = stringResource(R.string.recovery_explanation),
         style = MaterialTheme.typography.bodyMedium,

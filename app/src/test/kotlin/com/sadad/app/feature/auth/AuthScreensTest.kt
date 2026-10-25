@@ -1,7 +1,6 @@
 package com.sadad.app.feature.auth
 
 import android.content.Context
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -10,16 +9,10 @@ import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.testing.TestGraph
-import com.sadad.app.ui.Login
 import com.sadad.app.ui.UiTestApplication
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,28 +51,6 @@ class AuthScreensTest {
 
       compose.onNodeWithTag(AuthTags.LOGIN_BUTTON).assertIsNotEnabled()
       assertNull(navigated)
-    }
-  }
-
-  @Test
-  fun theWelcomeScreenShowsOnce() {
-    TestGraph.unsigned().use { fixture ->
-      var navigated: Any? = null
-      val model = WelcomeViewModel(fixture.graph)
-      compose.setContent {
-        WelcomeScreen(viewModel = model, onNavigate = { navigated = it })
-      }
-
-      compose.onNodeWithTag(AuthTags.WELCOME_TITLE).assertIsDisplayed()
-      compose.onNodeWithTag(AuthTags.WELCOME_START).performClick()
-      compose.waitUntil(5_000) { navigated == Login }
-
-      compose.onNodeWithTag(AuthTags.WELCOME_TITLE).assertDoesNotExist()
-      assertTrue(runBlocking { fixture.graph.accounts.file().welcomeShown })
-      val again = WelcomeViewModel(fixture.graph)
-      val state = runBlocking { again.state.first { it.destination != null } }
-      assertEquals(Login, state.destination)
-      assertFalse(state.showWelcome)
     }
   }
 }

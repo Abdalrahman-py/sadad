@@ -35,8 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadad.app.R
 
 object AuthTags {
-  const val WELCOME_TITLE = "auth:welcome-title"
-  const val WELCOME_START = "auth:welcome-start"
   const val USERNAME = "auth:username"
   const val PASSWORD = "auth:password"
   const val LOGIN_BUTTON = "auth:login-button"
@@ -48,53 +46,6 @@ object AuthTags {
   const val DEVICE_LABEL = "auth:device-label"
   const val APPROVAL_SAVE = "auth:approval-save"
   const val APPROVAL_CHECK_AGAIN = "auth:approval-check-again"
-}
-
-@Composable
-fun WelcomeScreen(
-    modifier: Modifier = Modifier,
-    onNavigate: (Any) -> Unit = {},
-    viewModel: WelcomeViewModel = authViewModel { graph, _, _ -> WelcomeViewModel(graph) },
-) {
-  val state by viewModel.state.collectAsStateWithLifecycle()
-  AuthDestination(state.destination, onNavigate)
-  if (!state.showWelcome || state.destination != null) return
-
-  Column(
-      modifier = modifier.fillMaxSize().padding(28.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.Center,
-  ) {
-    Text(
-        text = stringResource(R.string.welcome_eyebrow),
-        color = MaterialTheme.colorScheme.secondary,
-        style = MaterialTheme.typography.labelLarge,
-    )
-    Text(
-        text = stringResource(R.string.title_welcome),
-        style = MaterialTheme.typography.headlineMedium,
-        modifier = Modifier.testTag(AuthTags.WELCOME_TITLE),
-    )
-    Text(
-        text = stringResource(R.string.welcome_subtitle),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
-    )
-    Button(
-        onClick = viewModel::continueToLogin,
-        modifier = Modifier.fillMaxWidth().testTag(AuthTags.WELCOME_START),
-    ) {
-      Text(stringResource(R.string.welcome_start))
-    }
-    Text(
-        text = stringResource(R.string.welcome_footer),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 18.dp),
-    )
-  }
 }
 
 @Composable

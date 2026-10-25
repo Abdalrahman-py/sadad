@@ -30,10 +30,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.sadad.app.export.MovementKind
-import com.sadad.app.feature.account.TopBarActions
 import com.sadad.app.feature.auth.MainDispatcherRule
-import com.sadad.app.feature.contacts.ContactsScreen
-import com.sadad.app.feature.contacts.ContactsViewModel
 import com.sadad.app.feature.history.ActivityLogViewModel
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryViewModel
@@ -43,9 +40,8 @@ import com.sadad.app.feature.home.HomeUiState
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.NotificationsScreen
 import com.sadad.app.feature.notifications.Reminder
-import com.sadad.app.feature.reports.ReportPerson
-import com.sadad.app.feature.reports.ReportsContent
-import com.sadad.app.feature.reports.ReportsState
+import com.sadad.app.feature.people.ContactsScreen
+import com.sadad.app.feature.people.ContactsViewModel
 import com.sadad.app.feature.settings.SettingsKit
 import com.sadad.app.feature.settings.SettingsScreen
 import com.sadad.app.testing.TestGraph
@@ -75,8 +71,8 @@ import org.robolectric.annotation.Config
 /**
  * Target 36 draws edge-to-edge with no opt-out, so a screen that sits under the status or
  * navigation bar hides content or a tap target. Each root destination is rendered in the real
- * `SadadShell` with the real `TopBarActions`, with simulated bar insets, and every tap target on
- * screen must lie between the bars.
+ * `SadadShell` (no top bar: each screen draws its own header), with simulated bar insets, and every
+ * tap target on screen must lie between the bars.
  *
  * The device is a Pixel 7 (411 x 914 dp at 420 dpi); Robolectric 4.17 ships no
  * `RobolectricDeviceQualifiers` constant, so the qualifier is spelled out.
@@ -129,7 +125,7 @@ class EdgeToEdgeTest {
 
   @Test
   fun contactsClearsTheBars() =
-      inShellWithStore(Contacts) { fixture ->
+      inShellWithStore(People()) { fixture ->
         awaiting { seedContacts(fixture) }
         val model =
             ContactsViewModel(fixture.graph, SavedStateHandle()).also {
@@ -137,14 +133,14 @@ class EdgeToEdgeTest {
             }
         awaiting { model.state.first { it.registered > 0 } }
         val destinations: NavGraphBuilder.() -> Unit = {
-          composable<Contacts> { ContactsScreen(viewModel = model, onOpenContact = {}) }
+          composable<People> { ContactsScreen(viewModel = model, onOpenContact = {}) }
         }
         destinations
       }
 
   @Test
   fun historyClearsTheBars() =
-      inShellWithStore(History) { fixture ->
+      inShellWithStore(Activity) { fixture ->
         awaiting { seedContacts(fixture) }
         val history = HistoryViewModel(fixture.graph, SavedStateHandle())
         val activity = ActivityLogViewModel(fixture.graph)
@@ -155,33 +151,11 @@ class EdgeToEdgeTest {
           activity.state.first { it.loaded }
         }
         val destinations: NavGraphBuilder.() -> Unit = {
-          composable<History> {
+          composable<Activity> {
             HistoryScreen(historyViewModel = history, activityViewModel = activity)
           }
         }
         destinations
-      }
-
-  @Test
-  fun reportsClearsTheBars() =
-      inShell(Reports) {
-        composable<Reports> {
-          ReportsContent(
-              state =
-                  ReportsState(
-                      loaded = true,
-                      people =
-                          (1..40).map { ReportPerson("c$it", "شخص $it", "", Cents(100L * it)) },
-                      registered = 40,
-                  ),
-              onPreset = {},
-              onCustom = { _, _ -> },
-              onQueryChange = {},
-              onOpen = {},
-              onShare = {},
-              onSave = {},
-          )
-        }
       }
 
   @Test
@@ -209,12 +183,12 @@ class EdgeToEdgeTest {
 
   @Test
   fun settingsClearsTheBars() =
-      inShellWithStore(Settings) { fixture ->
+      inShellWithStore(Store) { fixture ->
         val kit = SettingsKit(fixture).also(closeables::add)
         val model = kit.viewModel()
         awaiting { model.state.first { it.loaded } }
         val destinations: NavGraphBuilder.() -> Unit = {
-          composable<Settings> { SettingsScreen(settingsViewModel = model) }
+          composable<Store> { SettingsScreen(settingsViewModel = model) }
         }
         destinations
       }
@@ -254,7 +228,7 @@ class EdgeToEdgeTest {
     withTimeout(AWAIT_MS) { block() }
   }
 
-  /** A destination that needs no store of its own; the top bar still uses a signed-in store. */
+  /** A destination that needs no store of its own. */
   private fun inShell(
       start: Any,
       check: () -> Unit = {},
@@ -269,7 +243,6 @@ class EdgeToEdgeTest {
   ) {
     awaiting { TestGraph.signedIn() }
         .use { fixture ->
-          val reminders = DueReminders(File(temporary.root, "bell.preferences_pb"), scope)
           val destinations = arrange(fixture)
           compose.setContent {
             SadadTheme {
@@ -277,14 +250,7 @@ class EdgeToEdgeTest {
                 SadadShell(
                     navController = rememberNavController(),
                     startDestination = start,
-                    topBar = {
-                      TopBarActions(
-                          onOpenNotifications = {},
-                          onOpenActivityLog = {},
-                          graph = fixture.graph,
-                          reminders = reminders,
-                      )
-                    },
+                    syncDot = SyncDot.NONE,
                     destinations = destinations,
                 )
               }
@@ -292,7 +258,7 @@ class EdgeToEdgeTest {
           }
           applyBars()
           // The destination loads off the main thread; its own tap targets must be there before
-          // the check, or the top bar and bottom bar alone would satisfy it.
+          // the check, or the bottom bar alone would satisfy it.
           compose.waitUntil(AWAIT_MS) { tapTargets().size > CHROME_TAP_TARGETS }
           assertEveryTapTargetBetweenTheBars()
           check()
@@ -354,8 +320,8 @@ class EdgeToEdgeTest {
     const val NAVIGATION_BAR_DP = 24
     const val AWAIT_MS = 10_000L
 
-    /** The avatar and bell in the top bar and the four tabs in the bottom bar. */
-    const val CHROME_TAP_TARGETS = 6
+    /** The five items of the bottom bar. */
+    const val CHROME_TAP_TARGETS = 5
     const val OUTER = "outer-top"
     const val INNER = "inner-top"
   }

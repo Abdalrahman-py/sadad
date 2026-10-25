@@ -47,6 +47,12 @@ data class SadadPalette(
     val debt: Color,
     val debtSoft: Color,
     val badge: Color,
+    /** «عليه»: the person owes the store. */
+    val owes: Color,
+    val owesSoft: Color,
+    /** «له»: the store holds the person's money. */
+    val credit: Color,
+    val creditSoft: Color,
 ) {
   val isDark: Boolean
     get() = bg.luminance() < 0.5f
@@ -61,7 +67,8 @@ val SadadLightPalette =
         primary = Color(0xFF064B42),
         accent = Color(0xFF159D89),
         text = Color(0xFF142C24),
-        muted = Color(0xFF65796C),
+        // 4.5:1 on the page; the Java app's #65796C fails.
+        muted = Color(0xFF5B6F63),
         line = Color(0xFFD5E5D9),
         warn = Color(0xFF9A5A13),
         card = Color.White,
@@ -70,6 +77,10 @@ val SadadLightPalette =
         debt = Color(0xFFAB323A),
         debtSoft = Color(0xFFFFE1E1),
         badge = Color(0xFFC13634),
+        owes = Color(0xFFAB323A),
+        owesSoft = Color(0xFFFFE1E1),
+        credit = Color(0xFF9A5A13),
+        creditSoft = Color(0xFFFFF1DD),
     )
 
 val SadadDarkPalette =
@@ -90,6 +101,10 @@ val SadadDarkPalette =
         debt = Color(0xFFF59A9F),
         debtSoft = Color(0xFF583B3D),
         badge = Color(0xFFC13634),
+        owes = Color(0xFFF59A9F),
+        owesSoft = Color(0xFF583B3D),
+        credit = Color(0xFFFFD08A),
+        creditSoft = Color(0xFF4A3A22),
     )
 
 val LocalSadadPalette = staticCompositionLocalOf { SadadLightPalette }

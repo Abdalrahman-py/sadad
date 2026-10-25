@@ -12,7 +12,6 @@ import com.sadad.app.ui.Home
 import com.sadad.app.ui.Login
 import com.sadad.app.ui.PasswordChange
 import com.sadad.app.ui.UiTestApplication
-import com.sadad.app.ui.Welcome
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -32,8 +31,7 @@ class AuthNavigationTest {
     lateinit var nav: NavHostController
     compose.setContent {
       nav = rememberNavController()
-      NavHost(navController = nav, startDestination = Welcome) {
-        composable<Welcome> { Text("welcome") }
+      NavHost(navController = nav, startDestination = Login) {
         composable<Login> { Text("login") }
         composable<PasswordChange> { Text("password") }
         composable<AwaitingApproval> { Text("awaiting") }

@@ -1,6 +1,8 @@
 package com.sadad.app.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,10 +33,42 @@ import com.sadad.app.feature.lock.BiometricAuth
 import com.sadad.app.feature.lock.rememberActivityBiometric
 import com.sadad.app.feature.photo.PhotoEditor
 import com.sadad.app.feature.photo.PhotoKind
+import com.sadad.app.ui.components.ScreenHeader
 
 /** Stable handles the settings tests find the list and its rows by. */
 object SettingsTags {
   const val LIST = "settings:list"
+}
+
+/**
+ * The المتجر tab. Until ticket 86 redesigns it, the existing settings list under a header; each way
+ * out is a route the shell owns.
+ */
+@Composable
+fun StoreScreen(
+    onOpenTrash: () -> Unit,
+    onOpenRecovery: () -> Unit,
+    onChangePassword: () -> Unit,
+    onAddStore: () -> Unit,
+    onNeedsLogin: () -> Unit,
+    onOpenOperationsLog: () -> Unit,
+    onOpenNotifications: () -> Unit,
+) {
+  Column(Modifier.fillMaxSize()) {
+    ScreenHeader(stringResource(R.string.nav_store))
+    SettingsScreen(
+        navigation =
+            SettingsNavigation(
+                onOpenTrash = onOpenTrash,
+                onOpenNotifications = onOpenNotifications,
+                onOpenActivityLog = onOpenOperationsLog,
+                onOpenRecovery = onOpenRecovery,
+                onChangePassword = onChangePassword,
+                onAddStore = onAddStore,
+                onNeedsLogin = onNeedsLogin,
+            )
+    )
+  }
 }
 
 /**
@@ -44,7 +78,7 @@ object SettingsTags {
 data class SettingsNavigation(
     val onOpenTrash: () -> Unit = {},
     val onOpenNotifications: () -> Unit = {},
-    /** The History route, on its activity tab. */
+    /** The ledger operations log. */
     val onOpenActivityLog: () -> Unit = {},
     val onOpenRecovery: () -> Unit = {},
     /** The password-change route, used voluntarily here. */

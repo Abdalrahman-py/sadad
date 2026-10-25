@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -51,13 +52,15 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.export.MovementKind
-import com.sadad.app.ui.ScreenTag
+import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadHeroCard
 import com.sadad.app.ui.components.SadadMetricCard
+import com.sadad.app.ui.components.SadadRoundIcon
+import com.sadad.app.ui.components.ScreenHeader
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.Cents
@@ -68,11 +71,18 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 
+/** [onOpenPeople] (with a People filter) and [onRecord] are for ticket 82's redesigned body. */
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun HomeScreen(
-    modifier: Modifier = Modifier,
     onOpenContact: (String) -> Unit = {},
+    onOpenPeople: (filter: String?) -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
+    onRecord: () -> Unit = {},
     viewModel: HomeViewModel = homeViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -80,7 +90,38 @@ fun HomeScreen(
   LaunchedEffect(viewModel, lifecycle) {
     lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { viewModel.followMonth() }
   }
-  HomeContent(state = state, onOpenContact = onOpenContact, modifier = modifier)
+  Column(Modifier.fillMaxSize()) {
+    ScreenHeader(
+        stringResource(R.string.nav_home),
+        actions = {
+          SadadRoundIcon(
+              painterResource(R.drawable.ic_notifications),
+              stringResource(R.string.title_notifications),
+              onOpenNotifications,
+              badge = unreadReminders(),
+          )
+        },
+    )
+    HomeContent(state = state, onOpenContact = onOpenContact, modifier = Modifier.weight(1f))
+  }
+}
+
+/** The open store's unread reminders, the count the bell shows. */
+@OptIn(ExperimentalCoroutinesApi::class)
+@Composable
+private fun unreadReminders(): Int {
+  val context = LocalContext.current
+  // The screen tests run under UiTestApplication, which has no graph; they show no badge.
+  val graph = (context.applicationContext as? SadadApplication)?.graph
+  val reminders = remember(context) { DueReminders.get(context) }
+  val unread by
+      remember(graph, reminders) {
+            (graph?.current ?: flowOf(null)).flatMapLatest { open ->
+              if (open == null) flowOf(0) else reminders.unreadCount(open.account.storeUserId)
+            }
+          }
+          .collectAsStateWithLifecycle(0)
+  return unread
 }
 
 @Composable
@@ -109,7 +150,7 @@ fun HomeContent(
               .fillMaxSize()
               .verticalScroll(rememberScrollState())
               .padding(horizontal = 18.dp)
-              .testTag(ScreenTag.HOME),
+              .testTag(HomeTags.SCREEN),
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     Text(
@@ -333,5 +374,6 @@ private val MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.forLa
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
 object HomeTags {
+  const val SCREEN = "screen:home"
   const val TOTAL = "home:total"
 }
