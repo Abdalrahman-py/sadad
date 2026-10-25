@@ -25,6 +25,8 @@ kotlinxSerialization = "1.11.0"
 benchmark = "1.5.0"
 profileinstaller = "1.4.1"
 uiautomator = "2.4.0"
+sentry = "8.61.0"
+sentryPlugin = "6.23.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -60,6 +62,7 @@ benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro
 profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+sentry-android = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -71,3 +74,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
+sentry = { id = "io.sentry.android.gradle", version.ref = "sentryPlugin" }

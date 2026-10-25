@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only crash source for ticket 77. Exported so the shell can reach it with
+             `adb shell am broadcast -n com.sadad.app.debug/com.sadad.app.crash.SentryProbe`:
+             the shell runs as uid 2000 and a non-exported receiver rejects it with "not exported
+             from uid". It only throws a fixed RuntimeException, and release builds do not
+             contain the class. -->
+        <receiver
+            android:name="com.sadad.app.crash.SentryProbe"
+            android:exported="true" />
+    </application>
+</manifest>
