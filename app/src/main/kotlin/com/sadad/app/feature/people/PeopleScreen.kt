@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,17 +51,7 @@ internal object PeopleTags {
 /** The People tab; the list and its model moved here unchanged from `feature/contacts`. */
 @Composable
 fun PeopleScreen(onOpenContact: (String) -> Unit) {
-  ContactsScreen(onOpenContact = onOpenContact)
-}
-
-@Composable
-fun ContactsScreen(
-    modifier: Modifier = Modifier,
-    onOpenContact: (String) -> Unit = {},
-    onAddContact: () -> Unit = {},
-) {
-  val viewModel = contactsViewModel()
-  ContactsScreen(viewModel, onOpenContact, modifier, onAddContact)
+  ContactsScreen(contactsViewModel(), onOpenContact)
 }
 
 @Composable
@@ -70,7 +59,6 @@ internal fun ContactsScreen(
     viewModel: ContactsViewModel,
     onOpenContact: (String) -> Unit,
     modifier: Modifier = Modifier,
-    onAddContact: () -> Unit = {},
 ) {
   val state by viewModel.state.collectAsState()
   Box(modifier.fillMaxSize()) {
@@ -116,11 +104,7 @@ private fun ContactsList(
           onSelect = viewModel::onSortChange,
       )
     }
-    // The bottom padding keeps the last row clear of the add button.
-    LazyColumn(
-        Modifier.fillMaxSize().testTag(PeopleTags.LIST),
-        contentPadding = PaddingValues(bottom = 88.dp),
-    ) {
+    LazyColumn(Modifier.fillMaxSize().testTag(PeopleTags.LIST)) {
       if (state.loaded && state.rows.isEmpty()) {
         item {
           EmptyState(

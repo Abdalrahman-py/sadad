@@ -30,7 +30,7 @@ data class Chip<T>(val value: T, val label: String, val count: Int? = null)
 
 /**
  * A horizontally scrolling single-select row of pill chips; each chip reports its selected state,
- * the `aria-pressed` of the boards.
+ * the `aria-pressed` of the boards, read as one choice of a group.
  */
 @Composable
 fun <T> ChipRow(
@@ -59,7 +59,11 @@ fun <T> ChipRow(
                   .clip(shape)
                   .background(if (on) p.primary else p.card)
                   .border(BorderStroke(1.dp, if (on) p.primary else p.line), shape)
-                  .selectable(selected = on, role = Role.Tab, onClick = { onSelect(chip.value) })
+                  .selectable(
+                      selected = on,
+                      role = Role.RadioButton,
+                      onClick = { onSelect(chip.value) },
+                  )
                   .padding(horizontal = 12.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(4.dp),

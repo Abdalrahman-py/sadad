@@ -15,6 +15,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -259,7 +262,7 @@ class EdgeToEdgeTest {
           applyBars()
           // The destination loads off the main thread; its own tap targets must be there before
           // the check, or the bottom bar alone would satisfy it.
-          compose.waitUntil(AWAIT_MS) { tapTargets().size > CHROME_TAP_TARGETS }
+          compose.waitUntil(AWAIT_MS) { tapTargets().size > barItems() }
           assertEveryTapTargetBetweenTheBars()
           check()
           // Leave the composition before the fixture closes the store under it.
@@ -301,10 +304,21 @@ class EdgeToEdgeTest {
           .map { it.boundsInWindow }
           .filter { it.width > 0f && it.height > 0f }
 
+  /** The bottom bar's items: five, or none on the destinations that hide the bar. */
+  private fun barItems(): Int =
+      compose
+          .onAllNodes(
+              SemanticsMatcher("a bottom-bar item") {
+                it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("nav:") == true
+              }
+          )
+          .fetchSemanticsNodes()
+          .size
+
   private fun assertEveryTapTargetBetweenTheBars() {
     val height = compose.onRoot().fetchSemanticsNode().size.height
     val targets = tapTargets()
-    assertTrue("the destination shows no tap target of its own", targets.size > CHROME_TAP_TARGETS)
+    assertTrue("the destination shows no tap target of its own", targets.size > barItems())
     val covered = targets.filter {
       it.top < statusBar - 0.5f || it.bottom > height - navigationBar + 0.5f
     }
@@ -320,8 +334,6 @@ class EdgeToEdgeTest {
     const val NAVIGATION_BAR_DP = 24
     const val AWAIT_MS = 10_000L
 
-    /** The five items of the bottom bar. */
-    const val CHROME_TAP_TARGETS = 5
     const val OUTER = "outer-top"
     const val INNER = "inner-top"
   }
