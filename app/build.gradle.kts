@@ -28,6 +28,18 @@ val releaseSigningReady =
       !it.isNullOrBlank()
     }
 
+// The team build has its own key: it is published on dev at every push, so it must never be the
+// production key, and it cannot be a runner's debug key either (that one is regenerated per job, and
+// the next build would refuse to install over the last).
+val teamStoreFile = System.getenv("TEAM_KEYSTORE_FILE")
+val teamStorePassword = System.getenv("TEAM_KEYSTORE_PASSWORD")
+val teamKeyAlias = System.getenv("TEAM_KEY_ALIAS")
+val teamKeyPassword = System.getenv("TEAM_KEY_PASSWORD")
+val teamSigningReady =
+    listOf(teamStoreFile, teamStorePassword, teamKeyAlias, teamKeyPassword).all {
+      !it.isNullOrBlank()
+    }
+
 fun quoted(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 // The pinned offline-lease key: the public half of the api's SADAD_LEASE_PRIVATE_JWK secret (ticket
@@ -87,6 +99,13 @@ android {
           keyAlias = releaseKeyAlias
           keyPassword = releaseKeyPassword
         }
+    if (teamSigningReady)
+        create("team") {
+          storeFile = file(teamStoreFile!!)
+          storePassword = teamStorePassword
+          keyAlias = teamKeyAlias
+          keyPassword = teamKeyPassword
+        }
   }
   buildTypes {
     debug {
@@ -100,12 +119,14 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
     // The team build the `dev` branch publishes: the debug app (same `.debug` suffix, so it lives
-    // beside the real one) signed with the release key when CI has it, so every build installs over
-    // the last without an uninstall. Not minified: a crash report has to stay readable.
+    // beside the real one) signed with the team key when CI has it, so every build installs over the
+    // last without an uninstall. Not minified: a crash report has to stay readable.
     create("team") {
       initWith(getByName("debug"))
       versionNameSuffix = "-team"
-      if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
+      signingConfig =
+          if (teamSigningReady) signingConfigs.getByName("team")
+          else signingConfigs.getByName("debug")
       matchingFallbacks += "debug"
     }
     // What the :benchmark module measures: the release build (R8 on) signed with the debug key so a

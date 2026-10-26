@@ -5,8 +5,8 @@ name: Publish team build
 # the rolling `team-latest` prerelease. `main` stays the stable line: android-release.yml publishes
 # the signed production APK from a `v*` tag, and nothing here touches it.
 #
-# Requires the same four signing secrets as android-release.yml, because a build signed with a fresh
-# machine debug key would refuse to install over the previous one.
+# Requires the four TEAM_KEY* secrets (a key generated for the team alone, not the production one and
+# not a runner debug key: that one is regenerated per job, and the next build would refuse to install).
 
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Set signing key path
-        run: echo "SADAD_KEYSTORE_FILE=$RUNNER_TEMP/team.jks" >> "$GITHUB_ENV"
+        run: echo "TEAM_KEYSTORE_FILE=$RUNNER_TEMP/team.jks" >> "$GITHUB_ENV"
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -48,24 +48,24 @@ jobs:
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
       - name: Unpack the signing key
         env:
-          SADAD_KEYSTORE_BASE64: ${{ secrets.SADAD_KEYSTORE_BASE64 }}
-          SADAD_KEYSTORE_PASSWORD: ${{ secrets.SADAD_KEYSTORE_PASSWORD }}
-          SADAD_KEY_ALIAS: ${{ secrets.SADAD_KEY_ALIAS }}
-          SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
+          TEAM_KEYSTORE_BASE64: ${{ secrets.TEAM_KEYSTORE_BASE64 }}
+          TEAM_KEYSTORE_PASSWORD: ${{ secrets.TEAM_KEYSTORE_PASSWORD }}
+          TEAM_KEY_ALIAS: ${{ secrets.TEAM_KEY_ALIAS }}
+          TEAM_KEY_PASSWORD: ${{ secrets.TEAM_KEY_PASSWORD }}
         run: |
-          for name in SADAD_KEYSTORE_BASE64 SADAD_KEYSTORE_PASSWORD SADAD_KEY_ALIAS SADAD_KEY_PASSWORD; do
+          for name in TEAM_KEYSTORE_BASE64 TEAM_KEYSTORE_PASSWORD TEAM_KEY_ALIAS TEAM_KEY_PASSWORD; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing repository secret: $name"
               exit 1
             fi
           done
           umask 077
-          printf '%s' "$SADAD_KEYSTORE_BASE64" | base64 --decode > "$SADAD_KEYSTORE_FILE"
+          printf '%s' "$TEAM_KEYSTORE_BASE64" | base64 --decode > "$TEAM_KEYSTORE_FILE"
       - name: Build the team APK
         env:
-          SADAD_KEYSTORE_PASSWORD: ${{ secrets.SADAD_KEYSTORE_PASSWORD }}
-          SADAD_KEY_ALIAS: ${{ secrets.SADAD_KEY_ALIAS }}
-          SADAD_KEY_PASSWORD: ${{ secrets.SADAD_KEY_PASSWORD }}
+          TEAM_KEYSTORE_PASSWORD: ${{ secrets.TEAM_KEYSTORE_PASSWORD }}
+          TEAM_KEY_ALIAS: ${{ secrets.TEAM_KEY_ALIAS }}
+          TEAM_KEY_PASSWORD: ${{ secrets.TEAM_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           version="dev-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
@@ -134,4 +134,4 @@ jobs:
           gh release edit team-latest --notes-file "$RUNNER_TEMP/notes.md"
       - name: Remove the signing key
         if: always()
-        run: rm -f "$SADAD_KEYSTORE_FILE"
+        run: rm -f "$TEAM_KEYSTORE_FILE"
