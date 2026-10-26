@@ -78,7 +78,10 @@ class QuickAddViewModelTest {
   fun openingTheFlowForAContactSelectsThemAndStartsAtTheAmount() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
-      val model = QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle())
+      val model =
+          QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
       val state = model.state.first { it.loaded }
 
       assertEquals(contact, state.selected?.id)
@@ -396,9 +399,14 @@ class QuickAddViewModelTest {
     }
   }
 
-  /** Short, real windows: the commit runs on the store's scope, not the test dispatcher's clock. */
+  /**
+   * Short, real windows: the commit runs on the store's scope, not the test dispatcher's clock.
+   * The screen's scope is registered with the fixture so no collector outlives the database.
+   */
   private fun TestGraph.model(undoWindowMs: Long = 300): QuickAddViewModel =
-      QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs)
+      QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs).also {
+        closeWithStore(it.viewModelScope)
+      }
 
   /** The outbox is written from another coroutine; polling keeps the assertion about the row. */
   private suspend fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {
