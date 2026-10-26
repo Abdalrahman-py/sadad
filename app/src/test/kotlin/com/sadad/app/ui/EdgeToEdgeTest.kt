@@ -32,13 +32,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.ActivityLogViewModel
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryViewModel
 import com.sadad.app.feature.home.HomeContent
-import com.sadad.app.feature.home.HomeMovement
 import com.sadad.app.feature.home.HomeUiState
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.NotificationsScreen
@@ -50,9 +48,7 @@ import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Direction
 import java.io.File
-import java.time.Instant
 import java.time.YearMonth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,23 +100,12 @@ class EdgeToEdgeTest {
                   HomeUiState(
                       storeName = "متجر النور",
                       month = YearMonth.of(2026, 10),
-                      totalReceivable = Cents(123_456),
+                      owedToStore = Cents(123_456),
+                      storeOwes = Cents(12_400),
                       monthDebts = Cents(3_000),
                       monthPayments = Cents(1_000),
-                      debtsRatio = 0.75f,
-                      paymentsRatio = 0.25f,
-                      recent =
-                          listOf(
-                              HomeMovement(
-                                  "c1",
-                                  "سامي",
-                                  Cents(12_000),
-                                  MovementKind.PAYMENT,
-                                  pending = false,
-                                  createdAt = Instant.parse("2026-10-05T10:00:00Z"),
-                                  direction = Direction.RECEIVABLE,
-                              )
-                          ),
+                      monthPaymentsCount = 1,
+                      collectionPercent = 33,
                   )
           )
         }

@@ -70,6 +70,21 @@ class LeaseStore(
   fun needsRenewal(account: Account): Boolean =
       !allows(account) || verified!!.lease.payload.expiresAt - now() < RENEW_BEFORE
 
+  /**
+   * When the cached lease for [account] ends, or `null` when the cached lease belongs to another
+   * installation. Read-only: the screen names the time the store may keep recording offline.
+   */
+  fun expiresAt(account: Account): Long? {
+    val payload = verified?.lease?.payload ?: return null
+    val installation = account.installation ?: return null
+    val mine =
+        payload.userId == account.storeUserId &&
+            payload.installationId == account.installationId &&
+            payload.generation == installation.generation &&
+            installation.status == "active"
+    return if (mine) payload.expiresAt else null
+  }
+
   @Serializable private data class Record(val lease: Lease, val boot: Int)
 
   private companion object {
