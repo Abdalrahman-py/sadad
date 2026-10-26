@@ -274,7 +274,8 @@ class QuickAddViewModelTest {
     TestGraph.signedIn().use { fixture ->
       fixture.settledContact("سارة", phone = "+970599335640")
       val model = fixture.model()
-      model.state.first { it.loaded }
+      // duplicateFor reads the projected people, so wait for them, not only for loaded.
+      model.state.first { it.loaded && it.people.isNotEmpty() }
 
       model.startNewPerson()
       model.onNewName("سارة محمود")
