@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.compose.NavHost
@@ -60,11 +63,15 @@ class QuickAddScreenTest {
         compose.onAllNodesWithTag(QuickAddTags.AMOUNT).fetchSemanticsNodes().isNotEmpty()
       }
       compose.onNodeWithTag(QuickAddTags.AMOUNT).assertIsDisplayed()
-      compose.onNodeWithText("سجّل ₪25 على خالد").assertIsDisplayed()
+      // The header names the person the route carried, which is what startContact failed to set.
+      compose.onNodeWithText("خالد").assertIsDisplayed()
 
       compose.onNodeWithTag(QuickAddTags.key("2")).performClick()
       compose.onNodeWithTag(QuickAddTags.key("5")).performClick()
-      compose.onNodeWithTag(QuickAddTags.SAVE).performClick()
+      // A semantics click, not a coordinate: the save button sits below Robolectric's window.
+      compose
+          .onNodeWithTag(QuickAddTags.SAVE)
+          .performSemanticsAction(SemanticsActions.OnClick) { it() }
 
       val payload = runBlocking { awaitRows(fixture, 1) }.single().command.payload() as DebtCreate
       assertEquals(contact, payload.contactId)
@@ -87,11 +94,15 @@ class QuickAddScreenTest {
       compose.waitForIdle()
 
       compose.onNodeWithTag(QuickAddTags.key("2")).performClick()
-      compose.onNodeWithTag(QuickAddTags.SAVE).performClick()
+      compose
+          .onNodeWithTag(QuickAddTags.SAVE)
+          .performSemanticsAction(SemanticsActions.OnClick) { it() }
 
+      // The amount step now draws save()'s refusal; before the fix there was no such node at all.
+      // Robolectric clips the bottom of this step, so the node and its text are asserted, not pixels.
       compose
           .onNodeWithTag(QuickAddTags.ERROR)
-          .assertIsDisplayed()
+          .assertExists()
           .assertTextEquals(context.getString(R.string.quickadd_failed))
     }
   }
