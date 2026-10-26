@@ -21,7 +21,7 @@ class PaymentAllocationTest {
   fun spansDebtsOldestFirst() {
     // Queued newest first, so the order comes from createdAt, not from the list.
     val view = Events.stateOf(contact, newer, older).viewWith()
-    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(12000))
+    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(12000), Direction.RECEIVABLE)
     assertEquals(
         listOf(older.entityId to Cents(10000), newer.entityId to Cents(2000)),
         parts.map { it.debtId to it.amount },
@@ -35,10 +35,10 @@ class PaymentAllocationTest {
     val view = Events.stateOf(contact, older, newer).viewWith()
     for (amount in listOf(Cents(15001), Cents(0), Cents(-1))) {
       assertThrows(IllegalArgumentException::class.java) {
-        PaymentAllocation.allocate(view, contact.entityId, amount)
+        PaymentAllocation.allocate(view, contact.entityId, amount, Direction.RECEIVABLE)
       }
     }
-    assertEquals(2, PaymentAllocation.allocate(view, contact.entityId, Cents(15000)).size)
+    assertEquals(2, PaymentAllocation.allocate(view, contact.entityId, Cents(15000), Direction.RECEIVABLE).size)
   }
 
   @Test
@@ -52,10 +52,10 @@ class PaymentAllocationTest {
     val paidOff =
         Commands.paymentCreate(origin, at(3), settled.entityId, Cents(300), PaymentMethod.BANK)
     val view = Events.stateOf(contact, other, othersDebt, owed, settled, paidOff, newer).viewWith()
-    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(5000))
+    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(5000), Direction.RECEIVABLE)
     assertEquals(listOf(newer.entityId), parts.map { it.debtId })
     assertThrows(IllegalArgumentException::class.java) {
-      PaymentAllocation.allocate(view, contact.entityId, Cents(5001))
+      PaymentAllocation.allocate(view, contact.entityId, Cents(5001), Direction.RECEIVABLE)
     }
   }
 
@@ -64,10 +64,10 @@ class PaymentAllocationTest {
     val queued =
         Commands.paymentCreate(origin, at(3), older.entityId, Cents(9000), PaymentMethod.CASH)
     val view = Events.stateOf(contact, older, newer).viewWith(listOf(queued))
-    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(3000))
+    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(3000), Direction.RECEIVABLE)
     assertEquals(listOf(Cents(1000), Cents(2000)), parts.map { it.amount })
     assertThrows(IllegalArgumentException::class.java) {
-      PaymentAllocation.allocate(view, contact.entityId, Cents(6001))
+      PaymentAllocation.allocate(view, contact.entityId, Cents(6001), Direction.RECEIVABLE)
     }
   }
 
@@ -78,7 +78,7 @@ class PaymentAllocationTest {
     val second =
         Commands.debtCreate(origin, at(5), contact.entityId, Direction.RECEIVABLE, Cents(100))
     val view = Events.stateOf(contact, first, second).viewWith()
-    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(150))
+    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(150), Direction.RECEIVABLE)
     assertEquals(
         listOf(first.entityId to Cents(100), second.entityId to Cents(50)),
         parts.map { it.debtId to it.amount },
@@ -90,7 +90,7 @@ class PaymentAllocationTest {
     val queuedDebt =
         Commands.debtCreate(origin, at(4), contact.entityId, Direction.RECEIVABLE, Cents(400))
     val view = Events.stateOf(contact, older).viewWith(listOf(queuedDebt))
-    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(10400))
+    val parts = PaymentAllocation.allocate(view, contact.entityId, Cents(10400), Direction.RECEIVABLE)
     assertEquals(2, parts.size)
     val pendingPart = parts.last()
     assertTrue(pendingPart.debtPending)
@@ -110,6 +110,14 @@ class PaymentAllocationTest {
         Commands.debtCreate(origin, at(3), supplier.entityId, Direction.RECEIVABLE, Cents(9_000))
     val view = Events.stateOf(supplier, newer, older, receivable).viewWith()
 
+    assertEquals(
+        Cents(70_000),
+        PaymentAllocation.openBalance(view, supplier.entityId, Direction.PAYABLE),
+    )
+    assertEquals(
+        Cents(9_000),
+        PaymentAllocation.openBalance(view, supplier.entityId, Direction.RECEIVABLE),
+    )
     val parts =
         PaymentAllocation.allocate(view, supplier.entityId, Cents(30_000), Direction.PAYABLE)
     assertEquals(

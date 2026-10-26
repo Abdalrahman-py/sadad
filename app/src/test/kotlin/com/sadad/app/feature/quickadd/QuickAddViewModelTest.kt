@@ -144,6 +144,36 @@ class QuickAddViewModelTest {
   }
 
   @Test
+  fun aSupplierPaymentSavesAgainstThePayableBalance() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val supplier = fixture.settledContact("مخبز الأمل", kind = ContactKind.SUPPLIER)
+      val debt = fixture.openDebt(supplier, 10_000, Direction.PAYABLE)
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.isNotEmpty() }
+      model.pick(supplier)
+      model.toPayment()
+      model.state.first { it.overBalance == Cents(10_000) }
+
+      model.press("1")
+      model.press("0")
+      model.press("0")
+
+      val state = model.state.value
+      assertEquals(Cents(10_000), state.overBalance)
+      assertTrue("a supplier payment inside the payable balance can be saved", state.canSave)
+
+      model.save(context)
+      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS + 1)
+      store.awaitOutbox(1)
+
+      val payload = store.outbox.snapshot().single().command.payload() as PaymentCreate
+      assertEquals(debt, payload.debtId)
+      assertEquals(Cents(10_000), payload.amountCents)
+    }
+  }
+
+  @Test
   fun aPaymentAboveTheOpenBalanceIsRefusedAndCannotBeSaved() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
@@ -288,10 +318,14 @@ class QuickAddViewModelTest {
           .getOrThrow()
           .also { settleAll() }
 
-  private suspend fun TestGraph.openDebt(contactId: String, cents: Long): String =
+  private suspend fun TestGraph.openDebt(
+      contactId: String,
+      cents: Long,
+      direction: Direction = Direction.RECEIVABLE,
+  ): String =
       checkNotNull(graph.current.value)
           .repository
-          .addDebt(contactId, Direction.RECEIVABLE, Cents(cents), null, null)
+          .addDebt(contactId, direction, Cents(cents), null, null)
           .getOrThrow()
           .also { settleAll() }
 

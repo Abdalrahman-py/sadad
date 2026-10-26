@@ -11,7 +11,6 @@ import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
@@ -532,7 +531,7 @@ class QuickAddViewModel(
               origin,
               at,
               person.id,
-              if (person.kind == ContactKind.CUSTOMER) Direction.RECEIVABLE else Direction.PAYABLE,
+              person.kind.debtDirection,
               amount,
               note,
               if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
@@ -546,7 +545,7 @@ class QuickAddViewModel(
               origin,
               at,
               person.id,
-              if (person.kind == ContactKind.CUSTOMER) Direction.RECEIVABLE else Direction.PAYABLE,
+              person.kind.debtDirection,
               amount,
               note,
               if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
@@ -634,13 +633,7 @@ class QuickAddViewModel(
     val open =
         view.contacts.associate { contact ->
           contact.id to
-              view.debts
-                  .filter {
-                    it.contactId == contact.id &&
-                        it.direction == Direction.RECEIVABLE &&
-                        it.remaining > Cents.ZERO
-                  }
-                  .fold(Cents.ZERO) { total, debt -> total + debt.remaining }
+              PaymentAllocation.openBalance(view, contact.id, contact.kind.debtDirection)
         }
     openBalances = open
     return Facts(
