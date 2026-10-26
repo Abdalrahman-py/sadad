@@ -28,6 +28,15 @@ class PeopleViewModelTest {
   private val today: LocalDate = LocalDate.of(2026, 10, 25)
 
   @Test
+  fun theRoutesFilterPreselectsTheChip() {
+    // The card on Home navigates People("late"); the destination's SavedStateHandle carries it.
+    assertEquals(
+        PeopleFilter.LATE,
+        initialPeopleFilter(SavedStateHandle(mapOf("filter" to "late"))),
+    )
+  }
+
+  @Test
   fun everyChipCountsItsOwnPeople() {
     val state = state()
 
