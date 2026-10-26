@@ -1,6 +1,7 @@
 package com.sadad.app.feature.quickadd
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -893,6 +894,11 @@ private fun DoneStep(
 ) {
   val p = sadadPalette
   val done = state.done ?: return
+  // System back is a way out like the two buttons below: whatever is held is queued, not dropped.
+  BackHandler {
+    model.leave(context)
+    onClose()
+  }
   val person = state.selected
   val supplier = person?.kind == ContactKind.SUPPLIER
   val title =

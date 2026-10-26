@@ -138,8 +138,8 @@ class QuickAddViewModel(
   private var startContactApplied = false
 
   /** The commands the done step holds; [commitJob] appends them when the window ends. */
-  private var pending: List<LedgerCommand> = emptyList()
-  private var commitJob: Job? = null
+  @Volatile private var pending: List<LedgerCommand> = emptyList()
+  @Volatile private var commitJob: Job? = null
   private var anomalyApproved: String? = null
 
   init {
@@ -376,10 +376,17 @@ class QuickAddViewModel(
       return
     }
     val sentence = sentence(context)
+    // The window belongs to the store, not the screen: leaving (back, home, the lock) during it
+    // must still end in the commands the done step promised.
+    val store = graph.current.value
+    if (store == null) {
+      mutable.update { it.copy(error = context.getString(R.string.quickadd_failed)) }
+      return
+    }
     pending = commands
     pendingContact = null
     commitJob?.cancel()
-    commitJob = viewModelScope.launch {
+    commitJob = store.jobs.launch {
       delay(undoWindowMs)
       commit(context)
     }
@@ -585,11 +592,13 @@ class QuickAddViewModel(
   private fun commit(context: Context) {
     val commands = pending
     pending = emptyList()
-    val scope = graph.current.value
-    if (commands.isEmpty() || scope == null) return
-    viewModelScope.launch {
-      scope.outbox.append(commands)
-      scope.onQueued()
+    val store = graph.current.value
+    if (commands.isEmpty() || store == null) return
+    // The outbox write is not cancelled with this screen: it is one short write, not background
+    // work, and the done step already told the user the record was made.
+    store.jobs.launch {
+      store.outbox.append(commands)
+      store.onQueued()
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
