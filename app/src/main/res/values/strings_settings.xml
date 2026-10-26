@@ -1,53 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_settings">الإعدادات</string>
-
-    <!-- Store profile -->
-    <string name="settings_store_heading">بيانات المتجر</string>
-    <string name="settings_store_edit">تعديل اسم المتجر وصاحب المتجر</string>
-    <string name="settings_store_name">اسم المتجر: %1$s</string>
-    <string name="settings_owner_name">اسم صاحب المتجر: %1$s</string>
+    <!-- Store card -->
+    <string name="settings_owner_line">صاحب المتجر: %1$s · هذا الهاتف</string>
+    <string name="settings_this_device">هذا الهاتف</string>
+    <string name="settings_switcher">تبديل</string>
+    <string name="settings_edit_profile_description">تعديل اسم المتجر وصاحب المتجر</string>
+    <string name="settings_add_store">إضافة متجر</string>
     <string name="settings_default_store">متجري</string>
-    <string name="settings_default_owner">غير مسجل</string>
     <string name="settings_profile_title">بيانات المتجر</string>
     <string name="settings_profile_store_label">اسم المتجر</string>
     <string name="settings_profile_owner_label">اسم صاحب المتجر</string>
     <string name="settings_profile_note">تُحفظ على هذا الهاتف فقط.</string>
 
-    <!-- Data and export -->
-    <string name="settings_data_heading">البيانات والتصدير</string>
-    <string name="settings_export_period">مدة تصدير كشف السجلات</string>
-    <string name="settings_share_statement">مشاركة كشف السجلات</string>
-    <string name="settings_trash">سلة المحذوفات</string>
-    <string name="settings_notifications">الإشعارات</string>
-    <string name="settings_support">تواصل معنا على WhatsApp</string>
-    <string name="settings_nothing_to_export">أضف أشخاصًا وحركات قبل إنشاء كشف السجلات.</string>
-    <string name="settings_share_failed">تعذر إنشاء الكشف. حاول مرة أخرى.</string>
-    <string name="settings_action_failed">تعذر تنفيذ العملية. حاول مرة أخرى.</string>
-
-    <!-- Sync -->
-    <string name="settings_sync_heading">مزامنة السجلات والاسترداد</string>
-    <string name="settings_sync_status">حالة مزامنة السجلات: %1$s</string>
-    <string name="settings_sync_idle">السجلات محدّثة</string>
-    <string name="settings_sync_running">جارٍ تحديث السجلات…</string>
-    <string name="settings_sync_offline">لا يوجد اتصال؛ ستُرسل الإدخالات عند عودته.</string>
+    <!-- Devices and sync -->
+    <string name="settings_devices_heading">الأجهزة والمزامنة</string>
+    <string name="settings_sync_all_sent">كل الإدخالات مرسلة</string>
+    <string name="settings_sync_waiting_one">إدخال واحد بانتظار الإرسال</string>
+    <string name="settings_sync_waiting_two">إدخالان بانتظار الإرسال</string>
+    <string name="settings_sync_waiting_few">%1$d إدخالات بانتظار الإرسال</string>
+    <string name="settings_sync_waiting_many">%1$d إدخالًا بانتظار الإرسال</string>
+    <string name="settings_sync_auto">يُرسل تلقائيًا</string>
+    <string name="settings_sync_offline">لا يوجد اتصال</string>
+    <string name="settings_sync_running">جارٍ الإرسال…</string>
     <string name="settings_sync_signed_out">سجّل الدخول لمتابعة المزامنة.</string>
     <string name="settings_sync_awaiting_approval">بانتظار موافقة الإدارة على هذا الجهاز.</string>
     <string name="settings_sync_revoked">أُلغي اعتماد هذا الجهاز.</string>
     <string name="settings_sync_suspended">المتجر موقوف.</string>
     <string name="settings_sync_password_change">يجب تغيير كلمة المرور للمتابعة.</string>
     <string name="settings_sync_retry">ستُعاد المحاولة تلقائياً.</string>
-    <string name="settings_unsent">لديك %1$s عمليات لم تُرسل بعد</string>
-    <string name="settings_download_latest">تحميل أحدث السجلات</string>
+    <string name="settings_sync_now">مزامنة الآن</string>
     <string name="settings_activity_log">سجل عمليات الدفتر</string>
-    <string name="settings_recovery">الاسترداد وتسجيل الهاتف كجهاز جديد</string>
+    <string name="settings_activity_log_sub">من سجّل ماذا ومن أي جهاز، والمرفوض</string>
+    <string name="settings_recovery">تغيير الهاتف والاسترداد</string>
+    <string name="settings_recovery_sub">انقل الإدخالات غير المرسلة بأمان</string>
 
-    <!-- App lock -->
-    <string name="settings_lock_heading">قفل التطبيق</string>
-    <string name="settings_lock_enable">تفعيل</string>
+    <!-- The newest entry waiting for the server -->
+    <string name="settings_queued_debt">دين %1$s %2$s</string>
+    <string name="settings_queued_debt_correct">تصحيح دين %1$s %2$s</string>
+    <string name="settings_queued_payment">دفعة %1$s %2$s</string>
+    <string name="settings_queued_payment_reverse">عكس دفعة %1$s</string>
+    <string name="settings_queued_contact_new">شخص جديد %1$s</string>
+    <string name="settings_queued_contact_edit">تعديل بيانات %1$s</string>
+    <string name="settings_queued_contact_archive">حذف %1$s</string>
+    <string name="settings_queued_contact_restore">استرجاع %1$s</string>
+
+    <!-- Security -->
+    <string name="settings_security_heading">الأمان</string>
+    <string name="settings_lock_enable">قفل التطبيق</string>
+    <string name="settings_lock_enable_sub">يُطلب الرمز عند العودة للتطبيق</string>
+    <string name="settings_lock_biometric">فتح بالبصمة أو الوجه</string>
+    <string name="settings_lock_biometric_sub">أسرع من كتابة الرمز</string>
     <string name="settings_lock_change_pin">تغيير رمز القفل</string>
     <string name="settings_lock_create_pin">إنشاء رمز قفل</string>
-    <string name="settings_lock_biometric">تفعيل البصمة</string>
+    <string name="settings_change_password">تغيير كلمة المرور</string>
     <string name="settings_pin_title">إعداد قفل التطبيق</string>
     <string name="settings_pin_message">سيُطلب الرمز عند فتح التطبيق بعد مغادرته.</string>
     <string name="settings_pin_new">رمز جديد (4 إلى 12 رقماً)</string>
@@ -55,19 +60,32 @@
     <string name="settings_pin_invalid">الرمز يجب أن يكون من 4 إلى 12 رقماً.</string>
     <string name="settings_pin_mismatch">الرمزان غير متطابقين</string>
 
+    <!-- Data -->
+    <string name="settings_data_heading">البيانات</string>
+    <string name="settings_trash">سلة المحذوفات</string>
+    <string name="settings_trash_hint">الكشوفات تُصدَّر من «الحركات»</string>
+    <string name="settings_trash_none">فارغة</string>
+    <string name="settings_trash_one">عنصر واحد</string>
+    <string name="settings_trash_two">عنصران</string>
+    <string name="settings_trash_few">%1$d عناصر</string>
+    <string name="settings_trash_many">%1$d عنصرًا</string>
+    <string name="settings_export_period">مدة تصدير كشف السجلات</string>
+    <string name="settings_share_statement">مشاركة كشف السجلات</string>
+    <string name="settings_nothing_to_export">أضف أشخاصًا وحركات قبل إنشاء كشف السجلات.</string>
+    <string name="settings_share_failed">تعذر إنشاء الكشف. حاول مرة أخرى.</string>
+    <string name="settings_action_failed">تعذر تنفيذ العملية. حاول مرة أخرى.</string>
+
     <!-- Appearance -->
     <string name="settings_appearance_heading">المظهر</string>
     <string name="settings_theme_system">حسب النظام</string>
-    <string name="settings_theme_light">الوضع الفاتح</string>
-    <string name="settings_theme_dark">الوضع الداكن</string>
+    <string name="settings_theme_light">فاتح</string>
+    <string name="settings_theme_dark">داكن</string>
+    <string name="settings_notification_settings">إعدادات الإشعارات</string>
+    <string name="settings_notification_settings_sub">الصوت والاهتزاز من إعدادات الهاتف</string>
+    <string name="settings_notification_settings_failed">تعذر فتح إعدادات الإشعارات.</string>
 
     <!-- Account -->
     <string name="settings_account_heading">الحساب</string>
-    <string name="settings_change_password">تغيير كلمة المرور</string>
-    <string name="settings_saved_stores">حسابات المتاجر</string>
-    <string name="settings_stores_title">حسابات المتاجر</string>
-    <string name="settings_store_active">نشط</string>
-    <string name="settings_add_store">＋ إضافة حساب متجر</string>
     <string name="settings_sign_out">تسجيل الخروج</string>
     <string name="settings_sign_out_message">هل تريد تسجيل الخروج؟ تبقى بيانات المتجر على هذا الهاتف.</string>
     <string name="settings_remove_store">إزالة هذا المتجر من الهاتف</string>
@@ -75,9 +93,10 @@
     <string name="settings_remove_message">تُحذف بيانات المتجر ومفتاح هذا الهاتف ولا يمكن التراجع.</string>
     <string name="settings_remove_unsent">لديك %1$s عمليات لم تُرسل بعد وستضيع. اضغط تأكيد مرتين للإزالة.</string>
     <string name="settings_remove_again">تأكيد مرة أخرى</string>
+    <string name="settings_unsent">لديك %1$s عمليات لم تُرسل بعد</string>
     <string name="settings_confirm">تأكيد</string>
     <string name="settings_cancel">إلغاء</string>
     <string name="settings_save">حفظ</string>
-    <string name="settings_back">رجوع</string>
-    <string name="settings_developer">المطور : orca</string>
+    <string name="settings_support">تواصل معنا على واتساب</string>
+    <string name="settings_version">سدد · الإصدار %1$s</string>
 </resources>

@@ -159,6 +159,13 @@ private fun ComposeContentTestRule.inspect(problems: MutableMap<String, String>)
       .asSequence()
       .map(::bringIntoView)
       .filterNot { it.touchBoundsInRoot.isEmpty }
+      // The viewport clips the bounds it reports, so a control the fold cuts in half looks short
+      // from wherever its list happens to sit. Its own size is unclipped: when the two disagree it
+      // is only partly on screen, and the sweep checks it from that item's own scroll position.
+      .filter { node ->
+        val bounds = node.boundsInRoot
+        bounds.width + 0.5f >= node.size.width && bounds.height + 0.5f >= node.size.height
+      }
       .forEach { node ->
         val bounds = node.touchBoundsInRoot
         if (bounds.width + 0.5f < minimum || bounds.height + 0.5f < minimum) {

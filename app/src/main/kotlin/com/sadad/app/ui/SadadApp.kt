@@ -170,9 +170,6 @@ fun SadadApp(
                 onAddStore = { navController.navigateAuth(Login) },
                 onNeedsLogin = { navController.navigateAuth(Login) },
                 onOpenOperationsLog = { navController.navigate(OperationsLog) },
-                onOpenNotifications = {
-                  navController.navigate(Notifications) { launchSingleTop = true }
-                },
             )
           }
           composable<Notifications> { NotificationsScreen(onBack = back) }

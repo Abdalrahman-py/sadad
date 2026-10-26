@@ -46,7 +46,7 @@ import com.sadad.app.feature.notifications.Reminder
 import com.sadad.app.feature.people.ContactsScreen
 import com.sadad.app.feature.people.ContactsViewModel
 import com.sadad.app.feature.settings.SettingsKit
-import com.sadad.app.feature.settings.SettingsScreen
+import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
@@ -191,7 +191,7 @@ class EdgeToEdgeTest {
         val model = kit.viewModel()
         awaiting { model.state.first { it.loaded } }
         val destinations: NavGraphBuilder.() -> Unit = {
-          composable<Store> { SettingsScreen(settingsViewModel = model) }
+          composable<Store> { StoreScreen(settingsViewModel = model) }
         }
         destinations
       }

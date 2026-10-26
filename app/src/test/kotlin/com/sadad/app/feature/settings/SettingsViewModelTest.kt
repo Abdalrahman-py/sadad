@@ -1,6 +1,7 @@
 package com.sadad.app.feature.settings
 
 import androidx.lifecycle.SavedStateHandle
+import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.feature.auth.MainDispatcherRule
@@ -8,6 +9,9 @@ import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
+import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -289,6 +293,142 @@ class SettingsViewModelTest {
 
         assertTrue(kit.lock.hasPin())
         assertTrue(saved.keys().none { key -> saved.get<Any>(key).toString().contains("483927") })
+      }
+    }
+  }
+
+  @Test
+  fun theNewestWaitingEntryIsNamedWithItsContactAndAmount() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var contact = ""
+        fixture.seed { contact = addContact("سارة محمود", null, null, null, null).getOrThrow() }
+        fixture.seed {
+          addDebt(contact, Direction.RECEIVABLE, Cents(12_000), null, null).getOrThrow()
+        }
+        val model = kit.viewModel()
+
+        val state = model.state.first { it.loaded && it.unsent == 2 }
+
+        assertEquals(2, state.unsent)
+        assertEquals(QueuedEntry(QueuedKind.DEBT, "سارة محمود", Cents(12_000)), state.newest)
+      }
+    }
+  }
+
+  @Test
+  fun aQueuedPaymentIsNamedWithItsContactAndAmount() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var contact = ""
+        var debt = ""
+        fixture.seed { contact = addContact("سامي", null, null, null, null).getOrThrow() }
+        fixture.seed {
+          debt = addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+        }
+        fixture.settleAll()
+        fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
+        val model = kit.viewModel()
+
+        val state = model.state.first { it.loaded && it.unsent == 1 }
+
+        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "سامي", Cents(2_000)), state.newest)
+      }
+    }
+  }
+
+  @Test
+  fun threeWaitingEntriesAreCountedAndTheNewestIsListed() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        repeat(3) { index ->
+          fixture.seed { addContact("شخص $index", null, null, null, null).getOrThrow() }
+        }
+        val model = kit.viewModel()
+
+        val state = model.state.first { it.loaded && it.unsent == 3 }
+
+        assertEquals(3, state.unsent)
+        assertEquals(QueuedEntry(QueuedKind.CONTACT_NEW, "شخص 2", null), state.newest)
+      }
+    }
+  }
+
+  @Test
+  fun aStoreWithEverythingSentHasNothingWaiting() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
+        fixture.settleAll()
+        val model = kit.viewModel()
+
+        val state = model.state.first { it.loaded }
+
+        assertEquals(0, state.unsent)
+        assertNull(state.newest)
+      }
+    }
+  }
+
+  @Test
+  fun offlineIsSaidOnTheState() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        val status = MutableStateFlow<SyncStatus>(SyncStatus.Offline)
+        val model = kit.viewModel(syncStatus = { status })
+
+        assertEquals(SyncLine.Offline, model.state.first { it.loaded }.sync)
+      }
+    }
+  }
+
+  @Test
+  fun theTrashCountIsTheSameNumberTheTrashShows() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var contact = ""
+        fixture.seed { contact = addContact("سامي", null, null, null, null).getOrThrow() }
+        fixture.settleAll()
+        fixture.seed { archiveContact(contact, "خطأ في التسجيل").getOrThrow() }
+        fixture.settleAll()
+        val model = kit.viewModel()
+
+        assertEquals(1, model.state.first { it.loaded && it.trashCount == 1 }.trashCount)
+      }
+    }
+  }
+
+  @Test
+  fun aDeviceWithoutDeleteRecordPermissionsMayNotUseTheTrash() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        fixture.graph.accounts.update(STORE_A) {
+          it.copy(
+              installation =
+                  StoredInstallation(
+                      status = "active",
+                      generation = 1,
+                      permissions = mapOf("deleteRecords" to false, "deleteContacts" to false),
+                  )
+          )
+        }
+        val model = kit.viewModel()
+
+        assertFalse(model.state.first { it.loaded && !it.canDelete }.canDelete)
+      }
+    }
+  }
+
+  @Test
+  fun theStateSaysWhetherThePhoneHasABiometricSensor() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        assertFalse(
+            kit.viewModel(biometricAvailable = false).state.first { it.loaded }.biometricAvailable
+        )
+        assertTrue(
+            kit.viewModel(biometricAvailable = true).state.first { it.loaded }.biometricAvailable
+        )
       }
     }
   }
