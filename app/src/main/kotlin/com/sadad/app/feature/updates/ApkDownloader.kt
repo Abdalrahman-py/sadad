@@ -5,6 +5,7 @@ import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -13,8 +14,17 @@ import okhttp3.Request
  * Streams the APK into the cache and proves it before the file is given a final name: the release's
  * digest and byte count, never just "the read ended". A kill mid-download leaves a `.part` file
  * that the next attempt deletes, so a half-written APK can never be installed.
+ *
+ * A refused or broken response is retried: the same release URL that serves the APK answers `404`
+ * in windows of minutes (see [UpdateSource]), and a download is twenty megabytes of the user's data
+ * to make a second time.
  */
-internal class ApkDownloader(private val client: OkHttpClient, private val root: () -> File) {
+internal class ApkDownloader(
+    private val client: OkHttpClient,
+    private val root: () -> File,
+    /** The wait before each retry; a test passes a no-op so nothing sleeps. */
+    private val pause: suspend (Long) -> Unit = { delay(it) },
+) {
   /** `cacheDir` is read here, on the download thread, never while a screen builds itself. */
   private val directory: File
     get() = root()
@@ -32,8 +42,20 @@ internal class ApkDownloader(private val client: OkHttpClient, private val root:
         if (isVerified(target, manifest)) return@withContext null
         if (directory.usableSpace < manifest.sizeBytes) return@withContext UpdateError.NO_SPACE
         val part = File(directory, "${target.name}.part")
-        part.delete()
-        val error = stream(part, url, manifest, onProgress)
+        var error: UpdateError? = UpdateError.DOWNLOAD_FAILED
+        for (attempt in 0 until ATTEMPTS) {
+          if (attempt > 0) pause(WAITS[attempt - 1])
+          part.delete()
+          val attemptError = stream(part, url, manifest, onProgress)
+          error = attemptError
+          if (attemptError == null) break
+          // A digest that does not match is not a transport problem: asking again would return the
+          // same bytes, and the caller must hear that the release and its digest disagree.
+          if (attemptError != UpdateError.DOWNLOAD_FAILED) {
+            part.delete()
+            return@withContext attemptError
+          }
+        }
         if (error != null) {
           part.delete()
           return@withContext error
@@ -98,5 +120,12 @@ internal class ApkDownloader(private val client: OkHttpClient, private val root:
     } catch (_: IOException) {
       return UpdateError.DOWNLOAD_FAILED
     }
+  }
+
+  private companion object {
+    const val ATTEMPTS = 3
+
+    /** Shorter than the manifest's waits: by now the user is watching a progress bar. */
+    val WAITS = longArrayOf(1_500, 4_000)
   }
 }

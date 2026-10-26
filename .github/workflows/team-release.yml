@@ -156,6 +156,29 @@ jobs:
           fi
           gh release upload team-latest team/Sadad-team.apk team/SHA256SUMS team/BUILD.txt team/update.json --clobber
           gh release edit team-latest --notes-file "$RUNNER_TEMP/notes.md"
+      - name: Prove the published manifest is served
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/team-latest/update.json"
+          # `releases/download/<tag>/<file>` answers 404 for a release that is there — seen on
+          # 26 October 2026 for minutes at a time, on every asset of the release, while the release
+          # page, the API and the asset-by-id endpoint all stayed up. A release the app cannot read
+          # is a failed publish, so wait for the CDN to agree and fail the run if it never does.
+          served=""
+          for attempt in $(seq 1 20); do
+            body=$(curl -fsSL --max-time 20 "$url" || true)
+            served=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("versionCode",""))' 2>/dev/null || true)
+            if [ "$served" = "$SADAD_VERSION_CODE" ]; then
+              echo "served versionCode $served on attempt $attempt"
+              exit 0
+            fi
+            echo "attempt $attempt: served '${served}', wanted $SADAD_VERSION_CODE"
+            sleep 15
+          done
+          echo "::error::$url did not serve versionCode $SADAD_VERSION_CODE"
+          exit 1
       - name: Remove the signing key
         if: always()
         run: rm -f "$TEAM_KEYSTORE_FILE"
