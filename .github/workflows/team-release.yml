@@ -5,8 +5,8 @@ name: Publish team build
 # the rolling `team-latest` prerelease. `main` stays the stable line: android-release.yml publishes
 # the signed production APK from a `v*` tag, and nothing here touches it.
 #
-# Requires the four TEAM_KEY* secrets (a key generated for the team alone, not the production one and
-# not a runner debug key: that one is regenerated per job, and the next build would refuse to install).
+# Requires the four TEAM_KEY* secrets: a copy of the key every published team build already carries
+# (certificate 8E:72:F9:D4:…), kept in secrets so a runner's per-job debug key never signs a release.
 
 on:
   push:
@@ -89,8 +89,8 @@ jobs:
             exit 1
           }
           "$tools/apksigner" verify --print-certs "$apk" > "$RUNNER_TEMP/certs.txt"
-          if grep -qi 'CN=Android Debug' "$RUNNER_TEMP/certs.txt"; then
-            echo '::error::Signed with a machine debug key: the next build would not install over this one.'
+          if ! grep -qi 'CN=Android Debug' "$RUNNER_TEMP/certs.txt"; then
+            echo '::error::The team key must be the one the installed team builds already carry.'
             exit 1
           fi
       - name: Collect the APK and its checksum
