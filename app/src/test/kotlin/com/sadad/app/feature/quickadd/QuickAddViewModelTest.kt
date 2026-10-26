@@ -75,6 +75,19 @@ class QuickAddViewModelTest {
   }
 
   @Test
+  fun openingTheFlowForAContactSelectsThemAndStartsAtTheAmount() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val model = QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle())
+      val state = model.state.first { it.loaded }
+
+      assertEquals(contact, state.selected?.id)
+      assertEquals(QuickAddStep.AMOUNT, state.step)
+      assertEquals("خالد", state.personName)
+    }
+  }
+
+  @Test
   fun undoInsideTheWindowQueuesNothingAndGoesBackToTheAmount() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")

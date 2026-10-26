@@ -134,6 +134,9 @@ class QuickAddViewModel(
   private var pendingContact: LedgerCommand? = null
   private var pendingPersonId: String? = null
 
+  /** Whether the Contact this flow was opened for has been made the subject already. */
+  private var startContactApplied = false
+
   /** The commands the done step holds; [commitJob] appends them when the window ends. */
   private var pending: List<LedgerCommand> = emptyList()
   private var commitJob: Job? = null
@@ -147,8 +150,18 @@ class QuickAddViewModel(
           .collect { facts ->
             mutable.update { current ->
               val people = facts.people
-              val selected =
-                  current.selected?.let { chosen -> people.firstOrNull { it.id == chosen.id } }
+              val chosen =
+                  current.selected?.let { selected -> people.firstOrNull { it.id == selected.id } }
+              // The route's Contact is applied once, on the first projection that can resolve it:
+              // going back to the picker must not drag the flow to the amount step again.
+              val started =
+                  if (chosen == null && !startContactApplied) {
+                    facts.startContact?.let { id -> people.firstOrNull { it.id == id } }
+                  } else {
+                    null
+                  }
+              if (started != null) startContactApplied = true
+              val selected = chosen ?: started
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
@@ -159,7 +172,7 @@ class QuickAddViewModel(
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
                   step =
                       when {
-                        current.step == QuickAddStep.PICKER && facts.startContact != null ->
+                        current.step == QuickAddStep.PICKER && started != null ->
                             QuickAddStep.AMOUNT
                         else -> current.step
                       },

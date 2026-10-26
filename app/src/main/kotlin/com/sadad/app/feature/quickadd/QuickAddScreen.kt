@@ -101,6 +101,7 @@ object QuickAddTags {
   const val KIND_SUPPLIER = "quickadd:kind-supplier"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
+  const val ERROR = "quickadd:error"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -714,6 +715,17 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
       VoiceDraftButton(onText = {}, modifier = Modifier.size(44.dp))
     }
     Spacer(Modifier.height(12.dp))
+
+    state.error?.let { message ->
+      Text(
+          text = message,
+          fontSize = 13.sp,
+          color = p.credit,
+          textAlign = TextAlign.Center,
+          modifier =
+              Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag(QuickAddTags.ERROR),
+      )
+    }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
       Keypad(onKey = model::press, onDelete = model::delete)
