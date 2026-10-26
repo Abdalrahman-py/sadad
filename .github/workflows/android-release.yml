@@ -35,6 +35,18 @@ jobs:
           java-version: '21'
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      # The app orders updates by versionCode alone. Until now every release carried the default 40,
+      # so no build could tell which release was newer. The tag decides it now.
+      - name: Derive the version code from the tag
+        run: |
+          set -euo pipefail
+          IFS=. read -r major minor patch <<< "${GITHUB_REF_NAME#v}"
+          for part in "$major" "$minor" "$patch"; do
+            [[ "$part" =~ ^[0-9]+$ ]] || { echo "::error::Tag $GITHUB_REF_NAME must be vMAJOR.MINOR.PATCH"; exit 1; }
+          done
+          code=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
+          echo "SADAD_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "Sadad ${GITHUB_REF_NAME#v} is versionCode $code"
       - name: Install release verification tools
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
       - name: Require production signing credentials
@@ -63,7 +75,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          ./gradlew testReleaseUnitTest assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN"
+          ./gradlew testReleaseUnitTest assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE"
       - name: Fail when R8 reports missing classes
         run: |
           missing=app/build/outputs/mapping/release/missing_rules.txt
@@ -97,6 +109,7 @@ jobs:
           "$tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
           grep -q "package: name='com.sadad.app'" "$RUNNER_TEMP/apk-badging.txt"
           grep -q "versionName='${GITHUB_REF_NAME#v}'" "$RUNNER_TEMP/apk-badging.txt" || { echo '::error::Tag must match versionName in app/build.gradle.kts'; exit 1; }
+          grep -q "versionCode='$SADAD_VERSION_CODE'" "$RUNNER_TEMP/apk-badging.txt" || { echo "::error::The APK versionCode is not the one the tag implies ($SADAD_VERSION_CODE)"; exit 1; }
           if grep -q 'application-debuggable' "$RUNNER_TEMP/apk-badging.txt"; then
             echo '::error::The release APK is debuggable'
             exit 1
@@ -107,11 +120,32 @@ jobs:
           cp "$apk" "release/Sadad-${GITHUB_REF_NAME#v}-release.apk"
           cd release
           sha256sum ./*.apk > SHA256SUMS
-      - name: Publish APK and checksum to GitHub Releases
+      - name: Write the update manifest
+        run: |
+          set -euo pipefail
+          apk="release/Sadad-${GITHUB_REF_NAME#v}-release.apk"
+          sha=$(cut -d' ' -f1 release/SHA256SUMS)
+          size=$(stat -c%s "$apk")
+          # The installed app reads this from `releases/latest/download/update.json`. It carries the
+          # digest and the size, so the app proves the APK it downloaded is the one published here.
+          cat > release/update.json <<JSON
+          {
+            "channel": "stable",
+            "versionCode": $SADAD_VERSION_CODE,
+            "versionName": "${GITHUB_REF_NAME#v}",
+            "apk": "$(basename "$apk")",
+            "sha256": "$sha",
+            "sizeBytes": $size,
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "notes": "إصدار ${GITHUB_REF_NAME#v}. التفاصيل في ملاحظات الإصدار على GitHub."
+          }
+          JSON
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' release/update.json
+      - name: Publish APK, checksum and update manifest to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/*.apk release/SHA256SUMS \
+          gh release create "$GITHUB_REF_NAME" release/*.apk release/SHA256SUMS release/update.json \
             --verify-tag --generate-notes --title "Sadad ${GITHUB_REF_NAME#v}"
       - name: Remove signing key
         if: always()

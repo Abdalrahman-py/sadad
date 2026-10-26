@@ -32,3 +32,6 @@ import kotlinx.serialization.Serializable
 @Serializable data object Trash
 
 @Serializable data object Recovery
+
+/** The app's own update: version, notes, download progress and the install prompt. */
+@Serializable data object AppUpdate
