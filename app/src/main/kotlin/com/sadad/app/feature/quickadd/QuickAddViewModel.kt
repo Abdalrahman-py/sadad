@@ -386,10 +386,11 @@ class QuickAddViewModel(
     pending = commands
     pendingContact = null
     commitJob?.cancel()
-    commitJob = store.jobs.launch {
-      delay(undoWindowMs)
-      commit(context)
-    }
+    commitJob =
+        store.jobs.launch {
+          delay(undoWindowMs)
+          commit(context)
+        }
     mutable.update {
       it.copy(
           step = QuickAddStep.DONE,
@@ -654,8 +655,7 @@ class QuickAddViewModel(
         }
     val open =
         view.contacts.associate { contact ->
-          contact.id to
-              PaymentAllocation.openBalance(view, contact.id, contact.kind.debtDirection)
+          contact.id to PaymentAllocation.openBalance(view, contact.id, contact.kind.debtDirection)
         }
     openBalances = open
     return Facts(

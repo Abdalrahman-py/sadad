@@ -66,7 +66,8 @@ sealed class Refusal(message: String) : Exception(message) {
 
 /**
  * The optional Debt a new Contact starts with. It carries no direction: the Contact's kind decides
- * it ([ContactKind.debtDirection]), so a caller cannot write a supplier's balance on the wrong side.
+ * it ([ContactKind.debtDirection]), so a caller cannot write a supplier's balance on the wrong
+ * side.
  */
 data class FirstDebt(
     val amount: Cents,

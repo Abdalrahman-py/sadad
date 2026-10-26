@@ -723,8 +723,7 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
           fontSize = 13.sp,
           color = p.credit,
           textAlign = TextAlign.Center,
-          modifier =
-              Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag(QuickAddTags.ERROR),
+          modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag(QuickAddTags.ERROR),
       )
     }
 
