@@ -470,13 +470,37 @@ class QuickAddViewModel(
     if (current.payment && amount > current.overBalance) {
       return context.getString(R.string.quickadd_preview_over, money(current.overBalance))
     }
-    val after = netAfter(current, amount)
-    return when {
-      after == Cents.ZERO -> context.getString(R.string.quickadd_preview_settled)
-      after > Cents.ZERO -> context.getString(R.string.quickadd_preview_owes, money(after))
-      else -> context.getString(R.string.quickadd_preview_credit, money(Cents(-after.value)))
+    val words =
+        previewWords(
+            before = current.selected?.net ?: Cents.ZERO,
+            amount = amount,
+            payment = current.payment,
+            supplier = current.selected?.kind == ContactKind.SUPPLIER,
+        )
+    val line =
+        if (words.deduct != null) {
+          context.getString(
+              R.string.quickadd_preview_deduct,
+              money(words.deduct),
+              after(context, words.after),
+          )
+        } else {
+          after(context, words.after)
+        }
+    return if (!current.payment && amount >= ANOMALY_LIMIT) {
+      context.getString(R.string.quickadd_preview_large, line)
+    } else {
+      line
     }
   }
+
+  /** «يصبح مسددًا» / «يصبح عليه ₪ 85.00» / «يصبح له ₪ 85.00». */
+  private fun after(context: Context, after: Cents): String =
+      when {
+        after == Cents.ZERO -> context.getString(R.string.quickadd_preview_settled)
+        after > Cents.ZERO -> context.getString(R.string.quickadd_preview_owes, money(after))
+        else -> context.getString(R.string.quickadd_preview_credit, money(Cents(-after.value)))
+      }
 
   private fun money(value: Cents): String {
     val shekels = value.value / 100
@@ -485,12 +509,14 @@ class QuickAddViewModel(
     return "$grouped.${agorot.toString().padStart(2, '0')}"
   }
 
-  private fun netAfter(current: QuickAddState, amount: Cents): Cents {
-    val before = current.selected?.net ?: Cents.ZERO
-    val supplier = current.selected?.kind == ContactKind.SUPPLIER
-    val sign = if (supplier) (if (current.payment) 1 else -1) else (if (current.payment) -1 else 1)
-    return if (sign > 0) before + amount else before - amount
-  }
+  private fun netAfter(current: QuickAddState, amount: Cents): Cents =
+      previewWords(
+              before = current.selected?.net ?: Cents.ZERO,
+              amount = amount,
+              payment = current.payment,
+              supplier = current.selected?.kind == ContactKind.SUPPLIER,
+          )
+          .after
 
   /** The commands one save will queue, built from the view the previews came from. */
   private fun commandsFor(current: QuickAddState, amount: Cents): List<LedgerCommand> {
@@ -693,6 +719,30 @@ class QuickAddViewModel(
 
 /** «من هذا المبلغ فصاعدًا يسأل التطبيق قبل الحفظ» — the old forms' rule, kept in one place. */
 val ANOMALY_LIMIT: Cents = Cents(500_000)
+
+/**
+ * What the preview line says about an entry, before it is worded: a customer debt written on
+ * somebody who is already in credit eats that credit first, so the line names the part deducted and
+ * then the balance left. Supplier debts and payments never deduct.
+ */
+internal data class PreviewWords(val deduct: Cents?, val after: Cents)
+
+internal fun previewWords(
+    before: Cents,
+    amount: Cents,
+    payment: Boolean,
+    supplier: Boolean,
+): PreviewWords {
+  val sign = if (supplier) (if (payment) 1 else -1) else (if (payment) -1 else 1)
+  val after = if (sign > 0) before + amount else before - amount
+  val deduct =
+      if (!supplier && !payment && before < Cents.ZERO) {
+        Cents(minOf(-before.value, amount.value))
+      } else {
+        null
+      }
+  return PreviewWords(deduct, after)
+}
 
 /** The digits of an amount with grouping and no trailing zeros: «85», «4,999.99». */
 internal fun amountLabel(amount: String): String {

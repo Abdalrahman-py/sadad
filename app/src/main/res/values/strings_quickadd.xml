@@ -16,6 +16,9 @@
     <string name="quickadd_preview_owes">يصبح عليه ₪%1$s</string>
     <string name="quickadd_preview_credit">يصبح له ₪%1$s</string>
     <string name="quickadd_preview_over">المبلغ أكبر من الرصيد المفتوح ₪%1$s</string>
+    <!-- The board's two richer previews: a debt against a credit, and a large amount. -->
+    <string name="quickadd_preview_deduct">يُخصم من رصيده ₪%1$s · %2$s</string>
+    <string name="quickadd_preview_large">%1$s · مبلغ كبير، سنطلب تأكيدًا</string>
 
     <string name="quickadd_failed">تعذّر الحفظ، حاول مرة أخرى</string>
 
@@ -23,9 +26,10 @@
     <string name="quickadd_picker_title">تسجيل لمن؟</string>
     <string name="quickadd_search_hint">ابحث بالاسم أو رقم الهاتف</string>
     <string name="quickadd_clear_search">مسح البحث</string>
-    <string name="quickadd_recent">الأحدث</string>
+    <string name="quickadd_recent">الأحدث والأكثر تعاملًا</string>
     <string name="quickadd_supplier_badge">مورد</string>
     <string name="quickadd_new_result">إضافة «%1$s» كشخص جديد</string>
+    <string name="quickadd_result">نتيجة</string>
     <string name="quickadd_no_results">لا يوجد شخص بهذا الاسم أو الرقم. البحث يتجاهل الفرق بين أ وا وإ، وة وه، وى وي.</string>
     <string name="quickadd_blocked_title">لا يمكن الحفظ الآن</string>
     <string name="quickadd_blocked_body">انتهى تصريح الحفظ دون اتصال. اتصل بالإنترنت ثم سجّل.</string>
@@ -39,7 +43,7 @@
     <string name="quickadd_phone_placeholder">05xxxxxxxx</string>
     <string name="quickadd_customer">زبون</string>
     <string name="quickadd_supplier">مورد</string>
-    <string name="quickadd_duplicate">هذا الرقم مسجل باسم %1$s.</string>
+    <string name="quickadd_duplicate">هذا الرقم مسجل باسم</string>
     <string name="quickadd_use_duplicate">التسجيل لـ%1$s بدلًا من ذلك</string>
     <string name="quickadd_continue">متابعة إلى المبلغ</string>
     <string name="quickadd_cancel">إلغاء</string>
@@ -58,8 +62,10 @@
     <string name="quickadd_method_wallet">محفظة</string>
     <string name="quickadd_key_delete">حذف</string>
     <string name="quickadd_key_dot">فاصلة عشرية</string>
+    <string name="quickadd_save_blocked">الحفظ متوقف حتى يعود الاتصال</string>
     <string name="quickadd_anomaly_title">مبلغ أكبر من المعتاد</string>
-    <string name="quickadd_anomaly_body">راجع القيمة قبل الحفظ: ₪%1$s لـ%2$s.</string>
+    <string name="quickadd_anomaly_body">راجع القيمة قبل الحفظ:</string>
+    <string name="quickadd_anomaly_sentence">%1$s</string>
     <string name="quickadd_anomaly_confirm">المبلغ صحيح، احفظ</string>
     <string name="quickadd_anomaly_edit">تعديل المبلغ</string>
 

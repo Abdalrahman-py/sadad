@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,10 +39,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +60,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -149,13 +154,16 @@ fun QuickAddScreen(
             Text(stringResource(R.string.quickadd_anomaly_title), fontWeight = FontWeight.Bold)
           },
           text = {
-            Text(
-                stringResource(
-                    R.string.quickadd_anomaly_body,
-                    amountLabel(state.amount),
-                    state.personName,
-                )
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+              Text(stringResource(R.string.quickadd_anomaly_body))
+              Text(
+                  stringResource(
+                      R.string.quickadd_anomaly_sentence,
+                      viewModel.sentence(context),
+                  ),
+                  fontWeight = FontWeight.Bold,
+              )
+            }
           },
           confirmButton = {
             TextButton(
@@ -195,7 +203,10 @@ private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddVie
 @Composable
 private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: () -> Unit) {
   val p = sadadPalette
-  Column(Modifier.fillMaxSize().imePadding().padding(horizontal = 18.dp)) {
+  Column(
+      Modifier.fillMaxSize().imePadding().padding(horizontal = 18.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
     Row(
         Modifier.fillMaxWidth().height(60.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -218,21 +229,19 @@ private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: 
         onQuery = model::onQueryChange,
         onClear = model::clearQuery,
     )
-    if (state.blocked) {
-      Spacer(Modifier.height(12.dp))
-      BlockedCard()
-    }
+    if (state.blocked) BlockedCard()
 
     Text(
         text = listLabelText(state),
         color = p.muted,
         fontSize = 13.sp,
+        lineHeight = 20.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 12.dp, bottom = 6.dp),
     )
 
     LazyColumn(
         Modifier.fillMaxWidth().weight(1f).testTag(QuickAddTags.PEOPLE),
+        contentPadding = PaddingValues(bottom = 18.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
       items(state.people, key = { it.id }) { person ->
@@ -251,7 +260,6 @@ private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: 
       if (state.query.isNotBlank()) {
         item { AddNewRow(name = state.query.trim(), onClick = model::startNewPerson) }
       }
-      item { Spacer(Modifier.height(12.dp)) }
     }
   }
 }
@@ -273,7 +281,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
       modifier = Modifier.fillMaxWidth().height(52.dp),
   ) {
     Row(
-        Modifier.fillMaxSize().padding(start = 10.dp, end = 6.dp),
+        Modifier.fillMaxSize().padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -408,10 +416,10 @@ private fun AddNewRow(name: String, onClick: () -> Unit) {
   Surface(
       color = Color.Transparent,
       shape = RoundedCornerShape(13.dp),
-      border = BorderStroke(1.5.dp, p.muted),
       modifier =
           Modifier.fillMaxWidth()
               .heightIn(min = 64.dp)
+              .dashedBorder(p.muted, 13.dp)
               .testTag(QuickAddTags.ADD_NEW)
               .clickable(onClick = onClick)
               .semantics { role = Role.Button },
@@ -493,8 +501,16 @@ private fun NewPersonSheet(state: QuickAddState, model: QuickAddViewModel) {
           ) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
               Text(
-                  stringResource(R.string.quickadd_duplicate, duplicate),
+                  stringResource(R.string.quickadd_duplicate),
                   fontSize = 14.sp,
+                  lineHeight = 21.sp,
+                  color = p.text,
+              )
+              Text(
+                  duplicate,
+                  fontSize = 14.sp,
+                  lineHeight = 21.sp,
+                  fontWeight = FontWeight.Bold,
                   color = p.text,
               )
               Surface(color = p.card, shape = RoundedCornerShape(10.dp)) {
@@ -572,7 +588,7 @@ private fun KindCell(
       color = if (chosen) p.primary else Color.Transparent,
       shape = RoundedCornerShape(10.dp),
       modifier =
-          modifier.height(48.dp).testTag(tag).clickable(onClick = onClick).semantics {
+          modifier.height(44.dp).testTag(tag).clickable(onClick = onClick).semantics {
             role = Role.Button
           },
   ) {
@@ -594,7 +610,7 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
   val p = sadadPalette
   val person = state.selected
   val supplier = person?.kind == ContactKind.SUPPLIER
-  Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
+  Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, bottom = 20.dp)) {
     Row(
         Modifier.fillMaxWidth().height(64.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -703,15 +719,17 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
       Keypad(onKey = model::press, onDelete = model::delete)
     }
 
-    SadadButton(
+    SaveButton(
         text =
-            if (state.amount.isEmpty()) stringResource(R.string.quickadd_preview_empty)
-            else model.sentence(context),
-        onClick = { model.save(context) },
+            when {
+              state.blocked -> stringResource(R.string.quickadd_save_blocked)
+              state.amount.isEmpty() -> stringResource(R.string.quickadd_preview_empty)
+              else -> model.sentence(context)
+            },
+        payment = state.payment,
         enabled = state.canSave,
-        modifier = Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.SAVE),
+        onClick = { model.save(context) },
     )
-    Spacer(Modifier.height(20.dp))
   }
 }
 
@@ -770,7 +788,7 @@ private fun ModeCell(
       shape = RoundedCornerShape(10.dp),
       border = if (chosen) BorderStroke(1.5.dp, chosenInk) else null,
       modifier =
-          modifier.height(48.dp).testTag(tag).clickable(onClick = onClick).semantics {
+          modifier.height(44.dp).testTag(tag).clickable(onClick = onClick).semantics {
             role = Role.Button
           },
   ) {
@@ -876,7 +894,7 @@ private fun DoneStep(
       )
   Column(
       Modifier.fillMaxSize()
-          .padding(horizontal = 18.dp, vertical = 32.dp)
+          .padding(start = 18.dp, end = 18.dp, top = 32.dp, bottom = 24.dp)
           .testTag(QuickAddTags.DONE),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -892,7 +910,13 @@ private fun DoneStep(
         CheckGlyph(if (p.isDark) p.accent else p.primary)
       }
       Text(title, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = p.text)
-      Text(done.sentence, fontSize = 15.sp, color = p.muted, textAlign = TextAlign.Center)
+      Text(
+          withoutVerb(done.sentence),
+          fontSize = 15.sp,
+          lineHeight = 24.sp,
+          color = p.muted,
+          textAlign = TextAlign.Center,
+      )
       Surface(
           color = p.card,
           shape = RoundedCornerShape(13.dp),
@@ -903,12 +927,24 @@ private fun DoneStep(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+          val balance = balanceWord(done.net.value)
           Text(
               stringResource(R.string.quickadd_net_label, done.name),
               fontSize = 15.sp,
               color = p.text,
+              modifier = Modifier.weight(1f, fill = false),
           )
-          BalanceWord(done.net.value)
+          Text(
+              text = listOfNotNull(balance.word, balance.amount).joinToString(" "),
+              fontSize = 15.sp,
+              fontWeight = FontWeight.Bold,
+              color =
+                  when (balance.tone) {
+                    BalanceTone.OWES -> p.owes
+                    BalanceTone.CREDIT -> p.credit
+                    BalanceTone.SETTLED -> p.muted
+                  },
+          )
         }
       }
     }
@@ -948,6 +984,41 @@ private fun DoneStep(
           style = SadadButtonStyle.SOFT,
           modifier = Modifier.weight(1f).height(48.dp),
       )
+    }
+  }
+}
+
+/**
+ * The board's save button: `--owesBtn` for a debt, `--primary` for a payment, `--soft` when idle.
+ */
+@Composable
+private fun SaveButton(text: String, payment: Boolean, enabled: Boolean, onClick: () -> Unit) {
+  val p = sadadPalette
+  val fill =
+      when {
+        !enabled -> p.soft
+        payment -> p.primary
+        else -> p.owes
+      }
+  val ink =
+      when {
+        !enabled -> p.muted
+        payment || p.isDark -> if (payment) Color.White else p.bg
+        else -> Color.White
+      }
+  Surface(
+      onClick = onClick,
+      enabled = enabled,
+      shape = RoundedCornerShape(13.dp),
+      color = fill,
+      contentColor = ink,
+      modifier =
+          Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.SAVE).semantics {
+            role = Role.Button
+          },
+  ) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+      Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ink)
     }
   }
 }
@@ -1122,16 +1193,9 @@ private fun CheckGlyph(color: Color) {
 /* --------------------------------------------------------------- text */
 
 @Composable
-private fun listLabelText(state: QuickAddState): String {
-  val count = state.people.size
-  return when {
-    state.query.isBlank() -> stringResource(R.string.quickadd_recent)
-    count == 1 -> "نتيجة واحدة"
-    count == 2 -> "نتيجتان"
-    count in 3..10 -> "$count نتائج"
-    else -> "$count نتيجة"
-  }
-}
+private fun listLabelText(state: QuickAddState): String =
+    if (state.query.isBlank()) stringResource(R.string.quickadd_recent)
+    else "${state.people.size} " + stringResource(R.string.quickadd_result)
 
 /** «…342 · اليوم»: the phone's last three digits and when the store last dealt with them. */
 private fun detailLine(person: QuickAddPerson, now: Instant): String {
@@ -1161,6 +1225,9 @@ internal fun lastActivityText(activity: Instant?, now: Instant): String {
 
 private fun firstWord(name: String): String = name.trim().split(' ').firstOrNull().orEmpty()
 
+/** «سجّل ₪50 على خالد» → «₪50 على خالد»: the done step's title already carries the verb. */
+internal fun withoutVerb(sentence: String): String = sentence.substringAfter(' ', sentence)
+
 @Composable
 private fun methodLabel(method: PaymentMethod): String =
     when (method) {
@@ -1170,6 +1237,20 @@ private fun methodLabel(method: PaymentMethod): String =
     }
 
 private val QUICK_METHODS = listOf(PaymentMethod.CASH, PaymentMethod.BANK, PaymentMethod.WALLET)
+
+/** The add-new row's 1.5 dp dashed outline — `border: 1.5px dashed` in the board. */
+private fun Modifier.dashedBorder(color: Color, radius: Dp, width: Dp = 1.5.dp) = drawBehind {
+  val stroke = width.toPx()
+  drawRoundRect(
+      color = color,
+      cornerRadius = CornerRadius(radius.toPx()),
+      style =
+          Stroke(
+              width = stroke,
+              pathEffect = PathEffect.dashPathEffect(floatArrayOf(stroke * 3f, stroke * 2f)),
+          ),
+  )
+}
 
 private val Scrim = Color(0x73142C24)
 
