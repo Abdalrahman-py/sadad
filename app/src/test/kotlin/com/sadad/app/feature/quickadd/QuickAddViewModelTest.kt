@@ -311,6 +311,43 @@ class QuickAddViewModelTest {
     }
   }
 
+  @Test
+  fun undoAfterANewPersonKeepsTheContactWithTheNextSave() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model()
+      model.state.first { it.loaded }
+
+      model.startNewPerson()
+      model.onNewName("سامي")
+      model.createPerson()
+      model.press("5")
+      model.press("0")
+      model.press("0")
+      model.save(context)
+      assertEquals(QuickAddStep.DONE, model.state.value.step)
+
+      model.undo(context)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+
+      // The second save must rebuild the pair, not a debt for a contact that was never created.
+      model.save(context)
+      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS + 1)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      assertEquals(
+          "the debt names the contact that carries it",
+          listOf(rows.first().operationId),
+          rows.last().command.dependsOn,
+      )
+    }
+  }
+
   private suspend fun TestGraph.settledContact(
       name: String,
       phone: String? = null,
