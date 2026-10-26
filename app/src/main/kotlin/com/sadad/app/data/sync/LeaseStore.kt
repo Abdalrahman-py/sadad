@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.sadad.app.data.net.Lease
+import com.sadad.app.data.net.LeasePayload
 import com.sadad.app.data.net.LeaseVerifier
 import com.sadad.app.data.session.Account
 import com.sadad.ledger.LedgerJson
@@ -62,13 +63,16 @@ class LeaseStore(
         payload.installationId == account.installationId &&
         account.installation?.status == "active" &&
         payload.generation == account.installation.generation &&
-        payload.issuedAt <= at &&
-        at < payload.expiresAt &&
+        usableFrom(payload) <= at &&
+        at < usableUntil(payload) &&
         payload.allowed.containsAll(OFFLINE_TYPES)
   }
 
-  fun needsRenewal(account: Account): Boolean =
-      !allows(account) || verified!!.lease.payload.expiresAt - now() < RENEW_BEFORE
+  fun needsRenewal(account: Account): Boolean {
+    if (!allows(account)) return true
+    val payload = verified?.lease?.payload ?: return true
+    return usableUntil(payload) - now() < RENEW_BEFORE
+  }
 
   /**
    * When the cached lease for [account] ends, or `null` when the cached lease belongs to another
@@ -87,7 +91,17 @@ class LeaseStore(
 
   @Serializable private data class Record(val lease: Lease, val boot: Int)
 
+  /**
+   * The window this lease is usable in. `issuedAt` is the server's clock and [now] the device's, so
+   * a phone a few minutes behind must not read its own lease as not-yet-issued: the same ±5
+   * minutes `proof.ts` already allows between a device and the server.
+   */
+  private fun usableFrom(payload: LeasePayload): Long = payload.issuedAt - CLOCK_SKEW_MS
+
+  private fun usableUntil(payload: LeasePayload): Long = payload.expiresAt
+
   private companion object {
+    const val CLOCK_SKEW_MS = 300_000L
     val KEY = stringPreferencesKey("lease")
     const val RENEW_BEFORE = 86400000L
     val OFFLINE_TYPES = listOf("contact.create", "debt.create", "payment.create")
