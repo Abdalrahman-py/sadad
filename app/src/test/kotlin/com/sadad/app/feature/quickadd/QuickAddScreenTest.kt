@@ -69,9 +69,9 @@ class QuickAddScreenTest {
       compose.onNodeWithTag(QuickAddTags.key("2")).performClick()
       compose.onNodeWithTag(QuickAddTags.key("5")).performClick()
       // A semantics click, not a coordinate: the save button sits below Robolectric's window.
-      compose
-          .onNodeWithTag(QuickAddTags.SAVE)
-          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose.onNodeWithTag(QuickAddTags.SAVE).performSemanticsAction(SemanticsActions.OnClick) {
+        it()
+      }
 
       val payload = runBlocking { awaitRows(fixture, 1) }.single().command.payload() as DebtCreate
       assertEquals(contact, payload.contactId)
@@ -94,9 +94,9 @@ class QuickAddScreenTest {
       compose.waitForIdle()
 
       compose.onNodeWithTag(QuickAddTags.key("2")).performClick()
-      compose
-          .onNodeWithTag(QuickAddTags.SAVE)
-          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose.onNodeWithTag(QuickAddTags.SAVE).performSemanticsAction(SemanticsActions.OnClick) {
+        it()
+      }
 
       // The amount step now draws save()'s refusal; before the fix there was no such node at all.
       // Robolectric clips the bottom of this step, so the node and its text are asserted, not pixels.
