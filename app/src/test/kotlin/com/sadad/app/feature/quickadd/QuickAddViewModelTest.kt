@@ -338,6 +338,33 @@ class QuickAddViewModelTest {
     }
   }
 
+  @Test
+  fun theEntrySurvivesTheLockTeardownInsideTheUndoWindow() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 300)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.press("6")
+      model.press("5")
+      model.save(context)
+      assertEquals(QuickAddStep.DONE, model.state.value.step)
+
+      // What LockGate does when it swaps content() for UnlockScreen: the NavHost leaves
+      // composition and its NavBackStackEntry ViewModelStore is cleared. feature/lock belongs to
+      // #111 (ticket 87), so this drives the teardown the lock performs, not the lock itself.
+      model.viewModelScope.cancel()
+      Thread.sleep(1_000)
+
+      val row = store.outbox.snapshot().single()
+      assertEquals(CommandType.DEBT_CREATE, row.type)
+      val payload = row.command.payload() as DebtCreate
+      assertEquals(contact, payload.contactId)
+      assertEquals(Cents(6_500), payload.amountCents)
+    }
+  }
+
   private suspend fun TestGraph.settledContact(
       name: String,
       phone: String? = null,
