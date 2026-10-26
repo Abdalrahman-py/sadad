@@ -400,8 +400,8 @@ class QuickAddViewModelTest {
   }
 
   /**
-   * Short, real windows: the commit runs on the store's scope, not the test dispatcher's clock.
-   * The screen's scope is registered with the fixture so no collector outlives the database.
+   * Short, real windows: the commit runs on the store's scope, not the test dispatcher's clock. The
+   * screen's scope is registered with the fixture so no collector outlives the database.
    */
   private fun TestGraph.model(undoWindowMs: Long = 300): QuickAddViewModel =
       QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs).also {
