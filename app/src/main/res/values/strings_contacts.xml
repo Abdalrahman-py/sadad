@@ -1,23 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_contacts">الزبائن</string>
-    <plurals name="contacts_registered">
-        <item quantity="zero">لا يوجد أشخاص مسجلون</item>
-        <item quantity="one">شخص واحد مسجل</item>
-        <item quantity="two">شخصان مسجلان</item>
-        <item quantity="few">%1$d أشخاص مسجلون</item>
-        <item quantity="many">%1$d شخصًا مسجلًا</item>
-        <item quantity="other">%1$d شخص مسجل</item>
-    </plurals>
-    <string name="contacts_search">ابحث بالاسم أو رقم الهاتف</string>
-    <string name="contacts_sort_name">حسب الاسم</string>
-    <string name="contacts_sort_debt">الأعلى دينًا</string>
-    <string name="contacts_sort_newest">الأحدث إضافة</string>
-    <string name="contacts_no_phone">رقم الهاتف غير مسجل</string>
-    <string name="contacts_no_results">لا توجد نتائج</string>
-    <string name="contacts_no_results_detail">جرّب اسمًا أو رقم هاتف آخر.</string>
-    <string name="contacts_empty">لا يوجد زبائن مسجلون بعد</string>
-    <string name="contacts_empty_detail">ستظهر هنا الزبائن عند تسجيلهم في المتجر.</string>
     <string name="contacts_balance">الدين الحالي  %1$s</string>
     <string name="contacts_note">ملاحظات: %1$s</string>
     <string name="contacts_record_debt">＋ تسجيل دين</string>
