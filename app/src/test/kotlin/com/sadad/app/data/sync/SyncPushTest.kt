@@ -26,7 +26,7 @@ class SyncPushTest {
           Commands.contactArchive(
               other,
               com.sadad.app.data.db.Events.at(0),
-              contactId = "contact-1",
+              contactId = java.util.UUID.randomUUID().toString(),
               expectedVersion = 1,
               reason = "سبب",
           )
