@@ -327,7 +327,7 @@ internal class UpdateCenter(
           context = context,
           preferences = UpdatePreferences.get(context),
           source = UpdateSource(client, channel),
-          downloader = ApkDownloader(client) { File(context.cacheDir, "updates") },
+          downloader = ApkDownloader(client, root = { File(context.cacheDir, "updates") }),
           installedVersionCode = { BuildConfig.VERSION_CODE },
           clock = System::currentTimeMillis,
           scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
