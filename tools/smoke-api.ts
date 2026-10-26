@@ -39,7 +39,11 @@ function batch(device: Device, epoch: string, generation: number) {
       entityId: contactId,
       type: "contact.create",
       dependsOn: [],
-      payload: { name: `اختبار دخان ${new Date().toISOString()}` },
+      // apply_one requires kind on every contact; this smoke store is all customers.
+      payload: {
+        name: `اختبار دخان ${new Date().toISOString()}`,
+        kind: "customer",
+      },
     },
     {
       ...base,
