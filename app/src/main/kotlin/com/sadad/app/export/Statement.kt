@@ -35,8 +35,8 @@ data class ContactStatement(
 object Statement {
   /**
    * A half-open period: [fromInclusive] and [toExclusive]; null means unbounded. The same
-   * convention as `PeriodBounds`, so no caller subtracts a nanosecond to fit an inclusive end.
-   * Only visible receivable movements count.
+   * convention as `PeriodBounds`, so no caller subtracts a nanosecond to fit an inclusive end. Only
+   * visible receivable movements count.
    */
   fun build(
       view: LedgerView,

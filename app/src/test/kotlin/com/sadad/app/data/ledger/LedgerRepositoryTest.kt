@@ -225,7 +225,8 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertTrue(repo.updateContact(CONTACT_ID, "الاسم الثاني", null, null, null).isSuccess)
 
     val versions =
-        outbox.snapshot()
+        outbox
+            .snapshot()
             .filter { it.type == CommandType.CONTACT_UPDATE }
             .map { it.command.expectedVersion }
     assertEquals(

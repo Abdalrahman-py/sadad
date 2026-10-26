@@ -102,11 +102,11 @@ class StatementTest {
   }
 
   @Test
-  fun inclusiveBoundariesAndIdOrderAreIndependentOfInsertionOrder() {
+  fun theHalfOpenEndAndIdOrderAreIndependentOfInsertionOrder() {
     val first = newDebt.copy(entityId = "00000000-0000-4000-8000-000000000001")
     val second = newDebt.copy(entityId = "00000000-0000-4000-8000-000000000002")
-    val last = debt(to, 200)
-    val outside = debt(to.plusNanos(1), 900).copy(createdAt = to.plusNanos(1).toString())
+    val last = debt(to.minusNanos(1), 200)
+    val outside = debt(to, 900).copy(createdAt = to.toString())
     val statement =
         Statement.build(exportView(contact, second, first, last, outside), null, from, to).single()
     assertEquals(
