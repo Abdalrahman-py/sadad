@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.AppGraph
 import com.sadad.app.R
+import com.sadad.app.data.ledger.OutboxRow
+import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.session.AccountsFile
 import com.sadad.app.data.session.StoreScope
 import com.sadad.app.data.sync.SyncScheduling
@@ -16,6 +18,16 @@ import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.feature.history.bounds
 import com.sadad.app.feature.history.periodLabel
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.feature.notifications.Reminder
+import com.sadad.ledger.ContactArchive
+import com.sadad.ledger.ContactCreate
+import com.sadad.ledger.ContactRestore
+import com.sadad.ledger.ContactUpdate
+import com.sadad.ledger.DebtCorrect
+import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.LedgerView
+import com.sadad.ledger.PaymentCreate
+import com.sadad.ledger.PaymentReverse
 import java.time.Clock
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -45,11 +57,23 @@ private data class Ui(
 
 private data class Core(val file: AccountsFile, val open: StoreScope?)
 
-private data class SyncPart(val line: SyncLine, val unsent: Int)
+private data class SyncPart(val line: SyncLine, val unsent: Int, val newest: QueuedEntry?)
 
 private data class Prefs(val theme: ThemeChoice, val period: ExportPeriod)
 
 private data class LockPart(val on: Boolean, val pinSet: Boolean, val biometric: Boolean)
+
+/** Everything the screen reads that is not the store's account or the sync status. */
+private data class Extras(
+    val theme: ThemeChoice,
+    val period: ExportPeriod,
+    val lockOn: Boolean,
+    val pinSet: Boolean,
+    val biometric: Boolean,
+    val sensor: Boolean,
+    val canDelete: Boolean,
+    val trash: Int,
+)
 
 /**
  * The settings screen. It only calls the graph, the lock, the scheduler and the statement export:
@@ -66,24 +90,36 @@ class SettingsViewModel(
     private val clock: Clock = Clock.systemDefaultZone(),
     private val biometricAvailable: () -> Boolean = { false },
     private val syncStatus: (String) -> Flow<SyncStatus> = graph::syncStatus,
+    /** The dismissed due reminders the trash lists; empty when the screen has none to show. */
+    private val reminders: (String) -> Flow<List<Reminder>> = { flowOf(emptyList()) },
+    /** The trash ids this phone removed for good, as the trash screen hides them. */
+    private val hiddenTrash: (String) -> Flow<Set<String>> = { flowOf(emptySet()) },
 ) : ViewModel() {
   private val ui = MutableStateFlow(Ui(pending = savedProfile()))
 
+  // Read at construction and again on ON_RESUME: a fingerprint enrolled in the system settings
+  // shows the switch when the screen comes back.
+  private val sensor = MutableStateFlow(biometricAvailable())
+
   val state: StateFlow<SettingsState> =
-      combine(core(), syncPart(), prefs(), lockPart(), ui) { core, sync, prefs, lock, ui ->
+      combine(core(), syncPart(), extras(), ui) { core, sync, extras, ui ->
             val open = core.open?.account?.storeUserId
             val account = core.file.accounts.firstOrNull { it.storeUserId == open }
             SettingsState(
                 loaded = true,
                 storeName = account?.storeName.orEmpty(),
                 ownerName = account?.ownerName.orEmpty(),
-                theme = prefs.theme,
-                exportPeriod = prefs.period,
+                theme = extras.theme,
+                exportPeriod = extras.period,
                 sync = sync.line,
                 unsent = sync.unsent,
-                lockOn = lock.on,
-                pinSet = lock.pinSet,
-                biometricEnabled = lock.biometric,
+                newest = sync.newest,
+                trashCount = extras.trash,
+                canDelete = extras.canDelete,
+                biometricAvailable = extras.sensor,
+                lockOn = extras.lockOn,
+                pinSet = extras.pinSet,
+                biometricEnabled = extras.biometric,
                 busy = ui.busy,
                 accounts =
                     core.file.accounts.map {
@@ -215,7 +251,13 @@ class SettingsViewModel(
         !lock.hasPin() -> requestPin()
         else -> lock.setBiometricEnabled(true)
       }
+      refreshBiometricSensor()
     }
+  }
+
+  /** Re-reads the phone's biometric hardware, for a fingerprint enrolled while the app was away. */
+  fun refreshBiometricSensor() {
+    sensor.value = biometricAvailable()
   }
 
   // --- Account -------------------------------------------------------------------------------
@@ -327,10 +369,14 @@ class SettingsViewModel(
 
   private fun syncPart(): Flow<SyncPart> =
       graph.current.flatMapLatest { open ->
-        if (open == null) flowOf(SyncPart(SyncLine.SignedOut, 0))
+        if (open == null) flowOf(SyncPart(SyncLine.SignedOut, 0, null))
         else
-            syncStatus(open.account.storeUserId).map { status ->
-              SyncPart(line(status), graph.unsentCount(open.account.storeUserId))
+            combine(syncStatus(open.account.storeUserId), open.outbox.rows, open.repository.view) {
+                status,
+                rows,
+                view ->
+              val waiting = rows.filter { it.state == OutboxState.QUEUED }
+              SyncPart(line(status), waiting.size, newest(waiting, view))
             }
       }
 
@@ -341,6 +387,113 @@ class SettingsViewModel(
       combine(lock.lockEnabled, lock.pinSet, lock.biometricEnabled) { enabled, pinSet, biometric ->
         LockPart(enabled && pinSet, pinSet, biometric)
       }
+
+  /** What this device may do, from the installation's `permissions` map (never the staff role). */
+  private fun permissions(): Flow<Map<String, Boolean>> =
+      graph.current.flatMapLatest { open ->
+        val id = open?.account?.storeUserId
+        graph.accounts.accounts.map { accounts ->
+          accounts.firstOrNull { it.storeUserId == id }?.installation?.permissions.orEmpty()
+        }
+      }
+
+  /** The number the trash screen lists: archived Contacts and dismissed reminders, minus hidden. */
+  private fun trashPart(): Flow<Int> =
+      graph.current.flatMapLatest { open ->
+        if (open == null) flowOf(0)
+        else
+            combine(
+                open.repository.view,
+                reminders(open.account.storeUserId),
+                hiddenTrash(open.account.storeUserId),
+            ) { view, dismissed, hidden ->
+              (view?.archivedContacts.orEmpty().map { it.id } + dismissed.map { it.id }).count {
+                it !in hidden
+              }
+            }
+      }
+
+  private fun extras(): Flow<Extras> =
+      combine(prefs(), lockPart(), permissions(), trashPart(), sensor) {
+          prefs,
+          lock,
+          permissions,
+          trash,
+          sensor ->
+        Extras(
+            theme = prefs.theme,
+            period = prefs.period,
+            lockOn = lock.on,
+            pinSet = lock.pinSet,
+            biometric = lock.biometric,
+            sensor = sensor,
+            canDelete =
+                permissions["deleteRecords"] != false || permissions["deleteContacts"] != false,
+            trash = trash,
+        )
+      }
+
+  /** The newest entry waiting for the server, named the way its row reads. */
+  private fun newest(waiting: List<OutboxRow>, view: LedgerView?): QueuedEntry? =
+      waiting
+          .maxByOrNull { it.createdAt }
+          ?.let { row ->
+            when (val payload = row.command.payload()) {
+              is DebtCreate ->
+                  QueuedEntry(
+                      QueuedKind.DEBT,
+                      contactName(view, payload.contactId),
+                      payload.amountCents,
+                  )
+              is DebtCorrect ->
+                  QueuedEntry(
+                      QueuedKind.DEBT_CORRECT,
+                      debtContact(view, payload.debtId),
+                      payload.amountCents,
+                  )
+              is PaymentCreate ->
+                  QueuedEntry(
+                      QueuedKind.PAYMENT,
+                      debtContact(view, payload.debtId),
+                      payload.amountCents,
+                  )
+              is PaymentReverse ->
+                  QueuedEntry(
+                      QueuedKind.PAYMENT_REVERSE,
+                      paymentContact(view, payload.paymentId),
+                      null,
+                  )
+              is ContactCreate -> QueuedEntry(QueuedKind.CONTACT_NEW, payload.name, null)
+              is ContactUpdate -> QueuedEntry(QueuedKind.CONTACT_EDIT, payload.name, null)
+              is ContactArchive ->
+                  QueuedEntry(
+                      QueuedKind.CONTACT_ARCHIVE,
+                      contactName(view, payload.contactId),
+                      null,
+                  )
+              is ContactRestore ->
+                  QueuedEntry(
+                      QueuedKind.CONTACT_RESTORE,
+                      contactName(view, payload.contactId),
+                      null,
+                  )
+            }
+          }
+
+  private fun contactName(view: LedgerView?, contactId: String): String =
+      view?.contacts?.firstOrNull { it.id == contactId }?.name
+          ?: view?.archivedContacts?.firstOrNull { it.id == contactId }?.name
+          ?: ""
+
+  private fun debtContact(view: LedgerView?, debtId: String): String {
+    val contactId = view?.debts?.firstOrNull { it.id == debtId }?.contactId ?: return ""
+    return contactName(view, contactId)
+  }
+
+  private fun paymentContact(view: LedgerView?, paymentId: String): String {
+    val debtId = view?.payments?.firstOrNull { it.id == paymentId }?.debtId ?: return ""
+    return debtContact(view, debtId)
+  }
 
   private fun line(status: SyncStatus): SyncLine =
       when (status) {

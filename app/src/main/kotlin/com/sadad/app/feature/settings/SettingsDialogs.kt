@@ -2,7 +2,6 @@ package com.sadad.app.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -40,24 +39,15 @@ object SettingsDialogTags {
   const val REMOVE_CONFIRM = "settings:remove:confirm"
 }
 
-/** The dialog [SettingsState.pending] asks for, and the saved-stores list. */
+/** The dialog [SettingsState.pending] asks for. */
 @Composable
-internal fun SettingsDialogs(
-    state: SettingsState,
-    model: SettingsViewModel,
-    navigation: SettingsNavigation,
-    showStores: Boolean,
-    onHideStores: () -> Unit,
-) {
+internal fun SettingsDialogs(state: SettingsState, model: SettingsViewModel) {
   when (val pending = state.pending) {
     is Pending.Profile -> ProfileDialog(pending, model)
     Pending.SetPin -> PinDialog(state.pinError, model)
     is Pending.SignOut -> SignOutDialog(pending, state.busy, model)
     is Pending.Remove -> RemoveDialog(pending, state.busy, model)
     null -> Unit
-  }
-  if (showStores) {
-    StoresDialog(state.accounts, model, navigation, onHideStores)
   }
 }
 
@@ -265,59 +255,6 @@ private fun RemoveDialog(pending: Pending.Remove, busy: Boolean, model: Settings
       },
       dismissButton = {
         TextButton(onClick = model::dismiss) { Text(stringResource(R.string.settings_cancel)) }
-      },
-  )
-}
-
-@Composable
-private fun StoresDialog(
-    stores: List<SavedStore>,
-    model: SettingsViewModel,
-    navigation: SettingsNavigation,
-    onDismiss: () -> Unit,
-) {
-  AlertDialog(
-      onDismissRequest = onDismiss,
-      title = { Text(stringResource(R.string.settings_stores_title)) },
-      text = {
-        Column {
-          for (store in stores) {
-            TextButton(
-                onClick = {
-                  onDismiss()
-                  if (!store.active) model.switchTo(store.storeUserId)
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-              Row(
-                  modifier = Modifier.fillMaxWidth(),
-                  horizontalArrangement = Arrangement.SpaceBetween,
-              ) {
-                Column {
-                  Text(store.storeName.ifBlank { stringResource(R.string.settings_default_store) })
-                  Text(
-                      text = store.username,
-                      style = MaterialTheme.typography.labelSmall,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  )
-                }
-                if (store.active) Text(stringResource(R.string.settings_store_active))
-              }
-            }
-          }
-          TextButton(
-              onClick = {
-                onDismiss()
-                navigation.onAddStore()
-              },
-              modifier = Modifier.fillMaxWidth(),
-          ) {
-            Text(stringResource(R.string.settings_add_store))
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_back)) }
       },
   )
 }

@@ -1,8 +1,9 @@
 package com.sadad.app.feature.settings
 
 import com.sadad.app.feature.history.PeriodPreset
+import com.sadad.ledger.Cents
 
-/** One store the phone remembers, as the accounts dialog lists it. */
+/** One saved store the card's switcher lists. */
 data class SavedStore(
     val storeUserId: String,
     val username: String,
@@ -10,6 +11,21 @@ data class SavedStore(
     /** The store open right now. */
     val active: Boolean,
 )
+
+/** The kind of entry waiting in the outbox, so the row can say «دين» or «دفعة». */
+enum class QueuedKind {
+  DEBT,
+  DEBT_CORRECT,
+  PAYMENT,
+  PAYMENT_REVERSE,
+  CONTACT_NEW,
+  CONTACT_EDIT,
+  CONTACT_ARCHIVE,
+  CONTACT_RESTORE,
+}
+
+/** The newest entry waiting to be sent: what it was, for whom and for how much. */
+data class QueuedEntry(val kind: QueuedKind, val name: String, val amount: Cents?)
 
 /** The sync section's status line; [Failed] carries the `errors.json` text for the code. */
 sealed interface SyncLine {
@@ -82,6 +98,14 @@ data class SettingsState(
     val sync: SyncLine = SyncLine.Idle,
     /** Entries queued on this phone and not yet accepted by the server. */
     val unsent: Int = 0,
+    /** The newest of those entries, for the status row's second line. */
+    val newest: QueuedEntry? = null,
+    /** What the trash holds: archived Contacts and dismissed reminders this phone still lists. */
+    val trashCount: Int = 0,
+    /** This device's `permissions` allow the trash's actions (Q6/Q20). */
+    val canDelete: Boolean = true,
+    /** The phone has an enrolled fingerprint or face. */
+    val biometricAvailable: Boolean = false,
     /** The lock applies: it is on and a PIN exists. */
     val lockOn: Boolean = false,
     val pinSet: Boolean = false,
