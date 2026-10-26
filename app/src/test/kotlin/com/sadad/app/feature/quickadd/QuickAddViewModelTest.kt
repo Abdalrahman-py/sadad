@@ -189,6 +189,9 @@ class QuickAddViewModelTest {
 
       assertEquals(Cents(500_000), model.state.value.anomaly)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+      // The 4,999.99 entry was recorded when «تسجيل آخر» left the done step; the 5,000 one is
+      // still waiting for its confirmation and adds nothing.
+      store.awaitOutbox(1)
       advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS * 2)
       assertEquals(1, store.outbox.snapshot().size)
     }
