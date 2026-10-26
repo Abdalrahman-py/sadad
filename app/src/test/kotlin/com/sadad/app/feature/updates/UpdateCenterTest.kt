@@ -73,12 +73,22 @@ class UpdateCenterTest {
 
   private fun center(installed: Int = 40, nowMs: Long = 10_000): UpdateCenter {
     val source =
-        UpdateSource(client, UpdateChannel.TEAM) { name -> server.url("/$name").toString() }
+        UpdateSource(
+            client = client,
+            channel = UpdateChannel.TEAM,
+            urlFor = { name -> server.url("/$name").toString() },
+            pause = NO_WAIT,
+        )
     return UpdateCenter(
         context = context,
         preferences = preferences,
         source = source,
-        downloader = ApkDownloader(client) { File(folder.root, "updates") },
+        downloader =
+            ApkDownloader(
+                client = client,
+                root = { File(folder.root, "updates") },
+                pause = NO_WAIT,
+            ),
         installedVersionCode = { installed },
         clock = { nowMs },
         scope = scope,
@@ -114,12 +124,38 @@ class UpdateCenterTest {
     server.enqueue(MockResponse.Builder().code(200).body(manifestJson(57)).build())
     val center = center(installed = 40)
     center.check(force = true)
-    server.enqueue(MockResponse.Builder().code(503).body("").build())
+    // Every attempt fails: the check is retried before it is believed.
+    repeat(4) { server.enqueue(MockResponse.Builder().code(503).body("").build()) }
     center.check(force = true)
     val state = center.state.value
     assertEquals(UpdateState.Phase.AVAILABLE, state.phase)
     assertEquals(57, state.manifest?.versionCode)
     assertEquals(UpdateError.NETWORK, state.error)
+  }
+
+  @Test
+  fun aCheckThatFindsTheManifestOnASecondTryStillOffersIt() = runBlocking {
+    server.enqueue(MockResponse.Builder().code(404).body("Not Found").build())
+    server.enqueue(MockResponse.Builder().code(200).body(manifestJson(57)).build())
+    val center = center(installed = 40)
+    center.check(force = true)
+    val state = center.state.value
+    assertEquals(UpdateState.Phase.AVAILABLE, state.phase)
+    assertEquals(57, state.manifest?.versionCode)
+    assertNull(state.error)
+  }
+
+  @Test
+  fun aRefusedApkDownloadIsAskedAgainAndThenVerified() = runBlocking {
+    server.enqueue(MockResponse.Builder().code(200).body(manifestJson(57)).build())
+    server.enqueue(MockResponse.Builder().code(404).body("Not Found").build())
+    server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(apkBytes)).build())
+    val center = center(installed = 40)
+    center.check(force = true)
+    center.download()
+    val state = center.awaitPhase(UpdateState.Phase.READY)
+    assertEquals(100, state.progress)
+    assertTrue(File(folder.root, "updates/sadad-57.apk").isFile)
   }
 
   @Test
