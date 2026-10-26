@@ -1,8 +1,10 @@
 package com.sadad.app.data.sync
 
 import com.sadad.app.data.ledger.OutboxState
+import com.sadad.ledger.Commands
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.OperationsRequest
+import com.sadad.ledger.Origin
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
@@ -15,6 +17,20 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class SyncPushTest {
+  @Test
+  fun aRowFromAnotherInstallationIsNamedUnsendableInsteadOfQueuedForever() = runTest {
+    SyncFixture.create().use { f ->
+      val other = Origin("another-installation", 1, com.sadad.app.data.db.Events.EPOCH)
+      val command = Commands.contactCreate(other, com.sadad.app.data.db.Events.at(0), "غريب")
+      f.scope.outbox.append(listOf(command))
+      f.page()
+
+      assertEquals(SyncStatus.Idle, f.engine.pass(f.scope))
+
+      assertEquals(OutboxState.UNSENDABLE, f.scope.outbox.snapshot().single().state)
+    }
+  }
+
   @Test
   fun oneHundredFiftyCommandsKeepTheirOrderInTwoBatches() = runTest {
     SyncFixture.create().use { f ->

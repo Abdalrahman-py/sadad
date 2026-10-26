@@ -24,7 +24,10 @@ enum class OutboxState(val column: String) {
   QUEUED("queued"),
   ACCEPTED("accepted"),
   REJECTED("rejected"),
-  CANCELLED("cancelled");
+  CANCELLED("cancelled"),
+
+  /** This installation can never send the row (another installation wrote it): discard only. */
+  UNSENDABLE("unsendable");
 
   companion object {
     fun of(column: String): OutboxState = entries.first { it.column == column }
@@ -49,6 +52,9 @@ sealed interface DismissResult {
 
   /** [dependentOperationId] still names this row in its `dependsOn`; dismiss it first. */
   data class Blocked(val dependentOperationId: String) : DismissResult
+
+  /** The row is not in a state the owner may dismiss (queued or already accepted). */
+  data class NotDismissible(val state: OutboxState) : DismissResult
 }
 
 /**
@@ -130,14 +136,29 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
   }
 
   /**
-   * Deletes a rejected or cancelled row that no other row depends on. A dependent blocks the
-   * dismissal and is named, so the user dismisses it first.
+   * Names queued rows this installation can never send: they were written under another
+   * installation and carry no recovery permit. Without this they would stay queued forever with
+   * no action anywhere in the app.
+   */
+  suspend fun markUnsendable(operationIds: List<String>) {
+    if (operationIds.isEmpty()) return
+    dao.settle(
+        operationIds.map { OutboxAnswer(it, OutboxState.UNSENDABLE.column, FOREIGN_ORIGIN_CODE) }
+    )
+  }
+
+  /**
+   * Deletes a rejected, cancelled or unsendable row that no other row depends on. A dependent
+   * blocks the dismissal and is named, so the user dismisses it first. A row that is still queued
+   * or already accepted is refused by name rather than reported as dismissed.
    */
   suspend fun dismiss(operationId: String): DismissResult {
     val all = snapshot()
     val row = all.firstOrNull { it.operationId == operationId } ?: return DismissResult.Dismissed
-    if (row.state != OutboxState.REJECTED && row.state != OutboxState.CANCELLED) {
-      return DismissResult.Dismissed
+    if (row.state != OutboxState.REJECTED &&
+        row.state != OutboxState.CANCELLED &&
+        row.state != OutboxState.UNSENDABLE) {
+      return DismissResult.NotDismissible(row.state)
     }
     val dependent = all.firstOrNull {
       it.operationId != operationId && operationId in it.command.dependsOn
@@ -213,6 +234,10 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
 
   /** Binds a payload to its row, so swapping two rows' bytes cannot open either. */
   private fun aad(operationId: String): String = "outbox:$operationId"
+
+  private companion object {
+    const val FOREIGN_ORIGIN_CODE = "foreign_origin"
+  }
 }
 
 /** What `view()` projects: the unsettled commands in queue order. */

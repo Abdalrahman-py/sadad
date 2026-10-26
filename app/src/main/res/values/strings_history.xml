@@ -50,6 +50,7 @@
     <string name="history_unaccepted_title">لم تُقبل على هذا الجهاز</string>
     <string name="history_unaccepted_rejected">مرفوضة: %1$s</string>
     <string name="history_unaccepted_cancelled">ملغاة</string>
+    <string name="history_unaccepted_unsendable">لا يمكن إرسالها من هذا الجهاز — تجاهلها</string>
     <string name="history_unaccepted_blocked">لا يمكن التجاهل قبل %1$s</string>
     <string name="history_dismiss">تجاهل</string>
 
