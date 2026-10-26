@@ -86,7 +86,13 @@ internal class ApkDownloader(
       onProgress: (Int) -> Unit,
   ): UpdateError? {
     val request =
-        Request.Builder().url(url).header("User-Agent", "Sadad/${BuildConfig.VERSION_NAME}").build()
+        Request.Builder()
+            .url(url)
+            .header("User-Agent", "Sadad/${BuildConfig.VERSION_NAME}")
+            // Serves the bytes when [url] is an API asset (see UpdateSource); the release URL
+            // ignores it and redirects to the CDN as before.
+            .header("Accept", "application/octet-stream")
+            .build()
     try {
       client.newCall(request).execute().use { response ->
         if (!response.isSuccessful) return UpdateError.DOWNLOAD_FAILED

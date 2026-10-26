@@ -4,8 +4,12 @@ import com.sadad.app.BuildConfig
 
 /**
  * Where a build reads updates from. GitHub Releases is the only source: an APK and its
- * `update.json` sit in the same release, so the app never calls the API and never spends the
- * unauthenticated rate limit that Seal and Mihon both run into.
+ * `update.json` sit in the same release.
+ *
+ * The download URL is the road that needs no API and no rate limit, and it is tried first. When it
+ * answers `404` for a release that is there — which it does from some networks, for minutes at a
+ * time — `UpdateSource` falls back to the API, whose unauthenticated limit is sixty an hour and is
+ * only spent on that failure.
  */
 internal enum class UpdateChannel(
     /** The release the manifest is read from. `latest` is the newest non-prerelease. */
@@ -22,6 +26,9 @@ internal enum class UpdateChannel(
   /** `releases/<release>/download/<name>` is the same URL whether or not the asset exists yet. */
   fun assetUrl(name: String): String =
       "https://github.com/${BuildConfig.UPDATE_REPO}/releases/$release/download/$name"
+
+  /** An API path under the repository: `releases/tags/<tag>` or `releases/assets/<id>`. */
+  fun apiUrl(path: String): String = "https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/$path"
 
   companion object {
     const val MANIFEST_ASSET = "update.json"
