@@ -39,8 +39,7 @@ class PaymentAllocationTest {
         PaymentAllocation.allocate(view, contact.entityId, amount, Direction.RECEIVABLE)
       }
     }
-    val all =
-        PaymentAllocation.allocate(view, contact.entityId, Cents(15000), Direction.RECEIVABLE)
+    val all = PaymentAllocation.allocate(view, contact.entityId, Cents(15000), Direction.RECEIVABLE)
     assertEquals(2, all.size)
   }
 
