@@ -3,6 +3,7 @@ package com.sadad.app.feature.people
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -19,6 +20,7 @@ import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.contacts.ContactsTag
 import com.sadad.app.feature.contacts.contact
 import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.debt
 import com.sadad.app.feature.contacts.pageOf
 import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.testing.TestGraph
@@ -33,6 +35,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+/**
+ * The الأشخاص tab on a real store: the list's length, a row's parts, and the tap that opens one.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class PeopleScreenTest {
@@ -52,11 +57,11 @@ class PeopleScreenTest {
     }
         .use { fixture ->
           val model =
-              ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+              PeopleViewModel(fixture.graph, SavedStateHandle()).also {
                 fixture.closeWithStore(it.viewModelScope)
               }
           compose.setContent {
-            SadadTheme { ContactsScreen(viewModel = model, onOpenContact = {}) }
+            SadadTheme { PeopleScreen(onOpenContact = {}, viewModel = model) }
           }
           compose.waitUntil(30_000) { model.state.value.registered == 5000 }
           val last = model.state.value.rows[4999]
@@ -68,12 +73,36 @@ class PeopleScreenTest {
   }
 
   @Test
+  fun aRowSaysThePhoneTailTheActivityAndTheBalanceWord() {
+    val person = contact("سامي", contactId(1), phone = "+970****3456")
+    val fixture = runBlocking {
+      TestGraph.signedIn().also {
+        it.seedCommands(listOf(person, debt(person.entityId, amount = 12_500, minute = 1)))
+      }
+    }
+    fixture.use {
+      val model =
+          PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      compose.setContent { SadadTheme { PeopleScreen(onOpenContact = {}, viewModel = model) } }
+      compose.waitUntil(10_000) { model.state.value.loaded && model.state.value.rows.size == 1 }
+
+      compose.onNodeWithText("سامي").assertIsDisplayed()
+      compose.onNodeWithText("…456").assertIsDisplayed()
+      // BalanceWord speaks its figure, so the row reads «عليه 125 شيكل» aloud.
+      compose.onNodeWithContentDescription("عليه 125 شيكل").assertIsDisplayed()
+      compose.onNodeWithTag(PeopleTags.COUNT).assertIsDisplayed()
+    }
+  }
+
+  @Test
   fun tappingAContactOpensItsRealDetailScreen() {
     val person = contact("سامي", contactId(1))
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val list =
-          ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+          PeopleViewModel(fixture.graph, SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       val detail =
@@ -84,7 +113,9 @@ class PeopleScreenTest {
         val nav = rememberNavController()
         SadadTheme {
           NavHost(navController = nav, startDestination = People()) {
-            composable<People> { ContactsScreen(list, { nav.navigate(ContactDetail(it)) }) }
+            composable<People> {
+              PeopleScreen(onOpenContact = { nav.navigate(ContactDetail(it)) }, viewModel = list)
+            }
             composable<ContactDetail> {
               ContactDetailScreen(detail, { nav.popBackStack() }, {}, {}, {})
             }
