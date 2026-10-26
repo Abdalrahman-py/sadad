@@ -67,7 +67,9 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     minSdk = 26
     targetSdk = 36
-    versionCode = 40
+    // The release line keeps 40. A team build passes a higher code so a sideloaded APK updates the
+    // previous one instead of being refused as a downgrade.
+    versionCode = providers.gradleProperty("SADAD_VERSION_CODE").getOrElse("40").toInt()
     versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("3.0.0")
     buildConfigField("String", "SUPABASE_URL", quoted(supabaseUrl))
     buildConfigField("String", "API_BASE_URL", quoted("$supabaseUrl/functions/v1/api"))
@@ -96,6 +98,15 @@ android {
       isShrinkResources = true
       if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+    // The team build the `dev` branch publishes: the debug app (same `.debug` suffix, so it lives
+    // beside the real one) signed with the release key when CI has it, so every build installs over
+    // the last without an uninstall. Not minified: a crash report has to stay readable.
+    create("team") {
+      initWith(getByName("debug"))
+      versionNameSuffix = "-team"
+      if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
+      matchingFallbacks += "debug"
     }
     // What the :benchmark module measures: the release build (R8 on) signed with the debug key so a
     // phone installs it without the production key. Not debuggable, or the timings are wrong.
