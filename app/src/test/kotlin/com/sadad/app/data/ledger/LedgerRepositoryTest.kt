@@ -216,6 +216,26 @@ class LedgerRepositoryTest : LedgerTestCase() {
   }
 
   @Test
+  fun twoEditsBeforeAPullCarryIncreasingVersions() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand())
+
+    assertTrue(repo.updateContact(CONTACT_ID, "الاسم الأول", null, null, null).isSuccess)
+    assertTrue(repo.updateContact(CONTACT_ID, "الاسم الثاني", null, null, null).isSuccess)
+
+    val versions =
+        outbox.snapshot()
+            .filter { it.type == CommandType.CONTACT_UPDATE }
+            .map { it.command.expectedVersion }
+    assertEquals(
+        "the second edit names the version the first one consumes",
+        listOf(1L, 2L),
+        versions,
+    )
+  }
+
+  @Test
   fun cancellingAQueuedCompoundHidesItFromTheView() = runTest {
     val repo = repository()
     repo.load()
