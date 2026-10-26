@@ -436,7 +436,8 @@ class SettingsViewModel(
   /** The newest entry waiting for the server, named the way its row reads. */
   private fun newest(waiting: List<OutboxRow>, view: LedgerView?): QueuedEntry? =
       waiting
-          .maxByOrNull { it.createdAt }
+          // The queue order, not createdAt: three entries made in the same millisecond would tie.
+          .maxByOrNull { it.seq }
           ?.let { row ->
             when (val payload = row.command.payload()) {
               is DebtCreate ->
