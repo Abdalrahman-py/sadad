@@ -33,14 +33,20 @@ data class ContactStatement(
 )
 
 object Statement {
-  /** Inclusive period endpoints; null means unbounded. Only visible receivable movements count. */
+  /**
+   * A half-open period: [fromInclusive] and [toExclusive]; null means unbounded. The same
+   * convention as `PeriodBounds`, so no caller subtracts a nanosecond to fit an inclusive end.
+   * Only visible receivable movements count.
+   */
   fun build(
       view: LedgerView,
       contactId: String?,
-      from: Instant?,
-      to: Instant?,
+      fromInclusive: Instant?,
+      toExclusive: Instant?,
   ): List<ContactStatement> {
-    require(from == null || to == null || from <= to) { "from must not be after to" }
+    require(fromInclusive == null || toExclusive == null || fromInclusive <= toExclusive) {
+      "from must not be after to"
+    }
     val contacts = view.contacts.filter { contactId == null || it.id == contactId }
     val selected = contacts.map { it.id }.toHashSet()
     val debts =
@@ -84,10 +90,10 @@ object Statement {
       val rows = mutableListOf<StatementRow>()
       var balance = Cents.ZERO
       for (row in sorted) {
-        if (from != null && row.date < from) {
+        if (fromInclusive != null && row.date < fromInclusive) {
           opening += row.debt - row.payment
           balance = opening
-        } else if (to == null || row.date <= to) {
+        } else if (toExclusive == null || row.date < toExclusive) {
           balance += row.debt - row.payment
           totalDebt += row.debt
           totalPaid += row.payment

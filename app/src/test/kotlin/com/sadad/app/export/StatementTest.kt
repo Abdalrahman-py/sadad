@@ -57,6 +57,23 @@ class StatementTest {
   }
 
   @Test
+  fun theNextPeriodsFirstInstantIsNotInThisPeriod() {
+    val boundary = Instant.parse("2026-11-01T00:00:00Z")
+    val atBoundary = debt(boundary, 4_000)
+    val view = exportView(contact, newDebt, atBoundary)
+
+    val october = Statement.build(view, contact.entityId, from, boundary).single()
+    assertTrue(
+        "a movement at the first instant of November is not October's",
+        october.rows.none { it.id == atBoundary.entityId },
+    )
+    assertEquals(Cents(5000), october.closing)
+
+    val november = Statement.build(view, contact.entityId, boundary, null).single()
+    assertEquals(listOf(atBoundary.entityId), november.rows.map { it.id })
+  }
+
+  @Test
   fun reversedPaymentsNeverAffectRowsOrOpening() {
     val reverse = Commands.paymentReverse(Events.origin, to, payment.entityId, "خطأ")
     val view = exportView(contact, oldDebt, newDebt, payment, reverse)

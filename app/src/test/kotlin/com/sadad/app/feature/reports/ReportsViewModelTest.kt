@@ -67,7 +67,7 @@ class ReportsViewModelTest {
         val state = model.state.first { it.loaded && it.period == period }
         val bounds = period.bounds(zone)
         val statements =
-            Statement.build(fixture.view(), null, bounds.from, bounds.to?.minusNanos(1))
+            Statement.build(fixture.view(), null, bounds.from, bounds.to)
 
         assertEquals(
             "debts in $period",
