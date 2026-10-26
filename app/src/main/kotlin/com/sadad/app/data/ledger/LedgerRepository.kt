@@ -64,9 +64,11 @@ sealed class Refusal(message: String) : Exception(message) {
   data object Unknown : Refusal("the row is not in the ledger view")
 }
 
-/** The optional Debt a new Contact starts with. */
+/**
+ * The optional Debt a new Contact starts with. It carries no direction: the Contact's kind decides
+ * it ([ContactKind.debtDirection]), so a caller cannot write a supplier's balance on the wrong side.
+ */
 data class FirstDebt(
-    val direction: Direction,
     val amount: Cents,
     val note: String? = null,
     val dueDate: String? = null,
@@ -158,7 +160,7 @@ class LedgerRepository(
               origin,
               at,
               contact.entityId,
-              firstDebt.direction,
+              kind.debtDirection,
               firstDebt.amount,
               firstDebt.note,
               firstDebt.dueDate,

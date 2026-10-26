@@ -31,7 +31,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
               phone = "+970599123456",
               category = "family",
               note = "قريب",
-              firstDebt = FirstDebt(Direction.RECEIVABLE, Cents(10_000)),
+              firstDebt = FirstDebt(Cents(10_000)),
           )
       assertTrue(saved.isSuccess)
 
@@ -224,7 +224,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
         null,
         null,
         null,
-        FirstDebt(Direction.RECEIVABLE, Cents(10_000)),
+        FirstDebt(Cents(10_000)),
     )
     val contactId = outbox.snapshot().single { it.type == CommandType.CONTACT_CREATE }.operationId
 
