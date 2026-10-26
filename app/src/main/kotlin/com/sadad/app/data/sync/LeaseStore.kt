@@ -93,8 +93,8 @@ class LeaseStore(
 
   /**
    * The window this lease is usable in. `issuedAt` is the server's clock and [now] the device's, so
-   * a phone a few minutes behind must not read its own lease as not-yet-issued: the same ±5
-   * minutes `proof.ts` already allows between a device and the server.
+   * a phone a few minutes behind must not read its own lease as not-yet-issued: the same ±5 minutes
+   * `proof.ts` already allows between a device and the server.
    */
   private fun usableFrom(payload: LeasePayload): Long = payload.issuedAt - CLOCK_SKEW_MS
 

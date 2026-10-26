@@ -137,8 +137,8 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
 
   /**
    * Names queued rows this installation can never send: they were written under another
-   * installation and carry no recovery permit. Without this they would stay queued forever with
-   * no action anywhere in the app.
+   * installation and carry no recovery permit. Without this they would stay queued forever with no
+   * action anywhere in the app.
    */
   suspend fun markUnsendable(operationIds: List<String>) {
     if (operationIds.isEmpty()) return
@@ -155,9 +155,11 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
   suspend fun dismiss(operationId: String): DismissResult {
     val all = snapshot()
     val row = all.firstOrNull { it.operationId == operationId } ?: return DismissResult.Dismissed
-    if (row.state != OutboxState.REJECTED &&
-        row.state != OutboxState.CANCELLED &&
-        row.state != OutboxState.UNSENDABLE) {
+    if (
+        row.state != OutboxState.REJECTED &&
+            row.state != OutboxState.CANCELLED &&
+            row.state != OutboxState.UNSENDABLE
+    ) {
       return DismissResult.NotDismissible(row.state)
     }
     val dependent = all.firstOrNull {

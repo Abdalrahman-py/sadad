@@ -121,8 +121,10 @@ class ManifestTest {
               )
               .operations
       assertEquals(listOf(contact.operationId), sent.map { it.operationId })
+      // An online-only command from another installation cannot be sent by this one and no permit
+      // can name it, so the pass names it unsendable (discard is its only exit).
       val waiting = f.scope.outbox.snapshot().single { it.operationId == archive.operationId }
-      assertEquals(OutboxState.QUEUED, waiting.state)
+      assertEquals(OutboxState.UNSENDABLE, waiting.state)
       assertNull(waiting.recoveryPermit)
     }
   }

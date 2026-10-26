@@ -561,10 +561,7 @@ class QuickAddViewModel(
     // A Debt on a Contact the server has not confirmed must name the command that creates it.
     val parent =
         held?.operationId
-            ?: currentView
-                ?.contacts
-                ?.firstOrNull { it.id == person.id && it.pending }
-                ?.operationId
+            ?: currentView?.contacts?.firstOrNull { it.id == person.id && it.pending }?.operationId
     val debt =
         Commands.debtCreate(
             origin,

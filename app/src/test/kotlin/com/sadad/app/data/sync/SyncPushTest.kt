@@ -21,7 +21,15 @@ class SyncPushTest {
   fun aRowFromAnotherInstallationIsNamedUnsendableInsteadOfQueuedForever() = runTest {
     SyncFixture.create().use { f ->
       val other = Origin("another-installation", 1, com.sadad.app.data.db.Events.EPOCH)
-      val command = Commands.contactCreate(other, com.sadad.app.data.db.Events.at(0), "غريب")
+      // Online-only: a permit can never cover it, and this installation may not send it.
+      val command =
+          Commands.contactArchive(
+              other,
+              com.sadad.app.data.db.Events.at(0),
+              contactId = "contact-1",
+              expectedVersion = 1,
+              reason = "سبب",
+          )
       f.scope.outbox.append(listOf(command))
       f.page()
 

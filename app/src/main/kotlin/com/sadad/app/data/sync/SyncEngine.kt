@@ -212,12 +212,15 @@ class SyncEngine(
     }
 
     private suspend fun push() {
-      // A row written under another installation, with no recovery permit, can never be sent by
-      // this one. Name it instead of leaving it queued forever with no action in the app.
+      // A row written under another installation can still be sent with a recovery permit, but
+      // only offline commands can ever carry one. An online-only row from another installation is
+      // stranded: nothing can send it and no permit can name it. Say so instead of leaving it
+      // queued forever with no action in the app.
       val foreign =
           scope.outbox.snapshot().filter {
             it.state == OutboxState.QUEUED &&
                 it.recoveryPermit == null &&
+                !it.command.type.offline &&
                 it.command.originInstallationId != scope.account.installationId
           }
       if (foreign.isNotEmpty()) scope.outbox.markUnsendable(foreign.map { it.operationId })
