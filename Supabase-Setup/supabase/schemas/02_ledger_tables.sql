@@ -12,6 +12,7 @@ create table public.sadid_contacts (
   id uuid not null,
   name text not null check (length(trim(name)) between 1 and 120),
   phone text not null default '',
+  kind text not null default 'customer' check (kind in ('customer', 'supplier')),
   category text not null default '',
   note text not null default '',
   external_reference text not null default '',

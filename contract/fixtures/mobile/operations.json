@@ -12,7 +12,7 @@
         "expectedEpoch": "{epoch}",
         "createdAt": "2026-10-16T09:00:00Z",
         "dependsOn": [],
-        "payload": { "name": "أبو خالد", "phone": "+970599123456" }
+        "payload": { "name": "أبو خالد", "kind": "customer", "phone": "+970599123456" }
       },
       {
         "schemaVersion": 1,

@@ -50,6 +50,7 @@ import com.sadad.app.ui.components.SadadSwitchRow
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseDueDate
+import com.sadad.ledger.ContactKind
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -118,6 +119,19 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
     )
     state.phoneError?.let {
       Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    }
+    if (state.edit) {
+      SadadChoiceField(
+          label = stringResource(R.string.contactform_kind),
+          options =
+              listOf(
+                  ContactKind.CUSTOMER to stringResource(R.string.contactform_kind_customer),
+                  ContactKind.SUPPLIER to stringResource(R.string.contactform_kind_supplier),
+              ),
+          selected = state.kind,
+          onSelect = viewModel::onKindChange,
+          enabled = !state.busy,
+      )
     }
     SadadField(
         value = state.category,

@@ -120,8 +120,10 @@ async function fingerprint(database) {
     union all
     select jsonb_build_array('function',nspname,proname,args,pg_get_userbyid(proowner),pg_get_functiondef(oid))::text from routines
     union all
+    -- Internal RI triggers are named after their OID, which shifts between equivalent
+    -- builds (inline column vs a later ALTER); their FK constraints stay fingerprinted.
     select jsonb_build_array('trigger',c.nspname,c.relname,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid))::text
-      from pg_trigger t join relations c on c.oid=t.tgrelid
+      from pg_trigger t join relations c on c.oid=t.tgrelid where not t.tgisinternal
     union all
     select jsonb_build_array('policy',schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check)::text
       from pg_policies where schemaname in ('public','sadid_private')
@@ -464,11 +466,11 @@ try {
     );
   });
 
-  const contact = command('contact.create', { name: 'عميل تجربة', phone: '', externalReference: 'TEST-001' });
+  const contact = command('contact.create', { kind: 'customer', name: 'عميل تجربة', phone: '', externalReference: 'TEST-001' });
 
   await check('Refuses operation with wrong epoch', async () => {
     await assert.rejects(
-      apply(command('contact.create', { name: 'قديم' }, { expectedEpoch: randomUUID() })),
+      apply(command('contact.create', { kind: 'customer', name: 'قديم' }, { expectedEpoch: randomUUID() })),
       /epoch_changed/,
     );
   });
@@ -521,17 +523,17 @@ try {
   });
 
   await check('Requires schemaVersion and validates normalized phone uniqueness across archive', async () => {
-    const missingSchema = command('contact.create', { name: 'طلب ناقص' });
+    const missingSchema = command('contact.create', { kind: 'customer', name: 'طلب ناقص' });
     delete missingSchema.schemaVersion;
     await assert.rejects(apply(missingSchema), /unsupported_schema/);
 
     await db.exec('reset role; begin');
     try {
-      const a = command('contact.create', { name: 'هاتف تحقق اصطناعي', phone: '+٩٩٩ ١٢٣٤٥٦٧٨٩' });
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '+٩٩٩ ١٢٣٤٥٦٧٨٩' });
       assert.equal((await apply(a)).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { name: 'مكرر', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '+999123456789' }))).code, 'duplicate_phone');
       assert.equal((await apply(command('contact.archive', { contactId: a.entityId, reason: 'تحقق' }, { expectedVersion: 1 }))).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { name: 'مكرر مؤرشف', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '+999123456789' }))).code, 'duplicate_phone');
     } finally {
       await db.exec('rollback; reset role');
     }
@@ -548,11 +550,47 @@ try {
       }
       const edit = command(
         'contact.update',
-        { contactId: contact.entityId, name: 'اسم جديد', phone: '+٩٧٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة' },
+        { contactId: contact.entityId, name: 'اسم جديد', phone: '+٩٧٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
         { expectedVersion: 1 },
       );
       assert.equal((await apply(edit)).status, 'accepted');
       assert.equal((await apply(command('contact.update', edit.payload, { expectedVersion: 1 }))).code, 'entity_version_changed');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
+  await check('Requires the contact kind, stores it and lets contact.update change it', async () => {
+    await db.exec('reset role; begin');
+    try {
+      // Per-command refusals come back as rejected receipts, not thrown errors.
+      assert.equal((await apply(command('contact.create', { name: 'بلا نوع' }))).code, 'invalid_input');
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'vendor', name: 'نوع غير معروف' }))).code,
+        'invalid_input',
+      );
+      const supplier = command('contact.create', { kind: 'supplier', name: 'مورد تجربة', phone: '' });
+      assert.equal((await apply(supplier)).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal(
+        (await db.query('select kind from public.sadid_contacts where id = $1', [supplier.entityId])).rows[0].kind,
+        'supplier',
+      );
+      const flip = command(
+        'contact.update',
+        { contactId: supplier.entityId, name: 'مورد صار زبونًا', kind: 'customer' },
+        { expectedVersion: 1 },
+      );
+      assert.equal((await apply(flip)).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal(
+        (await db.query('select kind from public.sadid_contacts where id = $1', [supplier.entityId])).rows[0].kind,
+        'customer',
+      );
+      assert.equal(
+        (await apply(command('contact.update', { contactId: supplier.entityId, name: 'نوع غير معروف', kind: 'vendor' }, { expectedVersion: 2 }))).code,
+        'invalid_input',
+      );
     } finally {
       await db.exec('rollback; reset role');
     }
@@ -577,7 +615,7 @@ try {
       'invalid_money',
     );
     await assert.rejects(
-      apply(command('contact.create', { name: 'اعتماد' }, { dependsOn: [randomUUID()] })),
+      apply(command('contact.create', { kind: 'customer', name: 'اعتماد' }, { dependsOn: [randomUUID()] })),
       /dependency_pending/,
     );
     assert.equal(
@@ -612,7 +650,7 @@ try {
   });
 
   await check('Batch apply returns one receipt per operation and is idempotent on resend', async () => {
-    const c1 = command('contact.create', { name: 'دفعة ١', phone: '' });
+    const c1 = command('contact.create', { kind: 'customer', name: 'دفعة ١', phone: '' });
     const c2 = command('debt.create', { contactId: c1.entityId, amountCents: 2500, direction: 'receivable' }, { dependsOn: [c1.operationId] });
     const c3 = command('payment.create', { debtId: c2.entityId, amountCents: 3000, method: 'cash' }, { dependsOn: [c2.operationId] });
 
@@ -631,7 +669,7 @@ try {
     await db.exec('reset role');
     await db.query("update sadid_private.installations set permissions = '{\"registerPayments\": false}'::jsonb where id = $1", [activeInstallation]);
     try {
-      const c = command('contact.create', { name: 'عميل صلاحيات', phone: '' });
+      const c = command('contact.create', { kind: 'customer', name: 'عميل صلاحيات', phone: '' });
       const d = command('debt.create', { contactId: c.entityId, amountCents: 1000, direction: 'receivable' }, { dependsOn: [c.operationId] });
       const p = command('payment.create', { debtId: d.entityId, amountCents: 500, method: 'cash' }, { dependsOn: [d.operationId] });
 
@@ -652,40 +690,40 @@ try {
       assert.equal((await db.query('select count(*)::int n from public.sadid_events')).rows[0].n, eventsBefore);
 
       const tsBad = await applyBatch([
-        command('contact.create', { name: 'وقت سليم', phone: '' }),
-        command('contact.create', { name: 'وقت تالف', phone: '' }, { createdAt: 'not a time' }),
+        command('contact.create', { kind: 'customer', name: 'وقت سليم', phone: '' }),
+        command('contact.create', { kind: 'customer', name: 'وقت تالف', phone: '' }, { createdAt: 'not a time' }),
       ]);
       assert.deepEqual(tsBad.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_timestamp']]);
 
-      const tsMissing = command('contact.create', { name: 'بلا وقت', phone: '' });
+      const tsMissing = command('contact.create', { kind: 'customer', name: 'بلا وقت', phone: '' });
       delete tsMissing.createdAt;
-      const tsNone = await applyBatch([command('contact.create', { name: 'وقت موجود', phone: '' }), tsMissing]);
+      const tsNone = await applyBatch([command('contact.create', { kind: 'customer', name: 'وقت موجود', phone: '' }), tsMissing]);
       assert.deepEqual(tsNone.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_timestamp']]);
 
       const depNotArray = await applyBatch([
-        command('contact.create', { name: 'اعتماد سليم ١', phone: '' }),
-        command('contact.create', { name: 'اعتماد نص', phone: '' }, { dependsOn: 'x' }),
+        command('contact.create', { kind: 'customer', name: 'اعتماد سليم ١', phone: '' }),
+        command('contact.create', { kind: 'customer', name: 'اعتماد نص', phone: '' }, { dependsOn: 'x' }),
       ]);
       assert.deepEqual(depNotArray.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_dependencies']]);
 
       const depBadUuid = await applyBatch([
-        command('contact.create', { name: 'اعتماد سليم ٢', phone: '' }),
-        command('contact.create', { name: 'اعتماد غير معرف', phone: '' }, { dependsOn: ['not-a-uuid'] }),
+        command('contact.create', { kind: 'customer', name: 'اعتماد سليم ٢', phone: '' }),
+        command('contact.create', { kind: 'customer', name: 'اعتماد غير معرف', phone: '' }, { dependsOn: ['not-a-uuid'] }),
       ]);
       assert.deepEqual(depBadUuid.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_dependencies']]);
 
       for (const createdAt of ['2026-01-01 00:00 Foo/Bar', '2026-01-01T00:00:00+99:00', 'infinity']) {
         const tz = await applyBatch([
-          command('contact.create', { name: `وقت سليم ${createdAt}`, phone: '' }),
-          command('contact.create', { name: `وقت غريب ${createdAt}`, phone: '' }, { createdAt }),
+          command('contact.create', { kind: 'customer', name: `وقت سليم ${createdAt}`, phone: '' }),
+          command('contact.create', { kind: 'customer', name: `وقت غريب ${createdAt}`, phone: '' }, { createdAt }),
         ]);
         assert.deepEqual(tz.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_timestamp']], createdAt);
       }
 
       for (const dependsOn of [[randomUUID(), 'not-a-uuid'], [null], [5]]) {
         const deps = await applyBatch([
-          command('contact.create', { name: `اعتماد سليم ${JSON.stringify(dependsOn)}`, phone: '' }),
-          command('contact.create', { name: `اعتماد تالف ${JSON.stringify(dependsOn)}`, phone: '' }, { dependsOn }),
+          command('contact.create', { kind: 'customer', name: `اعتماد سليم ${JSON.stringify(dependsOn)}`, phone: '' }),
+          command('contact.create', { kind: 'customer', name: `اعتماد تالف ${JSON.stringify(dependsOn)}`, phone: '' }, { dependsOn }),
         ]);
         assert.deepEqual(deps.map(r => [r.status, r.code]), [['accepted', null], ['rejected', 'invalid_dependencies']], JSON.stringify(dependsOn));
       }
@@ -694,29 +732,29 @@ try {
       const opsBefore = (await db.query('select count(*)::int n from public.sadid_operations')).rows[0].n;
       await assert.rejects(
         applyBatch([
-          command('contact.create', { name: 'لن يطبق ١', phone: '' }),
-          command('contact.create', { name: 'حقبة خاطئة', phone: '' }, { expectedEpoch: randomUUID() }),
+          command('contact.create', { kind: 'customer', name: 'لن يطبق ١', phone: '' }),
+          command('contact.create', { kind: 'customer', name: 'حقبة خاطئة', phone: '' }, { expectedEpoch: randomUUID() }),
         ]),
         /epoch_changed/,
       );
       await assert.rejects(
         applyBatch([
-          command('contact.create', { name: 'لن يطبق ٢', phone: '' }),
-          command('contact.create', { name: 'عملية خاطئة', phone: '' }, { operationId: 'x' }),
+          command('contact.create', { kind: 'customer', name: 'لن يطبق ٢', phone: '' }),
+          command('contact.create', { kind: 'customer', name: 'عملية خاطئة', phone: '' }, { operationId: 'x' }),
         ]),
         /invalid_input/,
       );
       await assert.rejects(
         applyBatch([
-          command('contact.create', { name: 'لن يطبق ٣', phone: '' }),
-          command('contact.create', { name: 'كيان خاطئ', phone: '' }, { entityId: 'x' }),
+          command('contact.create', { kind: 'customer', name: 'لن يطبق ٣', phone: '' }),
+          command('contact.create', { kind: 'customer', name: 'كيان خاطئ', phone: '' }, { entityId: 'x' }),
         ]),
         /invalid_input/,
       );
       await assert.rejects(
         applyBatch([
-          command('contact.create', { name: 'لن يطبق ٤', phone: '' }),
-          command('contact.create', { name: 'اعتماد معلق', phone: '' }, { dependsOn: [randomUUID()] }),
+          command('contact.create', { kind: 'customer', name: 'لن يطبق ٤', phone: '' }),
+          command('contact.create', { kind: 'customer', name: 'اعتماد معلق', phone: '' }, { dependsOn: [randomUUID()] }),
         ]),
         /dependency_pending/,
       );
@@ -741,8 +779,8 @@ try {
       ];
       for (const createdAt of accepted) {
         const receipts = await applyBatch([
-          command('contact.create', { name: `وقت سليم ${createdAt}`, phone: '' }),
-          command('contact.create', { name: `وقت مقبول ${createdAt}`, phone: '' }, { createdAt }),
+          command('contact.create', { kind: 'customer', name: `وقت سليم ${createdAt}`, phone: '' }),
+          command('contact.create', { kind: 'customer', name: `وقت مقبول ${createdAt}`, phone: '' }, { createdAt }),
         ]);
         assert.deepEqual(receipts.map(r => [r.status, r.code]), [['accepted', null], ['accepted', null]], createdAt);
       }
@@ -763,8 +801,8 @@ try {
       ];
       for (const createdAt of rejected) {
         const receipts = await applyBatch([
-          command('contact.create', { name: `وقت سليم ${createdAt}`, phone: '' }),
-          command('contact.create', { name: `وقت مرفوض ${createdAt}`, phone: '' }, { createdAt }),
+          command('contact.create', { kind: 'customer', name: `وقت سليم ${createdAt}`, phone: '' }),
+          command('contact.create', { kind: 'customer', name: `وقت مرفوض ${createdAt}`, phone: '' }, { createdAt }),
         ]);
         assert.deepEqual(
           receipts.map(r => [r.status, r.code]),
@@ -910,7 +948,7 @@ try {
 
   await check('Recovery permit flow works across installation transfer', async () => {
     await db.exec('reset role');
-    const recovered = command('contact.create', { name: 'مدخل مستعاد' });
+    const recovered = command('contact.create', { kind: 'customer', name: 'مدخل مستعاد' });
     const newInstallation = randomUUID();
 
     // Revoke the lost installation as admin, then enroll and approve the replacement installation

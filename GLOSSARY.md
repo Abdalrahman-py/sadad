@@ -17,7 +17,9 @@ lives in `sadid_ledger_state`, `sadid_contacts`, `sadid_debts`, `sadid_payments`
 folded into `LedgerState` and projected with the outbox into `LedgerView`.
 
 **Contact** (`شخص`) — a customer or a supplier (`sadid_contacts`, `ContactRow`, `ContactView`).
-Balances are derived, never stored: open debts minus non-reversed payments.
+Its `kind` (`زبون` / `مورد`, `ContactKind`) is required and decides a Debt's direction
+(`ContactKind.debtDirection`); it is editable and existing Debts keep their direction. Balances are
+derived, never stored: `LedgerView.net` is open receivable minus open payable for the person.
 
 **Debt** (`دين`) — an amount owed in one direction (`Direction.RECEIVABLE` / `receivable` = the
 contact owes the store, `Direction.PAYABLE` / `payable` = the store owes the contact; `sadid_debts`,

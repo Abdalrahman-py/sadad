@@ -79,4 +79,18 @@ class ContractShapeTest {
     )
     assertEquals(events, changes.events)
   }
+
+  @Test
+  fun contactCreateCarriesKindOnTheWire() {
+    val supplier =
+        Commands.contactCreate(
+            Events.origin,
+            Events.at(0),
+            "شركة النور",
+            kind = ContactKind.SUPPLIER,
+        )
+    assertEquals("supplier", supplier.payload.getValue("kind").jsonPrimitive.content)
+    val customer = Commands.contactCreate(Events.origin, Events.at(0), "سامي")
+    assertEquals("customer", customer.payload.getValue("kind").jsonPrimitive.content)
+  }
 }

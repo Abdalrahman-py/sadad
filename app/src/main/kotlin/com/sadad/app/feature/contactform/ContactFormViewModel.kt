@@ -11,6 +11,7 @@ import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
+import com.sadad.ledger.ContactKind
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,8 @@ data class ContactFormState(
     val name: String = "",
     val prefix: String = "970",
     val phone: String = "",
+    /** The Contact's type; creation keeps `CUSTOMER` until quick add replaces it (ticket 81). */
+    val kind: ContactKind = ContactKind.CUSTOMER,
     val category: String = "",
     val note: String = "",
     val withFirstDebt: Boolean = false,
@@ -73,6 +76,10 @@ class ContactFormViewModel(
               name = saved.get<String>(NAME).orEmpty(),
               prefix = saved.get<String>(PREFIX) ?: "970",
               phone = saved.get<String>(PHONE).orEmpty(),
+              kind =
+                  saved.get<String>(KIND)?.let { kind ->
+                    runCatching { ContactKind.valueOf(kind) }.getOrNull()
+                  } ?: ContactKind.CUSTOMER,
               category =
                   saved.get<String>(CATEGORY)
                       ?: appContext.getString(R.string.contactform_default_category),
@@ -108,6 +115,7 @@ class ContactFormViewModel(
             saved[PREFIX] = prefix
             saved[PHONE] = number
             saved[NAME] = contact.name
+            saved[KIND] = contact.kind.name
             saved[CATEGORY] = category
             saved[NOTE] = contact.note
             mutable.update {
@@ -115,6 +123,7 @@ class ContactFormViewModel(
                   name = contact.name,
                   prefix = prefix,
                   phone = number,
+                  kind = contact.kind,
                   category = category,
                   note = contact.note,
               )
@@ -132,6 +141,8 @@ class ContactFormViewModel(
 
   fun onPhoneChange(value: String) =
       edit(PHONE, value) { copy(phone = value, phoneError = null, duplicate = null) }
+
+  fun onKindChange(value: ContactKind) = edit(KIND, value.name) { copy(kind = value) }
 
   fun onCategoryChange(value: String) = edit(CATEGORY, value) { copy(category = value) }
 
@@ -179,10 +190,18 @@ class ContactFormViewModel(
                 draft.amount?.let {
                   FirstDebt(Direction.RECEIVABLE, it, draft.debtNote, draft.due)
                 },
+                kind = draft.kind,
             )
           } else {
             repository
-                .updateContact(editing, draft.name, draft.phone, draft.category, draft.note)
+                .updateContact(
+                    editing,
+                    draft.name,
+                    draft.phone,
+                    draft.category,
+                    draft.note,
+                    draft.kind,
+                )
                 .map { editing }
           }
       mutable.update { current ->
@@ -241,6 +260,7 @@ class ContactFormViewModel(
     return Draft(
         name = name,
         phone = phone,
+        kind = current.kind,
         category =
             current.category.trim().ifEmpty {
               appContext.getString(R.string.contactform_default_category)
@@ -275,6 +295,7 @@ class ContactFormViewModel(
   private data class Draft(
       val name: String,
       val phone: String?,
+      val kind: ContactKind,
       val category: String,
       val note: String?,
       val amount: Cents?,
@@ -287,6 +308,7 @@ class ContactFormViewModel(
     const val NAME = "name"
     const val PREFIX = "prefix"
     const val PHONE = "phone"
+    const val KIND = "kind"
     const val CATEGORY = "category"
     const val NOTE = "note"
     const val WITH_DEBT = "withFirstDebt"

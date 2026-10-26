@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
+import com.sadad.ledger.ContactKind
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.PaymentMethod
@@ -283,6 +284,7 @@ class LedgerStoreTest {
           id = id,
           name = name,
           phone = "",
+          kind = ContactKind.CUSTOMER,
           category = "",
           note = "",
           archived = false,

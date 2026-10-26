@@ -7,6 +7,8 @@ data class ContactRow(
     val id: String,
     val name: String,
     val phone: String,
+    /** Whether the Contact is a customer the store collects from or a supplier it pays. */
+    val kind: ContactKind,
     val category: String,
     val note: String,
     val archived: Boolean,
@@ -130,6 +132,7 @@ private class Fold(
                 id,
                 payload.name,
                 payload.phone.orEmpty(),
+                payload.kind,
                 payload.category.orEmpty(),
                 payload.note.orEmpty(),
                 archived = false,
@@ -145,6 +148,7 @@ private class Fold(
             row.copy(
                 name = payload.name,
                 phone = payload.phone.orEmpty(),
+                kind = payload.kind,
                 category = payload.category.orEmpty(),
                 note = payload.note.orEmpty(),
                 version = row.version + 1,

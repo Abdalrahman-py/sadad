@@ -98,4 +98,27 @@ class PaymentAllocationTest {
     assertEquals(Cents(400), pendingPart.amount)
     assertEquals(false, parts.first().debtPending)
   }
+
+  @Test
+  fun splitsASupplierAcrossItsOpenPayableDebtsOldestFirst() {
+    val supplier = Commands.contactCreate(origin, at(0), "شركة النور", kind = ContactKind.SUPPLIER)
+    val older =
+        Commands.debtCreate(origin, at(1), supplier.entityId, Direction.PAYABLE, Cents(20_000))
+    val newer =
+        Commands.debtCreate(origin, at(2), supplier.entityId, Direction.PAYABLE, Cents(50_000))
+    val receivable =
+        Commands.debtCreate(origin, at(3), supplier.entityId, Direction.RECEIVABLE, Cents(9_000))
+    val view = Events.stateOf(supplier, newer, older, receivable).viewWith()
+
+    val parts =
+        PaymentAllocation.allocate(view, supplier.entityId, Cents(30_000), Direction.PAYABLE)
+    assertEquals(
+        listOf(older.entityId to Cents(20_000), newer.entityId to Cents(10_000)),
+        parts.map { it.debtId to it.amount },
+    )
+    assertThrows(IllegalArgumentException::class.java) {
+      // The supplier's receivable Debt is not a payable pool, and 80_000 is all the payables.
+      PaymentAllocation.allocate(view, supplier.entityId, Cents(70_001), Direction.PAYABLE)
+    }
+  }
 }

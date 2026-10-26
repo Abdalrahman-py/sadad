@@ -24,6 +24,7 @@ object Commands {
       phone: String? = null,
       category: String? = null,
       note: String? = null,
+      kind: ContactKind = ContactKind.CUSTOMER,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -36,7 +37,7 @@ object Commands {
           operationId,
           dependsOn,
           ContactCreate.serializer(),
-          ContactCreate(name(name), optional(phone), optional(category), optional(note)),
+          ContactCreate(name(name), kind, optional(phone), optional(category), optional(note)),
       )
 
   fun contactUpdate(
@@ -48,6 +49,7 @@ object Commands {
       phone: String? = null,
       category: String? = null,
       note: String? = null,
+      kind: ContactKind = ContactKind.CUSTOMER,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -63,6 +65,7 @@ object Commands {
           ContactUpdate(
               uuid("contactId", contactId),
               name(name),
+              kind,
               optional(phone),
               optional(category),
               optional(note),

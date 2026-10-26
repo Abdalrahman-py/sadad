@@ -11,6 +11,7 @@ sealed interface CommandPayload
 @Serializable
 data class ContactCreate(
     val name: String,
+    val kind: ContactKind = ContactKind.CUSTOMER,
     val phone: String? = null,
     val category: String? = null,
     val note: String? = null,
@@ -20,6 +21,7 @@ data class ContactCreate(
 data class ContactUpdate(
     val contactId: String,
     val name: String,
+    val kind: ContactKind = ContactKind.CUSTOMER,
     val phone: String? = null,
     val category: String? = null,
     val note: String? = null,

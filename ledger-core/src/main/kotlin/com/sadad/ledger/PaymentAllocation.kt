@@ -11,19 +11,23 @@ data class Allocation(
 
 object PaymentAllocation {
   /**
-   * Splits [amount] across the Contact's visible receivable Debts that are still open, oldest
+   * Splits [amount] across the Contact's visible Debts of [direction] that are still open, oldest
    * `createdAt` first (ties keep view order), each taking what is left on it. Queued Payments
    * already count. Throws [IllegalArgumentException] when [amount] is not positive or exceeds what
-   * is open, so an overpayment changes nothing.
+   * is open, so an overpayment changes nothing. A customer pays receivable Debts, a supplier
+   * payable ones; callers pass the Contact kind's [ContactKind.debtDirection].
    */
-  fun allocate(view: LedgerView, contactId: String, amount: Cents): List<Allocation> {
+  fun allocate(
+      view: LedgerView,
+      contactId: String,
+      amount: Cents,
+      direction: Direction = Direction.RECEIVABLE,
+  ): List<Allocation> {
     require(amount > Cents.ZERO) { "a payment must be positive" }
     val open =
         view.debts
             .filter {
-              it.contactId == contactId &&
-                  it.direction == Direction.RECEIVABLE &&
-                  it.remaining > Cents.ZERO
+              it.contactId == contactId && it.direction == direction && it.remaining > Cents.ZERO
             }
             .sortedBy { it.createdAt }
     val total = open.fold(Cents.ZERO) { sum, debt -> sum + debt.remaining }

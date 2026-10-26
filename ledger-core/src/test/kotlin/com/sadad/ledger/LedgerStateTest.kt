@@ -239,4 +239,23 @@ class LedgerStateTest {
     assertEquals(Instant.parse("2026-10-16T09:01:00Z"), state.debts.values.single().createdAt)
     assertEquals(Instant.parse("2026-10-16T09:00:00Z"), state.contacts.values.single().createdAt)
   }
+
+  @Test
+  fun replaysAContactKindThroughCreateAndUpdate() {
+    val supplier = Commands.contactCreate(origin, at(0), "شركة النور", kind = ContactKind.SUPPLIER)
+    val state = Events.stateOf(supplier)
+    assertEquals(ContactKind.SUPPLIER, state.contacts.values.single().kind)
+
+    val rename =
+        Commands.contactUpdate(
+            origin,
+            at(1),
+            supplier.entityId,
+            1,
+            "شركة النور",
+            kind = ContactKind.CUSTOMER,
+        )
+    val after = state.apply(page(listOf(accepted(rename, 2))))
+    assertEquals(ContactKind.CUSTOMER, after.contacts.values.single().kind)
+  }
 }

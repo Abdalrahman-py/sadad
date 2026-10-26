@@ -5,6 +5,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ChangeEvent
+import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactRow
 import com.sadad.ledger.DebtRow
 import com.sadad.ledger.Direction
@@ -22,6 +23,7 @@ data class ContactEntity(
     @PrimaryKey val id: String,
     val name: String,
     val phone: String,
+    val kind: ContactKind,
     val category: String,
     val note: String,
     val archived: Boolean,
@@ -37,6 +39,7 @@ fun ContactEntity.toRow(): ContactRow =
         id,
         name,
         phone,
+        kind,
         category,
         note,
         archived,
@@ -51,6 +54,7 @@ fun ContactRow.toEntity(createdSeq: Long): ContactEntity =
         id,
         name,
         phone,
+        kind,
         category,
         note,
         archived,
