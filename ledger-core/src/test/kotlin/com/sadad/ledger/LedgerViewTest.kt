@@ -162,4 +162,32 @@ class LedgerViewTest {
     val correct = Commands.debtCorrect(origin, at(3), debt.entityId, 1, Cents(1), "تصحيح")
     assertEquals(state.viewWith(), state.viewWith(listOf(archive, correct)))
   }
+
+  @Test
+  fun netIsReceivableMinusPayableWithQueuedEntriesCounted() {
+    // A customer who owes 250.00 confirmed and 100.00 queued.
+    val confirmed =
+        Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(25_000))
+    val queued =
+        Commands.debtCreate(origin, at(2), contact.entityId, Direction.RECEIVABLE, Cents(10_000))
+    val view = Events.stateOf(contact, confirmed).viewWith(listOf(queued))
+    assertEquals(1, view.pendingDebts)
+    assertEquals(Cents(35_000), view.net(contact.entityId))
+  }
+
+  @Test
+  fun aSupplierWhoIsOwedShowsANegativeNet() {
+    val supplier = Commands.contactCreate(origin, at(0), "شركة النور", kind = ContactKind.SUPPLIER)
+    val payable =
+        Commands.debtCreate(origin, at(1), supplier.entityId, Direction.PAYABLE, Cents(124_000))
+    val view = Events.stateOf(supplier, payable).viewWith()
+    assertEquals(Cents(-124_000), view.net(supplier.entityId))
+    assertEquals(ContactKind.SUPPLIER, view.contacts.single().kind)
+  }
+
+  @Test
+  fun netOfSomeoneWithNoOpenDebtIsZero() {
+    val view = Events.stateOf(contact).viewWith()
+    assertEquals(Cents.ZERO, view.net(contact.entityId))
+  }
 }

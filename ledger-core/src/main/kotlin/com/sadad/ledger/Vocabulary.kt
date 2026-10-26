@@ -34,6 +34,17 @@ enum class Direction {
   @SerialName("payable") PAYABLE,
 }
 
+/** Whether a Contact is a customer the store collects from or a supplier the store pays. */
+@Serializable
+enum class ContactKind {
+  @SerialName("customer") CUSTOMER,
+  @SerialName("supplier") SUPPLIER;
+
+  /** The one place the kind decides a Debt's direction. */
+  val debtDirection: Direction
+    get() = if (this == CUSTOMER) Direction.RECEIVABLE else Direction.PAYABLE
+}
+
 @Serializable
 enum class PaymentMethod {
   @SerialName("cash") CASH,

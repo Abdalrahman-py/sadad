@@ -13,6 +13,7 @@ import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactCreate
+import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.Direction
@@ -307,6 +308,44 @@ class ContactFormViewModelTest {
 
       assertEquals("أدخل مبلغاً صحيحاً.", model.state.value.debtError)
       assertNull(model.state.value.review)
+    }
+  }
+
+  @Test
+  fun savingAnEditOfASupplierSendsItsKind() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var existing: String? = null
+      fixture.seed {
+        existing =
+            addContact("شركة النور", null, "مورد", null, null, kind = ContactKind.SUPPLIER)
+                .getOrThrow()
+      }
+      fixture.settleAll()
+
+      val model = fixture.model(contactId = existing)
+      model.state.first { it.kind == ContactKind.SUPPLIER }
+      model.onNameChange("شركة النور الجديدة")
+      model.save()
+      model.confirm()
+      model.state.first { it.savedContactId != null }
+
+      val update = fixture.rows().single { it.type == CommandType.CONTACT_UPDATE }
+      assertEquals(ContactKind.SUPPLIER, (update.command.payload() as ContactUpdate).kind)
+    }
+  }
+
+  @Test
+  fun creatingAContactSendsTheCustomerKindUntilQuickAddReplacesIt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+      model.onNameChange("سامي")
+
+      model.save()
+      model.confirm()
+      model.state.first { it.savedContactId != null }
+
+      val contact = fixture.rows().single { it.type == CommandType.CONTACT_CREATE }
+      assertEquals(ContactKind.CUSTOMER, (contact.command.payload() as ContactCreate).kind)
     }
   }
 }

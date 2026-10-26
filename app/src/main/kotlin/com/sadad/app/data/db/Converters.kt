@@ -1,6 +1,7 @@
 package com.sadad.app.data.db
 
 import androidx.room.TypeConverter
+import com.sadad.ledger.ContactKind
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
@@ -23,6 +24,14 @@ class Converters {
   @TypeConverter
   fun textToDirection(value: String): Direction =
       Direction.entries.first { directionToText(it) == value }
+
+  @TypeConverter
+  fun contactKindToText(value: ContactKind): String =
+      ContactKind.serializer().descriptor.getElementName(value.ordinal)
+
+  @TypeConverter
+  fun textToContactKind(value: String): ContactKind =
+      ContactKind.entries.first { contactKindToText(it) == value }
 
   @TypeConverter
   fun paymentMethodToText(value: PaymentMethod): String =

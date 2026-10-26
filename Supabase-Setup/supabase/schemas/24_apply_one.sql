@@ -20,6 +20,11 @@ declare
   ver bigint;
   v_phone text;
   occurred timestamptz;
+  -- The archive verdict, captured before the UPDATE: the variable name kind would be ambiguous
+  -- against sadid_contacts' new kind column inside the statement.
+  toggled boolean;
+  -- Whether the command corrects a Debt, for the same reason.
+  correcting boolean;
   reason text;
   seq bigint;
 begin
@@ -97,6 +102,7 @@ begin
           raise exception 'contact_limit_reached';
         end if;
         if length(trim(coalesce(payload ->> 'name', ''))) not between 1 and 120
+           or coalesce(payload ->> 'kind', '') not in ('customer', 'supplier')
            or length(coalesce(payload ->> 'note', '')) > 2000
            or length(coalesce(payload ->> 'category', '')) > 80
            or length(coalesce(payload ->> 'externalReference', '')) > 120 then
@@ -108,16 +114,17 @@ begin
         if v_phone <> '' and exists (select 1 from public.sadid_contacts where store_id = c.store_id and sadid_contacts.phone = v_phone) then
           raise exception 'duplicate_phone';
         end if;
-        insert into public.sadid_contacts(store_id, id, name, phone, category, note, external_reference, operation_id, created_at)
+        insert into public.sadid_contacts(store_id, id, name, phone, kind, category, note, external_reference, operation_id, created_at)
         values (
           c.store_id, entity, trim(payload ->> 'name'), v_phone,
-          coalesce(payload ->> 'category', ''), coalesce(payload ->> 'note', ''), coalesce(payload ->> 'externalReference', ''),
+          payload ->> 'kind', coalesce(payload ->> 'category', ''), coalesce(payload ->> 'note', ''), coalesce(payload ->> 'externalReference', ''),
           op, occurred
         );
       elsif kind = 'contact.update' then
         contact := (payload ->> 'contactId')::uuid;
         if contact is null then raise exception 'invalid_input'; end if;
         if length(trim(coalesce(payload ->> 'name', ''))) not between 1 and 120
+           or coalesce(payload ->> 'kind', '') not in ('customer', 'supplier')
            or length(coalesce(payload ->> 'note', '')) > 2000
            or length(coalesce(payload ->> 'category', '')) > 80 then
           raise exception 'invalid_input';
@@ -134,6 +141,7 @@ begin
         update public.sadid_contacts
         set name = trim(payload ->> 'name'),
             phone = v_phone,
+            kind = payload ->> 'kind',
             category = coalesce(payload ->> 'category', ''),
             note = coalesce(payload ->> 'note', ''),
             version = version + 1
@@ -159,10 +167,11 @@ begin
         );
       elsif kind in ('payment.create', 'debt.correct') then
         debt := (payload ->> 'debtId')::uuid;
+        correcting := (kind = 'debt.correct');
         select d.amount_cents into principal
         from public.sadid_debts d
         join public.sadid_contacts t on t.store_id = d.store_id and t.id = d.contact_id
-        where d.store_id = c.store_id and d.id = debt and (kind = 'debt.correct' or not t.archived);
+        where d.store_id = c.store_id and d.id = debt and (correcting or not t.archived);
         if not found then raise exception 'debt_unavailable'; end if;
         select coalesce(max(a.version), 1) into ver from public.sadid_adjustments a where a.store_id = c.store_id and a.debt_id = debt;
         select a.amount_cents into amount from public.sadid_adjustments a where a.store_id = c.store_id and a.debt_id = debt order by a.version desc limit 1;
@@ -206,8 +215,9 @@ begin
       elsif kind in ('contact.archive', 'contact.restore') then
         contact := (payload ->> 'contactId')::uuid;
         if length(trim(coalesce(payload ->> 'reason', ''))) not between 1 and 2000 then raise exception 'reason_required'; end if;
+        toggled := (kind = 'contact.archive');
         update public.sadid_contacts
-        set archived = (kind = 'contact.archive'), version = version + 1
+        set archived = toggled, version = version + 1
         where store_id = c.store_id and id = contact and version = coalesce((p_command ->> 'expectedVersion')::bigint, -1);
         if not found then raise exception 'entity_version_changed'; end if;
       else

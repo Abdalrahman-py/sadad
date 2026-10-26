@@ -11,6 +11,9 @@
     <string name="contactform_prefix_972">إسرائيل (+972)</string>
     <string name="contactform_phone">رقم الواتساب</string>
     <string name="contactform_phone_hint">رقم الواتساب، مثال 0599123456</string>
+    <string name="contactform_kind">النوع</string>
+    <string name="contactform_kind_customer">زبون</string>
+    <string name="contactform_kind_supplier">مورد</string>
     <string name="contactform_category">التصنيف</string>
     <string name="contactform_category_hint">مثال: عميل، مورد، صديق</string>
     <string name="contactform_default_category">عميل</string>

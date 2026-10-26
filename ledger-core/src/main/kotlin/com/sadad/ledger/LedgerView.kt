@@ -6,6 +6,8 @@ data class ContactView(
     val id: String,
     val name: String,
     val phone: String,
+    /** Whether the Contact is a customer the store collects from or a supplier it pays. */
+    val kind: ContactKind = ContactKind.CUSTOMER,
     val category: String,
     val note: String,
     /** Send as `expectedVersion` with the next update, archive or restore. */
@@ -68,7 +70,21 @@ data class LedgerView(
     val pendingPayments: Int,
     /** Queued commands that cannot apply as they stand and are not shown. */
     val excludedOperations: Set<String>,
-)
+) {
+  /**
+   * What this Contact is worth: open receivable minus open payable, queued entries included.
+   * Positive the Contact owes the store (عليه); negative the store holds their money (له).
+   */
+  fun net(contactId: String): Cents =
+      debts
+          .filter { it.contactId == contactId }
+          .fold(Cents.ZERO) { sum, debt ->
+            when (debt.direction) {
+              Direction.RECEIVABLE -> sum + debt.remaining
+              Direction.PAYABLE -> sum - debt.remaining
+            }
+          }
+}
 
 /**
  * Projects this state with the outbox's unsettled commands ([pending], in queue order). [failed]
@@ -96,6 +112,7 @@ fun LedgerState.view(
             row.id,
             row.name,
             row.phone,
+            row.kind,
             row.category,
             row.note,
             row.version,
@@ -175,6 +192,7 @@ fun LedgerState.view(
                 id,
                 payload.name,
                 payload.phone.orEmpty(),
+                payload.kind,
                 payload.category.orEmpty(),
                 payload.note.orEmpty(),
                 version = 1,

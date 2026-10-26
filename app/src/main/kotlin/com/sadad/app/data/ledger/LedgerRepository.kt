@@ -6,6 +6,7 @@ import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Changes
 import com.sadad.ledger.Commands
+import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
@@ -144,11 +145,12 @@ class LedgerRepository(
       category: String?,
       note: String?,
       firstDebt: FirstDebt?,
+      kind: ContactKind = ContactKind.CUSTOMER,
   ): Result<String> = guarded {
     val origin = origin()
     requireOfflineAllowed()
     val at = Instant.now()
-    val contact = Commands.contactCreate(origin, at, name, phone, category, note)
+    val contact = Commands.contactCreate(origin, at, name, phone, category, note, kind)
     val commands = mutableListOf(contact)
     if (firstDebt != null) {
       commands +=
@@ -173,6 +175,7 @@ class LedgerRepository(
       phone: String?,
       category: String?,
       note: String?,
+      kind: ContactKind = ContactKind.CUSTOMER,
   ): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
@@ -188,6 +191,7 @@ class LedgerRepository(
                 phone,
                 category,
                 note,
+                kind,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
             )
@@ -295,10 +299,11 @@ class LedgerRepository(
     val origin = origin()
     requireOfflineAllowed()
     val current = currentView()
-    if (current.contacts.none { it.id == contactId }) throw Refusal.Unknown
+    val contact = current.contacts.firstOrNull { it.id == contactId } ?: throw Refusal.Unknown
     val at = Instant.now()
     val commands =
-        PaymentAllocation.allocate(current, contactId, amount).map { part ->
+        PaymentAllocation.allocate(current, contactId, amount, contact.kind.debtDirection).map {
+            part ->
           Commands.paymentCreate(
               origin,
               at,

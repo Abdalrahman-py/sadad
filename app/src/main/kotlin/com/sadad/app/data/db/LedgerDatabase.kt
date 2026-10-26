@@ -8,8 +8,8 @@ import androidx.room.TypeConverters
 
 /**
  * One database per store, file `ledger-<storeUserId>.db`: the confirmed Ledger rows, the cursor,
- * the latest change events and the outbox. Version 1 with no migrations: until Phase 4 a schema
- * change means testers reinstall (all data is test data).
+ * the latest change events and the outbox. A schema change bumps the version and falls back
+ * destructively (all data is test data); the store re-syncs from zero.
  */
 @Database(
     entities =
@@ -21,7 +21,7 @@ import androidx.room.TypeConverters
             EventEntity::class,
             OutboxEntity::class,
         ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -40,6 +40,8 @@ abstract class LedgerDatabase : RoomDatabase() {
 
   companion object {
     fun open(context: Context, storeUserId: String): LedgerDatabase =
-        Room.databaseBuilder(context, LedgerDatabase::class.java, "ledger-$storeUserId.db").build()
+        Room.databaseBuilder(context, LedgerDatabase::class.java, "ledger-$storeUserId.db")
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .build()
   }
 }

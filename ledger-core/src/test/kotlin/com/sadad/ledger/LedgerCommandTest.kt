@@ -135,7 +135,10 @@ class LedgerCommandTest {
             category = "",
             note = " \t ",
         )
-    assertEquals(JsonObject(mapOf("name" to JsonPrimitive("سامي"))), payloadOf(contact))
+    assertEquals(
+        JsonObject(mapOf("name" to JsonPrimitive("سامي"), "kind" to JsonPrimitive("customer"))),
+        payloadOf(contact),
+    )
 
     val update =
         Commands.contactUpdate(
@@ -152,6 +155,7 @@ class LedgerCommandTest {
             mapOf(
                 "contactId" to JsonPrimitive(contactId),
                 "name" to JsonPrimitive("سامي"),
+                "kind" to JsonPrimitive("customer"),
                 "phone" to JsonPrimitive("+970599000000"),
                 "note" to JsonPrimitive("زبون"),
             )

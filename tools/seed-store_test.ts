@@ -70,6 +70,11 @@ Deno.test("the list holds 5,000 contacts, 30,000 debts and 15,000 payments", () 
   assertEqual(count("contact.create"), 5_000);
   assertEqual(count("debt.create"), 30_000);
   assertEqual(count("payment.create"), 15_000);
+  // apply_one rejects a contact without its kind; this catches a seed that would be refused.
+  for (const contact of commands) {
+    if (contact.type !== "contact.create") continue;
+    assertEqual(contact.payload.kind, "customer");
+  }
 });
 
 Deno.test("dependencies come earlier and never move to a later batch", () => {
