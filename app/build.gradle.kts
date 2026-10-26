@@ -28,6 +28,17 @@ val releaseSigningReady =
       !it.isNullOrBlank()
     }
 
+// The team build signs with its own key: it is published from dev at every push, so it must never
+// be the production key, and a runner debug key is no good either (regenerated per job).
+val teamStoreFile = System.getenv("TEAM_KEYSTORE_FILE")
+val teamStorePassword = System.getenv("TEAM_KEYSTORE_PASSWORD")
+val teamKeyAlias = System.getenv("TEAM_KEY_ALIAS")
+val teamKeyPassword = System.getenv("TEAM_KEY_PASSWORD")
+val teamSigningReady =
+    listOf(teamStoreFile, teamStorePassword, teamKeyAlias, teamKeyPassword).all {
+      !it.isNullOrBlank()
+    }
+
 fun quoted(value: String) = "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 // The pinned offline-lease key: the public half of the api's SADAD_LEASE_PRIVATE_JWK secret (ticket
@@ -67,7 +78,9 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     minSdk = 26
     targetSdk = 36
-    versionCode = 40
+    // The release line keeps 40. A team build passes a higher code so a sideloaded APK updates the
+    // previous one instead of being refused as a downgrade.
+    versionCode = providers.gradleProperty("SADAD_VERSION_CODE").getOrElse("40").toInt()
     versionName = providers.gradleProperty("SADAD_VERSION_NAME").getOrElse("3.0.0")
     buildConfigField("String", "SUPABASE_URL", quoted(supabaseUrl))
     buildConfigField("String", "API_BASE_URL", quoted("$supabaseUrl/functions/v1/api"))
@@ -85,6 +98,13 @@ android {
           keyAlias = releaseKeyAlias
           keyPassword = releaseKeyPassword
         }
+    if (teamSigningReady)
+        create("team") {
+          storeFile = file(teamStoreFile!!)
+          storePassword = teamStorePassword
+          keyAlias = teamKeyAlias
+          keyPassword = teamKeyPassword
+        }
   }
   buildTypes {
     debug {
@@ -96,6 +116,17 @@ android {
       isShrinkResources = true
       if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+    }
+    // The team build the dev branch publishes: the debug app (same `.debug` suffix, so it lives
+    // beside the real one) signed with the team key when CI has it, so every build installs over
+    // the last without an uninstall. Not minified, so a crash report stays readable.
+    create("team") {
+      initWith(getByName("debug"))
+      versionNameSuffix = "-team"
+      signingConfig =
+          if (teamSigningReady) signingConfigs.getByName("team")
+          else signingConfigs.getByName("debug")
+      matchingFallbacks += "debug"
     }
     // What the :benchmark module measures: the release build (R8 on) signed with the debug key so a
     // phone installs it without the production key. Not debuggable, or the timings are wrong.
