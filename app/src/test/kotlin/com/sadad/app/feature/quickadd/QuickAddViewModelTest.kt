@@ -400,7 +400,7 @@ class QuickAddViewModelTest {
       QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs)
 
   /** The outbox is written from another coroutine; polling keeps the assertion about the row. */
-  private fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {
+  private suspend fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {
     val deadline = System.currentTimeMillis() + 5_000
     while (outbox.snapshot().size < count && System.currentTimeMillis() < deadline) {
       Thread.sleep(10)

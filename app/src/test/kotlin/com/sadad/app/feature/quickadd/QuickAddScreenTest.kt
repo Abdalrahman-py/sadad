@@ -65,7 +65,7 @@ class QuickAddScreenTest {
       compose.onNodeWithTag(QuickAddTags.key("5")).performClick()
       compose.onNodeWithTag(QuickAddTags.SAVE).performClick()
 
-      val payload = awaitRows(fixture, 1).single().command.payload() as DebtCreate
+      val payload = runBlocking { awaitRows(fixture, 1) }.single().command.payload() as DebtCreate
       assertEquals(contact, payload.contactId)
     }
   }
@@ -137,7 +137,7 @@ class QuickAddScreenTest {
   }
 
   /** The commit runs off the test thread; poll instead of assuming it landed. */
-  private fun awaitRows(fixture: TestGraph, count: Int): List<OutboxRow> {
+  private suspend fun awaitRows(fixture: TestGraph, count: Int): List<OutboxRow> {
     val store = checkNotNull(fixture.graph.current.value)
     val deadline = System.currentTimeMillis() + 5_000
     while (store.outbox.snapshot().size < count && System.currentTimeMillis() < deadline) {
