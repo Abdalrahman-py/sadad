@@ -133,6 +133,11 @@ val contract = rootProject.layout.projectDirectory.dir("contract")
 tasks.withType<Test>().configureEach {
   inputs.dir(contract).withPropertyName("contract").withPathSensitivity(PathSensitivity.RELATIVE)
   systemProperty("sadad.fixtures", contract.dir("fixtures").asFile.absolutePath)
+  // The migration test builds a v1 database from Room's exported schema, so the JSON Room wrote
+  // reaches the test the same way: a path property, not a copy in the build directory.
+  val schemas = layout.projectDirectory.dir("schemas")
+  inputs.dir(schemas).withPropertyName("schemas").withPathSensitivity(PathSensitivity.RELATIVE)
+  systemProperty("sadad.schemas", schemas.asFile.absolutePath)
   // targetSdk 36 runs Robolectric's Android 16 sandbox. Its ApplicationSharedMemory setup reaches
   // FileDescriptor internals through reflection on jdk.internal.access, which JDK 21 keeps closed
   // (stack trace: FileDescriptorInterceptor.setInt, "Failed to interact with raw FileDescriptor

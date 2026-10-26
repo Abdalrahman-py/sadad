@@ -1,5 +1,6 @@
 package com.sadad.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -23,7 +24,9 @@ data class ContactEntity(
     @PrimaryKey val id: String,
     val name: String,
     val phone: String,
-    val kind: ContactKind,
+    // Added in schema 2. The default is what schema 1's rows get on upgrade, and what Room needs
+    // to add a NOT NULL column without asking the app what to put in it.
+    @ColumnInfo(defaultValue = "customer") val kind: ContactKind,
     val category: String,
     val note: String,
     val archived: Boolean,
