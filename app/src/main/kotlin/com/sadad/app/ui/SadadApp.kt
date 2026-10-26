@@ -24,9 +24,11 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -85,6 +87,9 @@ import com.sadad.app.feature.quickadd.QuickAddScreen
 import com.sadad.app.feature.recovery.RecoveryScreen
 import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.feature.trash.TrashScreen
+import com.sadad.app.feature.updates.AppUpdateScreen
+import com.sadad.app.feature.updates.UpdateCenter
+import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.app.ui.theme.sadadPalette
@@ -170,15 +175,57 @@ fun SadadApp(
                 onAddStore = { navController.navigateAuth(Login) },
                 onNeedsLogin = { navController.navigateAuth(Login) },
                 onOpenOperationsLog = { navController.navigate(OperationsLog) },
+                onOpenUpdates = { navController.navigate(AppUpdate) { launchSingleTop = true } },
             )
           }
           composable<Notifications> { NotificationsScreen(onBack = back) }
           composable<Trash> { TrashScreen(onBack = back) }
           composable<Recovery> { RecoveryScreen(onBack = back) }
+          composable<AppUpdate> { AppUpdateScreen(onBack = back) }
+        }
+        // Only on the home tab: a release never interrupts someone in the middle of an entry.
+        val onHome =
+            navController.currentBackStackEntryAsState().value?.destination?.hasRoute<Home>() ==
+                true
+        if (onHome) {
+          UpdatePrompt(onOpen = { navController.navigate(AppUpdate) { launchSingleTop = true } })
         }
       }
     }
   }
+}
+
+/**
+ * «تحديث سداد» at app start, as Seal and Mihon do — but «لاحقاً» only silences it for a week, and
+ * the settings row keeps the release in view until it is installed.
+ */
+@Composable
+private fun UpdatePrompt(onOpen: () -> Unit) {
+  val context = LocalContext.current
+  val center = remember(context) { UpdateCenter.get(context.applicationContext) }
+  val state by center.state.collectAsStateWithLifecycle()
+  val manifest = state.manifest
+  if (manifest == null || !state.prompts || state.phase != UpdateState.Phase.AVAILABLE) return
+  AlertDialog(
+      onDismissRequest = center::snooze,
+      title = { Text(stringResource(R.string.updates_prompt_title)) },
+      text = { Text(stringResource(R.string.updates_prompt_text, manifest.versionName)) },
+      confirmButton = {
+        TextButton(
+            onClick = {
+              center.dismissPrompt()
+              onOpen()
+            }
+        ) {
+          Text(stringResource(R.string.updates_prompt_open))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = center::snooze) {
+          Text(stringResource(R.string.updates_later))
+        }
+      },
+  )
 }
 
 /**

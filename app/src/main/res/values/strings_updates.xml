@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The settings row: the one place an update stays visible until it is installed. -->
+    <string name="updates_row_title">تحديثات التطبيق</string>
+    <string name="updates_row_available">الإصدار %1$s متوفر — اضغط للتحديث</string>
+    <string name="updates_row_ready">الإصدار %1$s جاهز للتثبيت</string>
+    <string name="updates_row_checking">جارٍ التحقق من الإصدارات…</string>
+    <string name="updates_row_up_to_date">أنت على أحدث إصدار (%1$s)</string>
+    <string name="updates_row_idle">تحقق من وجود إصدار أحدث</string>
+    <string name="updates_row_failed">تعذر التحقق — اضغط للمحاولة</string>
+
+    <!-- The update screen. -->
+    <string name="updates_title">تحديث التطبيق</string>
+    <string name="updates_installed">المثبّت الآن: %1$s</string>
+    <string name="updates_channel">قناة التحديث: %1$s</string>
+    <string name="updates_channel_stable">الإصدار الرسمي</string>
+    <string name="updates_channel_team">بناء الفريق</string>
+    <string name="updates_new_version">الإصدار الجديد: %1$s</string>
+    <string name="updates_size">الحجم: %1$s م.ب</string>
+    <string name="updates_check_again">تحقق مرة أخرى</string>
+    <string name="updates_download">تحديث الآن</string>
+    <string name="updates_install">تثبيت التحديث</string>
+    <string name="updates_later">لاحقاً</string>
+    <string name="updates_cancel">إلغاء التنزيل</string>
+    <string name="updates_retry">إعادة المحاولة</string>
+    <string name="updates_downloading">جارٍ التنزيل… %1$d%%</string>
+    <string name="updates_installing">أكمل التثبيت من نافذة النظام…</string>
+    <string name="updates_ready">تم تنزيل التحديث والتحقق من بصمته وتوقيعه. جاهز للتثبيت.</string>
+    <string name="updates_up_to_date">أنت على أحدث إصدار.</string>
+    <string name="updates_checking">جارٍ التحقق من الإصدارات…</string>
+    <string name="updates_open_settings">فتح الإعدادات للسماح بالتثبيت</string>
+    <string name="updates_download_in_browser">تنزيل الإصدار من GitHub</string>
+
+    <!-- Refusals: each one names the single thing that stopped the install. -->
+    <string name="updates_error_network">تعذر الوصول إلى خادم التحديثات. تحقق من الاتصال وأعد المحاولة.</string>
+    <string name="updates_error_no_manifest">هذا الإصدار لا ينشر ملف تحديث بعد. ثبّت الإصدار القادم يدوياً مرة واحدة، وبعدها يعمل التحديث من التطبيق.</string>
+    <string name="updates_error_bad_manifest">ملف التحديث غير صالح أو يخص قناة أخرى. لم يُثبَّت شيء.</string>
+    <string name="updates_error_download">توقف التنزيل. أعد المحاولة.</string>
+    <string name="updates_error_no_space">لا توجد مساحة كافية لتنزيل التحديث.</string>
+    <string name="updates_error_checksum">الملف المنزَّل لا يطابق بصمة الإصدار. حُذف ولم يُثبَّت.</string>
+    <string name="updates_error_signature">هذا التحديث موقّع بمفتاح غير مفتاح نسختك، فلن يقبله أندرويد. يحدث ذلك مع نسخة تطوير محلية؛ ثبّت بناء الفريق أو الإصدار الرسمي.</string>
+    <string name="updates_error_permission">اسمح لسدد بتثبيت التطبيقات من هذا المصدر، ثم أعد المحاولة.</string>
+    <string name="updates_error_install">فشل التثبيت. أعد المحاولة.</string>
+    <string name="updates_error_cancelled">أُلغي التثبيت.</string>
+
+    <!-- The prompt at app start; «لاحقاً» silences it for a week, never the settings row. -->
+    <string name="updates_prompt_title">تحديث سدد</string>
+    <string name="updates_prompt_text">الإصدار %1$s جاهز. التحديث يجلب إصلاحات وأماناً، ويستغرق أقل من دقيقة.</string>
+    <string name="updates_prompt_open">تحديث</string>
+
+    <!-- The daily check's notification. -->
+    <string name="update_channel">تحديثات التطبيق</string>
+    <string name="update_notification_title">يتوفر تحديث لسدد %1$s</string>
+    <string name="update_notification_text">اضغط لتحديث التطبيق.</string>
+</resources>

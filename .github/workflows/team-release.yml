@@ -70,6 +70,9 @@ jobs:
           set -euo pipefail
           version="dev-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           echo "SADAD_TEAM_VERSION=$version" >> "$GITHUB_ENV"
+          # The app orders updates by versionCode alone, so it has to be in the environment for the
+          # update manifest as well as in the build.
+          echo "SADAD_VERSION_CODE=$((40 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
           ./gradlew :app:assembleTeam --console=plain \
             -PSADAD_VERSION_NAME="$version" \
             -PSADAD_VERSION_CODE="$((40 + GITHUB_RUN_NUMBER))"
@@ -120,6 +123,27 @@ jobs:
 
           **قبل التثبيت:** هذا بناء تجريبي بحزمة \`com.sadad.app.debug\`، يُثبّت بجانب التطبيق الرسمي ولا يمسّ بياناته، ويظهر بأيقونة «سدد» ثانية. يتصل بمشروع الإنتاج، فاستخدم متجر اختبار. لا تُثبّت فوقه إصدارًا قديمًا: كل بناء يوقّعه المفتاح نفسه، فيُحدَّث من التطبيق مباشرة.
           NOTES
+      - name: Write the update manifest
+        run: |
+          set -euo pipefail
+          apk=team/Sadad-team.apk
+          sha=$(cut -d' ' -f1 team/SHA256SUMS)
+          size=$(stat -c%s "$apk")
+          # What the installed app reads to learn there is a newer build: `releases/download/
+          # team-latest/update.json`. No GitHub API call, so no rate limit.
+          cat > team/update.json <<JSON
+          {
+            "channel": "team",
+            "versionCode": $SADAD_VERSION_CODE,
+            "versionName": "$SADAD_TEAM_VERSION-team",
+            "apk": "Sadad-team.apk",
+            "sha256": "$sha",
+            "sizeBytes": $size,
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "notes": "أحدث بناء من فرع dev: الإصدار $SADAD_TEAM_VERSION-team."
+          }
+          JSON
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' team/update.json
       - name: Publish to the team prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,7 +154,7 @@ jobs:
               --title 'سدد — أحدث بناء للفريق (dev)' \
               --notes-file "$RUNNER_TEMP/notes.md"
           fi
-          gh release upload team-latest team/Sadad-team.apk team/SHA256SUMS team/BUILD.txt --clobber
+          gh release upload team-latest team/Sadad-team.apk team/SHA256SUMS team/BUILD.txt team/update.json --clobber
           gh release edit team-latest --notes-file "$RUNNER_TEMP/notes.md"
       - name: Remove the signing key
         if: always()

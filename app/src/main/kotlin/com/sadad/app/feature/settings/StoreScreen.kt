@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.photo.PhotoEditor
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.trash.TrashHidden
+import com.sadad.app.feature.updates.UpdateCenter
 import com.sadad.app.ui.components.ScreenHeader
 
 /** Stable handles the store tab's tests find its list and its rows by. */
@@ -51,6 +53,7 @@ object SettingsTags {
   const val SIGN_OUT = "settings:sign-out"
   const val REMOVE = "settings:remove"
   const val VERSION = "settings:version"
+  const val UPDATE = "settings:update"
 }
 
 /**
@@ -83,10 +86,13 @@ fun StoreScreen(
     onAddStore: () -> Unit = {},
     onNeedsLogin: () -> Unit = {},
     onOpenOperationsLog: () -> Unit = {},
+    onOpenUpdates: () -> Unit = {},
     settingsViewModel: SettingsViewModel = storeViewModel(),
 ) {
   val state by settingsViewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
+  val updates = remember(context) { UpdateCenter.get(context.applicationContext) }
+  val update by updates.state.collectAsStateWithLifecycle()
   var storesOpen by rememberSaveable { mutableStateOf(false) }
   var showStorePhoto by rememberSaveable { mutableStateOf(false) }
   val openStore = state.accounts.firstOrNull { it.active }?.storeUserId
@@ -129,6 +135,7 @@ fun StoreScreen(
       appearanceSection(state, settingsViewModel, context)
       accountSection(state, settingsViewModel)
       supportItem(context)
+      updateItem(update, onOpenUpdates)
       versionItem()
     }
   }
