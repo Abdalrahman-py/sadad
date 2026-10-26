@@ -89,6 +89,12 @@ internal constructor(
 
   fun syncStatus(storeUserId: String): StateFlow<SyncStatus> = syncEngine.status(storeUserId)
 
+  /**
+   * When the offline lease of [account] ends, in epoch millis, or `null` when there is none. Read-
+   * only: Home names the time the store may keep recording without a connection.
+   */
+  fun offlineUntil(account: Account): Long? = leaseFor(account.storeUserId).expiresAt(account)
+
   private fun leaseFor(storeUserId: String): LeaseStore =
       leases.computeIfAbsent(storeUserId) {
         LeaseStore(

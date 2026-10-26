@@ -1,24 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_home">الرئيسية</string>
-    <string name="home_greeting">مرحبًا بك، %1$s</string>
+    <!-- The board's two questions: what people owe the store, and what the store owes. -->
+    <string name="home_owed_to_store">لك عند الناس</string>
+    <string name="home_store_owes">عليك للناس</string>
+    <string name="home_month_debts">هذا الشهر · ديون</string>
+    <string name="home_month_collection">تحصيل %1$s · %2$s</string>
+    <string name="home_month_share">%1$d٪ من ديون الشهر</string>
+
+    <!-- تحتاج متابعة -->
+    <string name="home_follow_title">تحتاج متابعة</string>
+    <string name="home_show_all">عرض الكل</string>
+    <string name="home_follow_owes">عليه</string>
+    <string name="home_follow_today">يستحق اليوم</string>
+    <string name="home_late_one">متأخر يومًا واحدًا</string>
+    <string name="home_late_two">متأخر يومين</string>
+    <string name="home_late_few">متأخر %1$d أيام</string>
+    <string name="home_late_many">متأخر %1$d يومًا</string>
+    <string name="home_follow_empty">لا أحد متأخر اليوم</string>
+    <string name="home_remind">تذكير %1$s على واتساب</string>
+    <string name="home_remind_note">زر التذكير يفتح واتساب برسالة جاهزة فيها الرصيد، تراجعها قبل الإرسال.</string>
+
+    <!-- A new store: no hero, a way in. -->
+    <string name="home_empty_card_title">دفترك جاهز</string>
+    <string name="home_empty_card_body">سجّل أول دين خلال ثوانٍ: اختر الشخص، اكتب المبلغ، احفظ. يظهر هنا ما لك عند الناس ومن يحتاج متابعة.</string>
+    <string name="home_empty_cta">سجّل أول دين</string>
+    <string name="home_after_first">بعد أول تسجيل</string>
+    <string name="home_after_1">يظهر رصيد المتجر هنا: ما لك وما عليك.</string>
+    <string name="home_after_2">من يتأخر عن موعده يظهر في «تحتاج متابعة» مع زر تذكير.</string>
+    <string name="home_after_3">كل حركة تجدها في «الحركات»، وكشف كل شخص في صفحته.</string>
+
+    <!-- Offline: how much waits, and until when recording is allowed. -->
+    <string name="home_offline_title">لا يوجد اتصال · %1$s</string>
+    <string name="home_offline_body">يمكنك متابعة التسجيل حتى %1$s؛ تُرسل تلقائيًا عند عودة الاتصال.</string>
+    <string name="home_offline_body_no_time">يمكنك متابعة التسجيل دون اتصال؛ تُرسل تلقائيًا عند عودته.</string>
+
+    <!-- The bell, the only screen that carries it. -->
+    <string name="home_bell">الإشعارات</string>
+    <string name="home_bell_new">الإشعارات، %1$d جديدة</string>
     <string name="home_default_store">متجري</string>
-    <string name="home_total_debts">إجمالي الديون</string>
-    <string name="home_from_customers">عند الزبائن</string>
-    <string name="home_month_heading">حركة الشهر الحالي</string>
-    <string name="home_month_debts">ديون مسجلة</string>
-    <string name="home_month_payments">دفعات مستلمة</string>
-    <string name="home_month_ratio">نسبة الشهر %1$d%%</string>
-    <string name="home_show_history">عرض سجل الحركات</string>
-    <string name="home_hide_history">إغلاق سجل الحركات</string>
-    <string name="home_empty_title">لا توجد حركات بعد</string>
-    <string name="home_empty_detail">تظهر هنا جميع الديون والدفعات من الأحدث.</string>
-    <string name="home_debt_kind">دين مسجل</string>
-    <string name="home_payment_kind">دفعة مستلمة</string>
-    <string name="home_payment_sent_kind">دفعة مدفوعة</string>
-    <string name="home_debt_payable_kind">دين علينا</string>
-    <string name="home_unknown_contact">شخص</string>
-    <string name="home_movement_meta">%1$s · %2$s</string>
-    <string name="home_outgoing_amount">−%1$s</string>
-    <string name="home_incoming_amount">+%1$s</string>
 </resources>
