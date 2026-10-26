@@ -14,8 +14,8 @@ import okhttp3.Request
  *
  * A miss is retried before it is believed: `releases/download/<tag>/<file>` answers `404` for a
  * release that is there — measured on 26 October 2026 for minutes at a time, on every asset of the
- * release, while its page, API and asset-by-id endpoint stayed up. One attempt turns that into «this
- * release publishes no update file yet», a sentence the user cannot act on.
+ * release, while its page, API and asset-by-id endpoint stayed up. One attempt turns that into
+ * «this release publishes no update file yet», a sentence the user cannot act on.
  *
  * [urlFor] resolves an asset name inside the channel's release. It is the seam a test uses to point
  * at a local server instead of the real repository.
