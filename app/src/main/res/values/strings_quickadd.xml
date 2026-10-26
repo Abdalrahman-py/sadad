@@ -3,4 +3,81 @@
     <string name="quickadd_title">تسجيل دين أو دفعة</string>
     <string name="quickadd_placeholder">قيد الإنشاء</string>
     <string name="quickadd_close">إغلاق</string>
+
+    <!-- The save button states the sentence the entry will record. -->
+    <string name="quickadd_sentence_debt">سجّل ₪%1$s على %2$s</string>
+    <string name="quickadd_sentence_payment">سجّل دفعة ₪%1$s من %2$s</string>
+    <string name="quickadd_sentence_supplier_debt">سجّل ₪%1$s ل%2$s</string>
+    <string name="quickadd_sentence_supplier_payment">سجّل دفع ₪%1$s ل%2$s</string>
+
+    <!-- The line under the amount that states what the entry does to the balance. -->
+    <string name="quickadd_preview_empty">اكتب المبلغ</string>
+    <string name="quickadd_preview_settled">يصبح مسددًا</string>
+    <string name="quickadd_preview_owes">يصبح عليه ₪%1$s</string>
+    <string name="quickadd_preview_credit">يصبح له ₪%1$s</string>
+    <string name="quickadd_preview_over">المبلغ أكبر من الرصيد المفتوح ₪%1$s</string>
+    <!-- The board's two richer previews: a debt against a credit, and a large amount. -->
+    <string name="quickadd_preview_deduct">يُخصم من رصيده ₪%1$s · %2$s</string>
+    <string name="quickadd_preview_large">%1$s · مبلغ كبير، سنطلب تأكيدًا</string>
+
+    <string name="quickadd_failed">تعذّر الحفظ، حاول مرة أخرى</string>
+
+    <!-- The picker. -->
+    <string name="quickadd_picker_title">تسجيل لمن؟</string>
+    <string name="quickadd_search_hint">ابحث بالاسم أو رقم الهاتف</string>
+    <string name="quickadd_clear_search">مسح البحث</string>
+    <string name="quickadd_recent">الأحدث والأكثر تعاملًا</string>
+    <string name="quickadd_supplier_badge">مورد</string>
+    <string name="quickadd_new_result">إضافة «%1$s» كشخص جديد</string>
+    <string name="quickadd_result">نتيجة</string>
+    <string name="quickadd_no_results">لا يوجد شخص بهذا الاسم أو الرقم. البحث يتجاهل الفرق بين أ وا وإ، وة وه، وى وي.</string>
+    <string name="quickadd_blocked_title">لا يمكن الحفظ الآن</string>
+    <string name="quickadd_blocked_body">انتهى تصريح الحفظ دون اتصال. اتصل بالإنترنت ثم سجّل.</string>
+    <string name="quickadd_reconnect">إعادة الاتصال</string>
+
+    <!-- The new person sheet. -->
+    <string name="quickadd_new_title">شخص جديد</string>
+    <string name="quickadd_name">الاسم</string>
+    <string name="quickadd_phone">رقم الهاتف</string>
+    <string name="quickadd_phone_hint">(اختياري، للتذكير على واتساب)</string>
+    <string name="quickadd_phone_placeholder">05xxxxxxxx</string>
+    <string name="quickadd_customer">زبون</string>
+    <string name="quickadd_supplier">مورد</string>
+    <string name="quickadd_duplicate">هذا الرقم مسجل باسم</string>
+    <string name="quickadd_use_duplicate">التسجيل لـ%1$s بدلًا من ذلك</string>
+    <string name="quickadd_continue">متابعة إلى المبلغ</string>
+    <string name="quickadd_cancel">إلغاء</string>
+    <string name="quickadd_new_footnote">التصنيف والملاحظات تُضاف لاحقًا من صفحة الشخص.</string>
+
+    <!-- The amount step. -->
+    <string name="quickadd_change_person">تغيير الشخص</string>
+    <string name="quickadd_debt_customer">دين جديد</string>
+    <string name="quickadd_pay_customer">استلام دفعة</string>
+    <string name="quickadd_debt_supplier">بضاعة بالدين</string>
+    <string name="quickadd_pay_supplier">دفع للمورد</string>
+    <string name="quickadd_due">الاستحقاق</string>
+    <string name="quickadd_note">البيان</string>
+    <string name="quickadd_method_cash">نقدي</string>
+    <string name="quickadd_method_bank">بنكي</string>
+    <string name="quickadd_method_wallet">محفظة</string>
+    <string name="quickadd_key_delete">حذف</string>
+    <string name="quickadd_key_dot">فاصلة عشرية</string>
+    <string name="quickadd_save_blocked">الحفظ متوقف حتى يعود الاتصال</string>
+    <string name="quickadd_anomaly_title">مبلغ أكبر من المعتاد</string>
+    <string name="quickadd_anomaly_body">راجع القيمة قبل الحفظ:</string>
+    <string name="quickadd_anomaly_sentence">%1$s</string>
+    <string name="quickadd_anomaly_confirm">المبلغ صحيح، احفظ</string>
+    <string name="quickadd_anomaly_edit">تعديل المبلغ</string>
+
+    <!-- The done step. -->
+    <string name="quickadd_done_debt_customer">تم تسجيل الدين</string>
+    <string name="quickadd_done_payment_customer">تم تسجيل الدفعة</string>
+    <string name="quickadd_done_debt_supplier">تم تسجيل البضاعة</string>
+    <string name="quickadd_done_payment_supplier">تم تسجيل الدفع</string>
+    <string name="quickadd_undo">تراجع</string>
+    <string name="quickadd_undo_seconds">· %1$d ث</string>
+    <string name="quickadd_another">تسجيل آخر</string>
+    <string name="quickadd_open_contact">صفحة %1$s</string>
+    <string name="quickadd_home">الرئيسية</string>
+    <string name="quickadd_net_label">%1$s الآن:</string>
 </resources>
