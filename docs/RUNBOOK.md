@@ -278,6 +278,18 @@ adb install -r Sadad-X.Y.Z-release.apk
 فبعد كل المحاولات: تحقّق من الرابط في المتصفح، وأعد الرفع (`gh release upload … --clobber`) أو أعد تشغيل
 `gh workflow run team-release.yml --ref dev`.
 
+**تثبيت بناء فريق منشور على جهاز (قاعدة اختبار أو استرجاع يدوي):** مسار
+`releases/download` قد يعيد `404`، فيُسحب الأصل بمعرّفه من الـAPI:
+
+```sh
+id=$(gh api repos/Abdalrahman-py/sadad/releases/tags/team-latest \
+  -q '.assets[] | select(.name=="Sadad-team.apk") | .id')
+curl -sSL -H "Accept: application/octet-stream" \
+  -H "Authorization: token $(gh auth token)" \
+  "https://api.github.com/repos/Abdalrahman-py/sadad/releases/assets/$id" -o Sadad-team.apk
+adb install -r Sadad-team.apk
+```
+
 **إن نُشر بناء سيئ:** انشر إصدارًا برقم `versionCode` أعلى؛ لا يوجد تراجع تلقائي في أندرويد. إن كان العيب
 يمنع التطبيق من العمل، فالتثبيت اليدوي من صفحة الإصدارات هو الطريق، ووجوده مذكور في نص رسالة الخطأ.
 
