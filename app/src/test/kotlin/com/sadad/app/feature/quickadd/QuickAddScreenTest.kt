@@ -7,7 +7,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -19,6 +19,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.R
+import com.sadad.app.a11y.PHONE_QUALIFIERS
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
@@ -41,7 +42,7 @@ import org.robolectric.annotation.Config
  * which is how a contact's «تسجيل دين» opened an amount step with nobody selected.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = UiTestApplication::class)
+@Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
 class QuickAddScreenTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val main = MainDispatcherRule()
@@ -56,7 +57,7 @@ class QuickAddScreenTest {
       showRoute(fixture, contact)
 
       compose.waitUntil(5_000) {
-        compose.onAllNodesWithText("خالد").fetchSemanticsNodes().isNotEmpty()
+        compose.onAllNodesWithTag(QuickAddTags.AMOUNT).fetchSemanticsNodes().isNotEmpty()
       }
       compose.onNodeWithTag(QuickAddTags.AMOUNT).assertIsDisplayed()
       compose.onNodeWithText("سجّل ₪25 على خالد").assertIsDisplayed()
@@ -77,7 +78,7 @@ class QuickAddScreenTest {
       val contact = seedContact(fixture)
       showRoute(fixture, contact)
       compose.waitUntil(5_000) {
-        compose.onAllNodesWithText("خالد").fetchSemanticsNodes().isNotEmpty()
+        compose.onAllNodesWithTag(QuickAddTags.AMOUNT).fetchSemanticsNodes().isNotEmpty()
       }
 
       // The store closes between the route opening and the save: commandsFor can build nothing,
