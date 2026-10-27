@@ -238,7 +238,9 @@ private fun Actions(
         Text(stringResource(R.string.updates_open_settings), fontSize = 14.sp)
       }
     }
-    if (error == UpdateError.SIGNATURE_MISMATCH) {
+    // Both refusals that a browser can finish: another key (a local debug build) and a release
+    // server that will not give us the bytes at all.
+    if (error == UpdateError.SIGNATURE_MISMATCH || error == UpdateError.DOWNLOAD_FAILED) {
       val url = center.apkUrl()
       if (url != null) {
         OutlinedButton(
