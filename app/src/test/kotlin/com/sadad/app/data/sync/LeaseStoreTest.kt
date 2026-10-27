@@ -64,6 +64,37 @@ class LeaseStoreTest {
   }
 
   @Test
+  fun aDeviceBehindTheServersClockKeepsItsOfflineLease() = runTest {
+    val job = SupervisorJob()
+    val now = 1800000000000L
+    try {
+      val store =
+          LeaseStore(
+              temporary.newFolder().resolve("lease.preferences_pb"),
+              CoroutineScope(job + Dispatchers.IO),
+              LeaseVerifier(signer.publicKey.x, signer.publicKey.y),
+              { 1 },
+              { now },
+          )
+      // The server issued the lease four minutes after this device thinks it is.
+      store.save(account, signedLease(signer, account, issuedAt = now + 4 * MINUTE))
+
+      assertTrue("a device four minutes behind must keep recording", store.allows(account))
+      assertFalse("and must not ask for a new lease every pass", store.needsRenewal(account))
+
+      // A device ahead of the server is inside the window too.
+      store.save(account, signedLease(signer, account, issuedAt = now - 4 * MINUTE))
+      assertTrue(store.allows(account))
+
+      // Beyond the tolerance the lease is inert again.
+      store.save(account, signedLease(signer, account, issuedAt = now + CLOCK_SKEW + 1))
+      assertFalse(store.allows(account))
+    } finally {
+      job.cancelAndJoin()
+    }
+  }
+
+  @Test
   fun emptyPinnedKeyWrongIdentityAndNewGenerationFailClosed() = runTest {
     val job = SupervisorJob()
     val now = 1800000000000L
@@ -120,6 +151,11 @@ class LeaseStoreTest {
 }
 
 internal const val DAY = 86400000L
+
+internal const val MINUTE = 60_000L
+
+/** The same ±5 minutes `proof.ts` allows between a device and the server. */
+internal const val CLOCK_SKEW = 300_000L
 
 internal fun signedLease(signer: SoftwareSigner, account: Account, issuedAt: Long): Lease {
   val payload =

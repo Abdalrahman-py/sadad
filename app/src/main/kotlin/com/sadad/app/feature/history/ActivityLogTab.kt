@@ -117,6 +117,8 @@ private fun UnacceptedRow(entry: UnacceptedEntry, onDismiss: (String) -> Unit) {
                       )
                   entry.state == OutboxState.REJECTED && entry.refused != null ->
                       stringResource(R.string.history_unaccepted_rejected, entry.refused)
+                  entry.state == OutboxState.UNSENDABLE ->
+                      stringResource(R.string.history_unaccepted_unsendable)
                   else -> stringResource(R.string.history_unaccepted_cancelled)
                 },
             style = MaterialTheme.typography.labelSmall,

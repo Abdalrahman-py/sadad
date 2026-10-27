@@ -190,6 +190,9 @@ class QuickAddViewModel(
 
   /** The picker's tap: the flow continues at the amount with that person's debts in view. */
   fun pick(personId: String) {
+    // Choosing somebody else drops the person this flow was about to create.
+    pendingContact = null
+    pendingPersonId = null
     mutable.update { current ->
       val person =
           current.people.firstOrNull { it.id == personId }
@@ -301,8 +304,13 @@ class QuickAddViewModel(
     mutable.update { it.copy(payment = true, anomaly = null, error = null) }
   }
 
-  fun backToPicker() = mutable.update {
-    it.copy(step = QuickAddStep.PICKER, amount = "", anomaly = null, error = null, done = null)
+  fun backToPicker() {
+    // «تغيير الشخص» drops the person this flow was about to create; a held command is not queued.
+    pendingContact = null
+    pendingPersonId = null
+    mutable.update {
+      it.copy(step = QuickAddStep.PICKER, amount = "", anomaly = null, error = null, done = null)
+    }
   }
 
   /** One key of the on-screen keypad: a digit, or «.» for the decimal mark. */
@@ -384,7 +392,8 @@ class QuickAddViewModel(
       return
     }
     pending = commands
-    pendingContact = null
+    // The held Contact stays until the commands are committed: «تراجع» returns to the amount with
+    // the same person, and saving again must carry the contact.create with its debt again.
     commitJob?.cancel()
     commitJob =
         store.jobs.launch {
@@ -538,61 +547,62 @@ class QuickAddViewModel(
           )
           .after
 
-  /** The commands one save will queue, built from the view the previews came from. */
+  /**
+   * The commands one save will queue, built from the view the previews came from. The mode on
+   * screen decides what is recorded; the held Contact is only ever the parent of the entry, never
+   * its kind, and a child names that parent in `dependsOn`.
+   */
   private fun commandsFor(current: QuickAddState, amount: Cents): List<LedgerCommand> {
     val scope = graph.current.value ?: return emptyList()
     val origin = scope.origin() ?: return emptyList()
     val person = current.selected ?: return emptyList()
     val at = Instant.now()
     val note = current.note.trim().ifEmpty { null }
-    val heldContact = pendingContact
-    if (heldContact != null) {
-      val debt =
-          Commands.debtCreate(
-              origin,
-              at,
-              person.id,
-              person.kind.debtDirection,
-              amount,
-              note,
-              if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
-              dependsOn = listOf(heldContact.operationId),
-          )
-      return listOf(heldContact, debt)
+    // The Contact this flow is still holding, and only while it is the person on screen.
+    val held = pendingContact?.takeIf { it.entityId == person.id }
+    if (current.payment) {
+      // A Contact created in this flow has no Debts yet, so there is nothing to pay.
+      if (held != null) return emptyList()
+      val view = currentView ?: return emptyList()
+      val contact = view.contacts.firstOrNull { it.id == person.id } ?: return emptyList()
+      return PaymentAllocation.allocate(view, person.id, amount, contact.kind.debtDirection).map {
+          part ->
+        Commands.paymentCreate(
+            origin,
+            at,
+            part.debtId,
+            part.amount,
+            current.method,
+            note,
+            dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
+        )
+      }
     }
-    if (!current.payment) {
-      return listOf(
-          Commands.debtCreate(
-              origin,
-              at,
-              person.id,
-              person.kind.debtDirection,
-              amount,
-              note,
-              if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
-          )
-      )
-    }
-    val view = currentView ?: return emptyList()
-    val contact = view.contacts.firstOrNull { it.id == person.id } ?: return emptyList()
-    return PaymentAllocation.allocate(view, person.id, amount, contact.kind.debtDirection).map {
-        part ->
-      Commands.paymentCreate(
-          origin,
-          at,
-          part.debtId,
-          part.amount,
-          current.method,
-          note,
-          dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
-      )
-    }
+    // A Debt on a Contact the server has not confirmed must name the command that creates it.
+    val parent =
+        held?.operationId
+            ?: currentView?.contacts?.firstOrNull { it.id == person.id && it.pending }?.operationId
+    val debt =
+        Commands.debtCreate(
+            origin,
+            at,
+            person.id,
+            person.kind.debtDirection,
+            amount,
+            note,
+            if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
+            dependsOn = listOfNotNull(parent),
+        )
+    return listOfNotNull(held, debt)
   }
 
   /** Appends the held commands: the only place this flow writes to the outbox. */
   private fun commit(context: Context) {
     val commands = pending
     pending = emptyList()
+    // The held Contact is in `commands` now (or there was none).
+    pendingContact = null
+    pendingPersonId = null
     val store = graph.current.value
     if (commands.isEmpty() || store == null) return
     // The outbox write is not cancelled with this screen: it is one short write, not background

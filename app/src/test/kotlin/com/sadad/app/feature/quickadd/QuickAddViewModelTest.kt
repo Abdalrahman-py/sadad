@@ -369,6 +369,75 @@ class QuickAddViewModelTest {
     }
   }
 
+  @Test
+  fun aHeldNewPersonDoesNotTurnTheNextPaymentIntoADebt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val debt = fixture.openDebt(contact, 10_000)
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 300)
+      model.state.first { it.loaded }
+
+      // «زبون جديد» → change your mind → pick somebody else → «دفع».
+      model.onQueryChange("سامي")
+      model.startNewPerson()
+      model.onNewName("سامي")
+      model.createPerson()
+      model.backToPicker()
+      model.pick(contact)
+      model.toPayment()
+      model.press("1")
+      model.press("0")
+      model.press("0")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      val row = store.outbox.snapshot().single()
+      assertEquals(
+          "the mode on screen decides, not the dropped contact",
+          CommandType.PAYMENT_CREATE,
+          row.type,
+      )
+      assertEquals(debt, (row.command.payload() as PaymentCreate).debtId)
+    }
+  }
+
+  @Test
+  fun undoAfterANewPersonKeepsTheContactWithTheNextSave() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 300)
+      model.state.first { it.loaded }
+
+      model.startNewPerson()
+      model.onNewName("سامي")
+      model.createPerson()
+      model.press("5")
+      model.press("0")
+      model.press("0")
+      model.save(context)
+      assertEquals(QuickAddStep.DONE, model.state.value.step)
+
+      model.undo(context)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+
+      // The second save must rebuild the pair, not a debt for a contact that was never created.
+      model.save(context)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      assertEquals(
+          "the debt names the contact that carries it",
+          listOf(rows.first().operationId),
+          rows.last().command.dependsOn,
+      )
+    }
+  }
+
   private suspend fun TestGraph.settledContact(
       name: String,
       phone: String? = null,
