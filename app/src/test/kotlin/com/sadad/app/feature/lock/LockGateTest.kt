@@ -34,7 +34,9 @@ private const val CONTENT = "المحتوى"
 private const val LOCKED = "التطبيق مقفل"
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = UiTestApplication::class)
+// A real phone's height, not Robolectric's 320x470 default: the lock board is a full screen with
+// its own keypad (no IME), so the keys and the open button must be measured where they live.
+@Config(application = UiTestApplication::class, qualifiers = "w360dp-h800dp-xxhdpi")
 class LockGateTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val temporary = TemporaryFolder()

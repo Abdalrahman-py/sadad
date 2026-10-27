@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -482,7 +483,11 @@ private fun NumberedStep(
   val link = if (p.isDark) p.accent else p.primary
   Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
     Box(
-        Modifier.size(28.dp).background(if (first) p.primary else p.surface, CircleShape),
+        // A minimum, not a fixed 28dp: at the largest font the digit is taller and wider than the
+        // circle, and a fixed size squeezed it to a 1px sliver instead of letting the badge grow.
+        Modifier.sizeIn(minWidth = 28.dp, minHeight = 28.dp)
+            .background(if (first) p.primary else p.surface, CircleShape)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
       Text(
@@ -490,6 +495,8 @@ private fun NumberedStep(
           color = if (first) Color.White else link,
           fontSize = 14.sp,
           fontWeight = FontWeight.Bold,
+          softWrap = false,
+          maxLines = 1,
       )
     }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {

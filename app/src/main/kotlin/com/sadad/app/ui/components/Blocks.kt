@@ -206,6 +206,14 @@ fun SadadKeypad(
       keys.chunked(3).forEach { row ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           row.forEach { key ->
+            // A blank cell must not consume the per-key state slots. The loop is positional, so a
+            // return placed after `remember` and the two animate calls leaves every later key
+            // reading a neighbour's slot — the delete key's Surface content then arrives as an
+            // Animatable and Compose throws ClassCastException at rememberComposableLambda.
+            if (key is KeypadKey.Blank) {
+              Box(Modifier.weight(1f).height(keyHeight))
+              return@forEach
+            }
             val special = key !is KeypadKey.Char
             val plain = plainSpecials && special
             val source = remember { MutableInteractionSource() }
@@ -217,10 +225,6 @@ fun SadadKeypad(
                     tween(120),
                     label = "keyTint",
                 )
-            if (key is KeypadKey.Blank) {
-              Box(Modifier.weight(1f).height(keyHeight))
-              return@forEach
-            }
             val description =
                 when (key) {
                   is KeypadKey.Char -> key.description

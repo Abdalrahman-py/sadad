@@ -170,13 +170,14 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
         Modifier.fillMaxSize()
             .sadadPageBackground()
             .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(start = 18.dp, end = 18.dp, top = 40.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
       Column(
-          Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
+          Modifier.fillMaxWidth(),
           horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(10.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         Appear { SadadLogo(64.dp, dark = p.isDark) }
         Row(
@@ -205,23 +206,25 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
             lineHeight = 21.sp,
             textAlign = TextAlign.Center,
         )
-        PinDots(
-            filled = pin.length,
-            count = maxOf(4, pin.length),
-            description = stringResource(R.string.lock_pin_entered, pin.length),
-            modifier = Modifier.padding(top = 10.dp).testTag(LockTag.PIN),
-        )
-        Text(
-            message ?: if (pin.isEmpty()) stringResource(R.string.lock_pin_range) else "",
-            color = if (message != null) p.owes else p.muted,
-            fontSize = 13.sp,
-            textAlign = TextAlign.Center,
-            modifier =
-                Modifier.fillMaxWidth().heightIn(min = 20.dp).semantics {
-                  if (message != null) liveRegion = LiveRegionMode.Polite
-                },
-        )
       }
+      // Outside the scrolling half: on a 640 dp phone with the keyboard up the top block scrolls,
+      // and the dots and the open button must stay reachable without scrolling to them.
+      PinDots(
+          filled = pin.length,
+          count = maxOf(4, pin.length),
+          description = stringResource(R.string.lock_pin_entered, pin.length),
+          modifier = Modifier.testTag(LockTag.PIN),
+      )
+      Text(
+          message ?: if (pin.isEmpty()) stringResource(R.string.lock_pin_range) else "",
+          color = if (message != null) p.owes else p.muted,
+          fontSize = 13.sp,
+          textAlign = TextAlign.Center,
+          modifier =
+              Modifier.fillMaxWidth().heightIn(min = 20.dp).semantics {
+                if (message != null) liveRegion = LiveRegionMode.Polite
+              },
+      )
       SadadKeypad(
           keys = keys,
           onChar = {

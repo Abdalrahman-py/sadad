@@ -7,7 +7,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
@@ -24,7 +23,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.HistoryTags
-import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
@@ -181,17 +179,14 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun theExportChipsChangeTheSavedPeriod() {
-    show { kit, _, _ ->
-      scrollTo(hasTestTag(HistoryTags.PERIOD_YEAR))
-      compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).assertIsSelected()
-
-      compose.onNodeWithTag(HistoryTags.PERIOD_YEAR).performClick()
-
-      compose.waitUntil(timeoutMillis = 10_000) {
-        runBlocking { kit.preferences.exportPeriod.first() } ==
-            ExportPeriod.Preset(PeriodPreset.YEAR)
-      }
+  fun theExportPeriodIsNotOfferedHere() {
+    // The restyle moved the statement export — and the period it covers — to «الحركات», where the
+    // entries it lists are. HistoryScreenTest drives the chips there; this screen must not carry a
+    // second copy of them.
+    show { _, _, _ ->
+      compose.onNodeWithTag(SettingsTags.LIST).performScrollToNode(hasTestTag(SettingsTags.TRASH))
+      compose.onAllNodesWithTag(HistoryTags.PERIOD_YEAR).assertCountEquals(0)
+      compose.onAllNodesWithTag(HistoryTags.PERIOD_MONTH).assertCountEquals(0)
     }
   }
 
@@ -214,8 +209,10 @@ class SettingsScreenTest {
   @Test
   fun aDeviceWithoutDeletePermissionsSeesNoTrash() {
     show(canDelete = false) { _, _, _ ->
-      scrollTo(hasText("البيانات"))
-      compose.onAllNodesWithText("سلة المحذوفات").assertCountEquals(0)
+      // The trash is the only thing left in «البيانات», so the section itself is not drawn: there
+      // is no heading to scroll to and nothing to open.
+      compose.onAllNodesWithText("البيانات").assertCountEquals(0)
+      compose.onAllNodesWithTag(SettingsTags.TRASH).assertCountEquals(0)
     }
   }
 
