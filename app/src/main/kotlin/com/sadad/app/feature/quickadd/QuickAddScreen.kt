@@ -1,6 +1,7 @@
 package com.sadad.app.feature.quickadd
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -101,6 +102,7 @@ object QuickAddTags {
   const val KIND_SUPPLIER = "quickadd:kind-supplier"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
+  const val ERROR = "quickadd:error"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -715,6 +717,16 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
     }
     Spacer(Modifier.height(12.dp))
 
+    state.error?.let { message ->
+      Text(
+          text = message,
+          fontSize = 13.sp,
+          color = p.credit,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag(QuickAddTags.ERROR),
+      )
+    }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
       Keypad(onKey = model::press, onDelete = model::delete)
     }
@@ -881,6 +893,11 @@ private fun DoneStep(
 ) {
   val p = sadadPalette
   val done = state.done ?: return
+  // System back is a way out like the two buttons below: whatever is held is queued, not dropped.
+  BackHandler {
+    model.leave(context)
+    onClose()
+  }
   val person = state.selected
   val supplier = person?.kind == ContactKind.SUPPLIER
   val title =

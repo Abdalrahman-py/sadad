@@ -157,7 +157,7 @@ class ActivityLogViewModelTest {
               null,
               null,
               null,
-              FirstDebt(Direction.RECEIVABLE, Cents(10_000)),
+              FirstDebt(Cents(10_000)),
           )
           .getOrThrow()
       val rows = store.outbox.snapshot()
