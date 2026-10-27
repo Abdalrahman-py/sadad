@@ -52,7 +52,11 @@ class NotificationsScreenTest {
         )
     runBlocking { reminders.record(reminder) }
     compose.setContent { SadadTheme { NotificationsScreen(reminders, "store") } }
-    compose.waitUntil { compose.onAllNodesWithText("سامي").fetchSemanticsNodes().isNotEmpty() }
+    // The inbox arrives from DataStore on a coroutine; a 1 s default is enough on a fast machine
+    // and not on a loaded CI runner, so wait as long as the undo timer below does.
+    compose.waitUntil(10_000) {
+      compose.onAllNodesWithText("سامي").fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithText("تحديد الإشعار كمكتمل").performClick()
     compose.onNodeWithText("تم حذف الإشعار ونقله إلى سلة المحذوفات.").assertIsDisplayed()
     compose.onNodeWithText("تراجع").performClick()
