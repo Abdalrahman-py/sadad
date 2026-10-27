@@ -18,8 +18,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
       // The system needs one tap in its own sheet; carry on into it.
       PackageInstaller.STATUS_PENDING_USER_ACTION -> {
         val confirm = confirmation(intent) ?: return
-        confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(confirm) }
+        runCatching { context.startActivity(launchable(confirm)) }
       }
       PackageInstaller.STATUS_SUCCESS -> center.installed()
       PackageInstaller.STATUS_FAILURE_ABORTED -> center.installFailed(UpdateError.INSTALL_CANCELLED)
@@ -32,5 +31,30 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
       } else {
         @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
+      }
+
+  /**
+   * The sheet the installer wants us to open, rebuilt by this app.
+   *
+   * Launching the intent the installer handed us is an "unsafe intent launch": the platform marks
+   * every intent it unparcels from another process, and the debug StrictMode policy kills the app
+   * on that violation — which is exactly what happened the first time an update reached the
+   * installer. Copying does not help on its own: `Intent(other)` inherits the marker,
+   * `putExtras(other)` sets it again, and copying a bundle that has not been unparcelled yet sets
+   * it too. So the fields are copied one by one into an intent this app built, and the extras are
+   * pulled out of their parcelled form first.
+   */
+  internal fun launchable(confirm: Intent): Intent =
+      Intent(confirm.action).apply {
+        setPackage(confirm.`package`)
+        component = confirm.component
+        data = confirm.data
+        type = confirm.type
+        confirm.categories?.forEach { addCategory(it) }
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        confirm.extras?.let { source ->
+          source.keySet()
+          putExtras(source)
+        }
       }
 }
