@@ -197,7 +197,7 @@ class SettingsViewModel(
         )
     viewModelScope.launch {
       try {
-        StatementExport.sharePdf(context, header, view, null, bounds.from, bounds.to?.minusNanos(1))
+        StatementExport.sharePdf(context, header, view, null, bounds.from, bounds.to)
         ui.update { it.copy(busy = false) }
       } catch (failure: Throwable) {
         if (failure is CancellationException) throw failure
