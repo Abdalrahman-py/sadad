@@ -237,7 +237,12 @@ private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -
               },
           contentAlignment = Alignment.Center,
       ) {
-        BellGlyph(p.text)
+        Icon(
+            painterResource(R.drawable.ic_notifications),
+            contentDescription = null,
+            tint = p.text,
+            modifier = Modifier.size(22.dp),
+        )
       }
       if (unread > 0) {
         Surface(
@@ -702,34 +707,6 @@ private fun AfterRow(number: Int, text: String) {
 }
 
 /* ---------------------------------------------------------------- glyphs */
-
-@Composable
-private fun BellGlyph(color: Color) {
-  Canvas(Modifier.size(22.dp)) {
-    val stroke = size.minDimension * 0.09f
-    drawRoundRect(
-        color = color,
-        topLeft = Offset(size.width * 0.28f, size.height * 0.26f),
-        size = Size(size.width * 0.44f, size.height * 0.46f),
-        cornerRadius = CornerRadius(size.width * 0.22f),
-        style = Stroke(width = stroke),
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.2f, size.height * 0.74f),
-        Offset(size.width * 0.8f, size.height * 0.74f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.44f, size.height * 0.86f),
-        Offset(size.width * 0.56f, size.height * 0.86f),
-        stroke,
-        StrokeCap.Round,
-    )
-  }
-}
 
 @Composable
 private fun WhatsAppGlyph(color: Color) {
