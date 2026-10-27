@@ -450,6 +450,8 @@ class QuickAddViewModelTest {
       model.onNewName("سامي")
       model.createPerson()
       model.backToPicker()
+      // The query is still the new name; the picker shows the matches, so clear it to pick خالد.
+      model.clearQuery()
       model.pick(contact)
       model.toPayment()
       model.press("1")

@@ -384,6 +384,8 @@ class QuickAddViewModel(
    */
   fun save(context: Context) {
     val current = mutable.value
+    // Saving is the amount step's action; the done step cannot queue the same entry again.
+    if (current.step != QuickAddStep.AMOUNT) return
     val amount = parseCents(current.amount)
     if (!current.canSave || amount == null) return
     if (amount >= ANOMALY_LIMIT && anomalyApproved != current.amount) {
