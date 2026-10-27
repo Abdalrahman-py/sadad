@@ -75,6 +75,29 @@ class QuickAddViewModelTest {
   }
 
   @Test
+  fun thePickerShowsOnlyTheMatches() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.settledContact("خالد")
+      fixture.settledContact("سارة")
+      fixture.settledContact("سامي")
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.size == 3 }
+
+      model.onQueryChange("سار")
+
+      assertEquals(listOf("سارة"), model.state.value.people.map { it.name })
+      assertEquals(
+          "the count is the rendered list, not a second number",
+          1,
+          model.state.value.people.size,
+      )
+
+      model.clearQuery()
+      assertEquals(3, model.state.value.people.size)
+    }
+  }
+
+  @Test
   fun openingTheFlowForAContactSelectsThemAndStartsAtTheAmount() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
@@ -317,6 +340,49 @@ class QuickAddViewModelTest {
       val state = model.state.first { it.loaded }
 
       assertTrue("the picker must say the save cannot happen now", state.blocked)
+    }
+  }
+
+  @Test
+  fun aDebtCarriesTheDueDateAndNoteTheChipsSet() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.onDueDateChange("2026-11-01")
+      model.onNoteChange("بضاعة")
+      model.press("4")
+      model.press("0")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      val payload = store.outbox.snapshot().single().command.payload() as DebtCreate
+      assertEquals("2026-11-01", payload.dueDate)
+      assertEquals("بضاعة", payload.note)
+    }
+  }
+
+  @Test
+  fun undoAfterTheWindowCannotQueueTheSameEntryTwice() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.press("7")
+      model.press("5")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      // The window has ended: the entry is queued and «تراجع 0» must not re-arm it.
+      model.undo(context)
+      model.save(context)
+      Thread.sleep(300)
+
+      assertEquals(1, store.outbox.snapshot().size)
     }
   }
 

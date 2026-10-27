@@ -27,16 +27,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +92,8 @@ import com.sadad.ledger.ContactKind
 import com.sadad.ledger.PaymentMethod
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 /** The handles the screen tests and the a11y sweep hold on to. */
 object QuickAddTags {
@@ -103,6 +111,10 @@ object QuickAddTags {
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
   const val ERROR = "quickadd:error"
+  const val DUE_CHIP = "quickadd:due-chip"
+  const val NOTE_CHIP = "quickadd:note-chip"
+  const val DUE_DIALOG = "quickadd:due-dialog"
+  const val NOTE_DIALOG = "quickadd:note-dialog"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -607,10 +619,13 @@ private fun KindCell(
 
 /* ---------------------------------------------------------------- amount */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: Context) {
   val p = sadadPalette
   val person = state.selected
+  var pickingDue by remember { mutableStateOf(false) }
+  var editingNote by remember { mutableStateOf(false) }
   val supplier = person?.kind == ContactKind.SUPPLIER
   Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, bottom = 20.dp)) {
     Row(
@@ -701,8 +716,18 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       if (!state.payment) {
-        Chip(stringResource(R.string.quickadd_due), active = state.dueDate != null) {}
-        Chip(stringResource(R.string.quickadd_note), active = state.note.isNotEmpty()) {}
+        Chip(
+            label = stringResource(R.string.quickadd_due),
+            active = state.dueDate != null,
+            tag = QuickAddTags.DUE_CHIP,
+            onClick = { pickingDue = true },
+        )
+        Chip(
+            label = stringResource(R.string.quickadd_note),
+            active = state.note.isNotEmpty(),
+            tag = QuickAddTags.NOTE_CHIP,
+            onClick = { editingNote = true },
+        )
       } else {
         for (method in QUICK_METHODS) {
           Chip(
@@ -741,6 +766,72 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
         payment = state.payment,
         enabled = state.canSave,
         onClick = { model.save(context) },
+    )
+  }
+
+  if (pickingDue) {
+    val initial =
+        state.dueDate
+            ?.let { java.time.LocalDate.parse(it) }
+            ?.atStartOfDay(ZoneOffset.UTC)
+            ?.toInstant()
+            ?.toEpochMilli()
+    val picker = rememberDatePickerState(initialSelectedDateMillis = initial)
+    DatePickerDialog(
+        modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
+        onDismissRequest = { pickingDue = false },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                picker.selectedDateMillis?.let { millis ->
+                  val date =
+                      Instant.ofEpochMilli(millis)
+                          .atZone(ZoneOffset.UTC)
+                          .toLocalDate()
+                          .format(DateTimeFormatter.ISO_LOCAL_DATE)
+                  model.onDueDateChange(date)
+                }
+                pickingDue = false
+              },
+              enabled = picker.selectedDateMillis != null,
+          ) {
+            Text(stringResource(R.string.contactform_pick))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { pickingDue = false }) {
+            Text(stringResource(R.string.contactform_cancel))
+          }
+        },
+    ) {
+      DatePicker(state = picker)
+    }
+  }
+
+  if (editingNote) {
+    AlertDialog(
+        modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
+        onDismissRequest = { editingNote = false },
+        containerColor = p.card,
+        title = { Text(stringResource(R.string.quickadd_note)) },
+        text = {
+          SadadField(
+              value = state.note,
+              onValueChange = model::onNoteChange,
+              label = stringResource(R.string.quickadd_note),
+              singleLine = false,
+          )
+        },
+        confirmButton = {
+          TextButton(onClick = { editingNote = false }) {
+            Text(stringResource(R.string.contactform_pick))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { editingNote = false }) {
+            Text(stringResource(R.string.contactform_cancel))
+          }
+        },
     )
   }
 }
@@ -862,13 +953,21 @@ private fun Keypad(onKey: (String) -> Unit, onDelete: () -> Unit) {
 }
 
 @Composable
-private fun Chip(label: String, active: Boolean, onClick: () -> Unit) {
+private fun Chip(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    tag: String? = null,
+) {
   val p = sadadPalette
   Surface(
       color = if (active) p.soft else p.card,
       shape = RoundedCornerShape(22.dp),
       border = BorderStroke(1.dp, p.line),
-      modifier = Modifier.height(44.dp).clickable(onClick = onClick),
+      modifier =
+          Modifier.height(44.dp)
+              .then(if (tag == null) Modifier else Modifier.testTag(tag))
+              .clickable(onClick = onClick),
   ) {
     Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
       Text(
@@ -966,15 +1065,18 @@ private fun DoneStep(
       }
     }
 
-    SadadButton(
-        text =
-            stringResource(R.string.quickadd_undo) +
-                " " +
-                stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
-        onClick = { model.undo(context) },
-        style = SadadButtonStyle.SURFACE,
-        modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
-    )
+    // Once the entry is queued there is nothing to undo here, so the offer goes away with it.
+    if (done.secondsLeft > 0) {
+      SadadButton(
+          text =
+              stringResource(R.string.quickadd_undo) +
+                  " " +
+                  stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
+          onClick = { model.undo(context) },
+          style = SadadButtonStyle.SURFACE,
+          modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
+      )
+    }
     SadadButton(
         text = stringResource(R.string.quickadd_another),
         onClick = { model.another(context) },
