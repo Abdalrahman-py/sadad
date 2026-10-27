@@ -8,6 +8,10 @@
     <string name="reminders_subtitle">مواعيد الاستحقاق قبل يوم وفي يومها</string>
     <string name="reminders_empty">لا توجد إشعارات استحقاق حالياً</string>
     <string name="reminder_mark_done">تحديد الإشعار كمكتمل</string>
+    <string name="reminder_owes">· عليه %1$s</string>
+    <string name="reminder_when_today">يستحق اليوم · %1$s</string>
+    <string name="reminder_when_tomorrow">يستحق غدًا · %1$s</string>
+    <string name="reminders_footnote">تصلك تذكيرات الاستحقاق قبل الموعد بيوم وفي يومه. يمكن تغييرها من «المتجر».</string>
     <string name="reminder_dismissed">تم حذف الإشعار ونقله إلى سلة المحذوفات.</string>
     <string name="reminder_undo">تراجع</string>
 </resources>

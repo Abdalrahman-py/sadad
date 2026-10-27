@@ -81,6 +81,8 @@ data class PeopleRow(
     val activity: String,
     /** Days past the oldest overdue receivable; null when they are not late. */
     val lateDays: Int?,
+    /** «عميل دائم», «خضار وفواكه»: the category chosen when the person was added. */
+    val category: String = "",
 ) {
   /** The last three digits the row shows after «…»; "" when the person has no number. */
   val phoneTail: String
@@ -167,6 +169,7 @@ fun peopleUiState(
             activity =
                 if (lateDays == null) activityText(last, today, zone) else lateText(lateDays),
             lateDays = lateDays,
+            category = contact.category,
         )
   }
 

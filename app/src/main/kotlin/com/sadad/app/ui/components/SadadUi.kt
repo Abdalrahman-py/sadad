@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.sadad.app.R
 import com.sadad.app.ui.theme.sadadPalette
 
@@ -74,10 +75,11 @@ import com.sadad.app.ui.theme.sadadPalette
  * the look stays the one the shop owners know.
  */
 
-private val ButtonShape = RoundedCornerShape(10.dp)
+// The boards' radii: 13 for buttons, fields, rows and cards, 18 for blocks, 26 for panels.
+private val ButtonShape = RoundedCornerShape(13.dp)
 private val FieldShape = RoundedCornerShape(13.dp)
-private val RowShape = RoundedCornerShape(14.dp)
-private val CardShape = RoundedCornerShape(10.dp)
+private val RowShape = RoundedCornerShape(13.dp)
+private val CardShape = RoundedCornerShape(13.dp)
 
 /** The page ground: [bg] to [bgEnd], top to bottom, as `pageBackground()`. */
 @Composable
@@ -106,7 +108,10 @@ private fun pressScale(source: MutableInteractionSource): Float {
   return scale
 }
 
-/** A full-width filled button: 48dp tall, 10dp corners, bold 14sp. */
+/**
+ * A full-width filled button as the boards draw it: 52dp tall, 13dp corners, bold 15sp. Disabled it
+ * turns `soft` with muted text, never a faded primary.
+ */
 @Composable
 fun SadadButton(
     text: String,
@@ -116,33 +121,36 @@ fun SadadButton(
     enabled: Boolean = true,
     leading: Painter? = null,
     trailing: Painter? = null,
+    height: Dp = 52.dp,
 ) {
   val p = sadadPalette
   val source = remember { MutableInteractionSource() }
+  val link = if (p.isDark) p.accent else p.primary
   val (fill, ink, border) =
       when (style) {
         SadadButtonStyle.PRIMARY -> Triple(p.primary, Color.White, null)
-        SadadButtonStyle.SOFT -> Triple(p.soft, if (p.bg.isDark()) p.text else p.primary, null)
-        SadadButtonStyle.SURFACE -> Triple(p.surface, p.text, BorderStroke(1.dp, p.line))
-        SadadButtonStyle.DANGER -> Triple(p.debt, Color.White, null)
+        SadadButtonStyle.SOFT -> Triple(p.surface, link, null)
+        SadadButtonStyle.SURFACE -> Triple(p.card, link, BorderStroke(1.dp, p.line))
+        SadadButtonStyle.DANGER -> Triple(p.debt, if (p.isDark) p.bg else Color.White, null)
+        SadadButtonStyle.TEXT -> Triple(Color.Transparent, link, null)
       }
   Surface(
       onClick = onClick,
       enabled = enabled,
       shape = ButtonShape,
-      color = if (enabled) fill else fill.copy(alpha = 0.45f),
-      contentColor = ink,
-      border = border,
+      color = if (enabled || style == SadadButtonStyle.TEXT) fill else p.soft,
+      contentColor = if (enabled) ink else p.muted,
+      border = if (enabled) border else null,
       interactionSource = source,
-      modifier = modifier.scale(pressScale(source)).defaultMinSize(minHeight = 48.dp),
+      modifier = modifier.scale(pressScale(source)).defaultMinSize(minHeight = height),
   ) {
     Row(
-        modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      leading?.let { Icon(it, contentDescription = null, modifier = Modifier.size(22.dp)) }
-      Text(text, style = MaterialTheme.typography.labelLarge)
+      leading?.let { Icon(it, contentDescription = null, modifier = Modifier.size(18.dp)) }
+      Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp))
       trailing?.let { Icon(it, contentDescription = null, modifier = Modifier.size(28.dp)) }
     }
   }
@@ -151,11 +159,13 @@ fun SadadButton(
 enum class SadadButtonStyle {
   /** `primary` fill, white text: the one action of a screen. */
   PRIMARY,
-  /** `soft` fill: a secondary action such as «عرض سجل الحركات». */
+  /** `surface` fill, link ink: a secondary action such as «تعديل المبلغ». */
   SOFT,
-  /** `surface` fill with a `line` border: list-like actions (settings rows, sort). */
+  /** `card` fill with a `line` border: list-like actions (undo, sort). */
   SURFACE,
   DANGER,
+  /** No fill: a link-weight action such as «إلغاء». */
+  TEXT,
 }
 
 /** The old app's filled selection field, with a native accessible menu and unchanged values. */

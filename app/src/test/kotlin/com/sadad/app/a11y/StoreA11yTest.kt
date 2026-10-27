@@ -61,7 +61,6 @@ class StoreA11yTest {
           onChangePassword = {},
           onAddStore = {},
           onNeedsLogin = {},
-          onOpenOperationsLog = {},
           settingsViewModel = model,
       )
     }

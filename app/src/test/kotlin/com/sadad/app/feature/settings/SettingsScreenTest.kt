@@ -54,7 +54,6 @@ class SettingsScreenTest {
     var recovery = 0
     var password = 0
     var addStore = 0
-    var operationsLog = 0
     var login = 0
   }
 
@@ -127,12 +126,8 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun theOperationsLogAndRecoveryLinksOpenTheirScreens() {
+  fun theRecoveryLinkOpensItsScreen() {
     show { _, _, nav ->
-      scrollTo(hasTag(SettingsTags.OPS_LOG))
-      compose.onNodeWithTag(SettingsTags.OPS_LOG).performClick()
-      assertEquals(1, nav.operationsLog)
-
       scrollTo(hasTag(SettingsTags.RECOVERY))
       compose.onNodeWithTag(SettingsTags.RECOVERY).performClick()
       assertEquals(1, nav.recovery)
@@ -375,7 +370,6 @@ class SettingsScreenTest {
                       onChangePassword = { nav.password++ },
                       onAddStore = { nav.addStore++ },
                       onNeedsLogin = { nav.login++ },
-                      onOpenOperationsLog = { nav.operationsLog++ },
                       settingsViewModel = model,
                   )
                 }

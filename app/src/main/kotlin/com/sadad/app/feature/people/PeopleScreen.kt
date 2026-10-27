@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,6 +75,7 @@ internal object PeopleTags {
   const val TITLE = "people:title"
   const val COUNT = "people:count"
   const val SORT = "people:sort"
+  const val ADD = "people:add"
   const val SEARCH = "people:search"
   const val LIST = "people:list"
   const val TOTAL = "people:total"
@@ -88,6 +91,7 @@ internal object PeopleTags {
 @Composable
 fun PeopleScreen(
     onOpenContact: (String) -> Unit = {},
+    onAdd: () -> Unit = {},
     viewModel: PeopleViewModel = peopleViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -101,6 +105,7 @@ fun PeopleScreen(
       onQueryChange = viewModel::onQueryChange,
       onFilter = viewModel::onFilterChange,
       onCycleSort = viewModel::cycleSort,
+      onAdd = onAdd,
   )
 }
 
@@ -111,6 +116,7 @@ fun PeopleContent(
     onQueryChange: (String) -> Unit = {},
     onFilter: (PeopleFilter) -> Unit = {},
     onCycleSort: () -> Unit = {},
+    onAdd: () -> Unit = {},
 ) {
   val p = sadadPalette
   Column(Modifier.fillMaxSize().sadadPageBackground().testTag(PeopleTags.SCREEN)) {
@@ -122,6 +128,7 @@ fun PeopleContent(
           registered = state.registered,
           sort = state.sortChoice,
           onCycleSort = onCycleSort,
+          onAdd = onAdd,
       )
       PeopleSearch(value = state.queryInput, onValueChange = onQueryChange)
     }
@@ -154,7 +161,12 @@ fun PeopleContent(
 
 /** «الأشخاص» with the store's total, and the sort button that cycles the three orders. */
 @Composable
-private fun PeopleHeader(registered: Int, sort: PeopleSort, onCycleSort: () -> Unit) {
+private fun PeopleHeader(
+    registered: Int,
+    sort: PeopleSort,
+    onCycleSort: () -> Unit,
+    onAdd: () -> Unit,
+) {
   val p = sadadPalette
   val link = if (p.isDark) p.accent else p.primary
   val sortText = sortLabel(sort)
@@ -185,6 +197,33 @@ private fun PeopleHeader(registered: Int, sort: PeopleSort, onCycleSort: () -> U
           color = p.muted,
       )
     }
+    // «إضافة»: a new customer or supplier, the form's own type switch picks which.
+    Row(
+        modifier =
+            Modifier.minimumInteractiveComponentSize()
+                .heightIn(min = 40.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(p.primary)
+                .clickable(role = Role.Button, onClick = onAdd)
+                .padding(horizontal = 12.dp)
+                .testTag(PeopleTags.ADD),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      Icon(
+          painterResource(R.drawable.ic_person_add),
+          contentDescription = null,
+          tint = Color.White,
+          modifier = Modifier.size(18.dp),
+      )
+      Text(
+          stringResource(R.string.people_add),
+          fontSize = 13.sp,
+          fontWeight = FontWeight.Bold,
+          color = Color.White,
+      )
+    }
+    Spacer(Modifier.width(8.dp))
     Row(
         modifier =
             // A 40dp pill, as the board draws it, on the 48dp touch target the a11y gate wants.
@@ -354,29 +393,51 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
           )
           if (row.supplier) SupplierBadge()
         }
+        // What the person is, then the number to reach them, then what happened last.
+        val identity = listOf(row.category).filter { it.isNotBlank() }
         Row(verticalAlignment = Alignment.CenterVertically) {
-          if (row.phoneTail.isNotEmpty()) {
+          if (identity.isNotEmpty()) {
             Text(
-                "…${row.phoneTail}",
+                identity.joinToString(" · "),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = p.muted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            if (row.phone.isNotBlank())
+                Text(" · ", fontSize = 12.sp, lineHeight = 18.sp, color = p.muted)
+          }
+          if (row.phone.isNotBlank()) {
+            Text(
+                row.phone,
                 style =
                     LocalTextStyle.current.copy(
                         fontSize = 12.sp,
                         lineHeight = 18.sp,
-                        color = subInk,
+                        color = p.muted,
                         textDirection = TextDirection.Ltr,
                     ),
             )
-            Text(" · ", fontSize = 12.sp, lineHeight = 18.sp, color = subInk)
           }
-          Text(
-              row.activity,
-              fontSize = 12.sp,
-              lineHeight = 18.sp,
-              color = subInk,
-              maxLines = 1,
-              overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-          )
+          if (identity.isEmpty() && row.phone.isBlank()) {
+            Text(
+                stringResource(R.string.people_no_details),
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = p.muted,
+            )
+          }
         }
+        Text(
+            row.activity,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            color = subInk,
+            fontWeight = if (row.lateDays != null) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
       }
       BalanceWord(row.net.value)
     }

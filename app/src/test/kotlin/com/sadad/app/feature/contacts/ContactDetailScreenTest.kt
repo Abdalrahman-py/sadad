@@ -7,12 +7,14 @@ import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.session.StoredInstallation
@@ -84,9 +86,10 @@ class ContactDetailScreenTest {
                 !model.state.value.canDeleteContacts
           }
 
-          compose.onNodeWithText("تسجيل الدفعات مقيّد").assertIsDisplayed()
-          compose.onNodeWithText("تسجيل دفعة").assertDoesNotExist()
-          compose.onNodeWithText("حذف الزبون").assertDoesNotExist()
+          compose.onNodeWithText("اطلب من صاحب المتجر تفعيل الدفعات").assertIsDisplayed()
+          compose.onNodeWithText("استلام دفعة").assertDoesNotExist()
+          compose.onNodeWithTag(ContactsTag.MENU).performClick()
+          compose.onNodeWithText("أرشفة").assertDoesNotExist()
         }
   }
 
@@ -117,11 +120,11 @@ class ContactDetailScreenTest {
       compose.waitUntil(10_000) {
         model.state.value.loaded && !model.state.value.canRegisterPayments
       }
-      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToIndex(4)
-      compose.onNodeWithText("حذف الزبون").performClick()
+      compose.onNodeWithTag(ContactsTag.MENU).performClick()
+      compose.onNodeWithText("أرشفة").performClick()
       compose.waitUntil(10_000) { model.state.value.settleFirst != null }
       compose.onNodeWithText("لا يمكن حذف السجل").assertIsDisplayed()
-      compose.onNodeWithText("تسجيل دفعة").assertDoesNotExist()
+      compose.onNodeWithText("استلام دفعة").assertDoesNotExist()
     }
   }
 
@@ -144,11 +147,14 @@ class ContactDetailScreenTest {
           }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
       compose.waitUntil(10_000) { model.state.value.movements.size == 2 }
-      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToIndex(3)
-      compose.onNodeWithText("دفعة مدفوعة", substring = true).assertIsDisplayed()
-      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToIndex(4)
-      compose.onNodeWithText("دين علينا", substring = true).assertIsDisplayed()
-      compose.onNodeWithText("دفعة مستلمة", substring = true).assertDoesNotExist()
+      timelineRow("دفع للمورد").assertIsDisplayed()
+      timelineRow("بضاعة بالدين").assertIsDisplayed()
+      compose
+          .onNode(
+              hasText("دفعة", substring = true) and
+                  hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
+          )
+          .assertDoesNotExist()
     }
   }
 
@@ -178,8 +184,8 @@ class ContactDetailScreenTest {
         }
       }
       compose.waitUntil(10_000) { model.state.value.loaded }
-      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToIndex(1)
-      compose.onNodeWithText("تواصل على واتساب").performClick()
+      compose.onNodeWithTag(ContactsTag.MENU).performClick()
+      compose.onNodeWithText("تذكير على واتساب").performClick()
       assertEquals("https://wa.me/970599123456", launched?.dataString)
       leaveAndReturn(lock)
       assertFalse(lock.locked.value)
@@ -187,6 +193,18 @@ class ContactDetailScreenTest {
       assertTrue(lock.locked.value)
     }
   }
+
+  /** A row of the timeline whose text holds [text], scrolled into view. */
+  private fun timelineRow(text: String) =
+      compose
+          .onNodeWithTag(ContactsTag.MOVEMENTS)
+          .performScrollToNode(hasText(text, substring = true))
+          .let {
+            compose.onNode(
+                hasText(text, substring = true) and
+                    hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
+            )
+          }
 
   private fun leaveAndReturn(lock: AppLock) {
     lock.appStopped()
@@ -221,11 +239,8 @@ class ContactDetailScreenTest {
         }
       }
       compose.waitUntil(10_000) { model.state.value.loaded }
-      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToIndex(if (share) 4 else 1)
-      compose
-          .onNodeWithText(if (share) "مشاركة كشف الشخص" else "تواصل على واتساب")
-          .performScrollTo()
-          .performClick()
+      compose.onNodeWithTag(ContactsTag.MENU).performClick()
+      compose.onNodeWithText(if (share) "مشاركة الكشف PDF" else "تذكير على واتساب").performClick()
       compose.waitUntil(10_000) { model.state.value.error != null }
       lock.appStopped()
       ShadowSystemClock.advanceBy(Duration.ofSeconds(2))

@@ -72,7 +72,6 @@ import androidx.navigation.toRoute
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.activity.ActivityScreen
-import com.sadad.app.feature.activity.OperationsLogScreen
 import com.sadad.app.feature.auth.AwaitingApprovalScreen
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.PasswordChangeScreen
@@ -110,7 +109,13 @@ fun SadadApp(
       // Arabic-first, so the shell mirrors like the Java app did, whatever the device locale.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         SadadShell(navController, startDestination, syncDot) {
-          composable<Login> { LoginScreen(onNavigate = navController::navigateAuth) }
+          composable<Login> {
+            LoginScreen(
+                onNavigate = navController::navigateAuth,
+                // Adding a store from the Store tab keeps that tab underneath, so back returns.
+                onBack = if (navController.previousBackStackEntry != null) back else null,
+            )
+          }
           composable<PasswordChange> {
             PasswordChangeScreen(onNavigate = navController::navigateAuth)
           }
@@ -134,7 +139,10 @@ fun SadadApp(
             )
           }
           composable<People> {
-            PeopleScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
+            PeopleScreen(
+                onOpenContact = { navController.navigate(ContactDetail(it)) },
+                onAdd = { navController.navigate(ContactForm()) },
+            )
           }
           composable<ContactDetail> {
             val contactId = it.toRoute<ContactDetail>().contactId
@@ -146,7 +154,25 @@ fun SadadApp(
                 onEdit = { navController.navigate(ContactForm(contactId)) },
             )
           }
-          composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
+          composable<ContactForm> {
+            val editing = it.toRoute<ContactForm>().contactId
+            ContactFormScreen(
+                contactId = editing,
+                onBack = back,
+                onOpenContact = { id ->
+                  if (editing != null) {
+                    // Editing came from that person's page: saving goes back to it.
+                    back()
+                  } else {
+                    // A new person: the form is replaced by their page, back from it is the list.
+                    navController.navigate(ContactDetail(id)) {
+                      popUpTo<ContactForm> { inclusive = true }
+                      launchSingleTop = true
+                    }
+                  }
+                },
+            )
+          }
           composable<QuickAdd> {
             val route = it.toRoute<QuickAdd>()
             QuickAddScreen(
@@ -166,15 +192,14 @@ fun SadadApp(
           composable<Activity> {
             ActivityScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
           }
-          composable<OperationsLog> { OperationsLogScreen(onBack = back) }
           composable<Store> {
             StoreScreen(
                 onOpenTrash = { navController.navigate(Trash) },
                 onOpenRecovery = { navController.navigate(Recovery) },
                 onChangePassword = { navController.navigate(PasswordChange) },
-                onAddStore = { navController.navigateAuth(Login) },
+                // Not navigateAuth: that empties the stack, and adding a store can be cancelled.
+                onAddStore = { navController.navigate(Login) { launchSingleTop = true } },
                 onNeedsLogin = { navController.navigateAuth(Login) },
-                onOpenOperationsLog = { navController.navigate(OperationsLog) },
                 onOpenUpdates = { navController.navigate(AppUpdate) { launchSingleTop = true } },
             )
           }
@@ -258,9 +283,11 @@ internal fun SadadShell(
   }
 }
 
-/** The four tabs and the contact page show the bar; quick add, forms and sub-pages hide it. */
-private val WITH_BAR =
-    listOf(Home::class, People::class, ContactDetail::class, Activity::class, Store::class)
+/**
+ * The four tabs show the bar; the contact page has its own sticky record buttons instead (the
+ * Contact board), and quick add, forms and sub-pages hide it.
+ */
+private val WITH_BAR = listOf(Home::class, People::class, Activity::class, Store::class)
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -277,9 +304,7 @@ private fun activeTab(destination: NavDestination?): Tab =
     when {
       destination.isAny(listOf(People::class, ContactDetail::class)) -> Tab.PEOPLE
       destination.isAny(listOf(Activity::class)) -> Tab.ACTIVITY
-      destination.isAny(
-          listOf(Store::class, OperationsLog::class, Trash::class, Recovery::class)
-      ) -> Tab.STORE
+      destination.isAny(listOf(Store::class, Trash::class, Recovery::class)) -> Tab.STORE
       else -> Tab.HOME
     }
 

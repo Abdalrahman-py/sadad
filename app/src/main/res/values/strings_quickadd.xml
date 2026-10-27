@@ -57,6 +57,11 @@
     <string name="quickadd_pay_supplier">دفع للمورد</string>
     <string name="quickadd_due">الاستحقاق</string>
     <string name="quickadd_note">البيان</string>
+    <string name="quickadd_due_on">يستحق %1$s</string>
+    <string name="quickadd_due_confirm">تم</string>
+    <string name="quickadd_due_clear">إزالة</string>
+    <string name="quickadd_note_hint">مثلًا: خبز وحليب</string>
+    <string name="quickadd_note_save">حفظ</string>
     <string name="quickadd_method_cash">نقدي</string>
     <string name="quickadd_method_bank">بنكي</string>
     <string name="quickadd_method_wallet">محفظة</string>

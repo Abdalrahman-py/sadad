@@ -395,9 +395,19 @@ class QuickAddViewModel(
     // The held Contact stays until the commands are committed: «تراجع» returns to the amount with
     // the same person, and saving again must carry the contact.create with its debt again.
     commitJob?.cancel()
+    // One tick a second (the window split evenly, so a short test window still ends), counting
+    // «تراجع · N ث» down to zero, where the entry is queued and the button goes grey.
+    val ticks = maxOf(1, (undoWindowMs / 1_000).toInt())
+    val tick = undoWindowMs / ticks
     commitJob =
         store.jobs.launch {
-          delay(undoWindowMs)
+          var left = ticks
+          while (left > 1) {
+            delay(tick)
+            left--
+            mutable.update { it.copy(done = it.done?.copy(secondsLeft = left)) }
+          }
+          delay(tick)
           commit(context)
         }
     mutable.update {
@@ -410,7 +420,7 @@ class QuickAddViewModel(
                   name = current.personName,
                   sentence = sentence,
                   net = netAfter(current, amount),
-                  secondsLeft = (undoWindowMs / 1_000).toInt(),
+                  secondsLeft = ticks,
               ),
       )
     }
@@ -427,6 +437,8 @@ class QuickAddViewModel(
 
   /** «تراجع»: the held commands are dropped, nothing was ever queued. */
   fun undo(context: Context) {
+    // Past the window the entry is already queued: there is nothing left to take back.
+    if (pending.isEmpty()) return
     commitJob?.cancel()
     commitJob = null
     pending = emptyList()
@@ -605,6 +617,8 @@ class QuickAddViewModel(
     pendingPersonId = null
     val store = graph.current.value
     if (commands.isEmpty() || store == null) return
+    // The window is over the moment it is committed, so «تراجع» goes grey at once.
+    mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the done step already told the user the record was made.
     store.jobs.launch {
