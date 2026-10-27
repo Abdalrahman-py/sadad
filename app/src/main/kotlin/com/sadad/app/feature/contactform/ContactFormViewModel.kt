@@ -12,7 +12,6 @@ import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -187,10 +186,7 @@ class ContactFormViewModel(
                 draft.phone,
                 draft.category,
                 draft.note,
-                draft.amount?.let {
-                  // A supplier's opening balance is what the store owes, not what it is owed.
-                  FirstDebt(draft.kind.debtDirection, it, draft.debtNote, draft.due)
-                },
+                draft.amount?.let { FirstDebt(it, draft.debtNote, draft.due) },
                 kind = draft.kind,
             )
           } else {

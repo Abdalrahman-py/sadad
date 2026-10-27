@@ -264,9 +264,10 @@ class ReportsExportTest {
       assertEquals(Intent.ACTION_VIEW, launched.action)
       assertEquals("application/pdf", launched.type)
       assertTrue(launched.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
-      // The statement covers the chosen month and ends one instant before the next month starts.
+      // The statement covers the chosen month as a half-open range: the next month's first
+      // instant is not in it.
       val month = Period.Month(OCTOBER).bounds(zone)
-      assertEquals(listOf(Triple(sami.contactId, month.from, month.to?.minusNanos(1))), written)
+      assertEquals(listOf(Triple(sami.contactId, month.from, month.to)), written)
       // Coming back from the viewer after a long absence must not lock the app.
       assertFalse(locksAfterAbsence(fixture.context))
     }

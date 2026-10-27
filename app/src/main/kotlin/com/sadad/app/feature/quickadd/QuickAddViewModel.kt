@@ -11,7 +11,6 @@ import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
@@ -135,13 +134,13 @@ class QuickAddViewModel(
   private var pendingContact: LedgerCommand? = null
   private var pendingPersonId: String? = null
 
-  /** The commands the done step holds; [commitJob] appends them when the window ends. */
-  private var pending: List<LedgerCommand> = emptyList()
-  private var commitJob: Job? = null
-  private var anomalyApproved: String? = null
+  /** Whether the Contact this flow was opened for has been made the subject already. */
+  private var startContactApplied = false
 
-  /** The Contact the screen was opened for is selected once; later emissions never re-select it. */
-  private var startConsumed = false
+  /** The commands the done step holds; [commitJob] appends them when the window ends. */
+  @Volatile private var pending: List<LedgerCommand> = emptyList()
+  @Volatile private var commitJob: Job? = null
+  private var anomalyApproved: String? = null
 
   init {
     viewModelScope.launch {
@@ -149,19 +148,20 @@ class QuickAddViewModel(
             project(view, permissions, saveBlocked)
           }
           .collect { facts ->
-            val starting =
-                !startConsumed && facts.startContact != null && mutable.value.selected == null
-            if (starting) startConsumed = true
             mutable.update { current ->
               val people = facts.people
-              val startPerson =
-                  if (starting) people.firstOrNull { it.id == facts.startContact } else null
-              val selected =
-                  current.selected?.let { chosen ->
-                    // A person created in this flow is not in the ledger until the entry commits.
-                    people.firstOrNull { it.id == chosen.id }
-                        ?: chosen.takeIf { it.id == pendingPersonId }
-                  } ?: startPerson
+              val chosen =
+                  current.selected?.let { selected -> people.firstOrNull { it.id == selected.id } }
+              // The route's Contact is applied once, on the first projection that can resolve it:
+              // going back to the picker must not drag the flow to the amount step again.
+              val started =
+                  if (chosen == null && !startContactApplied) {
+                    facts.startContact?.let { id -> people.firstOrNull { it.id == id } }
+                  } else {
+                    null
+                  }
+              if (started != null) startContactApplied = true
+              val selected = chosen ?: started
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
@@ -170,7 +170,12 @@ class QuickAddViewModel(
                   selected = selected,
                   overBalance =
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
-                  step = if (startPerson != null) QuickAddStep.AMOUNT else current.step,
+                  step =
+                      when {
+                        current.step == QuickAddStep.PICKER && started != null ->
+                            QuickAddStep.AMOUNT
+                        else -> current.step
+                      },
               )
             }
           }
@@ -185,6 +190,9 @@ class QuickAddViewModel(
 
   /** The picker's tap: the flow continues at the amount with that person's debts in view. */
   fun pick(personId: String) {
+    // Choosing somebody else drops the person this flow was about to create.
+    pendingContact = null
+    pendingPersonId = null
     mutable.update { current ->
       val person =
           current.people.firstOrNull { it.id == personId }
@@ -296,8 +304,13 @@ class QuickAddViewModel(
     mutable.update { it.copy(payment = true, anomaly = null, error = null) }
   }
 
-  fun backToPicker() = mutable.update {
-    it.copy(step = QuickAddStep.PICKER, amount = "", anomaly = null, error = null, done = null)
+  fun backToPicker() {
+    // «تغيير الشخص» drops the person this flow was about to create; a held command is not queued.
+    pendingContact = null
+    pendingPersonId = null
+    mutable.update {
+      it.copy(step = QuickAddStep.PICKER, amount = "", anomaly = null, error = null, done = null)
+    }
   }
 
   /** One key of the on-screen keypad: a digit, or «.» for the decimal mark. */
@@ -371,22 +384,32 @@ class QuickAddViewModel(
       return
     }
     val sentence = sentence(context)
+    // The window belongs to the store, not the screen: leaving (back, home, the lock) during it
+    // must still end in the commands the done step promised.
+    val store = graph.current.value
+    if (store == null) {
+      mutable.update { it.copy(error = context.getString(R.string.quickadd_failed)) }
+      return
+    }
     pending = commands
+    // The held Contact stays until the commands are committed: «تراجع» returns to the amount with
+    // the same person, and saving again must carry the contact.create with its debt again.
     commitJob?.cancel()
     // One tick a second (the window split evenly, so a short test window still ends), counting
     // «تراجع · N ث» down to zero, where the entry is queued and the button goes grey.
     val ticks = maxOf(1, (undoWindowMs / 1_000).toInt())
     val tick = undoWindowMs / ticks
-    commitJob = viewModelScope.launch {
-      var left = ticks
-      while (left > 1) {
-        delay(tick)
-        left--
-        mutable.update { it.copy(done = it.done?.copy(secondsLeft = left)) }
-      }
-      delay(tick)
-      commit(context)
-    }
+    commitJob =
+        store.jobs.launch {
+          var left = ticks
+          while (left > 1) {
+            delay(tick)
+            left--
+            mutable.update { it.copy(done = it.done?.copy(secondsLeft = left)) }
+          }
+          delay(tick)
+          commit(context)
+        }
     mutable.update {
       it.copy(
           step = QuickAddStep.DONE,
@@ -536,69 +559,72 @@ class QuickAddViewModel(
           )
           .after
 
-  /** The commands one save will queue, built from the view the previews came from. */
+  /**
+   * The commands one save will queue, built from the view the previews came from. The mode on
+   * screen decides what is recorded; the held Contact is only ever the parent of the entry, never
+   * its kind, and a child names that parent in `dependsOn`.
+   */
   private fun commandsFor(current: QuickAddState, amount: Cents): List<LedgerCommand> {
     val scope = graph.current.value ?: return emptyList()
     val origin = scope.origin() ?: return emptyList()
     val person = current.selected ?: return emptyList()
     val at = Instant.now()
     val note = current.note.trim().ifEmpty { null }
-    val heldContact = pendingContact?.takeIf { it.entityId == person.id }
-    if (heldContact != null) {
-      val debt =
-          Commands.debtCreate(
-              origin,
-              at,
-              person.id,
-              if (person.kind == ContactKind.CUSTOMER) Direction.RECEIVABLE else Direction.PAYABLE,
-              amount,
-              note,
-              if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
-              dependsOn = listOf(heldContact.operationId),
-          )
-      return listOf(heldContact, debt)
+    // The Contact this flow is still holding, and only while it is the person on screen.
+    val held = pendingContact?.takeIf { it.entityId == person.id }
+    if (current.payment) {
+      // A Contact created in this flow has no Debts yet, so there is nothing to pay.
+      if (held != null) return emptyList()
+      val view = currentView ?: return emptyList()
+      val contact = view.contacts.firstOrNull { it.id == person.id } ?: return emptyList()
+      return PaymentAllocation.allocate(view, person.id, amount, contact.kind.debtDirection).map {
+          part ->
+        Commands.paymentCreate(
+            origin,
+            at,
+            part.debtId,
+            part.amount,
+            current.method,
+            note,
+            dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
+        )
+      }
     }
-    if (!current.payment) {
-      return listOf(
-          Commands.debtCreate(
-              origin,
-              at,
-              person.id,
-              if (person.kind == ContactKind.CUSTOMER) Direction.RECEIVABLE else Direction.PAYABLE,
-              amount,
-              note,
-              if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
-          )
-      )
-    }
-    val view = currentView ?: return emptyList()
-    val contact = view.contacts.firstOrNull { it.id == person.id } ?: return emptyList()
-    return PaymentAllocation.allocate(view, person.id, amount, contact.kind.debtDirection).map {
-        part ->
-      Commands.paymentCreate(
-          origin,
-          at,
-          part.debtId,
-          part.amount,
-          current.method,
-          note,
-          dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
-      )
-    }
+    // A Debt on a Contact the server has not confirmed must name the command that creates it.
+    val parent =
+        held?.operationId
+            ?: currentView?.contacts?.firstOrNull { it.id == person.id && it.pending }?.operationId
+    val debt =
+        Commands.debtCreate(
+            origin,
+            at,
+            person.id,
+            person.kind.debtDirection,
+            amount,
+            note,
+            if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
+            dependsOn = listOfNotNull(parent),
+        )
+    return listOfNotNull(held, debt)
   }
 
   /** Appends the held commands: the only place this flow writes to the outbox. */
   private fun commit(context: Context) {
     val commands = pending
     pending = emptyList()
-    val scope = graph.current.value
-    if (commands.isEmpty() || scope == null) return
-    // The window is over the moment it is committed, so the button goes grey at once.
+    // The held Contact is in `commands` now (or there was none).
+    pendingContact = null
+    pendingPersonId = null
+    val store = graph.current.value
+    if (commands.isEmpty() || store == null) return
+    // The window is over the moment it is committed, so «تراجع» goes grey at once.
     mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
-    viewModelScope.launch {
-      scope.outbox.append(commands)
-      scope.onQueued()
-      pendingContact = null
+    // The outbox write is not cancelled with this screen: it is one short write, not background
+    // work, and the done step already told the user the record was made.
+    store.jobs.launch {
+      store.outbox.append(commands)
+      store.onQueued()
+      mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
 
@@ -653,14 +679,7 @@ class QuickAddViewModel(
         }
     val open =
         view.contacts.associate { contact ->
-          contact.id to
-              view.debts
-                  .filter {
-                    it.contactId == contact.id &&
-                        it.direction == contact.kind.debtDirection &&
-                        it.remaining > Cents.ZERO
-                  }
-                  .fold(Cents.ZERO) { total, debt -> total + debt.remaining }
+          contact.id to PaymentAllocation.openBalance(view, contact.id, contact.kind.debtDirection)
         }
     openBalances = open
     return Facts(

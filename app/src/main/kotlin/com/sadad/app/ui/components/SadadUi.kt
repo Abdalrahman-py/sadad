@@ -109,8 +109,8 @@ private fun pressScale(source: MutableInteractionSource): Float {
 }
 
 /**
- * A full-width filled button as the boards draw it: 52dp tall, 13dp corners, bold 15sp. Disabled
- * it turns `soft` with muted text, never a faded primary.
+ * A full-width filled button as the boards draw it: 52dp tall, 13dp corners, bold 15sp. Disabled it
+ * turns `soft` with muted text, never a faded primary.
  */
 @Composable
 fun SadadButton(

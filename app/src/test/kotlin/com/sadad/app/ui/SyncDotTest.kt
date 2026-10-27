@@ -31,17 +31,30 @@ class SyncDotTest {
       }
 
   @Test
+  fun anEntryThatCannotBeSentShowsTheStuckDot() =
+      withStore(queued = false, stuck = true) {
+        compose
+            .onNodeWithTag(ScreenTag.NAV_STORE)
+            .assertContentDescriptionEquals("المتجر، إدخالات لا يمكن إرسالها")
+      }
+
+  @Test
   fun nothingWaitingShowsNoDot() =
       withStore(queued = false) {
         compose.onNodeWithTag(ScreenTag.NAV_STORE).assertContentDescriptionEquals("المتجر")
       }
 
-  private fun withStore(queued: Boolean, check: () -> Unit) {
+  private fun withStore(queued: Boolean, stuck: Boolean = false, check: () -> Unit) {
     runBlocking { withTimeout(10_000) { TestGraph.signedIn() } }
         .use { fixture ->
-          if (queued)
+          if (queued || stuck)
               runBlocking {
                 fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
+              }
+          if (stuck)
+              runBlocking {
+                val scope = checkNotNull(fixture.graph.current.value)
+                scope.outbox.markUnsendable(scope.outbox.snapshot().map { it.operationId })
               }
           compose.setContent {
             SadadTheme {

@@ -20,15 +20,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
@@ -75,7 +74,6 @@ import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
-import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.StickyActions
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.balanceWord
@@ -116,9 +114,9 @@ fun ContactDetailScreen(
 }
 
 /**
- * The Contact board: who they are and where they stand, then every entry with the balance after
- * it, and the two sticky buttons that record for this person. WhatsApp, the statement, edit and
- * archive sit in the ⋯ menu.
+ * The Contact board: who they are and where they stand, then every entry with the balance after it,
+ * and the two sticky buttons that record for this person. WhatsApp, the statement, edit and archive
+ * sit in the ⋯ menu.
  */
 @Composable
 internal fun ContactDetailScreen(
@@ -154,7 +152,8 @@ internal fun ContactDetailScreen(
     }
   }
   // A supplier is whoever the store owes or has paid out to; the labels follow that side.
-  val supplier = state.payable > Cents.ZERO || state.movements.any { it.direction == Direction.PAYABLE }
+  val supplier =
+      state.payable > Cents.ZERO || state.movements.any { it.direction == Direction.PAYABLE }
   val net = state.balance.value - state.payable.value
   val after = remember(state.movements) { balancesAfter(state.movements) }
 
@@ -329,7 +328,9 @@ private fun ContactTopBar(
 private fun MenuRow(icon: Int, label: String, color: Color, onClick: () -> Unit) {
   DropdownMenuItem(
       text = { Text(label, color = color, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
-      leadingIcon = { Icon(painterResource(icon), null, tint = color, modifier = Modifier.size(19.dp)) },
+      leadingIcon = {
+        Icon(painterResource(icon), null, tint = color, modifier = Modifier.size(19.dp))
+      },
       onClick = onClick,
       modifier = Modifier.heightIn(min = 48.dp),
   )
@@ -382,8 +383,7 @@ private fun Identity(state: ContactDetailState, supplier: Boolean) {
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(14.dp),
   ) {
-    val initials =
-        state.name.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull() }
+    val initials = state.name.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull() }
     Box(
         Modifier.size(56.dp)
             .background(p.soft, RoundedCornerShape(if (supplier) 14.dp else 28.dp))
@@ -414,7 +414,12 @@ private fun Identity(state: ContactDetailState, supplier: Boolean) {
           Text(
               state.phone,
               color = p.muted,
-              style = TextStyle(fontSize = 13.sp, lineHeight = 20.sp, textDirection = TextDirection.Ltr),
+              style =
+                  TextStyle(
+                      fontSize = 13.sp,
+                      lineHeight = 20.sp,
+                      textDirection = TextDirection.Ltr,
+                  ),
           )
         }
       }
@@ -532,7 +537,8 @@ private fun InfoCard(state: ContactDetailState) {
 @Composable
 private fun TimelineHead(newestFirst: Boolean, onToggle: () -> Unit) {
   val p = sadadPalette
-  val label = stringResource(if (newestFirst) R.string.contacts_newest else R.string.contacts_oldest)
+  val label =
+      stringResource(if (newestFirst) R.string.contacts_newest else R.string.contacts_oldest)
   val description = stringResource(R.string.contacts_order, label)
   Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
     Column(Modifier.weight(1f)) {
@@ -621,7 +627,13 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long) {
       )
     }
     Column(Modifier.weight(1f)) {
-      Text(title, color = p.text, fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
+      Text(
+          title,
+          color = p.text,
+          fontSize = 15.sp,
+          lineHeight = 22.sp,
+          fontWeight = FontWeight.Bold,
+      )
       Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
     Column(horizontalAlignment = Alignment.End) {
@@ -682,8 +694,7 @@ private fun RecordActions(
       SadadButton(
           text =
               stringResource(
-                  if (supplier) R.string.contacts_pay_supplier
-                  else R.string.contacts_record_payment
+                  if (supplier) R.string.contacts_pay_supplier else R.string.contacts_record_payment
               ),
           onClick = onRecordPayment,
           leading = painterResource(R.drawable.ic_payment_in),

@@ -437,9 +437,7 @@ fun RecoveryContent(
     }
     val revoked = status == "revoked"
     Column(
-        Modifier.fillMaxWidth()
-            .border(1.5.dp, p.line, RoundedCornerShape(13.dp))
-            .padding(14.dp),
+        Modifier.fillMaxWidth().border(1.5.dp, p.line, RoundedCornerShape(13.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       Text(
@@ -495,7 +493,13 @@ private fun NumberedStep(
       )
     }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(title, color = p.text, fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
+      Text(
+          title,
+          color = p.text,
+          fontSize = 15.sp,
+          lineHeight = 22.sp,
+          fontWeight = FontWeight.Bold,
+      )
       Text(detail, color = p.muted, fontSize = 13.sp, lineHeight = 20.sp)
       SadadButton(
           text = action,

@@ -32,7 +32,8 @@ fun ConfirmDialog(
             onClick = onConfirm,
             colors =
                 ButtonDefaults.textButtonColors(
-                    contentColor = if (destructive) p.owes else if (p.isDark) p.accent else p.primary
+                    contentColor =
+                        if (destructive) p.owes else if (p.isDark) p.accent else p.primary
                 ),
         ) {
           Text(confirmText, fontWeight = FontWeight.Bold)

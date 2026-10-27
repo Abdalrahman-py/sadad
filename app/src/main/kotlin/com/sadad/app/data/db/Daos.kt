@@ -101,7 +101,7 @@ interface OutboxDao {
   suspend fun cancel(operationIds: List<String>)
 
   @Query(
-      "DELETE FROM outbox WHERE operationId = :operationId AND state IN ('rejected', 'cancelled')"
+      "DELETE FROM outbox WHERE operationId = :operationId AND state IN ('rejected', 'cancelled', 'unsendable')"
   )
   suspend fun deleteDismissed(operationId: String)
 

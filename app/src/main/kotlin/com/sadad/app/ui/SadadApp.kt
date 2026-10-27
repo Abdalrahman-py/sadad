@@ -304,9 +304,7 @@ private fun activeTab(destination: NavDestination?): Tab =
     when {
       destination.isAny(listOf(People::class, ContactDetail::class)) -> Tab.PEOPLE
       destination.isAny(listOf(Activity::class)) -> Tab.ACTIVITY
-      destination.isAny(
-          listOf(Store::class, Trash::class, Recovery::class)
-      ) -> Tab.STORE
+      destination.isAny(listOf(Store::class, Trash::class, Recovery::class)) -> Tab.STORE
       else -> Tab.HOME
     }
 
@@ -383,6 +381,7 @@ private fun RowScope.TabItem(
             SyncDot.NONE -> labelRes
             SyncDot.PENDING -> R.string.nav_store_pending
             SyncDot.OFFLINE -> R.string.nav_store_offline
+            SyncDot.STUCK -> R.string.nav_store_stuck
           }
       )
   Column(
@@ -408,7 +407,8 @@ private fun RowScope.TabItem(
                 .absoluteOffset(x = 10.dp, y = 3.dp)
                 .size(10.dp)
                 .background(
-                    if (syncDot == SyncDot.OFFLINE) OFFLINE_RED else PENDING_AMBER,
+                    if (syncDot == SyncDot.OFFLINE || syncDot == SyncDot.STUCK) OFFLINE_RED
+                    else PENDING_AMBER,
                     CircleShape,
                 )
                 .border(2.dp, p.surface, CircleShape)

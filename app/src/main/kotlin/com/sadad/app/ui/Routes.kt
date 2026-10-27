@@ -24,7 +24,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object Activity
 
-
 @Serializable data object Store
 
 @Serializable data object Notifications

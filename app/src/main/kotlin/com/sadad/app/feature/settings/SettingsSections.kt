@@ -70,15 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadad.app.BuildConfig
 import com.sadad.app.R
-import com.sadad.app.feature.history.PeriodFilter
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.photo.PhotoStore
 import com.sadad.app.feature.updates.UpdateState
-import com.sadad.app.ui.components.SadadButton
-import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.theme.sadadPalette
-import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

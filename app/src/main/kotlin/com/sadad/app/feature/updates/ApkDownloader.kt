@@ -72,11 +72,18 @@ internal class ApkDownloader(
           file.length() == manifest.sizeBytes &&
           ApkVerifier.sha256(file) == manifest.sha256
 
-  /** Drops every cached APK but [versionCode]'s (0 drops all of them, after an install). */
-  fun keepOnly(versionCode: Int) {
-    val keep = file(versionCode).name
-    directory.listFiles()?.forEach { cached -> if (cached.name != keep) cached.delete() }
-  }
+  /**
+   * Drops every cached APK but [versionCode]'s (0 drops all of them, after an install).
+   *
+   * Suspending and on [Dispatchers.IO] because it lists and deletes files: a check runs on the
+   * caller's thread, and reading `cacheDir` there killed the app under StrictMode the first time a
+   * check actually found a release (26 October 2026, on a device).
+   */
+  suspend fun keepOnly(versionCode: Int) =
+      withContext(Dispatchers.IO) {
+        val keep = file(versionCode).name
+        directory.listFiles()?.forEach { cached -> if (cached.name != keep) cached.delete() }
+      }
 
   /** Writes every byte it reads; the digest and the length decide afterwards, not the read loop. */
   private fun stream(
@@ -86,7 +93,13 @@ internal class ApkDownloader(
       onProgress: (Int) -> Unit,
   ): UpdateError? {
     val request =
-        Request.Builder().url(url).header("User-Agent", "Sadad/${BuildConfig.VERSION_NAME}").build()
+        Request.Builder()
+            .url(url)
+            .header("User-Agent", "Sadad/${BuildConfig.VERSION_NAME}")
+            // Serves the bytes when [url] is an API asset (see UpdateSource); the release URL
+            // ignores it and redirects to the CDN as before.
+            .header("Accept", "application/octet-stream")
+            .build()
     try {
       client.newCall(request).execute().use { response ->
         if (!response.isSuccessful) return UpdateError.DOWNLOAD_FAILED

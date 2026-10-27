@@ -90,7 +90,9 @@ object AuthTags {
 fun LoginScreen(
     modifier: Modifier = Modifier,
     onNavigate: (Any) -> Unit = {},
-    /** Set when another store is being added from the Store tab: there is a screen to go back to. */
+    /**
+     * Set when another store is being added from the Store tab: there is a screen to go back to.
+     */
     onBack: (() -> Unit)? = null,
     viewModel: LoginViewModel = authViewModel { graph, saved, context ->
       LoginViewModel(graph, saved, context)
@@ -104,80 +106,80 @@ fun LoginScreen(
   var shown by rememberSaveable { mutableStateOf(false) }
 
   Column(modifier.fillMaxSize()) {
-  if (onBack != null) ScreenHeader(stringResource(R.string.login_add_store), onBack = onBack)
-  Column(
-      modifier =
-          Modifier.fillMaxSize()
-              .verticalScroll(rememberScrollState())
-              .padding(
-                  start = 18.dp,
-                  end = 18.dp,
-                  top = if (onBack != null) 16.dp else 56.dp,
-                  bottom = 32.dp,
-              ),
-      verticalArrangement = Arrangement.spacedBy(28.dp),
-  ) {
-    Appear { SadadBrand() }
-    Appear(delayMillis = 80) {
-      SadadPanel {
-        StepIntro(
-            title = stringResource(R.string.title_login),
-            subtitle = stringResource(R.string.login_subtitle),
-        )
-        SadadField(
-            label = stringResource(R.string.login_username),
-            value = state.username,
-            onValueChange = viewModel::onUsernameChange,
-            placeholder = "store.owner",
-            enabled = !state.busy,
-            fieldModifier = Modifier.testTag(AuthTags.USERNAME),
-        )
-        SadadField(
-            label = stringResource(R.string.login_password),
-            value = state.password,
-            onValueChange = viewModel::onPasswordChange,
-            placeholder = "••••••••",
-            enabled = !state.busy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            visualTransformation =
-                if (shown) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = { EyeToggle(shown) { shown = !shown } },
-            fieldModifier = Modifier.testTag(AuthTags.PASSWORD),
-        )
-        AuthError(state.error)
-        SadadButton(
-            text = stringResource(R.string.login_submit),
-            onClick = viewModel::signIn,
-            enabled = !state.busy,
-            leading = painterResource(R.drawable.ic_lock),
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag(AuthTags.LOGIN_BUTTON),
-        )
+    if (onBack != null) ScreenHeader(stringResource(R.string.login_add_store), onBack = onBack)
+    Column(
+        modifier =
+            Modifier.fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 18.dp,
+                    end = 18.dp,
+                    top = if (onBack != null) 16.dp else 56.dp,
+                    bottom = 32.dp,
+                ),
+        verticalArrangement = Arrangement.spacedBy(28.dp),
+    ) {
+      Appear { SadadBrand() }
+      Appear(delayMillis = 80) {
+        SadadPanel {
+          StepIntro(
+              title = stringResource(R.string.title_login),
+              subtitle = stringResource(R.string.login_subtitle),
+          )
+          SadadField(
+              label = stringResource(R.string.login_username),
+              value = state.username,
+              onValueChange = viewModel::onUsernameChange,
+              placeholder = "store.owner",
+              enabled = !state.busy,
+              fieldModifier = Modifier.testTag(AuthTags.USERNAME),
+          )
+          SadadField(
+              label = stringResource(R.string.login_password),
+              value = state.password,
+              onValueChange = viewModel::onPasswordChange,
+              placeholder = "••••••••",
+              enabled = !state.busy,
+              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+              visualTransformation =
+                  if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+              trailingIcon = { EyeToggle(shown) { shown = !shown } },
+              fieldModifier = Modifier.testTag(AuthTags.PASSWORD),
+          )
+          AuthError(state.error)
+          SadadButton(
+              text = stringResource(R.string.login_submit),
+              onClick = viewModel::signIn,
+              enabled = !state.busy,
+              leading = painterResource(R.drawable.ic_lock),
+              modifier = Modifier.fillMaxWidth().padding(top = 4.dp).testTag(AuthTags.LOGIN_BUTTON),
+          )
+        }
+      }
+      Appear(delayMillis = 160) {
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          Text(stringResource(R.string.login_no_account), color = p.muted, fontSize = 13.sp)
+          SadadButton(
+              text = stringResource(R.string.login_support),
+              onClick = { openSupport(context) },
+              style = SadadButtonStyle.TEXT,
+              height = 44.dp,
+          )
+          Text(
+              stringResource(R.string.login_footnote),
+              color = p.muted,
+              fontSize = 12.sp,
+              lineHeight = 19.sp,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(top = 8.dp, start = 28.dp, end = 28.dp),
+          )
+        }
       }
     }
-    Appear(delayMillis = 160) {
-      Column(
-          Modifier.fillMaxWidth(),
-          horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(6.dp),
-      ) {
-        Text(stringResource(R.string.login_no_account), color = p.muted, fontSize = 13.sp)
-        SadadButton(
-            text = stringResource(R.string.login_support),
-            onClick = { openSupport(context) },
-            style = SadadButtonStyle.TEXT,
-            height = 44.dp,
-        )
-        Text(
-            stringResource(R.string.login_footnote),
-            color = p.muted,
-            fontSize = 12.sp,
-            lineHeight = 19.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp, start = 28.dp, end = 28.dp),
-        )
-      }
-    }
-  }
   }
 }
 
@@ -223,7 +225,10 @@ fun PasswordChangeScreen(
       )
     }
     Appear(delayMillis = 80) {
-      SadadPanel(shadow = false, contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp)) {
+      SadadPanel(
+          shadow = false,
+          contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp),
+      ) {
         PasswordField(
             value = state.current,
             onValueChange = viewModel::onCurrentChange,
@@ -302,7 +307,9 @@ private fun PasswordRules(rules: List<Pair<String, Boolean>>) {
               label = "rule",
           )
       Row(
-          Modifier.clearAndSetSemantics { contentDescription = "$label — ${if (ok) met else unmet}" },
+          Modifier.clearAndSetSemantics {
+            contentDescription = "$label — ${if (ok) met else unmet}"
+          },
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {

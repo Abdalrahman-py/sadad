@@ -158,7 +158,9 @@ class HistoryViewModel(
     }
     if (export.value.busy) return
     if (view.contacts.isEmpty()) {
-      export.update { it.copy(saved = false, error = context.getString(R.string.history_export_empty)) }
+      export.update {
+        it.copy(saved = false, error = context.getString(R.string.history_export_empty))
+      }
       return
     }
     export.update { it.copy(busy = true, saved = false, error = null) }

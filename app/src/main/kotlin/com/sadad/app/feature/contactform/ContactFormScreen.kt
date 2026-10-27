@@ -34,21 +34,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.ui.theme.sadadPalette
-import com.sadad.app.ui.components.SadadSegments
-import com.sadad.app.ui.components.ChipFlow
-import com.sadad.app.ui.components.Chip
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.ui.components.Chip
+import com.sadad.app.ui.components.ChipFlow
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadChoiceField
 import com.sadad.app.ui.components.SadadField
 import com.sadad.app.ui.components.SadadPageHeading
+import com.sadad.app.ui.components.SadadSegments
 import com.sadad.app.ui.components.SadadSwitchRow
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseDueDate
+import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.ContactKind
 import java.time.Instant
 import java.time.ZoneOffset
@@ -138,7 +138,9 @@ fun ContactFormScreen(
         onSelect = { kind ->
           viewModel.onKindChange(kind)
           // The old default belongs to the other kind: swap it, keep anything the user chose.
-          if (state.category.isBlank() || state.category in generalCategories(state.kind, context)) {
+          if (
+              state.category.isBlank() || state.category in generalCategories(state.kind, context)
+          ) {
             viewModel.onCategoryChange(generalCategories(kind, context).first())
           }
         },

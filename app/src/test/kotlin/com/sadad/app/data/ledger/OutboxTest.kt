@@ -63,6 +63,24 @@ class OutboxTest : LedgerTestCase() {
   }
 
   @Test
+  fun aQueuedRowRefusesDismissalWhileAnUnsendableOneIsDeleted() = runTest {
+    val command = contactCommand()
+    outbox.append(listOf(command))
+
+    assertEquals(
+        DismissResult.NotDismissible(OutboxState.QUEUED),
+        outbox.dismiss(command.operationId),
+    )
+    assertTrue(db.outboxDao().all().any { it.operationId == command.operationId })
+
+    outbox.markUnsendable(listOf(command.operationId))
+    assertEquals(OutboxState.UNSENDABLE, outbox.snapshot().single().state)
+
+    assertEquals(DismissResult.Dismissed, outbox.dismiss(command.operationId))
+    assertTrue(db.outboxDao().all().isEmpty())
+  }
+
+  @Test
   fun settleMarksRowsAndCompactDeletesAcceptedOnesInTheState() = runTest {
     val command = contactCommand()
     outbox.append(listOf(command))

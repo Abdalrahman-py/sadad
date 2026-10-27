@@ -157,7 +157,7 @@ class ActivityLogViewModelTest {
               null,
               null,
               null,
-              FirstDebt(Direction.RECEIVABLE, Cents(10_000)),
+              FirstDebt(Cents(10_000)),
           )
           .getOrThrow()
       val rows = store.outbox.snapshot()
@@ -182,6 +182,27 @@ class ActivityLogViewModelTest {
       model.dismiss(debtRow.operationId)
       val afterDebt = model.state.first { state -> state.unaccepted.size == 1 }
       assertTrue(afterDebt.unaccepted.single().operationId == contactRow.operationId)
+    }
+  }
+
+  @Test
+  fun anUnsendableRowIsListedAndCanBeDiscarded() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val contactId = store.repository.addContact("سامي", null, null, null, null).getOrThrow()
+      val row = store.outbox.snapshot().single { it.entityId == contactId }
+      store.outbox.markUnsendable(listOf(row.operationId))
+      val model = ActivityLogViewModel(fixture.graph)
+      fixture.closeWithStore(model.viewModelScope)
+
+      val state = model.state.first { it.unaccepted.isNotEmpty() }
+      assertEquals(OutboxState.UNSENDABLE, state.unaccepted.single().state)
+
+      model.dismiss(row.operationId)
+      val cleared = model.state.first { it.unaccepted.isEmpty() }
+
+      assertTrue(cleared.unaccepted.isEmpty())
+      assertTrue(store.outbox.snapshot().none { it.operationId == row.operationId })
     }
   }
 

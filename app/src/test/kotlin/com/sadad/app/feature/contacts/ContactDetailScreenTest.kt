@@ -7,13 +7,13 @@ import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
@@ -150,7 +150,10 @@ class ContactDetailScreenTest {
       timelineRow("دفع للمورد").assertIsDisplayed()
       timelineRow("بضاعة بالدين").assertIsDisplayed()
       compose
-          .onNode(hasText("دفعة", substring = true) and hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS)))
+          .onNode(
+              hasText("دفعة", substring = true) and
+                  hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
+          )
           .assertDoesNotExist()
     }
   }
@@ -198,7 +201,8 @@ class ContactDetailScreenTest {
           .performScrollToNode(hasText(text, substring = true))
           .let {
             compose.onNode(
-                hasText(text, substring = true) and hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
+                hasText(text, substring = true) and
+                    hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
             )
           }
 

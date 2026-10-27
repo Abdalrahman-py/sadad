@@ -1,9 +1,11 @@
 package com.sadad.app.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -24,11 +27,6 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.Alignment
-import kotlinx.coroutines.delay
-import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.data.sync.SyncScheduler
@@ -39,7 +37,9 @@ import com.sadad.app.feature.photo.PhotoEditor
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.feature.updates.UpdateCenter
+import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.ui.components.ScreenHeader
+import kotlinx.coroutines.delay
 
 /** Stable handles the store tab's tests find its list and its rows by. */
 object SettingsTags {
@@ -151,38 +151,38 @@ fun StoreScreen(
           },
       )
   Box(Modifier.fillMaxSize()) {
-  Column(Modifier.fillMaxSize()) {
-    ScreenHeader(stringResource(R.string.nav_store))
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().testTag(SettingsTags.LIST),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-      storeCard(
-          state = state,
-          model = settingsViewModel,
-          storesOpen = storesOpen,
-          onToggleStores = { storesOpen = !storesOpen },
-          onOpenPhoto = { showStorePhoto = true },
-          onAddStore = onAddStore,
-          onPickStore = { storesOpen = false },
-      )
-      devicesSection(state, settingsViewModel, navigation)
-      securitySection(state, settingsViewModel, navigation)
-      dataSection(state, settingsViewModel, navigation, context)
-      appearanceSection(state, settingsViewModel, context)
-      accountSection(state, settingsViewModel)
-      supportItem(context)
-      updateItem(update, onOpenUpdates)
-      versionItem()
+    Column(Modifier.fillMaxSize()) {
+      ScreenHeader(stringResource(R.string.nav_store))
+      LazyColumn(
+          modifier = Modifier.fillMaxSize().testTag(SettingsTags.LIST),
+          contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 28.dp),
+          verticalArrangement = Arrangement.spacedBy(18.dp),
+      ) {
+        storeCard(
+            state = state,
+            model = settingsViewModel,
+            storesOpen = storesOpen,
+            onToggleStores = { storesOpen = !storesOpen },
+            onOpenPhoto = { showStorePhoto = true },
+            onAddStore = onAddStore,
+            onPickStore = { storesOpen = false },
+        )
+        devicesSection(state, settingsViewModel, navigation)
+        securitySection(state, settingsViewModel, navigation)
+        dataSection(state, settingsViewModel, navigation, context)
+        appearanceSection(state, settingsViewModel, context)
+        accountSection(state, settingsViewModel)
+        supportItem(context)
+        updateItem(update, onOpenUpdates)
+        versionItem()
+      }
     }
-  }
-  SadadToastHost(
-      message = toast?.first,
-      error = toast?.second == true,
-      onDismiss = { toast = null },
-      modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
-  )
+    SadadToastHost(
+        message = toast?.first,
+        error = toast?.second == true,
+        onDismiss = { toast = null },
+        modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
+    )
   }
   if (showStorePhoto && openStore != null) {
     PhotoEditor(openStore, PhotoKind.STORE, { showStorePhoto = false }) {

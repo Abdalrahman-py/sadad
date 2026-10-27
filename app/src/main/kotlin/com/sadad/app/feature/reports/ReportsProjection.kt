@@ -71,7 +71,7 @@ class ReportBase(
  */
 fun reportBaseOf(view: LedgerView, period: Period, zone: ZoneId): ReportBase {
   val bounds = period.bounds(zone)
-  val statements = Statement.build(view, null, bounds.from, bounds.to?.minusNanos(1))
+  val statements = Statement.build(view, null, bounds.from, bounds.to)
   var debtCount = 0
   var paymentCount = 0
   var debtTotal = Cents.ZERO

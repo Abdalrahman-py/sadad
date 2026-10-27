@@ -1,11 +1,17 @@
 package com.sadad.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,18 +26,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import kotlinx.coroutines.delay
-import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -45,9 +49,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -56,15 +62,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import com.sadad.app.R
 import com.sadad.app.ui.theme.sadadPalette
+import kotlinx.coroutines.delay
 
 /*
  * The blocks the boards repeat across screens: the white panel, the step intro, the brand block,
@@ -264,8 +264,7 @@ fun SadadKeypad(
                       )
                   is KeypadKey.Delete ->
                       Icon(painterResource(R.drawable.ic_backspace), null, Modifier.size(26.dp))
-                  is KeypadKey.Action ->
-                      Icon(painterResource(key.icon), null, Modifier.size(28.dp))
+                  is KeypadKey.Action -> Icon(painterResource(key.icon), null, Modifier.size(28.dp))
                   KeypadKey.Blank -> Unit
                 }
               }
@@ -319,8 +318,7 @@ fun Appear(delayMillis: Int = 0, content: @Composable () -> Unit) {
   AnimatedVisibility(
       visibleState = state,
       enter =
-          fadeIn(tween(320, delayMillis)) +
-              slideInVertically(tween(320, delayMillis)) { it / 12 },
+          fadeIn(tween(320, delayMillis)) + slideInVertically(tween(320, delayMillis)) { it / 12 },
   ) {
     content()
   }
@@ -367,7 +365,9 @@ fun SadadToastHost(
       Icon(
           painterResource(if (error) R.drawable.ic_alert else R.drawable.ic_check),
           contentDescription = null,
-          tint = if (error && !p.isDark) Color.White else if (p.isDark) p.accent else Color(0xFF78DEC0),
+          tint =
+              if (error && !p.isDark) Color.White
+              else if (p.isDark) p.accent else Color(0xFF78DEC0),
           modifier = Modifier.size(20.dp),
       )
       Text(

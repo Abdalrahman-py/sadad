@@ -186,6 +186,7 @@ class LockGateTest {
   }
 
   /** The PIN is typed on the lock's own keypad, one key at a time. */
-  private fun typePin(pin: String) =
-      pin.forEach { compose.onNodeWithTag(LockTag.key(it.toString())).performClick() }
+  private fun typePin(pin: String) = pin.forEach {
+    compose.onNodeWithTag(LockTag.key(it.toString())).performClick()
+  }
 }

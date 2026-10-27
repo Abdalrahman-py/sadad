@@ -21,6 +21,7 @@ enum class StatementFormat(val mimeType: String) {
   XLSX(XlsxWriter.MIME),
 }
 
+/** Writes a statement for a half-open period: `from` inclusive, `to` exclusive. */
 object StatementExport {
   suspend fun save(
       context: Context,

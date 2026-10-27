@@ -77,6 +77,7 @@ class UpdateCenterTest {
             client = client,
             channel = UpdateChannel.TEAM,
             urlFor = { name -> server.url("/$name").toString() },
+            apiUrlFor = { path -> server.url("/api/$path").toString() },
             pause = NO_WAIT,
         )
     return UpdateCenter(
@@ -124,8 +125,10 @@ class UpdateCenterTest {
     server.enqueue(MockResponse.Builder().code(200).body(manifestJson(57)).build())
     val center = center(installed = 40)
     center.check(force = true)
-    // Every attempt fails: the check is retried before it is believed.
+    // Every attempt fails: the check is retried before it is believed, then the API is asked and
+    // fails too, so the release found before is kept rather than forgotten.
     repeat(4) { server.enqueue(MockResponse.Builder().code(503).body("").build()) }
+    server.enqueue(MockResponse.Builder().code(503).body("").build())
     center.check(force = true)
     val state = center.state.value
     assertEquals(UpdateState.Phase.AVAILABLE, state.phase)

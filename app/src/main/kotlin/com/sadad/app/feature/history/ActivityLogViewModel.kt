@@ -136,7 +136,11 @@ class ActivityLogViewModel(private val graph: AppGraph) : ViewModel() {
         entries = events.asReversed().take(SHOWN).map { it.toEntry(self) },
         unaccepted =
             rows
-                .filter { it.state == OutboxState.REJECTED || it.state == OutboxState.CANCELLED }
+                .filter {
+                  it.state == OutboxState.REJECTED ||
+                      it.state == OutboxState.CANCELLED ||
+                      it.state == OutboxState.UNSENDABLE
+                }
                 .sortedByDescending { it.createdAt }
                 .map { row ->
                   UnacceptedEntry(

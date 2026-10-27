@@ -9,33 +9,24 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.sp
-import com.sadad.app.ui.components.Avatar
-import com.sadad.app.ui.components.SadadToastHost
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,11 +36,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -59,7 +57,9 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.ui.components.Avatar
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
 import com.sadad.app.ui.theme.sadadPalette
@@ -152,41 +152,41 @@ fun HistoryContent(
 ) {
   var choosingFormat by rememberSaveable { mutableStateOf(false) }
   Box(modifier.fillMaxSize()) {
-  Column(Modifier.fillMaxSize()) {
-    // The Activity board's top bar: the title and «تصدير PDF / Excel» as a pill.
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Text(
-          title ?: stringResource(R.string.title_history),
-          color = sadadPalette.text,
-          fontSize = 23.sp,
-          lineHeight = 32.sp,
-          fontWeight = FontWeight.Bold,
-          modifier = Modifier.weight(1f).semantics { heading() },
-      )
-      ExportPill { choosingFormat = true }
+    Column(Modifier.fillMaxSize()) {
+      // The Activity board's top bar: the title and «تصدير PDF / Excel» as a pill.
+      Row(
+          Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp),
+          verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Text(
+            title ?: stringResource(R.string.title_history),
+            color = sadadPalette.text,
+            fontSize = 23.sp,
+            lineHeight = 32.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        ExportPill { choosingFormat = true }
+      }
+      HistoryTabs(state.tab, onTabSelected)
+      when (state.tab) {
+        HistoryTab.PEOPLE ->
+            PeopleTab(
+                state = state,
+                onPresetSelected = onPresetSelected,
+                onCustomRange = onCustomRange,
+                onOpenContact = onOpenContact,
+            )
+        HistoryTab.ACTIVITY -> ActivityTab(activity = activity, onDismiss = onDismiss)
+      }
     }
-    HistoryTabs(state.tab, onTabSelected)
-    when (state.tab) {
-      HistoryTab.PEOPLE ->
-          PeopleTab(
-              state = state,
-              onPresetSelected = onPresetSelected,
-              onCustomRange = onCustomRange,
-              onOpenContact = onOpenContact,
-          )
-      HistoryTab.ACTIVITY -> ActivityTab(activity = activity, onDismiss = onDismiss)
-    }
-  }
-  // Saved or refused: said once at the foot of whichever tab is open.
-  SadadToastHost(
-      message = state.error ?: if (state.saved) stringResource(R.string.history_saved) else null,
-      onDismiss = onDismissExportResult,
-      error = state.error != null,
-      modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
-  )
+    // Saved or refused: said once at the foot of whichever tab is open.
+    SadadToastHost(
+        message = state.error ?: if (state.saved) stringResource(R.string.history_saved) else null,
+        onDismiss = onDismissExportResult,
+        error = state.error != null,
+        modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
+    )
   }
   if (choosingFormat) {
     FormatDialog(

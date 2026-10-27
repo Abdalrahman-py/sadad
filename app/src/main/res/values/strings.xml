@@ -9,4 +9,5 @@
     <string name="nav_store">المتجر</string>
     <string name="nav_store_pending">المتجر، إدخالات بانتظار الإرسال</string>
     <string name="nav_store_offline">المتجر، لا يوجد اتصال</string>
+    <string name="nav_store_stuck">المتجر، إدخالات لا يمكن إرسالها</string>
 </resources>

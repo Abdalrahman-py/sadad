@@ -238,7 +238,7 @@ class ReportsViewModel(
             owner = account.ownerName,
             periodLabel = periodLabel(context, period),
         )
-    return Request(view, header, bounds.from, bounds.to?.minusNanos(1))
+    return Request(view, header, bounds.from, bounds.to)
   }
 
   private fun refuse(context: Context, message: Int): Request? {

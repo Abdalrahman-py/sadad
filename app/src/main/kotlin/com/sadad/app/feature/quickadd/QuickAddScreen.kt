@@ -1,6 +1,7 @@
 package com.sadad.app.feature.quickadd
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -29,25 +30,21 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.runtime.saveable.rememberSaveable
-import com.sadad.app.ui.components.SadadTextField
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,14 +78,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.ui.components.KeypadKey
-import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.SadadApplication
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
+import com.sadad.app.ui.components.KeypadKey
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadField
+import com.sadad.app.ui.components.SadadKeypad
+import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.parseCents
@@ -98,6 +96,9 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.PaymentMethod
 import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 /** The handles the screen tests and the a11y sweep hold on to. */
 object QuickAddTags {
@@ -114,6 +115,7 @@ object QuickAddTags {
   const val KIND_SUPPLIER = "quickadd:kind-supplier"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
+  const val ERROR = "quickadd:error"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -753,6 +755,16 @@ private fun AmountStep(
     }
     Spacer(Modifier.height(12.dp))
 
+    state.error?.let { message ->
+      Text(
+          text = message,
+          fontSize = 13.sp,
+          color = p.credit,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag(QuickAddTags.ERROR),
+      )
+    }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
       Keypad(onKey = model::press, onDelete = model::delete)
     }
@@ -998,6 +1010,11 @@ private fun DoneStep(
 ) {
   val p = sadadPalette
   val done = state.done ?: return
+  // System back is a way out like the two buttons below: whatever is held is queued, not dropped.
+  BackHandler {
+    model.leave(context)
+    onClose()
+  }
   val person = state.selected
   val supplier = person?.kind == ContactKind.SUPPLIER
   val title =
@@ -1072,7 +1089,8 @@ private fun DoneStep(
                 " " +
                 stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
         onClick = { model.undo(context) },
-        // The count runs down each second; at zero the entry is queued and there is nothing to undo.
+        // The count runs down each second; at zero the entry is queued and there is nothing to
+        // undo.
         enabled = done.secondsLeft > 0,
         style = SadadButtonStyle.SURFACE,
         modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
