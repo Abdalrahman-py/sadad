@@ -3,8 +3,8 @@
     <string name="title_history">سجل الحركات</string>
 
     <!-- Tabs -->
-    <string name="history_tab_people">سجل الأشخاص</string>
-    <string name="history_tab_activity">سجل عمليات الدفتر</string>
+    <string name="history_tab_people">الأشخاص</string>
+    <string name="history_tab_activity">عمليات الدفتر</string>
 
     <!-- Period filter -->
     <string name="history_filter_label">فلتر السجل: %1$s</string>
@@ -30,6 +30,8 @@
 
     <!-- Export -->
     <string name="history_export_heading">التصدير</string>
+    <string name="history_export_button">تصدير PDF / Excel</string>
+    <string name="history_tabs">عرض الحركات</string>
     <string name="history_export_detail">اختر الصيغة عند الحفظ.</string>
     <string name="history_save_statement">حفظ كشف السجلات</string>
     <string name="history_format_title">صيغة الكشف</string>
@@ -37,7 +39,8 @@
     <string name="history_format_xlsx">Excel</string>
     <string name="history_statement_name">كشف السجلات</string>
     <string name="history_cancel">إلغاء</string>
-    <string name="history_saved">تم حفظ الكشف.</string>
+    <string name="history_saved">تم حفظ الكشف بنجاح.</string>
+    <string name="history_export_empty">لا توجد أشخاص أو حركات لتصديرها بعد.</string>
     <string name="history_export_failed">تعذر حفظ الكشف. حاول مرة أخرى.</string>
     <string name="history_default_store">متجري</string>
 

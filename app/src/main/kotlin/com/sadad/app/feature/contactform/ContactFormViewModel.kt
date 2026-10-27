@@ -188,7 +188,8 @@ class ContactFormViewModel(
                 draft.category,
                 draft.note,
                 draft.amount?.let {
-                  FirstDebt(Direction.RECEIVABLE, it, draft.debtNote, draft.due)
+                  // A supplier's opening balance is what the store owes, not what it is owed.
+                  FirstDebt(draft.kind.debtDirection, it, draft.debtNote, draft.due)
                 },
                 kind = draft.kind,
             )

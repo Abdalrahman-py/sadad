@@ -33,4 +33,13 @@
     <string name="recovery_import">استيراد</string>
     <string name="recovery_register_again">تسجيل الهاتف كجهاز جديد</string>
     <string name="recovery_register_again_explanation">بعد إلغاء اعتماده فقط: تبقى السجلات والإدخالات المعلقة محفوظة، وتحتاج الهوية الجديدة اعتماد الإدارة. استرداد إدخالات الهوية السابقة يحتاج قائمة اعتماد وتصريحًا من اللوحة. احفظ نسخة استرداد أولًا.</string>
+    <string name="recovery_move_title">أنتقل إلى هاتف جديد</string>
+    <string name="recovery_step_save_title">على هذا الهاتف: احفظ نسخة مشفرة</string>
+    <string name="recovery_step_save_detail">تحمل الإدخالات غير المرسلة فقط، بعبارة مرور من 12 حرفًا على الأقل. احفظ الملف والعبارة خارج الهاتف.</string>
+    <string name="recovery_step_import_title">على الهاتف الجديد: استورد النسخة</string>
+    <string name="recovery_step_import_detail">بعد الدخول وموافقة صاحب المتجر على الهاتف الجديد.</string>
+    <string name="recovery_admin_title">خطوات يطلبها الأدمن</string>
+    <string name="recovery_admin_detail">استخدمها فقط حين يطلبها منك الأدمن لاعتماد إدخالات من هاتف قديم.</string>
+    <string name="recovery_register_title">تسجيل هذا الهاتف كجهاز جديد</string>
+    <string name="recovery_register_not_needed">الجهاز معتمد — لا حاجة لذلك</string>
 </resources>

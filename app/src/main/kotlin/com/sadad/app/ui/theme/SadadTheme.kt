@@ -179,7 +179,8 @@ private fun colorsFor(p: SadadPalette, dark: Boolean) =
             surfaceContainerLowest = Color.White,
             surfaceContainerLow = p.surface,
             surfaceContainer = p.surface,
-            surfaceContainerHigh = p.surface,
+            // Dialogs and sheets are white, as the boards draw their sheets.
+            surfaceContainerHigh = p.card,
             surfaceContainerHighest = p.soft,
             inverseSurface = p.text,
             inverseOnSurface = p.bg,

@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,6 +34,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import com.sadad.app.ui.components.softShadow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -220,6 +228,7 @@ private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -
           Modifier.size(44.dp)
               .clip(CircleShape)
               .background(p.card)
+              .border(1.dp, p.line, CircleShape)
               .clickable(onClick = onOpenNotifications)
               .testTag(HomeTags.BELL)
               .semantics {
@@ -288,6 +297,8 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
       else listOf(Color(0xFF064B42), Color(0xFF02302B))
   Box(
       Modifier.fillMaxWidth()
+          // The board's `0 12px 28px rgba(2, 48, 43, 0.22)` under the hero.
+          .then(if (p.isDark) Modifier else Modifier.softShadow(18.dp, HeroShadow, 28.dp))
           .clip(RoundedCornerShape(18.dp))
           .background(Brush.linearGradient(hero))
           .padding(20.dp)
@@ -343,11 +354,23 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
               lineHeight = 18.sp,
               color = HeroInk,
           )
-          MoneyText(
-              cents = state.monthDebts,
-              style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold),
-              color = Color.White,
-          )
+          Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            MoneyText(
+                cents = state.monthDebts,
+                style =
+                    TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold),
+                color = Color.White,
+            )
+            Icon(
+                painterResource(R.drawable.ic_chevron_start),
+                null,
+                tint = HeroInk,
+                modifier = Modifier.size(16.dp),
+            )
+          }
         }
         CollectionBar(state.collectionPercent)
         Row(
@@ -387,7 +410,12 @@ private fun CollectionBar(percent: Int) {
           .background(HeroTrack)
           .semantics { contentDescription = description }
   ) {
-    val fraction = percent.coerceIn(0, 100) / 100f
+    // The bar fills from empty when Home opens, then follows the month's figure.
+    val target = percent.coerceIn(0, 100) / 100f
+    var started by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { started = true }
+    val fraction by
+        animateFloatAsState(if (started) target else 0f, tween(700, 120), label = "collection")
     if (fraction <= 0f) return@Box
     Box(
         Modifier.fillMaxWidth(fraction)
@@ -832,5 +860,7 @@ private val HeroPanel = Color(0x1FC6F0E0)
 private val HeroTrack = Color(0x38C6F0E0)
 
 private val HeroBar = Color(0xFF78DEC0)
+
+private val HeroShadow = Color(0x3802302B)
 
 private val BadgeRed = Color(0xFFC13634)

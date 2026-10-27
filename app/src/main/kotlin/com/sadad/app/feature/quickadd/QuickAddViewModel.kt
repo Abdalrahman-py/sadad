@@ -140,16 +140,28 @@ class QuickAddViewModel(
   private var commitJob: Job? = null
   private var anomalyApproved: String? = null
 
+  /** The Contact the screen was opened for is selected once; later emissions never re-select it. */
+  private var startConsumed = false
+
   init {
     viewModelScope.launch {
       combine(view(), permissions(), availability()) { view, permissions, saveBlocked ->
             project(view, permissions, saveBlocked)
           }
           .collect { facts ->
+            val starting =
+                !startConsumed && facts.startContact != null && mutable.value.selected == null
+            if (starting) startConsumed = true
             mutable.update { current ->
               val people = facts.people
+              val startPerson =
+                  if (starting) people.firstOrNull { it.id == facts.startContact } else null
               val selected =
-                  current.selected?.let { chosen -> people.firstOrNull { it.id == chosen.id } }
+                  current.selected?.let { chosen ->
+                    // A person created in this flow is not in the ledger until the entry commits.
+                    people.firstOrNull { it.id == chosen.id }
+                        ?: chosen.takeIf { it.id == pendingPersonId }
+                  } ?: startPerson
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
@@ -158,12 +170,7 @@ class QuickAddViewModel(
                   selected = selected,
                   overBalance =
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
-                  step =
-                      when {
-                        current.step == QuickAddStep.PICKER && facts.startContact != null ->
-                            QuickAddStep.AMOUNT
-                        else -> current.step
-                      },
+                  step = if (startPerson != null) QuickAddStep.AMOUNT else current.step,
               )
             }
           }
@@ -365,10 +372,19 @@ class QuickAddViewModel(
     }
     val sentence = sentence(context)
     pending = commands
-    pendingContact = null
     commitJob?.cancel()
+    // One tick a second (the window split evenly, so a short test window still ends), counting
+    // «تراجع · N ث» down to zero, where the entry is queued and the button goes grey.
+    val ticks = maxOf(1, (undoWindowMs / 1_000).toInt())
+    val tick = undoWindowMs / ticks
     commitJob = viewModelScope.launch {
-      delay(undoWindowMs)
+      var left = ticks
+      while (left > 1) {
+        delay(tick)
+        left--
+        mutable.update { it.copy(done = it.done?.copy(secondsLeft = left)) }
+      }
+      delay(tick)
       commit(context)
     }
     mutable.update {
@@ -381,7 +397,7 @@ class QuickAddViewModel(
                   name = current.personName,
                   sentence = sentence,
                   net = netAfter(current, amount),
-                  secondsLeft = (undoWindowMs / 1_000).toInt(),
+                  secondsLeft = ticks,
               ),
       )
     }
@@ -398,6 +414,8 @@ class QuickAddViewModel(
 
   /** «تراجع»: the held commands are dropped, nothing was ever queued. */
   fun undo(context: Context) {
+    // Past the window the entry is already queued: there is nothing left to take back.
+    if (pending.isEmpty()) return
     commitJob?.cancel()
     commitJob = null
     pending = emptyList()
@@ -525,7 +543,7 @@ class QuickAddViewModel(
     val person = current.selected ?: return emptyList()
     val at = Instant.now()
     val note = current.note.trim().ifEmpty { null }
-    val heldContact = pendingContact
+    val heldContact = pendingContact?.takeIf { it.entityId == person.id }
     if (heldContact != null) {
       val debt =
           Commands.debtCreate(
@@ -575,10 +593,12 @@ class QuickAddViewModel(
     pending = emptyList()
     val scope = graph.current.value
     if (commands.isEmpty() || scope == null) return
+    // The window is over the moment it is committed, so the button goes grey at once.
+    mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     viewModelScope.launch {
       scope.outbox.append(commands)
       scope.onQueued()
-      mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
+      pendingContact = null
     }
   }
 
@@ -637,7 +657,7 @@ class QuickAddViewModel(
               view.debts
                   .filter {
                     it.contactId == contact.id &&
-                        it.direction == Direction.RECEIVABLE &&
+                        it.direction == contact.kind.debtDirection &&
                         it.remaining > Cents.ZERO
                   }
                   .fold(Cents.ZERO) { total, debt -> total + debt.remaining }

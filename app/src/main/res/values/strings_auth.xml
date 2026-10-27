@@ -1,30 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_login">تسجيل الدخول</string>
-    <string name="title_password_change">غيّر كلمة المرور المؤقتة</string>
-    <string name="title_awaiting_approval">بانتظار الموافقة</string>
+    <string name="title_password_change">اختر كلمة مرور خاصة بك</string>
+    <string name="title_awaiting_approval">بانتظار موافقة صاحب المتجر</string>
 
 
-    <string name="login_eyebrow">إدارة حسابات المتجر</string>
-    <string name="login_subtitle">أدخل بيانات حسابك للمتابعة</string>
+    <string name="login_add_store">إضافة متجر</string>
+    <string name="login_subtitle">أدخل حساب المتجر الذي أنشأه الأدمن</string>
     <string name="login_username">اسم المستخدم</string>
     <string name="login_password">كلمة المرور</string>
     <string name="login_submit">دخول آمن</string>
+    <string name="login_no_account">ليس لديك حساب بعد؟</string>
     <string name="login_support">تواصل معنا لتفعيل حسابك</string>
+    <string name="login_footnote">يُسجَّل هذا الجهاز بعد الدخول، ويبدأ العمل حين يوافق صاحب المتجر عليه.</string>
+    <string name="password_show">إظهار كلمة المرور</string>
+    <string name="password_hide">إخفاء كلمة المرور</string>
     <string name="support_unavailable">تعذر فتح WhatsApp. تحقق من تثبيته أو اتصال الإنترنت.</string>
     <string name="support_whatsapp_number" translatable="false">970599562401</string>
 
-    <string name="password_change_hint">يجب تعيين كلمة مرور جديدة للمتابعة إلى التطبيق.</string>
+    <string name="password_step">الخطوة 1 من 2 · أول دخول</string>
+    <string name="password_change_hint">كلمة المرور الحالية مؤقتة من الأدمن. غيّرها مرة واحدة لتتابع.</string>
     <string name="password_current">كلمة المرور المؤقتة</string>
-    <string name="password_new">كلمة المرور الجديدة (12 خانة على الأقل)</string>
-    <string name="password_confirm">تأكيد كلمة المرور الجديدة</string>
+    <string name="password_new">كلمة المرور الجديدة</string>
+    <string name="password_confirm">أعد كتابتها</string>
+    <string name="password_show_all">إظهار كلمات المرور</string>
+    <string name="password_rules">شروط كلمة المرور</string>
+    <string name="password_rule_length">من 12 إلى 128 حرفًا</string>
+    <string name="password_rule_different">تختلف عن كلمة المرور المؤقتة</string>
+    <string name="password_rule_match">التأكيد مطابق</string>
+    <string name="password_rule_met">متحقق</string>
+    <string name="password_rule_unmet">غير متحقق</string>
     <string name="password_save">حفظ ومتابعة</string>
 
-    <string name="approval_details_hint">اكتب اسم الشخص الذي يستخدم هذا الجهاز، ثم انتظر موافقة الإدارة.</string>
-    <string name="approval_staff_name">اسم الشخص على هذا الجهاز</string>
+    <string name="approval_step">الخطوة 2 من 2 · أول دخول</string>
+    <string name="approval_subtitle">لحماية الدفتر، يعمل كل جهاز جديد بعد أن يوافق عليه صاحب المتجر.</string>
+    <string name="approval_steps">مراحل تفعيل الجهاز</string>
+    <string name="approval_step_signed_in">دخلت إلى حساب المتجر</string>
+    <string name="approval_step_registered">سُجّل هذا الجهاز</string>
+    <string name="approval_step_registered_sub">مفتاح أمان خاص بالجهاز، لا يغادره</string>
+    <string name="approval_step_details_sub">اكتب اسمك واسم الجهاز ثم احفظ</string>
+    <string name="approval_step_owner">موافقة صاحب المتجر</string>
+    <string name="approval_step_owner_sub">بانتظار الموافقة من لوحة الإدارة</string>
+    <string name="approval_details_hint">يظهر هذا الاسم لصاحب المتجر عند الموافقة، وبجانب كل حركة تسجلها.</string>
+    <string name="approval_staff_name">من يستخدم هذا الجهاز؟</string>
     <string name="approval_device_label">اسم الجهاز</string>
     <string name="approval_save">حفظ ومتابعة</string>
-    <string name="approval_check_again">تحقق مرة أخرى</string>
+    <string name="approval_check_again">تحقق الآن</string>
+    <string name="approval_ask_owner">اطلب الموافقة من صاحب المتجر</string>
     <string name="approval_awaiting">بانتظار موافقة الإدارة على هذا الجهاز</string>
     <string name="approval_running">جارٍ التحقق من الجهاز…</string>
     <string name="approval_offline">لا يوجد اتصال؛ تحقق من الشبكة وحاول مجددًا.</string>

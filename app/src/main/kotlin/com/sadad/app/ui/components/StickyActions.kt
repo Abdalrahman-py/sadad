@@ -26,7 +26,7 @@ fun StickyActions(modifier: Modifier = Modifier, content: @Composable RowScope.(
           modifier
               .fillMaxWidth()
               .shadow(8.dp)
-              .background(sadadPalette.surface)
+              .background(sadadPalette.card)
               .windowInsetsPadding(WindowInsets.navigationBars)
               .padding(horizontal = 18.dp, vertical = 12.dp),
       horizontalArrangement = Arrangement.spacedBy(10.dp),

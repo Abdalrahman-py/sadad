@@ -335,7 +335,7 @@ internal fun LazyListScope.devicesSection(
             }
           }
           Surface(
-              onClick = model::downloadLatest,
+              onClick = navigation.onSyncNow,
               shape = RoundedCornerShape(10.dp),
               color = if (waiting) p.card else p.surface,
               contentColor = linkColor(),
@@ -350,14 +350,6 @@ internal fun LazyListScope.devicesSection(
             }
           }
         }
-        HorizontalDivider(color = p.line)
-        LinkRow(
-            title = stringResource(R.string.settings_activity_log),
-            detail = stringResource(R.string.settings_activity_log_sub),
-            tag = SettingsTags.OPS_LOG,
-            onClick = navigation.onOpenActivityLog,
-            icon = RowIcon.LIST,
-        )
         HorizontalDivider(color = p.line)
         LinkRow(
             title = stringResource(R.string.settings_recovery),
@@ -425,44 +417,19 @@ internal fun LazyListScope.dataSection(
     navigation: SettingsNavigation,
     context: Context,
 ) {
+  // Q20/Q6: the trash exists to undo deletes, so a device that may delete neither records nor
+  // Contacts cannot use it and does not see its section at all. Statements are exported from
+  // «الحركات», where the entries they list are.
+  if (!state.canDelete) return
   item {
-    val p = sadadPalette
     Section(stringResource(R.string.settings_data_heading)) {
       BoardCard(radius = 13.dp) {
-        // Q20/Q6: the trash exists to undo deletes, so a device that may delete neither records nor
-        // Contacts cannot use it and does not see it.
-        if (state.canDelete) {
-          LinkRow(
-              title = stringResource(R.string.settings_trash),
-              detail = trashText(state.trashCount),
-              tag = SettingsTags.TRASH,
-              onClick = navigation.onOpenTrash,
-          )
-          HorizontalDivider(color = p.line)
-        }
-        // Kept until ticket 85 puts export on «الحركات»: removing it would lose the only way to
-        // share a statement.
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text(
-              stringResource(R.string.settings_export_period),
-              color = p.muted,
-              fontSize = 12.sp,
-              lineHeight = 18.sp,
-          )
-          PeriodFilter(
-              period = state.exportPeriod.toPeriod(LocalDate.now()),
-              onPreset = model::selectPreset,
-              onCustom = model::selectCustom,
-          )
-          SadadButton(
-              text = stringResource(R.string.settings_share_statement),
-              style = SadadButtonStyle.SURFACE,
-              onClick = { model.shareStatement(context) },
-              enabled = !state.busy,
-              modifier = Modifier.fillMaxWidth(),
-          )
-          state.error?.takeIf { it != SettingsError.ACTION_FAILED }?.let { ErrorLine(it) }
-        }
+        LinkRow(
+            title = stringResource(R.string.settings_trash),
+            detail = trashText(state.trashCount),
+            tag = SettingsTags.TRASH,
+            onClick = navigation.onOpenTrash,
+        )
       }
     }
   }
@@ -935,7 +902,7 @@ private fun queuedText(entry: QueuedEntry): String {
 
 /** What sync is doing, when it is not the ordinary «sent» or «waiting» case. */
 @Composable
-private fun statusPhrase(line: SyncLine): String? =
+internal fun statusPhrase(line: SyncLine): String? =
     when (line) {
       SyncLine.Idle -> null
       SyncLine.Running -> stringResource(R.string.settings_sync_running)

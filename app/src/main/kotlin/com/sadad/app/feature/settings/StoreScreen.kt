@@ -24,6 +24,11 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
+import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.data.sync.SyncScheduler
@@ -44,7 +49,6 @@ object SettingsTags {
   const val SWITCHER = "settings:switcher"
   const val ADD_STORE = "settings:add-store"
   const val SYNC_NOW = "settings:sync-now"
-  const val OPS_LOG = "settings:ops-log"
   const val RECOVERY = "settings:recovery"
   const val TRASH = "settings:trash"
   const val THEME = "settings:theme"
@@ -62,11 +66,11 @@ object SettingsTags {
  */
 internal data class SettingsNavigation(
     val onOpenTrash: () -> Unit = {},
-    /** The ledger operations log. */
-    val onOpenActivityLog: () -> Unit = {},
     val onOpenRecovery: () -> Unit = {},
     /** The password-change route, used voluntarily here. */
     val onChangePassword: () -> Unit = {},
+    /** «مزامنة الآن»: the screen starts the sync and tells how it ended. */
+    val onSyncNow: () -> Unit = {},
     /** The Login route, to add another store. */
     val onAddStore: () -> Unit = {},
     /** No store is open any more: signed out, removed, or the other store has no session. */
@@ -85,7 +89,6 @@ fun StoreScreen(
     onChangePassword: () -> Unit = {},
     onAddStore: () -> Unit = {},
     onNeedsLogin: () -> Unit = {},
-    onOpenOperationsLog: () -> Unit = {},
     onOpenUpdates: () -> Unit = {},
     settingsViewModel: SettingsViewModel = storeViewModel(),
 ) {
@@ -96,6 +99,36 @@ fun StoreScreen(
   var storesOpen by rememberSaveable { mutableStateOf(false) }
   var showStorePhoto by rememberSaveable { mutableStateOf(false) }
   val openStore = state.accounts.firstOrNull { it.active }?.storeUserId
+  // «مزامنة الآن» says it started, then how it ended: sent, offline, or what refused.
+  var syncAsked by rememberSaveable { mutableStateOf(false) }
+  var toast by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+  val syncStarted = stringResource(R.string.settings_sync_started)
+  val syncDone = stringResource(R.string.settings_sync_done)
+  val phrase = statusPhrase(state.sync)
+  LaunchedEffect(state.sync) {
+    if (!syncAsked) return@LaunchedEffect
+    when (state.sync) {
+      SyncLine.Running -> Unit
+      SyncLine.Idle -> {
+        toast = syncDone to false
+        syncAsked = false
+      }
+      else -> {
+        toast = (phrase ?: syncDone) to true
+        syncAsked = false
+      }
+    }
+  }
+  // A sync that finds nothing to do never leaves «Idle»: say so rather than stay silent.
+  LaunchedEffect(syncAsked) {
+    if (syncAsked) {
+      delay(6_000)
+      if (syncAsked && state.sync == SyncLine.Idle) {
+        toast = syncDone to false
+        syncAsked = false
+      }
+    }
+  }
   // Re-read on resume: a fingerprint enrolled in the system settings shows its switch on return.
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { settingsViewModel.refreshBiometricSensor() }
   LaunchedEffect(state.outcome) {
@@ -107,12 +140,17 @@ fun StoreScreen(
   val navigation =
       SettingsNavigation(
           onOpenTrash = onOpenTrash,
-          onOpenActivityLog = onOpenOperationsLog,
           onOpenRecovery = onOpenRecovery,
           onChangePassword = onChangePassword,
           onAddStore = onAddStore,
           onNeedsLogin = onNeedsLogin,
+          onSyncNow = {
+            syncAsked = true
+            toast = syncStarted to false
+            settingsViewModel.downloadLatest()
+          },
       )
+  Box(Modifier.fillMaxSize()) {
   Column(Modifier.fillMaxSize()) {
     ScreenHeader(stringResource(R.string.nav_store))
     LazyColumn(
@@ -138,6 +176,13 @@ fun StoreScreen(
       updateItem(update, onOpenUpdates)
       versionItem()
     }
+  }
+  SadadToastHost(
+      message = toast?.first,
+      error = toast?.second == true,
+      onDismiss = { toast = null },
+      modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
+  )
   }
   if (showStorePhoto && openStore != null) {
     PhotoEditor(openStore, PhotoKind.STORE, { showStorePhoto = false }) {

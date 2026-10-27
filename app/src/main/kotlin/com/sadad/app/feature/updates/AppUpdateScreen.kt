@@ -15,15 +15,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,6 +68,7 @@ fun AppUpdateScreen(onBack: (() -> Unit)? = null, modifier: Modifier = Modifier)
   val p = sadadPalette
   Scaffold(
       modifier = modifier.testTag(UpdateTags.SCREEN),
+      containerColor = Color.Transparent,
       topBar = { ScreenHeader(stringResource(R.string.updates_title), onBack = onBack) },
   ) { padding ->
     Column(
@@ -141,8 +142,15 @@ private fun Status(state: UpdateState) {
     state.phase == UpdateState.Phase.DOWNLOADING -> {
       LinearProgressIndicator(
           progress = { state.progress / 100f },
-          modifier = Modifier.fillMaxWidth().testTag(UpdateTags.PROGRESS),
-          color = p.primary,
+          modifier =
+              Modifier.fillMaxWidth()
+                  .height(8.dp)
+                  .clip(RoundedCornerShape(4.dp))
+                  .testTag(UpdateTags.PROGRESS),
+          color = if (p.isDark) p.accent else p.primary,
+          trackColor = p.soft,
+          gapSize = 0.dp,
+          drawStopIndicator = {},
       )
       Text(
           stringResource(R.string.updates_downloading, state.progress),
@@ -220,53 +228,52 @@ private fun Actions(
         }
     val busy = state.phase in setOf(UpdateState.Phase.CHECKING, UpdateState.Phase.INSTALLING)
     if (primary != null) {
-      Button(
+      SadadButton(
+          text = stringResource(primary.first),
           onClick = primary.second,
           enabled = !busy,
-          modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag(UpdateTags.ACTION),
-          colors =
-              ButtonDefaults.buttonColors(containerColor = p.primary, contentColor = Color.White),
-      ) {
-        Text(stringResource(primary.first), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-      }
+          modifier = Modifier.fillMaxWidth().testTag(UpdateTags.ACTION),
+      )
     }
     if (error == UpdateError.NEEDS_PERMISSION) {
-      OutlinedButton(
+      SadadButton(
+          text = stringResource(R.string.updates_open_settings),
           onClick = { open(context, UpdateInstaller.allowInstallsIntent(context)) },
-          modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-      ) {
-        Text(stringResource(R.string.updates_open_settings), fontSize = 14.sp)
-      }
+          style = SadadButtonStyle.SURFACE,
+          modifier = Modifier.fillMaxWidth(),
+      )
     }
     if (error == UpdateError.SIGNATURE_MISMATCH) {
       val url = center.apkUrl()
       if (url != null) {
-        OutlinedButton(
+        SadadButton(
+            text = stringResource(R.string.updates_download_in_browser),
             onClick = { open(context, Intent(Intent.ACTION_VIEW, Uri.parse(url))) },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-        ) {
-          Text(stringResource(R.string.updates_download_in_browser), fontSize = 14.sp)
-        }
+            style = SadadButtonStyle.SURFACE,
+            modifier = Modifier.fillMaxWidth(),
+        )
       }
     }
     if (state.phase == UpdateState.Phase.DOWNLOADING) {
-      TextButton(
+      SadadButton(
+          text = stringResource(R.string.updates_cancel),
           onClick = center::cancelDownload,
-          modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-      ) {
-        Text(stringResource(R.string.updates_cancel), fontSize = 14.sp)
-      }
+          style = SadadButtonStyle.TEXT,
+          height = 48.dp,
+          modifier = Modifier.fillMaxWidth(),
+      )
     }
     if (state.hasUpdate && state.phase != UpdateState.Phase.INSTALLING) {
-      TextButton(
+      SadadButton(
+          text = stringResource(R.string.updates_later),
           onClick = {
             center.snooze()
             onBack?.invoke()
           },
-          modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(UpdateTags.SECONDARY),
-      ) {
-        Text(stringResource(R.string.updates_later), fontSize = 14.sp, color = p.muted)
-      }
+          style = SadadButtonStyle.TEXT,
+          height = 48.dp,
+          modifier = Modifier.fillMaxWidth().testTag(UpdateTags.SECONDARY),
+      )
     }
   }
 }

@@ -7,5 +7,8 @@
     <string name="pending_badge">بانتظار التأكيد</string>
     <string name="common_back">رجوع إلى الشاشة السابقة</string>
     <string name="brand_logo">شعار سدد</string>
+    <string name="brand_name">سدد</string>
+    <string name="brand_tagline">حسابات واضحة، وسجل مرتب، ومتابعة أسرع</string>
+    <string name="common_delete">حذف</string>
     <string name="screen_contact_detail">تفاصيل الشخص</string>
 </resources>
