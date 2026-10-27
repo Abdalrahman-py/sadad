@@ -26,10 +26,11 @@ class SyncWorker(
   override suspend fun doWork(): Result =
       withContext(Dispatchers.IO) {
         val id = inputData.getString(STORE_USER_ID) ?: return@withContext Result.failure()
-        when (pass(id)) {
+        when (val status = pass(id)) {
           SyncStatus.Offline,
-          SyncStatus.Retry,
-          is SyncStatus.Failed -> Result.retry()
+          SyncStatus.Retry -> Result.retry()
+          // A terminal refusal ends the chain instead of retrying it forever.
+          is SyncStatus.Failed -> if (status.retryable) Result.retry() else Result.failure()
           else -> Result.success()
         }
       }
