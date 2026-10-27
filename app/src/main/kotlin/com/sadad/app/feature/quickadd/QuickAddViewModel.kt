@@ -11,7 +11,6 @@ import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
@@ -135,9 +134,12 @@ class QuickAddViewModel(
   private var pendingContact: LedgerCommand? = null
   private var pendingPersonId: String? = null
 
+  /** Whether the Contact this flow was opened for has been made the subject already. */
+  private var startContactApplied = false
+
   /** The commands the done step holds; [commitJob] appends them when the window ends. */
-  private var pending: List<LedgerCommand> = emptyList()
-  private var commitJob: Job? = null
+  @Volatile private var pending: List<LedgerCommand> = emptyList()
+  @Volatile private var commitJob: Job? = null
   private var anomalyApproved: String? = null
 
   init {
@@ -148,8 +150,18 @@ class QuickAddViewModel(
           .collect { facts ->
             mutable.update { current ->
               val people = facts.people
-              val selected =
-                  current.selected?.let { chosen -> people.firstOrNull { it.id == chosen.id } }
+              val chosen =
+                  current.selected?.let { selected -> people.firstOrNull { it.id == selected.id } }
+              // The route's Contact is applied once, on the first projection that can resolve it:
+              // going back to the picker must not drag the flow to the amount step again.
+              val started =
+                  if (chosen == null && !startContactApplied) {
+                    facts.startContact?.let { id -> people.firstOrNull { it.id == id } }
+                  } else {
+                    null
+                  }
+              if (started != null) startContactApplied = true
+              val selected = chosen ?: started
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
@@ -160,7 +172,7 @@ class QuickAddViewModel(
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
                   step =
                       when {
-                        current.step == QuickAddStep.PICKER && facts.startContact != null ->
+                        current.step == QuickAddStep.PICKER && started != null ->
                             QuickAddStep.AMOUNT
                         else -> current.step
                       },
@@ -372,14 +384,22 @@ class QuickAddViewModel(
       return
     }
     val sentence = sentence(context)
+    // The window belongs to the store, not the screen: leaving (back, home, the lock) during it
+    // must still end in the commands the done step promised.
+    val store = graph.current.value
+    if (store == null) {
+      mutable.update { it.copy(error = context.getString(R.string.quickadd_failed)) }
+      return
+    }
     pending = commands
     // The held Contact stays until the commands are committed: «تراجع» returns to the amount with
     // the same person, and saving again must carry the contact.create with its debt again.
     commitJob?.cancel()
-    commitJob = viewModelScope.launch {
-      delay(undoWindowMs)
-      commit(context)
-    }
+    commitJob =
+        store.jobs.launch {
+          delay(undoWindowMs)
+          commit(context)
+        }
     mutable.update {
       it.copy(
           step = QuickAddStep.DONE,
@@ -583,11 +603,13 @@ class QuickAddViewModel(
     // The held Contact is in `commands` now (or there was none).
     pendingContact = null
     pendingPersonId = null
-    val scope = graph.current.value
-    if (commands.isEmpty() || scope == null) return
-    viewModelScope.launch {
-      scope.outbox.append(commands)
-      scope.onQueued()
+    val store = graph.current.value
+    if (commands.isEmpty() || store == null) return
+    // The outbox write is not cancelled with this screen: it is one short write, not background
+    // work, and the done step already told the user the record was made.
+    store.jobs.launch {
+      store.outbox.append(commands)
+      store.onQueued()
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
@@ -643,14 +665,7 @@ class QuickAddViewModel(
         }
     val open =
         view.contacts.associate { contact ->
-          contact.id to
-              view.debts
-                  .filter {
-                    it.contactId == contact.id &&
-                        it.direction == Direction.RECEIVABLE &&
-                        it.remaining > Cents.ZERO
-                  }
-                  .fold(Cents.ZERO) { total, debt -> total + debt.remaining }
+          contact.id to PaymentAllocation.openBalance(view, contact.id, contact.kind.debtDirection)
         }
     openBalances = open
     return Facts(

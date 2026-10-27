@@ -5,6 +5,7 @@ import android.os.Trace
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Changes
+import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
@@ -64,9 +65,12 @@ sealed class Refusal(message: String) : Exception(message) {
   data object Unknown : Refusal("the row is not in the ledger view")
 }
 
-/** The optional Debt a new Contact starts with. */
+/**
+ * The optional Debt a new Contact starts with. It carries no direction: the Contact's kind decides
+ * it ([ContactKind.debtDirection]), so a caller cannot write a supplier's balance on the wrong
+ * side.
+ */
 data class FirstDebt(
-    val direction: Direction,
     val amount: Cents,
     val note: String? = null,
     val dueDate: String? = null,
@@ -158,7 +162,7 @@ class LedgerRepository(
               origin,
               at,
               contact.entityId,
-              firstDebt.direction,
+              kind.debtDirection,
               firstDebt.amount,
               firstDebt.note,
               firstDebt.dueDate,
@@ -186,7 +190,7 @@ class LedgerRepository(
                 origin,
                 Instant.now(),
                 contactId,
-                contact.version,
+                nextVersion(contactId),
                 name,
                 phone,
                 category,
@@ -213,7 +217,7 @@ class LedgerRepository(
                 origin,
                 Instant.now(),
                 contactId,
-                contact.version,
+                nextVersion(contactId),
                 reason,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
@@ -232,7 +236,7 @@ class LedgerRepository(
                 origin,
                 Instant.now(),
                 contactId,
-                contact.version,
+                nextVersion(contactId),
                 reason,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
@@ -351,6 +355,20 @@ class LedgerRepository(
   private fun ContactView.dependency(): List<String> =
       if (pending) listOf(operationId) else emptyList()
 
+  /**
+   * The version the server will expect for the next command on [contactId]: the confirmed version
+   * plus one for every edit of that Contact still queued. Without this, two edits before a pull
+   * both name the version the first one consumes, and the server refuses the second.
+   */
+  private suspend fun nextVersion(contactId: String): Long {
+    val confirmed = currentView().contact(contactId).version
+    val queued =
+        outbox.snapshot().count {
+          it.state == OutboxState.QUEUED && it.entityId == contactId && it.type in EDITS
+        }
+    return confirmed + queued
+  }
+
   private suspend fun enqueue(commands: List<LedgerCommand>) {
     outbox.append(commands)
     session.onQueued()
@@ -364,4 +382,10 @@ class LedgerRepository(
       } catch (invalid: IllegalArgumentException) {
         Result.failure(Refusal.Invalid(invalid.message ?: ""))
       }
+
+  private companion object {
+    /** Commands that advance a Contact's version on the server. */
+    val EDITS =
+        setOf(CommandType.CONTACT_UPDATE, CommandType.CONTACT_ARCHIVE, CommandType.CONTACT_RESTORE)
+  }
 }
