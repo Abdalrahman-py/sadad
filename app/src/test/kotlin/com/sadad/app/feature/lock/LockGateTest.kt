@@ -8,7 +8,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -35,7 +34,9 @@ private const val CONTENT = "المحتوى"
 private const val LOCKED = "التطبيق مقفل"
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = UiTestApplication::class)
+// A real phone's height, not Robolectric's 320x470 default: the lock board is a full screen with
+// its own keypad (no IME), so the keys and the open button must be measured where they live.
+@Config(application = UiTestApplication::class, qualifiers = "w360dp-h800dp-xxhdpi")
 class LockGateTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val temporary = TemporaryFolder()
@@ -127,12 +128,12 @@ class LockGateTest {
     waitFor(LOCKED)
     assertFalse(shown(CONTENT))
 
-    compose.onNodeWithTag(LockTag.PIN).performTextInput("9999")
+    typePin("9999")
     compose.onNodeWithTag(LockTag.OPEN).performClick()
     waitFor("رمز القفل غير صحيح")
     assertFalse(shown(CONTENT))
 
-    compose.onNodeWithTag(LockTag.PIN).performTextInput("1234")
+    typePin("1234")
     compose.onNodeWithTag(LockTag.OPEN).performClick()
     waitFor(CONTENT)
   }
@@ -184,5 +185,10 @@ class LockGateTest {
     }
 
     fun send(event: Lifecycle.Event) = registry.handleLifecycleEvent(event)
+  }
+
+  /** The PIN is typed on the lock's own keypad, one key at a time. */
+  private fun typePin(pin: String) = pin.forEach {
+    compose.onNodeWithTag(LockTag.key(it.toString())).performClick()
   }
 }

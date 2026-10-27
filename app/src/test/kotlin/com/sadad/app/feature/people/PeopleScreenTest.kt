@@ -73,8 +73,11 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun aRowSaysThePhoneTailTheActivityAndTheBalanceWord() {
-    val person = contact("سامي", contactId(1), phone = "+970****3456")
+  fun aRowSaysThePhoneTheActivityAndTheBalanceWord() {
+    // The restyle prints the number itself rather than its tail, so the row is asserted on the
+    // number the contact carries.
+    val phone = "+970****3456"
+    val person = contact("سامي", contactId(1), phone = phone)
     val fixture = runBlocking {
       TestGraph.signedIn().also {
         it.seedCommands(listOf(person, debt(person.entityId, amount = 12_500, minute = 1)))
@@ -89,7 +92,7 @@ class PeopleScreenTest {
       compose.waitUntil(10_000) { model.state.value.loaded && model.state.value.rows.size == 1 }
 
       compose.onNodeWithText("سامي").assertIsDisplayed()
-      compose.onNodeWithText("…456").assertIsDisplayed()
+      compose.onNodeWithText(phone).assertIsDisplayed()
       // BalanceWord speaks its figure, so the row reads «عليه 125 شيكل» aloud.
       compose.onNodeWithContentDescription("عليه 125 شيكل").assertIsDisplayed()
       compose.onNodeWithTag(PeopleTags.COUNT).assertIsDisplayed()
@@ -126,7 +129,7 @@ class PeopleScreenTest {
       compose.onNodeWithTag(PeopleTags.row(person.entityId)).performClick()
       compose.onNodeWithTag(ContactsTag.TITLE).assertIsDisplayed()
       compose.onNodeWithText("سامي").assertIsDisplayed()
-      compose.onNodeWithText("تسجيل دفعة").assertIsDisplayed()
+      compose.onNodeWithText("استلام دفعة").assertIsDisplayed()
     }
   }
 }

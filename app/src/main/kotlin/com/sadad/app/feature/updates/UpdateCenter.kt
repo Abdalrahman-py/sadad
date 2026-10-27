@@ -166,9 +166,12 @@ internal class UpdateCenter(
       _state.update { it.copy(phase = UpdateState.Phase.DOWNLOADING, progress = 0, error = null) }
       val error =
           try {
-            downloader.download(manifest, source.apkUrl(manifest)) { percent ->
-              _state.update { it.copy(progress = percent) }
-            }
+            downloader.download(
+                manifest = manifest,
+                url = source.apkUrl(manifest),
+                onProgress = { percent -> _state.update { it.copy(progress = percent) } },
+                fallbackUrl = { source.apkFallbackUrl(manifest) },
+            )
           } catch (cancellation: CancellationException) {
             throw cancellation
           } catch (_: RuntimeException) {

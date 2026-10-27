@@ -6,18 +6,20 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -34,17 +36,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
+import com.sadad.app.ui.components.Appear
+import com.sadad.app.ui.components.KeypadKey
+import com.sadad.app.ui.components.PinDots
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadKeypad
+import com.sadad.app.ui.components.SadadLogo
+import com.sadad.app.ui.components.sadadPageBackground
+import com.sadad.app.ui.theme.sadadPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -53,6 +69,8 @@ import kotlinx.coroutines.withContext
 internal object LockTag {
   const val PIN = "lock_pin"
   const val OPEN = "lock_open"
+
+  fun key(digit: String) = "lock_key_$digit"
 }
 
 /** The biometric prompt behind a seam, so the gate is testable without a sensor. */
@@ -131,54 +149,113 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
         wrong -> stringResource(R.string.lock_wrong)
         else -> null
       }
-  // Arabic-first, like the rest of the shell.
+  val p = sadadPalette
+  val keys =
+      (1..9).map { KeypadKey.Char(it.toString()) } +
+          listOf(
+              if (canBiometric)
+                  KeypadKey.Action(
+                      R.drawable.ic_fingerprint,
+                      stringResource(R.string.lock_use_biometric),
+                  ) {
+                    biometric.authenticate(lock::markUnlocked)
+                  }
+              else KeypadKey.Blank,
+              KeypadKey.Char("0"),
+              KeypadKey.Delete(stringResource(R.string.common_delete)),
+          )
+  // Arabic-first, like the rest of the shell. The Lock board: logo, title, dots, keypad, open.
   CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-    Surface(Modifier.fillMaxSize()) {
+    Column(
+        Modifier.fillMaxSize()
+            .sadadPageBackground()
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
       Column(
-          Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-          verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+          Modifier.fillMaxWidth(),
           horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        Text(stringResource(R.string.lock_title), style = MaterialTheme.typography.headlineMedium)
-        Text(stringResource(R.string.lock_hint))
-        OutlinedTextField(
-            value = pin,
-            onValueChange = {
-              pin = it.filter(Char::isDigit).take(12)
-              wrong = false
-            },
-            label = { Text(stringResource(R.string.lock_pin_label)) },
-            singleLine = true,
-            enabled = !locked,
-            isError = message != null,
-            supportingText = { if (message != null) Text(message) },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            modifier = Modifier.fillMaxWidth().testTag(LockTag.PIN),
-        )
-        Button(
-            onClick = {
-              val entered = pin
-              pin = ""
-              scope.launch {
-                when (val result = lock.verifyPin(entered)) {
-                  PinResult.Ok -> lock.markUnlocked()
-                  is PinResult.Wrong -> wrong = true
-                  is PinResult.LockedOut -> remaining = result.remaining
-                }
-              }
-            },
-            enabled = !locked && pin.length >= 4,
-            modifier = Modifier.fillMaxWidth().testTag(LockTag.OPEN),
+        Appear { SadadLogo(64.dp, dark = p.isDark) }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          Text(stringResource(R.string.lock_open))
+          Icon(
+              painterResource(R.drawable.ic_lock),
+              null,
+              tint = if (p.isDark) p.accent else p.primary,
+              modifier = Modifier.size(22.dp),
+          )
+          Text(
+              stringResource(R.string.lock_title),
+              color = p.text,
+              fontSize = 23.sp,
+              lineHeight = 32.sp,
+              fontWeight = FontWeight.Bold,
+              modifier = Modifier.semantics { heading() },
+          )
         }
-        if (canBiometric) {
-          TextButton(onClick = { biometric.authenticate(lock::markUnlocked) }) {
-            Text(stringResource(R.string.lock_use_biometric))
-          }
-        }
+        Text(
+            stringResource(if (canBiometric) R.string.lock_hint else R.string.lock_hint_pin),
+            color = p.muted,
+            fontSize = 14.sp,
+            lineHeight = 21.sp,
+            textAlign = TextAlign.Center,
+        )
       }
+      // Outside the scrolling half: on a 640 dp phone with the keyboard up the top block scrolls,
+      // and the dots and the open button must stay reachable without scrolling to them.
+      PinDots(
+          filled = pin.length,
+          count = maxOf(4, pin.length),
+          description = stringResource(R.string.lock_pin_entered, pin.length),
+          modifier = Modifier.testTag(LockTag.PIN),
+      )
+      Text(
+          message ?: if (pin.isEmpty()) stringResource(R.string.lock_pin_range) else "",
+          color = if (message != null) p.owes else p.muted,
+          fontSize = 13.sp,
+          textAlign = TextAlign.Center,
+          modifier =
+              Modifier.fillMaxWidth().heightIn(min = 20.dp).semantics {
+                if (message != null) liveRegion = LiveRegionMode.Polite
+              },
+      )
+      SadadKeypad(
+          keys = keys,
+          onChar = {
+            if (!locked && pin.length < 12) {
+              pin += it
+              wrong = false
+            }
+          },
+          onDelete = { pin = pin.dropLast(1) },
+          keyHeight = 60.dp,
+          fontSize = 26,
+          plainSpecials = true,
+          tagFor = { key -> (key as? KeypadKey.Char)?.let { LockTag.key(it.label) } },
+      )
+      SadadButton(
+          text = stringResource(R.string.lock_open),
+          onClick = {
+            val entered = pin
+            pin = ""
+            scope.launch {
+              when (val result = lock.verifyPin(entered)) {
+                PinResult.Ok -> lock.markUnlocked()
+                is PinResult.Wrong -> wrong = true
+                is PinResult.LockedOut -> remaining = result.remaining
+              }
+            }
+          },
+          enabled = !locked && pin.length >= 4,
+          height = 56.dp,
+          modifier = Modifier.fillMaxWidth().testTag(LockTag.OPEN),
+      )
     }
   }
 }

@@ -48,7 +48,8 @@ class LoginViewModel(
     viewModelScope.launch {
       mutable.update { it.copy(busy = true, error = null) }
       try {
-        graph.sessions.signIn(current.username, current.password)
+        // A pasted or autocorrected space at either end is never part of the credential.
+        graph.sessions.signIn(current.username.trim(), current.password.trim())
         mutable.update { it.copy(busy = false, destination = graph.startRoute()) }
       } catch (refused: ApiException) {
         val text =
@@ -123,7 +124,8 @@ class PasswordChangeViewModel(
     }
   }
 
-  private companion object {
+  // Internal so the screen's live checklist reads the same limits the save checks.
+  internal companion object {
     const val PASSWORD_MIN = 12
     const val PASSWORD_MAX = 128
   }

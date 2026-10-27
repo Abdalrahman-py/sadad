@@ -31,6 +31,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,9 +81,12 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
+import com.sadad.app.ui.components.KeypadKey
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadField
+import com.sadad.app.ui.components.SadadKeypad
+import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.parseCents
@@ -92,8 +97,8 @@ import com.sadad.ledger.ContactKind
 import com.sadad.ledger.PaymentMethod
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 
 /** The handles the screen tests and the a11y sweep hold on to. */
 object QuickAddTags {
@@ -155,7 +160,8 @@ fun QuickAddScreen(
         PickerStep(state, viewModel, onClose)
         NewPersonSheet(state, viewModel)
       }
-      QuickAddStep.AMOUNT -> AmountStep(state, viewModel, context)
+      QuickAddStep.AMOUNT ->
+          AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
     val anomaly = state.anomaly
@@ -621,11 +627,17 @@ private fun KindCell(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: Context) {
+private fun AmountStep(
+    state: QuickAddState,
+    model: QuickAddViewModel,
+    context: Context,
+    onClose: () -> Unit,
+    fromContact: Boolean,
+) {
   val p = sadadPalette
+  var choosingDue by rememberSaveable { mutableStateOf(false) }
+  var writingNote by rememberSaveable { mutableStateOf(false) }
   val person = state.selected
-  var pickingDue by remember { mutableStateOf(false) }
-  var editingNote by remember { mutableStateOf(false) }
   val supplier = person?.kind == ContactKind.SUPPLIER
   Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, bottom = 20.dp)) {
     Row(
@@ -636,7 +648,8 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
       RoundIconButton(
           description = stringResource(R.string.quickadd_change_person),
           tag = QuickAddTags.BACK,
-          onClick = model::backToPicker,
+          // Opened from a person's page there is no one to change: back returns to that page.
+          onClick = if (fromContact) onClose else model::backToPicker,
       ) {
         BackGlyph(p.text)
       }
@@ -716,17 +729,24 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       if (!state.payment) {
+        // A due date belongs to what a customer owes; a supplier's goods have none.
+        if (supplier != true) {
+          Chip(
+              label =
+                  state.dueDate?.let { stringResource(R.string.quickadd_due_on, it) }
+                      ?: stringResource(R.string.quickadd_due),
+              active = state.dueDate != null,
+              onClick = { choosingDue = true },
+              tag = QuickAddTags.DUE_CHIP,
+          )
+        }
         Chip(
-            label = stringResource(R.string.quickadd_due),
-            active = state.dueDate != null,
-            tag = QuickAddTags.DUE_CHIP,
-            onClick = { pickingDue = true },
-        )
-        Chip(
-            label = stringResource(R.string.quickadd_note),
+            label =
+                state.note.takeIf { it.isNotBlank() }?.let { it.trim().take(NOTE_CHIP_CHARS) }
+                    ?: stringResource(R.string.quickadd_note),
             active = state.note.isNotEmpty(),
+            onClick = { writingNote = true },
             tag = QuickAddTags.NOTE_CHIP,
-            onClick = { editingNote = true },
         )
       } else {
         for (method in QUICK_METHODS) {
@@ -756,6 +776,27 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
       Keypad(onKey = model::press, onDelete = model::delete)
     }
 
+    if (choosingDue) {
+      DueDateDialog(
+          current = state.dueDate,
+          onPick = {
+            model.onDueDateChange(it)
+            choosingDue = false
+          },
+          onDismiss = { choosingDue = false },
+      )
+    }
+    if (writingNote) {
+      NoteDialog(
+          current = state.note,
+          onSave = {
+            model.onNoteChange(it)
+            writingNote = false
+          },
+          onDismiss = { writingNote = false },
+      )
+    }
+
     SaveButton(
         text =
             when {
@@ -766,72 +807,6 @@ private fun AmountStep(state: QuickAddState, model: QuickAddViewModel, context: 
         payment = state.payment,
         enabled = state.canSave,
         onClick = { model.save(context) },
-    )
-  }
-
-  if (pickingDue) {
-    val initial =
-        state.dueDate
-            ?.let { java.time.LocalDate.parse(it) }
-            ?.atStartOfDay(ZoneOffset.UTC)
-            ?.toInstant()
-            ?.toEpochMilli()
-    val picker = rememberDatePickerState(initialSelectedDateMillis = initial)
-    DatePickerDialog(
-        modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
-        onDismissRequest = { pickingDue = false },
-        confirmButton = {
-          TextButton(
-              onClick = {
-                picker.selectedDateMillis?.let { millis ->
-                  val date =
-                      Instant.ofEpochMilli(millis)
-                          .atZone(ZoneOffset.UTC)
-                          .toLocalDate()
-                          .format(DateTimeFormatter.ISO_LOCAL_DATE)
-                  model.onDueDateChange(date)
-                }
-                pickingDue = false
-              },
-              enabled = picker.selectedDateMillis != null,
-          ) {
-            Text(stringResource(R.string.contactform_pick))
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { pickingDue = false }) {
-            Text(stringResource(R.string.contactform_cancel))
-          }
-        },
-    ) {
-      DatePicker(state = picker)
-    }
-  }
-
-  if (editingNote) {
-    AlertDialog(
-        modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
-        onDismissRequest = { editingNote = false },
-        containerColor = p.card,
-        title = { Text(stringResource(R.string.quickadd_note)) },
-        text = {
-          SadadField(
-              value = state.note,
-              onValueChange = model::onNoteChange,
-              label = stringResource(R.string.quickadd_note),
-              singleLine = false,
-          )
-        },
-        confirmButton = {
-          TextButton(onClick = { editingNote = false }) {
-            Text(stringResource(R.string.contactform_pick))
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { editingNote = false }) {
-            Text(stringResource(R.string.contactform_cancel))
-          }
-        },
     )
   }
 }
@@ -906,49 +881,30 @@ private fun ModeCell(
   }
 }
 
+/** The shared keypad, tagged per key as the quick add tests find them. */
 @Composable
 private fun Keypad(onKey: (String) -> Unit, onDelete: () -> Unit) {
-  val p = sadadPalette
-  val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "del")
-  Column(
-      Modifier.fillMaxWidth().testTag(QuickAddTags.KEYPAD),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    keys.chunked(3).forEach { row ->
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        row.forEach { key ->
-          val delete = key == "del"
-          val description =
-              when (key) {
-                "del" -> stringResource(R.string.quickadd_key_delete)
-                "." -> stringResource(R.string.quickadd_key_dot)
-                else -> key
-              }
-          Surface(
-              color = p.card,
-              shape = RoundedCornerShape(13.dp),
-              modifier =
-                  Modifier.weight(1f)
-                      .height(52.dp)
-                      .testTag(QuickAddTags.key(key))
-                      .clickable { if (delete) onDelete() else onKey(key) }
-                      .semantics {
-                        contentDescription = description
-                        role = Role.Button
-                      },
-          ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-              if (delete) {
-                DeleteGlyph(p.text)
-              } else {
-                Text(key, fontSize = 24.sp, color = p.text, fontWeight = FontWeight.Medium)
-              }
-            }
-          }
+  val dot = stringResource(R.string.quickadd_key_dot)
+  val keys =
+      listOf("1", "2", "3", "4", "5", "6", "7", "8", "9").map { KeypadKey.Char(it) } +
+          listOf(
+              KeypadKey.Char(".", dot),
+              KeypadKey.Char("0"),
+              KeypadKey.Delete(stringResource(R.string.quickadd_key_delete)),
+          )
+  SadadKeypad(
+      keys = keys,
+      onChar = onKey,
+      onDelete = onDelete,
+      modifier = Modifier.testTag(QuickAddTags.KEYPAD),
+      tagFor = { key ->
+        when (key) {
+          is KeypadKey.Char -> QuickAddTags.key(key.label)
+          is KeypadKey.Delete -> QuickAddTags.key("del")
+          else -> null
         }
-      }
-    }
-  }
+      },
+  )
   Spacer(Modifier.height(12.dp))
 }
 
@@ -979,6 +935,85 @@ private fun Chip(
     }
   }
 }
+
+/** «الاستحقاق»: today or a later day, from the calendar; «إزالة» clears it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss: () -> Unit) {
+  val today = LocalDate.now().atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli()
+  val state =
+      rememberDatePickerState(
+          initialSelectedDateMillis =
+              current
+                  ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                  ?.atStartOfDay()
+                  ?.toInstant(ZoneOffset.UTC)
+                  ?.toEpochMilli(),
+          selectableDates =
+              object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long) = utcTimeMillis >= today
+              },
+      )
+  val picked = state.selectedDateMillis
+  DatePickerDialog(
+      modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
+      onDismissRequest = onDismiss,
+      confirmButton = {
+        TextButton(
+            enabled = picked != null,
+            onClick = {
+              if (picked != null) {
+                onPick(Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate().toString())
+              }
+            },
+        ) {
+          Text(stringResource(R.string.quickadd_due_confirm))
+        }
+      },
+      dismissButton = {
+        Row {
+          if (current != null) {
+            TextButton(onClick = { onPick(null) }) {
+              Text(stringResource(R.string.quickadd_due_clear))
+            }
+          }
+          TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        }
+      },
+  ) {
+    DatePicker(state = state)
+  }
+}
+
+/** «البيان»: a line saying what the entry was for, kept with it in the ledger. */
+@Composable
+private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+  var text by remember { mutableStateOf(current) }
+  AlertDialog(
+      modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
+      onDismissRequest = onDismiss,
+      title = { Text(stringResource(R.string.quickadd_note), fontWeight = FontWeight.Bold) },
+      text = {
+        SadadTextField(
+            value = text,
+            onValueChange = { text = it.take(NOTE_MAX_CHARS) },
+            placeholder = stringResource(R.string.quickadd_note_hint),
+            modifier = Modifier.fillMaxWidth(),
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = { onSave(text.trim()) }) {
+          Text(stringResource(R.string.quickadd_note_save))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+      },
+  )
+}
+
+private const val NOTE_MAX_CHARS = 200
+private const val NOTE_CHIP_CHARS = 14
 
 /* ---------------------------------------------------------------- done */
 
@@ -1261,32 +1296,6 @@ private fun BackGlyph(color: Color) {
         Offset(this.size.width * 0.62f, this.size.height * 0.78f),
         stroke,
     )
-  }
-}
-
-@Composable
-private fun DeleteGlyph(color: Color) {
-  Canvas(Modifier.size(26.dp)) {
-    val stroke = this.size.minDimension * 0.08f
-    val left = this.size.width * 0.08f
-    val right = this.size.width * 0.92f
-    val top = this.size.height * 0.2f
-    val bottom = this.size.height * 0.8f
-    drawLine(color, Offset(right, top), Offset(left + this.size.width * 0.24f, top), stroke)
-    drawLine(
-        color,
-        Offset(left + this.size.width * 0.24f, top),
-        Offset(left, this.size.height * 0.5f),
-        stroke,
-    )
-    drawLine(
-        color,
-        Offset(left, this.size.height * 0.5f),
-        Offset(left + this.size.width * 0.24f, bottom),
-        stroke,
-    )
-    drawLine(color, Offset(left + this.size.width * 0.24f, bottom), Offset(right, bottom), stroke)
-    drawLine(color, Offset(right, bottom), Offset(right, top), stroke)
   }
 }
 
