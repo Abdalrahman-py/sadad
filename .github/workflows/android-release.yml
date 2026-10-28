@@ -75,7 +75,15 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          ./gradlew testReleaseUnitTest assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE"
+          # No testReleaseUnitTest here on purpose: the Compose test rules launch
+          # androidx.activity.ComponentActivity, and that activity reaches the merged manifest only
+          # through ui-test-manifest, which is debug-only precisely so it does not ship. Running the
+          # release variant's unit tests therefore cannot host a Compose test (116 of 532 fail with
+          # "Unable to resolve activity"), and adding the artifact to release would put a test
+          # activity in the production APK. The logic is covered by the `checks` job, which runs the
+          # whole suite on debug on this same commit; what this job verifies is the artifact itself
+          # (signature, badging, mapping, size, Baseline Profile).
+          ./gradlew assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE"
       - name: Fail when R8 reports missing classes
         run: |
           missing=app/build/outputs/mapping/release/missing_rules.txt
