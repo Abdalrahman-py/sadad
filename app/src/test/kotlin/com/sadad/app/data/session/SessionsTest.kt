@@ -14,6 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowSettings
 
 @RunWith(RobolectricTestRunner::class)
 class SessionsTest {
@@ -32,6 +33,36 @@ class SessionsTest {
       assertEquals(2, fixture.server.requestCount)
       assertEquals("refresh-b", fixture.graph.accounts.refreshToken(STORE_A))
     }
+  }
+
+  @Test
+  fun aReinstallOnTheSamePhoneKeepsTheInstallationId() = runTest {
+    // The hardware id survives an uninstall; a random UUID does not.
+    ShadowSettings.setAndroidId("device-android-id-1")
+
+    val first = TestGraph.unsigned()
+    val firstId =
+        try {
+          first.signIn(STORE_A)
+          checkNotNull(first.graph.accounts.account(STORE_A)).installationId
+        } finally {
+          first.close()
+        }
+
+    val second = TestGraph.unsigned()
+    val secondId =
+        try {
+          second.signIn(STORE_A)
+          checkNotNull(second.graph.accounts.account(STORE_A)).installationId
+        } finally {
+          second.close()
+        }
+
+    assertEquals(
+        "the same phone signing in again must present the installation it already approved",
+        firstId,
+        secondId,
+    )
   }
 
   @Test
