@@ -72,6 +72,10 @@ async function mockBackend(page: Page) {
     };
     const key = `${request.method()} ${path}`;
     switch (key) {
+      case "POST /v1/admin/session":
+        return route.fulfill({ json: { ok: true, claimed: true } });
+      case "DELETE /v1/admin/session":
+        return route.fulfill({ json: { ok: true, released: true } });
       case "GET /v1/admin/overview":
         return route.fulfill({ json: { ok: true, overview } });
       case "GET /v1/admin/stores":
@@ -195,4 +199,49 @@ test("refuses a store account at sign-in", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText(
     messages[refusals.notAdmin.code as keyof typeof messages],
   );
+});
+
+test("refuses a second sign-in while the account is open elsewhere", async ({ page }) => {
+  // Auth accepts the password; the api's lease refuses the seat, and no board is shown.
+  await page.route(`${SUPABASE_URL}/auth/v1/**`, (route) =>
+    route.fulfill({
+      json: {
+        access_token: JWT,
+        token_type: "bearer",
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_token: "refresh-token",
+        user: {
+          id: "6c1f0e4a-0000-4000-8000-000000000001",
+          aud: "authenticated",
+          app_metadata: { role: "admin" },
+          user_metadata: {},
+          created_at: "",
+        },
+      },
+    }),
+  );
+  const calls: string[] = [];
+  await page.route(`${API_BASE}/**`, (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/functions\/v1\/api/, "");
+    calls.push(`${request.method()} ${path}`);
+    return route.fulfill({
+      status: 409,
+      json: {
+        ok: false,
+        code: "session_in_use",
+        message: messages.session_in_use,
+      },
+    });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("البريد الإلكتروني").fill("admin@sadad.test");
+  await page.getByLabel("كلمة المرور").fill("correct horse battery");
+  await page.getByRole("button", { name: "دخول آمن" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(messages.session_in_use);
+  await expect(page.getByRole("heading", { level: 1, name: "المهام" })).toHaveCount(0);
+  expect(calls).toEqual(["POST /v1/admin/session"]);
 });

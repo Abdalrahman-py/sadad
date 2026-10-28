@@ -13,6 +13,7 @@ Git عند الوسم `pre-prune-2026-10`. حالة كل تذكرة في ملف�
 
 - **القطع السحابي منفَّذ (التذكرة 27، 24 أكتوبر):** وظيفة Edge الوحيدة `api` (نشرها سير عمل «Deploy Supabase schema and api» في 22 أكتوبر)، وسجل الترحيلات `20261015000000` (`baseline`) وحده، وفحص الصحة `/functions/v1/api/v1/health` يعيد `{"ok":true}`. التفاصيل في `docs/CHANGELOG.md`.
 - **المفاتيح:** مفتاح `sb_publishable_...` ومفتاح سري `default`؛ مفاتيح `anon` و`service_role` القديمة معطّلة؛ مفاتيح JWT بـES256؛ سر الوظيفة `SADAD_LEASE_PRIVATE_JWK`، ونصفه العام مثبّت في `app/build.gradle.kts`.
+- **جلسة الإدارة الواحدة:** جدول `admin_session_lease` ومساري `/v1/admin/session` ووسيط `sessionLease` في الشجرة ولم تُنشر بعد؛ ترتيب النشر `db push` ثم `functions deploy api` ثم Pages (`docs/adr/004-one-admin-session.md`).
 - **لوحة الإدارة:** أُعيد بناؤها على تصميم 25 أكتوبر (المهام · المتاجر · صفحة المتجر بسبعة تبويبات · إنشاء متجر · سجل الإدارة) في `server/public/`؛ المنشور على GitHub Pages (`https://abdalrahman-py.github.io/sadad/`) هو النسخة السابقة حتى يُدفع هذا التغيير. التفاصيل في `docs/CHANGELOG.md` (28 أكتوبر).
 - **فحص الدخان:** `tools/smoke-api.ts` أخضر على المشروع الحي بعد تعطيل المفاتيح القديمة (24 أكتوبر).
 - **التطبيق:** بناء الفريق المنشور `dev-24-d18af66-team` (`versionCode 64`) بواجهة إعادة التصميم، موقّع بشهادة اختبار الفريق (`Android Debug`)، وليس توقيع إنتاج.

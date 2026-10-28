@@ -12,7 +12,7 @@ import type {
   StoreAction,
   StoreRow,
 } from "./api";
-import { failure, messageOf } from "./errors";
+import { ApiFailure, failure, messageOf } from "./errors";
 import { fmt, integer } from "./format";
 import {
   type Actions,
@@ -70,6 +70,9 @@ const ACTION_TEXT: Record<StoreAction, { title: string; description: string }> =
 
 const NOTICE_MS = 6000;
 
+/** How often an open board renews its seat; the api frees a silent one after ten minutes. */
+const HEARTBEAT_MS = 60_000;
+
 const emptyRecovery = (): RecoveryState => ({
   oldId: "",
   newId: "",
@@ -116,6 +119,7 @@ export function parseHash(hash: string): Route {
 export class Controller implements Actions {
   model: Model = initialModel();
   private channels = new Map<string, AbortController>();
+  private heartbeat: number | null = null;
   /** Set while a dialog is being opened, so focus lands in its first field. */
   private focusDialog = false;
 
@@ -179,7 +183,11 @@ export class Controller implements Actions {
     const caller = await this.session.current().catch(() => null);
     if (!caller) return this.set({ booting: false });
     try {
-      this.set({ booting: false, caller: checkCaller(caller) });
+      checkCaller(caller);
+      // A reload keeps the tab's session; the account may still have been opened elsewhere.
+      await this.api.claimSession();
+      this.set({ booting: false, caller });
+      this.startHeartbeat();
       this.applyRoute();
       this.loadAll();
     } catch (error) {
@@ -192,7 +200,10 @@ export class Controller implements Actions {
     this.set({ signIn: { error: "", busy: true } });
     try {
       const caller = checkCaller(await this.session.signIn(email, password));
+      // One account, one session: the api refuses a second one with session_in_use.
+      await this.api.claimSession();
       this.set({ caller, signIn: { error: "", busy: false } });
+      this.startHeartbeat();
       this.applyRoute();
       this.loadAll();
     } catch (error) {
@@ -203,6 +214,9 @@ export class Controller implements Actions {
 
   signOut = async () => {
     this.abortAll();
+    this.stopHeartbeat();
+    // Release first: the lease needs the JWT this tab still holds.
+    await this.api.releaseSession().catch(() => undefined);
     await this.session.signOut();
     this.model = { ...initialModel(), booting: false };
     this.render();
@@ -212,11 +226,42 @@ export class Controller implements Actions {
   unauthorized = () => {
     if (!this.model.caller) return;
     this.abortAll();
+    this.stopHeartbeat();
     void this.session.signOut();
     this.model = {
       ...initialModel(),
       booting: false,
       signIn: { error: failure("authorization_required").message, busy: false },
+    };
+    this.render();
+  };
+
+  /** Renews the seat while the board is open; a board left alone frees it after ten minutes. */
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeat = window.setInterval(() => {
+      void this.api.claimSession().catch((error: unknown) => {
+        if (error instanceof ApiFailure && error.code === "session_in_use") this.sessionTaken();
+      });
+    }, HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeat === null) return;
+    window.clearInterval(this.heartbeat);
+    this.heartbeat = null;
+  }
+
+  /** The account was signed in somewhere else, so this board signs out and says why. */
+  private sessionTaken = () => {
+    if (!this.model.caller) return;
+    this.abortAll();
+    this.stopHeartbeat();
+    void this.session.signOut();
+    this.model = {
+      ...initialModel(),
+      booting: false,
+      signIn: { error: failure("session_in_use").message, busy: false },
     };
     this.render();
   };

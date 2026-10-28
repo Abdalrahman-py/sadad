@@ -60,13 +60,18 @@ export class TestDatabase {
   static async create(): Promise<TestDatabase> {
     const db = new PGlite();
     const dir = new URL("../../migrations/", import.meta.url);
-    let baseline = "";
+    // Every migration in order, as production is built: the frozen baseline first, then each
+    // later file. Skipping them would let a route call a routine the deployed schema has.
+    const files: string[] = [];
     for await (const entry of Deno.readDir(dir)) {
-      if (entry.name.endsWith("_baseline.sql")) {
-        baseline = await Deno.readTextFile(new URL(entry.name, dir));
-      }
+      if (entry.name.endsWith(".sql")) files.push(entry.name);
     }
-    await db.exec(AUTH_STUB + baseline);
+    files.sort();
+    let sql = AUTH_STUB;
+    for (const file of files) {
+      sql += await Deno.readTextFile(new URL(file, dir));
+    }
+    await db.exec(sql);
     return new TestDatabase(db);
   }
 

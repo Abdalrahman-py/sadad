@@ -163,6 +163,10 @@ export function createApi(options: ApiOptions) {
           signal,
         }),
       ).then((r) => r.ledger),
+    /** Claims the account for this Auth session, or renews it; another browser gets 409. */
+    claimSession: () => unwrap(client.POST("/v1/admin/session")),
+    /** Frees the account at sign-out so the next browser can sign in at once. */
+    releaseSession: () => unwrap(client.DELETE("/v1/admin/session")),
     audit: (
       query: { source: AuditSource; storeId?: number; q?: string; cursor?: string },
       signal?: AbortSignal,
