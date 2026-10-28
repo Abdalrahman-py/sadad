@@ -251,19 +251,22 @@ dbTest(
     ]);
 
     const calls = h.authAdmin.calls.length;
-    for (
-      const [method, path, body] of [
-        ["PATCH", "", { name: "بواسطة جلسة ميتة" }],
-        ["POST", "/password", {}],
-        ["DELETE", `?confirm=${store.username}`, undefined],
-      ] as const
-    ) {
+    const attempts: {
+      method: "PATCH" | "POST" | "DELETE";
+      path: string;
+      body?: unknown;
+    }[] = [
+      { method: "PATCH", path: "", body: { name: "بواسطة جلسة ميتة" } },
+      { method: "POST", path: "/password", body: {} },
+      { method: "DELETE", path: `?confirm=${store.username}` },
+    ];
+    for (const attempt of attempts) {
       await assertRefusal(
         await h.send(
           dead.jwt,
-          method,
-          `/admin/stores/${store.storeId}${path}`,
-          body,
+          attempt.method,
+          `/admin/stores/${store.storeId}${attempt.path}`,
+          attempt.body,
         ),
         refusals.notAdmin,
       );
