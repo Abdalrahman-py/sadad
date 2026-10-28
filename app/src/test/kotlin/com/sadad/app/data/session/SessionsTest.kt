@@ -1,5 +1,8 @@
 package com.sadad.app.data.session
 
+import android.content.Context
+import android.provider.Settings
+import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.AwaitingApproval
@@ -14,7 +17,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.shadows.ShadowSettings
 
 @RunWith(RobolectricTestRunner::class)
 class SessionsTest {
@@ -38,7 +40,12 @@ class SessionsTest {
   @Test
   fun aReinstallOnTheSamePhoneKeepsTheInstallationId() = runTest {
     // The hardware id survives an uninstall; a random UUID does not.
-    ShadowSettings.setAndroidId("device-android-id-1")
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    Settings.Secure.putString(
+        context.contentResolver,
+        Settings.Secure.ANDROID_ID,
+        "device-android-id-1",
+    )
 
     val first = TestGraph.unsigned()
     val firstId =

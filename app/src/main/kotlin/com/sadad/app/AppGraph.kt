@@ -73,11 +73,7 @@ internal constructor(
       Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
     },
     /** Stable across a reinstall of the same signing key; see DeviceIdentity. */
-    private val deviceSeed: () -> String? = {
-      runCatching {
-        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-      }.getOrNull()
-    },
+    private val deviceSeed: () -> String? = { androidId(context) },
 ) : SessionHost {
   val errorMessages: ErrorMessages by lazy { ErrorMessages(context) }
 
@@ -304,3 +300,11 @@ internal constructor(
     }
   }
 }
+
+/**
+ * The device value that survives a reinstall of the same signing key. `ANDROID_ID` is stable per
+ * app-signing key + user since Android 8; a device that withholds it falls back to a random id.
+ */
+private fun androidId(context: Context): String? =
+    runCatching { Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) }
+        .getOrNull()
