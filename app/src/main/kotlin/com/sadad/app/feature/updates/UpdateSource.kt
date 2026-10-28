@@ -96,7 +96,7 @@ internal class UpdateSource(
 
   /** The release's asset ids by name; null when the listing itself cannot be read. */
   private suspend fun assets(): Map<String, Long>? =
-      text(apiUrlFor("releases/tags/${channel.release}"), JSON_ACCEPT)?.let(::assetsOf)
+      text(apiUrlFor(channel.releaseApiPath()), JSON_ACCEPT)?.let(::assetsOf)
 
   private suspend fun assetIdOf(name: String): Long? = assets()?.get(name)
 
