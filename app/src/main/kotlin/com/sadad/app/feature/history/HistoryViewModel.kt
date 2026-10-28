@@ -147,6 +147,9 @@ class HistoryViewModel(
   }
 
   /** Writes the whole statement for the chosen period to [uri], in the format the user picked. */
+  /** The export's toast was shown: clear its result so it does not come back. */
+  fun dismissExportResult() = export.update { it.copy(saved = false, error = null) }
+
   fun saveStatement(context: Context, uri: Uri, format: StatementFormat) {
     val view = currentView
     if (view == null) {
@@ -154,7 +157,13 @@ class HistoryViewModel(
       return
     }
     if (export.value.busy) return
-    export.update { it.copy(busy = true, error = null) }
+    if (view.contacts.isEmpty()) {
+      export.update {
+        it.copy(saved = false, error = context.getString(R.string.history_export_empty))
+      }
+      return
+    }
+    export.update { it.copy(busy = true, saved = false, error = null) }
     val account = graph.current.value?.account
     val header =
         StatementHeader(

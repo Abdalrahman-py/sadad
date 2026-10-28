@@ -17,6 +17,27 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class SyncWorkerTest {
   @Test
+  fun aPermanentRefusalIsNotRetried() = runTest {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val factory =
+        object : WorkerFactory() {
+          override fun createWorker(
+              context: Context,
+              workerClassName: String,
+              workerParameters: WorkerParameters,
+          ): ListenableWorker =
+              SyncWorker(context, workerParameters) { SyncStatus.Failed("invalid_input") }
+        }
+    val worker =
+        TestListenableWorkerBuilder<SyncWorker>(context)
+            .setInputData(workDataOf(SyncWorker.STORE_USER_ID to STORE_A))
+            .setWorkerFactory(factory)
+            .build()
+
+    assertEquals(ListenableWorker.Result.failure(), worker.doWork())
+  }
+
+  @Test
   fun workerRetriesTransientStatusesAndFinishesStableStatuses() = runTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     for (status in

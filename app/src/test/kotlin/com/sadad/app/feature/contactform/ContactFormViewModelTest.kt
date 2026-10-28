@@ -146,6 +146,24 @@ class ContactFormViewModelTest {
   }
 
   @Test
+  fun aSupplierOpeningBalanceIsQueuedPayable() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+      model.onNameChange("مخبز الأمل")
+      model.onKindChange(ContactKind.SUPPLIER)
+      model.onFirstDebtChange(true)
+      model.onDebtAmountChange("100")
+
+      model.save()
+      model.confirm()
+      model.state.first { it.savedContactId != null }
+
+      val debt = fixture.rows().single { it.type == CommandType.DEBT_CREATE }
+      assertEquals(Direction.PAYABLE, (debt.command.payload() as DebtCreate).direction)
+    }
+  }
+
+  @Test
   fun aZeroFirstDebtIsRefused() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = fixture.model()

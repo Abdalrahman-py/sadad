@@ -70,6 +70,9 @@ android {
       providers
           .gradleProperty("SADAD_SUPABASE_PUBLISHABLE_KEY")
           .getOrElse("sb_publishable_dK7HuYY8TbO8ZiBPbOZ2cw_1ZRL_chh")
+  // Where the app reads `update.json` from: owner/repo, so a fork changes one property and keeps
+  // the releases, the checksums and the signing key it publishes with.
+  val updateRepo = providers.gradleProperty("SADAD_UPDATE_REPO").getOrElse("Abdalrahman-py/sadad")
   compileSdk {
     version = release(37)
   }
@@ -88,6 +91,7 @@ android {
     buildConfigField("String", "LEASE_PUBLIC_KEY_X", quoted(leaseKeyX))
     buildConfigField("String", "LEASE_PUBLIC_KEY_Y", quoted(leaseKeyY))
     buildConfigField("String", "SENTRY_DSN", quoted(sentryDsn))
+    buildConfigField("String", "UPDATE_REPO", quoted(updateRepo))
     manifestPlaceholders["allowCleartextTraffic"] = "false"
   }
   signingConfigs {

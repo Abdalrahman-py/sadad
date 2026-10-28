@@ -1,0 +1,50 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "clipped-overflow-container",
+        "value": "*",
+        "files": [
+          ".scratch/ux-redesign/canvas/project/Home.dc.html"
+        ],
+        "createdAt": "2026-10-25T08:22:54.271Z",
+        "reason": "Claude: phone-frame root clips on purpose (390x844 device mockup); bell badge sits inside header, not clipped"
+      },
+      {
+        "rule": "overused-font",
+        "value": "roboto",
+        "createdAt": "2026-10-25T08:36:07.443Z",
+        "reason": "Claude: Sadad's ui spec.md mandates the Android system face (Roboto + Noto Arabic), no web font"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".scratch/ux-redesign/canvas/project/Home.dc.html"
+        ],
+        "createdAt": "2026-10-25T08:36:07.456Z",
+        "reason": "Claude: grouped-list card; each row carries its own 12-14px inset or 52-56px centred height"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".scratch/ux-redesign/canvas/project/Store.dc.html"
+        ],
+        "createdAt": "2026-10-25T08:36:07.472Z",
+        "reason": "Claude: grouped-list card; each row carries its own 12-14px inset or 52-56px centred height"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".scratch/ux-redesign/canvas/project/Recovery.dc.html"
+        ],
+        "createdAt": "2026-10-25T08:36:07.499Z",
+        "reason": "Claude: grouped-list card; each row carries its own 12-14px inset or 52-56px centred height"
+      }
+    ]
+  }
+}

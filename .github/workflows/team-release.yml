@@ -70,6 +70,9 @@ jobs:
           set -euo pipefail
           version="dev-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
           echo "SADAD_TEAM_VERSION=$version" >> "$GITHUB_ENV"
+          # The app orders updates by versionCode alone, so it has to be in the environment for the
+          # update manifest as well as in the build.
+          echo "SADAD_VERSION_CODE=$((40 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
           ./gradlew :app:assembleTeam --console=plain \
             -PSADAD_VERSION_NAME="$version" \
             -PSADAD_VERSION_CODE="$((40 + GITHUB_RUN_NUMBER))"
@@ -120,6 +123,27 @@ jobs:
 
           **قبل التثبيت:** هذا بناء تجريبي بحزمة \`com.sadad.app.debug\`، يُثبّت بجانب التطبيق الرسمي ولا يمسّ بياناته، ويظهر بأيقونة «سدد» ثانية. يتصل بمشروع الإنتاج، فاستخدم متجر اختبار. لا تُثبّت فوقه إصدارًا قديمًا: كل بناء يوقّعه المفتاح نفسه، فيُحدَّث من التطبيق مباشرة.
           NOTES
+      - name: Write the update manifest
+        run: |
+          set -euo pipefail
+          apk=team/Sadad-team.apk
+          sha=$(cut -d' ' -f1 team/SHA256SUMS)
+          size=$(stat -c%s "$apk")
+          # What the installed app reads to learn there is a newer build: `releases/download/
+          # team-latest/update.json`. No GitHub API call, so no rate limit.
+          cat > team/update.json <<JSON
+          {
+            "channel": "team",
+            "versionCode": $SADAD_VERSION_CODE,
+            "versionName": "$SADAD_TEAM_VERSION-team",
+            "apk": "Sadad-team.apk",
+            "sha256": "$sha",
+            "sizeBytes": $size,
+            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "notes": "أحدث بناء من فرع dev: الإصدار $SADAD_TEAM_VERSION-team."
+          }
+          JSON
+          python3 -c 'import json,sys; json.load(open(sys.argv[1]))' team/update.json
       - name: Publish to the team prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,8 +154,31 @@ jobs:
               --title 'سدد — أحدث بناء للفريق (dev)' \
               --notes-file "$RUNNER_TEMP/notes.md"
           fi
-          gh release upload team-latest team/Sadad-team.apk team/SHA256SUMS team/BUILD.txt --clobber
+          gh release upload team-latest team/Sadad-team.apk team/SHA256SUMS team/BUILD.txt team/update.json --clobber
           gh release edit team-latest --notes-file "$RUNNER_TEMP/notes.md"
+      - name: Prove the published manifest is served
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/team-latest/update.json"
+          # `releases/download/<tag>/<file>` answers 404 for a release that is there — seen on
+          # 26 October 2026 for minutes at a time, on every asset of the release, while the release
+          # page, the API and the asset-by-id endpoint all stayed up. A release the app cannot read
+          # is a failed publish, so wait for the CDN to agree and fail the run if it never does.
+          served=""
+          for attempt in $(seq 1 20); do
+            body=$(curl -fsSL --max-time 20 "$url" || true)
+            served=$(printf '%s' "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("versionCode",""))' 2>/dev/null || true)
+            if [ "$served" = "$SADAD_VERSION_CODE" ]; then
+              echo "served versionCode $served on attempt $attempt"
+              exit 0
+            fi
+            echo "attempt $attempt: served '${served}', wanted $SADAD_VERSION_CODE"
+            sleep 15
+          done
+          echo "::error::$url did not serve versionCode $SADAD_VERSION_CODE"
+          exit 1
       - name: Remove the signing key
         if: always()
         run: rm -f "$TEAM_KEYSTORE_FILE"

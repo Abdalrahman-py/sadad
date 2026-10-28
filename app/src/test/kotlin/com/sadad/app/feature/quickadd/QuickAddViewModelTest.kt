@@ -2,6 +2,7 @@ package com.sadad.app.feature.quickadd
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
@@ -13,8 +14,8 @@ import com.sadad.ledger.ContactKind
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentCreate
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,7 +42,7 @@ class QuickAddViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
       val store = checkNotNull(fixture.graph.current.value)
-      val model = fixture.model()
+      val model = fixture.model(undoWindowMs = 1_000)
 
       model.state.first { it.loaded }
       model.onQueryChange("خالد")
@@ -62,7 +63,6 @@ class QuickAddViewModelTest {
       assertEquals("سجّل ₪85 على خالد", model.state.value.done?.sentence)
       assertTrue("the undo window holds the command", store.outbox.snapshot().isEmpty())
 
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS + 1)
       store.awaitOutbox(1)
 
       val row = store.outbox.snapshot().single()
@@ -71,6 +71,45 @@ class QuickAddViewModelTest {
       assertEquals(Direction.RECEIVABLE, payload.direction)
       assertEquals(Cents(8_500), payload.amountCents)
       assertEquals(contact, payload.contactId)
+    }
+  }
+
+  @Test
+  fun thePickerShowsOnlyTheMatches() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.settledContact("خالد")
+      fixture.settledContact("سارة")
+      fixture.settledContact("سامي")
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.size == 3 }
+
+      model.onQueryChange("سار")
+
+      assertEquals(listOf("سارة"), model.state.value.people.map { it.name })
+      assertEquals(
+          "the count is the rendered list, not a second number",
+          1,
+          model.state.value.people.size,
+      )
+
+      model.clearQuery()
+      assertEquals(3, model.state.value.people.size)
+    }
+  }
+
+  @Test
+  fun openingTheFlowForAContactSelectsThemAndStartsAtTheAmount() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val model =
+          QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val state = model.state.first { it.loaded }
+
+      assertEquals(contact, state.selected?.id)
+      assertEquals(QuickAddStep.AMOUNT, state.step)
+      assertEquals("خالد", state.personName)
     }
   }
 
@@ -87,7 +126,7 @@ class QuickAddViewModelTest {
       model.save(context)
 
       model.undo(context)
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS * 2)
+      Thread.sleep(600)
 
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
       assertEquals("85", model.state.value.amount)
@@ -108,7 +147,6 @@ class QuickAddViewModelTest {
       model.press("0")
       assertEquals("سجّل ₪300 لمخبز الأمل", model.sentence(context))
       model.save(context)
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS + 1)
       store.awaitOutbox(1)
 
       val payload = store.outbox.snapshot().single().command.payload() as DebtCreate
@@ -133,13 +171,41 @@ class QuickAddViewModelTest {
       model.press("0")
       assertEquals("سجّل دفعة ₪120 من خالد", model.sentence(context))
       model.save(context)
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS + 1)
       store.awaitOutbox(2)
 
       val payloads = store.outbox.snapshot().map { it.command.payload() as PaymentCreate }
       assertEquals(listOf(older, newer), payloads.map { it.debtId })
       assertEquals(listOf(Cents(10_000), Cents(2_000)), payloads.map { it.amountCents })
       assertEquals(CommandType.PAYMENT_CREATE, store.outbox.snapshot().first().type)
+    }
+  }
+
+  @Test
+  fun aSupplierPaymentSavesAgainstThePayableBalance() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val supplier = fixture.settledContact("مخبز الأمل", kind = ContactKind.SUPPLIER)
+      val debt = fixture.openDebt(supplier, 10_000, Direction.PAYABLE)
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.isNotEmpty() }
+      model.pick(supplier)
+      model.toPayment()
+      model.state.first { it.overBalance == Cents(10_000) }
+
+      model.press("1")
+      model.press("0")
+      model.press("0")
+
+      val state = model.state.value
+      assertEquals(Cents(10_000), state.overBalance)
+      assertTrue("a supplier payment inside the payable balance can be saved", state.canSave)
+
+      model.save(context)
+      store.awaitOutbox(1)
+
+      val payload = store.outbox.snapshot().single().command.payload() as PaymentCreate
+      assertEquals(debt, payload.debtId)
+      assertEquals(Cents(10_000), payload.amountCents)
     }
   }
 
@@ -164,7 +230,7 @@ class QuickAddViewModelTest {
       assertFalse("a payment over the balance cannot be saved", state.canSave)
       model.save(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS * 2)
+      Thread.sleep(600)
       assertTrue(store.outbox.snapshot().isEmpty())
     }
   }
@@ -192,7 +258,7 @@ class QuickAddViewModelTest {
       // The 4,999.99 entry was recorded when «تسجيل آخر» left the done step; the 5,000 one is
       // still waiting for its confirmation and adds nothing.
       store.awaitOutbox(1)
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS * 2)
+      Thread.sleep(600)
       assertEquals(1, store.outbox.snapshot().size)
     }
   }
@@ -214,7 +280,6 @@ class QuickAddViewModelTest {
       model.press("7")
       model.press("5")
       model.save(context)
-      advanceTimeBy(QuickAddViewModel.UNDO_WINDOW_MS + 1)
       store.awaitOutbox(2)
 
       val rows = store.outbox.snapshot()
@@ -235,7 +300,8 @@ class QuickAddViewModelTest {
     TestGraph.signedIn().use { fixture ->
       fixture.settledContact("سارة", phone = "+970599335640")
       val model = fixture.model()
-      model.state.first { it.loaded }
+      // duplicateFor reads the projected people, so wait for them, not only for loaded.
+      model.state.first { it.loaded && it.people.isNotEmpty() }
 
       model.startNewPerson()
       model.onNewName("سارة محمود")
@@ -277,6 +343,169 @@ class QuickAddViewModelTest {
     }
   }
 
+  @Test
+  fun aDebtCarriesTheDueDateAndNoteTheChipsSet() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.onDueDateChange("2026-11-01")
+      model.onNoteChange("بضاعة")
+      model.press("4")
+      model.press("0")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      val payload = store.outbox.snapshot().single().command.payload() as DebtCreate
+      assertEquals("2026-11-01", payload.dueDate)
+      assertEquals("بضاعة", payload.note)
+    }
+  }
+
+  @Test
+  fun undoAfterTheWindowCannotQueueTheSameEntryTwice() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.press("7")
+      model.press("5")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      // The window has ended: the entry is queued and «تراجع 0» must not re-arm it.
+      model.undo(context)
+      model.save(context)
+      Thread.sleep(300)
+
+      assertEquals(1, store.outbox.snapshot().size)
+    }
+  }
+
+  @Test
+  fun aWayOutOfTheDoneStepQueuesTheEntryNow() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      // Longer than the test will wait, so only leave() can have queued the row.
+      val model = fixture.model(undoWindowMs = 5_000)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.press("4")
+      model.press("0")
+      model.save(context)
+      assertEquals(QuickAddStep.DONE, model.state.value.step)
+
+      // System back, «الرئيسية», «فتح الشخص»: every way out goes through leave().
+      model.leave(context)
+      store.awaitOutbox(1)
+
+      assertEquals(CommandType.DEBT_CREATE, store.outbox.snapshot().single().type)
+    }
+  }
+
+  @Test
+  fun theEntrySurvivesTheLockTeardownInsideTheUndoWindow() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 300)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.press("6")
+      model.press("5")
+      model.save(context)
+      assertEquals(QuickAddStep.DONE, model.state.value.step)
+
+      // What LockGate does when it swaps content() for UnlockScreen: the NavHost leaves
+      // composition and its NavBackStackEntry ViewModelStore is cleared. feature/lock belongs to
+      // #111 (ticket 87), so this drives the teardown the lock performs, not the lock itself.
+      model.viewModelScope.cancel()
+      Thread.sleep(1_000)
+
+      val row = store.outbox.snapshot().single()
+      assertEquals(CommandType.DEBT_CREATE, row.type)
+      val payload = row.command.payload() as DebtCreate
+      assertEquals(contact, payload.contactId)
+      assertEquals(Cents(6_500), payload.amountCents)
+    }
+  }
+
+  @Test
+  fun aHeldNewPersonDoesNotTurnTheNextPaymentIntoADebt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val debt = fixture.openDebt(contact, 10_000)
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 300)
+      model.state.first { it.loaded }
+
+      // «زبون جديد» → change your mind → pick somebody else → «دفع».
+      model.onQueryChange("سامي")
+      model.startNewPerson()
+      model.onNewName("سامي")
+      model.createPerson()
+      model.backToPicker()
+      // The query is still the new name; the picker shows the matches, so clear it to pick خالد.
+      model.clearQuery()
+      model.pick(contact)
+      model.toPayment()
+      model.press("1")
+      model.press("0")
+      model.press("0")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      val row = store.outbox.snapshot().single()
+      assertEquals(
+          "the mode on screen decides, not the dropped contact",
+          CommandType.PAYMENT_CREATE,
+          row.type,
+      )
+      assertEquals(debt, (row.command.payload() as PaymentCreate).debtId)
+    }
+  }
+
+  @Test
+  fun undoAfterANewPersonKeepsTheContactWithTheNextSave() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 300)
+      model.state.first { it.loaded }
+
+      model.startNewPerson()
+      model.onNewName("سامي")
+      model.createPerson()
+      model.press("5")
+      model.press("0")
+      model.press("0")
+      model.save(context)
+      assertEquals(QuickAddStep.DONE, model.state.value.step)
+
+      model.undo(context)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+
+      // The second save must rebuild the pair, not a debt for a contact that was never created.
+      model.save(context)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      assertEquals(
+          "the debt names the contact that carries it",
+          listOf(rows.first().operationId),
+          rows.last().command.dependsOn,
+      )
+    }
+  }
+
   private suspend fun TestGraph.settledContact(
       name: String,
       phone: String? = null,
@@ -288,10 +517,14 @@ class QuickAddViewModelTest {
           .getOrThrow()
           .also { settleAll() }
 
-  private suspend fun TestGraph.openDebt(contactId: String, cents: Long): String =
+  private suspend fun TestGraph.openDebt(
+      contactId: String,
+      cents: Long,
+      direction: Direction = Direction.RECEIVABLE,
+  ): String =
       checkNotNull(graph.current.value)
           .repository
-          .addDebt(contactId, Direction.RECEIVABLE, Cents(cents), null, null)
+          .addDebt(contactId, direction, Cents(cents), null, null)
           .getOrThrow()
           .also { settleAll() }
 
@@ -303,14 +536,20 @@ class QuickAddViewModelTest {
     }
   }
 
-  private fun TestGraph.model(): QuickAddViewModel =
-      QuickAddViewModel(graph, null, false, SavedStateHandle())
+  /**
+   * Short, real windows: the commit runs on the store's scope, not the test dispatcher's clock. The
+   * screen's scope is registered with the fixture so no collector outlives the database.
+   */
+  private fun TestGraph.model(undoWindowMs: Long = 300): QuickAddViewModel =
+      QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs).also {
+        closeWithStore(it.viewModelScope)
+      }
 
   /** The outbox is written from another coroutine; polling keeps the assertion about the row. */
   private suspend fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {
     val deadline = System.currentTimeMillis() + 5_000
     while (outbox.snapshot().size < count && System.currentTimeMillis() < deadline) {
-      kotlinx.coroutines.delay(10)
+      Thread.sleep(10)
     }
     assertEquals(count, outbox.snapshot().size)
   }

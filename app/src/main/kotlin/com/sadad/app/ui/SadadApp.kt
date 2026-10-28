@@ -24,9 +24,11 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -70,7 +72,6 @@ import androidx.navigation.toRoute
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.activity.ActivityScreen
-import com.sadad.app.feature.activity.OperationsLogScreen
 import com.sadad.app.feature.auth.AwaitingApprovalScreen
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.PasswordChangeScreen
@@ -85,6 +86,9 @@ import com.sadad.app.feature.quickadd.QuickAddScreen
 import com.sadad.app.feature.recovery.RecoveryScreen
 import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.feature.trash.TrashScreen
+import com.sadad.app.feature.updates.AppUpdateScreen
+import com.sadad.app.feature.updates.UpdateCenter
+import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.app.ui.theme.sadadPalette
@@ -105,7 +109,13 @@ fun SadadApp(
       // Arabic-first, so the shell mirrors like the Java app did, whatever the device locale.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         SadadShell(navController, startDestination, syncDot) {
-          composable<Login> { LoginScreen(onNavigate = navController::navigateAuth) }
+          composable<Login> {
+            LoginScreen(
+                onNavigate = navController::navigateAuth,
+                // Adding a store from the Store tab keeps that tab underneath, so back returns.
+                onBack = if (navController.previousBackStackEntry != null) back else null,
+            )
+          }
           composable<PasswordChange> {
             PasswordChangeScreen(onNavigate = navController::navigateAuth)
           }
@@ -129,7 +139,10 @@ fun SadadApp(
             )
           }
           composable<People> {
-            PeopleScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
+            PeopleScreen(
+                onOpenContact = { navController.navigate(ContactDetail(it)) },
+                onAdd = { navController.navigate(ContactForm()) },
+            )
           }
           composable<ContactDetail> {
             val contactId = it.toRoute<ContactDetail>().contactId
@@ -141,7 +154,25 @@ fun SadadApp(
                 onEdit = { navController.navigate(ContactForm(contactId)) },
             )
           }
-          composable<ContactForm> { ContactFormScreen(it.toRoute<ContactForm>().contactId) }
+          composable<ContactForm> {
+            val editing = it.toRoute<ContactForm>().contactId
+            ContactFormScreen(
+                contactId = editing,
+                onBack = back,
+                onOpenContact = { id ->
+                  if (editing != null) {
+                    // Editing came from that person's page: saving goes back to it.
+                    back()
+                  } else {
+                    // A new person: the form is replaced by their page, back from it is the list.
+                    navController.navigate(ContactDetail(id)) {
+                      popUpTo<ContactForm> { inclusive = true }
+                      launchSingleTop = true
+                    }
+                  }
+                },
+            )
+          }
           composable<QuickAdd> {
             val route = it.toRoute<QuickAdd>()
             QuickAddScreen(
@@ -161,24 +192,65 @@ fun SadadApp(
           composable<Activity> {
             ActivityScreen(onOpenContact = { navController.navigate(ContactDetail(it)) })
           }
-          composable<OperationsLog> { OperationsLogScreen(onBack = back) }
           composable<Store> {
             StoreScreen(
                 onOpenTrash = { navController.navigate(Trash) },
                 onOpenRecovery = { navController.navigate(Recovery) },
                 onChangePassword = { navController.navigate(PasswordChange) },
-                onAddStore = { navController.navigateAuth(Login) },
+                // Not navigateAuth: that empties the stack, and adding a store can be cancelled.
+                onAddStore = { navController.navigate(Login) { launchSingleTop = true } },
                 onNeedsLogin = { navController.navigateAuth(Login) },
-                onOpenOperationsLog = { navController.navigate(OperationsLog) },
+                onOpenUpdates = { navController.navigate(AppUpdate) { launchSingleTop = true } },
             )
           }
           composable<Notifications> { NotificationsScreen(onBack = back) }
           composable<Trash> { TrashScreen(onBack = back) }
           composable<Recovery> { RecoveryScreen(onBack = back) }
+          composable<AppUpdate> { AppUpdateScreen(onBack = back) }
+        }
+        // Only on the home tab: a release never interrupts someone in the middle of an entry.
+        val onHome =
+            navController.currentBackStackEntryAsState().value?.destination?.hasRoute<Home>() ==
+                true
+        if (onHome) {
+          UpdatePrompt(onOpen = { navController.navigate(AppUpdate) { launchSingleTop = true } })
         }
       }
     }
   }
+}
+
+/**
+ * «تحديث سداد» at app start, as Seal and Mihon do — but «لاحقاً» only silences it for a week, and
+ * the settings row keeps the release in view until it is installed.
+ */
+@Composable
+private fun UpdatePrompt(onOpen: () -> Unit) {
+  val context = LocalContext.current
+  val center = remember(context) { UpdateCenter.get(context.applicationContext) }
+  val state by center.state.collectAsStateWithLifecycle()
+  val manifest = state.manifest
+  if (manifest == null || !state.prompts || state.phase != UpdateState.Phase.AVAILABLE) return
+  AlertDialog(
+      onDismissRequest = center::snooze,
+      title = { Text(stringResource(R.string.updates_prompt_title)) },
+      text = { Text(stringResource(R.string.updates_prompt_text, manifest.versionName)) },
+      confirmButton = {
+        TextButton(
+            onClick = {
+              center.dismissPrompt()
+              onOpen()
+            }
+        ) {
+          Text(stringResource(R.string.updates_prompt_open))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = center::snooze) {
+          Text(stringResource(R.string.updates_later))
+        }
+      },
+  )
 }
 
 /**
@@ -211,9 +283,11 @@ internal fun SadadShell(
   }
 }
 
-/** The four tabs and the contact page show the bar; quick add, forms and sub-pages hide it. */
-private val WITH_BAR =
-    listOf(Home::class, People::class, ContactDetail::class, Activity::class, Store::class)
+/**
+ * The four tabs show the bar; the contact page has its own sticky record buttons instead (the
+ * Contact board), and quick add, forms and sub-pages hide it.
+ */
+private val WITH_BAR = listOf(Home::class, People::class, Activity::class, Store::class)
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -230,9 +304,7 @@ private fun activeTab(destination: NavDestination?): Tab =
     when {
       destination.isAny(listOf(People::class, ContactDetail::class)) -> Tab.PEOPLE
       destination.isAny(listOf(Activity::class)) -> Tab.ACTIVITY
-      destination.isAny(
-          listOf(Store::class, OperationsLog::class, Trash::class, Recovery::class)
-      ) -> Tab.STORE
+      destination.isAny(listOf(Store::class, Trash::class, Recovery::class)) -> Tab.STORE
       else -> Tab.HOME
     }
 
@@ -309,6 +381,7 @@ private fun RowScope.TabItem(
             SyncDot.NONE -> labelRes
             SyncDot.PENDING -> R.string.nav_store_pending
             SyncDot.OFFLINE -> R.string.nav_store_offline
+            SyncDot.STUCK -> R.string.nav_store_stuck
           }
       )
   Column(
@@ -334,7 +407,8 @@ private fun RowScope.TabItem(
                 .absoluteOffset(x = 10.dp, y = 3.dp)
                 .size(10.dp)
                 .background(
-                    if (syncDot == SyncDot.OFFLINE) OFFLINE_RED else PENDING_AMBER,
+                    if (syncDot == SyncDot.OFFLINE || syncDot == SyncDot.STUCK) OFFLINE_RED
+                    else PENDING_AMBER,
                     CircleShape,
                 )
                 .border(2.dp, p.surface, CircleShape)

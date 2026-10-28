@@ -1,8 +1,5 @@
 package com.sadad.app.feature.contactform
 
-import android.content.Context
-import android.content.Intent
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,39 +33,49 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.sadad.app.MainActivity
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
-import com.sadad.app.feature.notifications.DueReminderWorker
+import com.sadad.app.ui.components.Chip
+import com.sadad.app.ui.components.ChipFlow
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadChoiceField
 import com.sadad.app.ui.components.SadadField
 import com.sadad.app.ui.components.SadadPageHeading
+import com.sadad.app.ui.components.SadadSegments
 import com.sadad.app.ui.components.SadadSwitchRow
 import com.sadad.app.ui.components.VoiceDraftButton
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseDueDate
+import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.ContactKind
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun ContactFormScreen(contactId: String?, modifier: Modifier = Modifier) {
-  ContactFormScreen(contactFormViewModel(contactId), modifier)
+fun ContactFormScreen(
+    contactId: String?,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    onOpenContact: (String) -> Unit = {},
+) {
+  ContactFormScreen(contactFormViewModel(contactId), modifier, onBack, onOpenContact)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modifier) {
+fun ContactFormScreen(
+    viewModel: ContactFormViewModel,
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
+    onOpenContact: (String) -> Unit = {},
+) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
-  val back = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-  LaunchedEffect(state.savedContactId) {
-    state.savedContactId?.let { openContact(context, viewModel.storeUserId, it) }
-  }
+  // Saved: the form is replaced by the person's page, so back from there is the list again.
+  LaunchedEffect(state.savedContactId) { state.savedContactId?.let(onOpenContact) }
 
   Column(
       modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
@@ -80,7 +87,7 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
                 if (state.edit) R.string.contactform_edit_title else R.string.contactform_add_title
             ),
         subtitle = stringResource(R.string.contactform_subtitle),
-        onBack = { back?.onBackPressed() },
+        onBack = onBack,
     )
     SadadField(
         value = state.name,
@@ -120,27 +127,37 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
     state.phoneError?.let {
       Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
-    if (state.edit) {
-      SadadChoiceField(
-          label = stringResource(R.string.contactform_kind),
-          options =
-              listOf(
-                  ContactKind.CUSTOMER to stringResource(R.string.contactform_kind_customer),
-                  ContactKind.SUPPLIER to stringResource(R.string.contactform_kind_supplier),
-              ),
-          selected = state.kind,
-          onSelect = viewModel::onKindChange,
-          enabled = !state.busy,
-      )
-    }
-    SadadField(
-        value = state.category,
-        onValueChange = viewModel::onCategoryChange,
-        label = stringResource(R.string.contactform_category),
-        placeholder = stringResource(R.string.contactform_category_hint),
-        singleLine = true,
-        enabled = !state.busy,
-        fieldModifier = Modifier.fillMaxWidth(),
+    // A customer or a supplier, whether the person is new or being edited.
+    SadadSegments(
+        options =
+            listOf(
+                ContactKind.CUSTOMER to stringResource(R.string.contactform_kind_customer),
+                ContactKind.SUPPLIER to stringResource(R.string.contactform_kind_supplier),
+            ),
+        selected = state.kind,
+        onSelect = { kind ->
+          viewModel.onKindChange(kind)
+          // The old default belongs to the other kind: swap it, keep anything the user chose.
+          if (
+              state.category.isBlank() || state.category in generalCategories(state.kind, context)
+          ) {
+            viewModel.onCategoryChange(generalCategories(kind, context).first())
+          }
+        },
+    )
+    // General categories to pick from, instead of typing one by hand.
+    Text(
+        stringResource(R.string.contactform_category),
+        style = MaterialTheme.typography.labelMedium,
+        color = sadadPalette.text,
+    )
+    val general = generalCategories(state.kind, context)
+    ChipFlow(
+        chips =
+            (general + listOfNotNull(state.category.takeIf { it.isNotBlank() && it !in general }))
+                .map { Chip(it, it) },
+        selected = state.category,
+        onSelect = viewModel::onCategoryChange,
     )
     SadadField(
         value = state.note,
@@ -193,7 +210,7 @@ fun ContactFormScreen(viewModel: ContactFormViewModel, modifier: Modifier = Modi
         confirmButton = {
           TextButton(
               onClick = {
-                openContact(context, viewModel.storeUserId, duplicate.contactId)
+                onOpenContact(duplicate.contactId)
                 viewModel.dismissDuplicate()
               }
           ) {
@@ -340,18 +357,14 @@ private fun VoiceDraft(onText: (String) -> Unit) {
   VoiceDraftButton(onText, onLaunch = lock::skipNextLock)
 }
 
-/**
- * The nav host lives in the ui package, which this ticket may not edit, so a Contact opens through
- * the same MainActivity deep link the due reminders use.
- */
-private fun openContact(context: Context, storeUserId: String, contactId: String) {
-  context.startActivity(
-      Intent(context, MainActivity::class.java)
-          .putExtra(DueReminderWorker.EXTRA_STORE, storeUserId)
-          .putExtra(DueReminderWorker.EXTRA_CONTACT, contactId)
-          .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-  )
-}
+/** The categories offered for each kind; the first is what a new person starts with. */
+private fun generalCategories(kind: ContactKind, context: android.content.Context): List<String> =
+    context.resources
+        .getStringArray(
+            if (kind == ContactKind.SUPPLIER) R.array.contactform_categories_supplier
+            else R.array.contactform_categories_customer
+        )
+        .toList()
 
 @Composable
 private fun contactFormViewModel(contactId: String?): ContactFormViewModel =

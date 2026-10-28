@@ -30,7 +30,11 @@ class StoreScope(
     val signer: InstallationSigner,
     private val accounts: Accounts,
     private val online: () -> Boolean,
-    private val scope: CoroutineScope,
+    /**
+     * The store's jobs, not a screen's: work that a confirmed write promised must survive the
+     * ViewModel that started it (the archive undo already relies on this).
+     */
+    val jobs: CoroutineScope,
     private val lease: LeaseStore? = null,
     private val queueSync: () -> Unit = {},
 ) : RepositorySession {
@@ -40,7 +44,7 @@ class StoreScope(
       }
 
   // Declared after staffName: LedgerRepository's view combines it during construction.
-  val repository: LedgerRepository = LedgerRepository(store, outbox, this, scope)
+  val repository: LedgerRepository = LedgerRepository(store, outbox, this, jobs)
 
   @Volatile private var epoch: String? = null
 
@@ -50,7 +54,7 @@ class StoreScope(
   @Volatile private var installation: StoredInstallation? = account.installation
 
   init {
-    scope.launch {
+    jobs.launch {
       accounts.accounts.collect { list ->
         installation = list.firstOrNull { it.storeUserId == account.storeUserId }?.installation
       }
@@ -82,7 +86,7 @@ class StoreScope(
 
   suspend fun <T> runWhileOpen(block: suspend () -> T): T {
     check(!closed) { "store scope is closed" }
-    val task = scope.async(Dispatchers.IO) { block() }
+    val task = jobs.async(Dispatchers.IO) { block() }
     return try {
       task.await()
     } finally {
@@ -97,7 +101,7 @@ class StoreScope(
   suspend fun close() {
     if (closed) return
     closed = true
-    scope.coroutineContext[Job]?.cancelAndJoin()
+    jobs.coroutineContext[Job]?.cancelAndJoin()
     withContext(Dispatchers.IO) { database.close() }
   }
 }

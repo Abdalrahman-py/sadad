@@ -70,14 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadad.app.BuildConfig
 import com.sadad.app.R
-import com.sadad.app.feature.history.PeriodFilter
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.photo.PhotoStore
-import com.sadad.app.ui.components.SadadButton
-import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.theme.sadadPalette
-import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -334,7 +331,7 @@ internal fun LazyListScope.devicesSection(
             }
           }
           Surface(
-              onClick = model::downloadLatest,
+              onClick = navigation.onSyncNow,
               shape = RoundedCornerShape(10.dp),
               color = if (waiting) p.card else p.surface,
               contentColor = linkColor(),
@@ -349,14 +346,6 @@ internal fun LazyListScope.devicesSection(
             }
           }
         }
-        HorizontalDivider(color = p.line)
-        LinkRow(
-            title = stringResource(R.string.settings_activity_log),
-            detail = stringResource(R.string.settings_activity_log_sub),
-            tag = SettingsTags.OPS_LOG,
-            onClick = navigation.onOpenActivityLog,
-            icon = RowIcon.LIST,
-        )
         HorizontalDivider(color = p.line)
         LinkRow(
             title = stringResource(R.string.settings_recovery),
@@ -424,44 +413,19 @@ internal fun LazyListScope.dataSection(
     navigation: SettingsNavigation,
     context: Context,
 ) {
+  // Q20/Q6: the trash exists to undo deletes, so a device that may delete neither records nor
+  // Contacts cannot use it and does not see its section at all. Statements are exported from
+  // «الحركات», where the entries they list are.
+  if (!state.canDelete) return
   item {
-    val p = sadadPalette
     Section(stringResource(R.string.settings_data_heading)) {
       BoardCard(radius = 13.dp) {
-        // Q20/Q6: the trash exists to undo deletes, so a device that may delete neither records nor
-        // Contacts cannot use it and does not see it.
-        if (state.canDelete) {
-          LinkRow(
-              title = stringResource(R.string.settings_trash),
-              detail = trashText(state.trashCount),
-              tag = SettingsTags.TRASH,
-              onClick = navigation.onOpenTrash,
-          )
-          HorizontalDivider(color = p.line)
-        }
-        // Kept until ticket 85 puts export on «الحركات»: removing it would lose the only way to
-        // share a statement.
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text(
-              stringResource(R.string.settings_export_period),
-              color = p.muted,
-              fontSize = 12.sp,
-              lineHeight = 18.sp,
-          )
-          PeriodFilter(
-              period = state.exportPeriod.toPeriod(LocalDate.now()),
-              onPreset = model::selectPreset,
-              onCustom = model::selectCustom,
-          )
-          SadadButton(
-              text = stringResource(R.string.settings_share_statement),
-              style = SadadButtonStyle.SURFACE,
-              onClick = { model.shareStatement(context) },
-              enabled = !state.busy,
-              modifier = Modifier.fillMaxWidth(),
-          )
-          state.error?.takeIf { it != SettingsError.ACTION_FAILED }?.let { ErrorLine(it) }
-        }
+        LinkRow(
+            title = stringResource(R.string.settings_trash),
+            detail = trashText(state.trashCount),
+            tag = SettingsTags.TRASH,
+            onClick = navigation.onOpenTrash,
+        )
       }
     }
   }
@@ -578,6 +542,40 @@ internal fun LazyListScope.supportItem(context: Context) {
   }
 }
 
+/**
+ * The one reminder that cannot be dismissed. A release found days ago keeps showing here, with a
+ * dot, until it is installed: the launch prompt and the notification can be snoozed, this row
+ * cannot — which is what a security patch needs.
+ */
+internal fun LazyListScope.updateItem(update: UpdateState, onOpen: () -> Unit) {
+  item {
+    val version = update.manifest?.versionName
+    val detail =
+        when {
+          version == null && update.phase == UpdateState.Phase.CHECKING ->
+              stringResource(R.string.updates_row_checking)
+          version == null && update.phase == UpdateState.Phase.FAILED ->
+              stringResource(R.string.updates_row_failed)
+          version == null && update.phase == UpdateState.Phase.UP_TO_DATE ->
+              stringResource(R.string.updates_row_up_to_date, BuildConfig.VERSION_NAME)
+          version == null -> stringResource(R.string.updates_row_idle)
+          update.phase == UpdateState.Phase.READY ->
+              stringResource(R.string.updates_row_ready, version)
+          else -> stringResource(R.string.updates_row_available, version)
+        }
+    BoardCard(radius = 13.dp) {
+      LinkRow(
+          title = stringResource(R.string.updates_row_title),
+          detail = detail,
+          tag = SettingsTags.UPDATE,
+          onClick = onOpen,
+          icon = RowIcon.UPDATE,
+          badge = update.manifest != null,
+      )
+    }
+  }
+}
+
 internal fun LazyListScope.versionItem() {
   item {
     Text(
@@ -648,6 +646,7 @@ private enum class RowIcon {
   LIST,
   PHONE,
   CHAT,
+  UPDATE,
 }
 
 /** A card row that leads somewhere: the label, an optional second line, then the chevron. */
@@ -660,6 +659,8 @@ private fun LinkRow(
     enabled: Boolean = true,
     minHeight: Dp = 56.dp,
     icon: RowIcon? = null,
+    /** A dot after the label: there is something to do here, and it stays until it is done. */
+    badge: Boolean = false,
 ) {
   val p = sadadPalette
   Surface(
@@ -682,6 +683,9 @@ private fun LinkRow(
         if (detail != null) {
           Text(detail, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
         }
+      }
+      if (badge) {
+        Box(Modifier.size(8.dp).background(p.primary, CircleShape))
       }
       Chevron()
     }
@@ -738,6 +742,37 @@ private fun RowGlyph(kind: RowIcon) {
             color,
             Offset(s * 0.20f, s * 0.88f),
             Offset(s * 0.46f, s * 0.72f),
+            stroke,
+            StrokeCap.Round,
+        )
+      }
+      // An arrow into a tray: the download an update is.
+      RowIcon.UPDATE -> {
+        drawLine(
+            color,
+            Offset(s * 0.5f, s * 0.08f),
+            Offset(s * 0.5f, s * 0.62f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(s * 0.32f, s * 0.44f),
+            Offset(s * 0.5f, s * 0.62f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(s * 0.68f, s * 0.44f),
+            Offset(s * 0.5f, s * 0.62f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(s * 0.18f, s * 0.86f),
+            Offset(s * 0.82f, s * 0.86f),
             stroke,
             StrokeCap.Round,
         )
@@ -863,7 +898,7 @@ private fun queuedText(entry: QueuedEntry): String {
 
 /** What sync is doing, when it is not the ordinary «sent» or «waiting» case. */
 @Composable
-private fun statusPhrase(line: SyncLine): String? =
+internal fun statusPhrase(line: SyncLine): String? =
     when (line) {
       SyncLine.Idle -> null
       SyncLine.Running -> stringResource(R.string.settings_sync_running)

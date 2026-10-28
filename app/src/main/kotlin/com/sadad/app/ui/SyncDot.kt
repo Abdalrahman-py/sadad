@@ -10,11 +10,15 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 
-/** The dot on the المتجر tab: none, amber when entries wait to send, red when offline. */
+/**
+ * The dot on the المتجر tab: none, amber when entries wait to send, red when offline or when some
+ * entry can never be sent from this installation.
+ */
 enum class SyncDot {
   NONE,
   PENDING,
   OFFLINE,
+  STUCK,
 }
 
 /** Read from what the sync layer already exposes: the open store's outbox and sync status. */
@@ -28,6 +32,7 @@ fun syncDot(graph: AppGraph): Flow<SyncDot> =
                 ->
                 when {
                   status == SyncStatus.Offline -> SyncDot.OFFLINE
+                  rows.any { it.state == OutboxState.UNSENDABLE } -> SyncDot.STUCK
                   rows.any { it.state == OutboxState.QUEUED } -> SyncDot.PENDING
                   else -> SyncDot.NONE
                 }

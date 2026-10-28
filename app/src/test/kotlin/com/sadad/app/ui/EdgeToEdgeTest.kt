@@ -41,8 +41,8 @@ import com.sadad.app.feature.home.HomeUiState
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.NotificationsScreen
 import com.sadad.app.feature.notifications.Reminder
-import com.sadad.app.feature.people.ContactsScreen
-import com.sadad.app.feature.people.ContactsViewModel
+import com.sadad.app.feature.people.PeopleScreen
+import com.sadad.app.feature.people.PeopleViewModel
 import com.sadad.app.feature.settings.SettingsKit
 import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.testing.TestGraph
@@ -112,16 +112,16 @@ class EdgeToEdgeTest {
       }
 
   @Test
-  fun contactsClearsTheBars() =
+  fun peopleClearsTheBars() =
       inShellWithStore(People()) { fixture ->
         awaiting { seedContacts(fixture) }
         val model =
-            ContactsViewModel(fixture.graph, SavedStateHandle()).also {
+            PeopleViewModel(fixture.graph, SavedStateHandle()).also {
               fixture.closeWithStore(it.viewModelScope)
             }
         awaiting { model.state.first { it.registered > 0 } }
         val destinations: NavGraphBuilder.() -> Unit = {
-          composable<People> { ContactsScreen(viewModel = model, onOpenContact = {}) }
+          composable<People> { PeopleScreen(onOpenContact = {}, viewModel = model) }
         }
         destinations
       }

@@ -15,7 +15,25 @@
     <string name="contactform_kind_customer">زبون</string>
     <string name="contactform_kind_supplier">مورد</string>
     <string name="contactform_category">التصنيف</string>
-    <string name="contactform_category_hint">مثال: عميل، مورد، صديق</string>
+    <string name="contactform_category_hint">اختر تصنيفًا</string>
+    <string-array name="contactform_categories_customer">
+        <item>عميل</item>
+        <item>عميل دائم</item>
+        <item>جار</item>
+        <item>قريب</item>
+        <item>صديق</item>
+        <item>موظف</item>
+        <item>شركة أو مؤسسة</item>
+    </string-array>
+    <string-array name="contactform_categories_supplier">
+        <item>مورد</item>
+        <item>خضار وفواكه</item>
+        <item>مخبوزات وحلويات</item>
+        <item>ألبان ولحوم</item>
+        <item>مشروبات</item>
+        <item>مواد تنظيف</item>
+        <item>جملة ومتفرقات</item>
+    </string-array>
     <string name="contactform_default_category">عميل</string>
     <string name="contactform_note">ملاحظات</string>
     <string name="contactform_note_hint">ملاحظات اختيارية</string>

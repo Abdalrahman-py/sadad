@@ -3,6 +3,7 @@ package com.sadad.app.feature.recovery
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import org.junit.Rule
@@ -20,7 +21,8 @@ class RecoveryScreenTest {
   fun aRevokedInstallationOffersRegisteringAsANewDevice() {
     compose.setContent { SadadTheme { RecoveryContent(status = "revoked") } }
 
-    compose.onNodeWithText("تسجيل الهاتف كجهاز جديد").assertIsDisplayed()
+    // The card is the last thing on a screen that scrolls, so scroll to it before asserting.
+    compose.onNodeWithText("تسجيل الهاتف كجهاز جديد").performScrollTo().assertIsDisplayed()
   }
 
   @Test
