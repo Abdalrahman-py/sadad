@@ -895,6 +895,55 @@ try {
     assert.equal(act.action, 'end-sessions');
   });
 
+  await check('One admin session at a time: a second session is refused until the holder leaves or goes stale', async () => {
+    const user = randomUUID();
+    const first = randomUUID();
+    const second = randomUUID();
+    const claim = () => db.query('select public.sadid_admin_session_claim() as result').then(r => r.rows[0].result);
+
+    // The lease is keyed to an Auth user, so this admin needs a row there like a real one.
+    await db.exec('reset role');
+    await db.query('insert into auth.users(id, email) values ($1, $2)', [user, 'lease@sadad.invalid']);
+    await asAdmin('admin', user, first);
+    assert.equal(await claim(), true, 'the first session claims the account');
+    assert.equal(await claim(), true, 'the same session may come back');
+
+    await asAdmin('admin', user, second);
+    assert.equal(await claim(), false, 'a second session is refused while the first is live');
+
+    // Ten silent minutes free the account: a browser closed without signing out must not lock it.
+    await db.exec('reset role');
+    await db.query("update sadid_private.admin_session_lease set seen_at = now() - interval '11 minutes' where user_id = $1", [user]);
+    await asAdmin('admin', user, second);
+    assert.equal(await claim(), true, 'a stale lease is taken over');
+
+    await asAdmin('admin', user, first);
+    assert.equal(await claim(), false, 'the session that lost the seat stays out');
+
+    await asAdmin('admin', user, second);
+    await db.query('select public.sadid_admin_session_release()');
+    await db.exec('reset role');
+    const left = await db.query('select count(*)::int as n from sadid_private.admin_session_lease where user_id = $1', [user]);
+    assert.equal(left.rows[0].n, 0, 'signing out frees the account at once');
+
+    await asAdmin('admin', user, first);
+    assert.equal(await claim(), true, 'the next session claims a freed account');
+
+    // A session that does not hold the seat cannot release someone else's.
+    await asAdmin('admin', user, second);
+    await db.query('select public.sadid_admin_session_release()');
+    await db.exec('reset role');
+    const still = await db.query('select count(*)::int as n from sadid_private.admin_session_lease where user_id = $1', [user]);
+    assert.equal(still.rows[0].n, 1);
+
+    // A store account is refused outright rather than given a seat.
+    await asStore(storeUser, session);
+    await assert.rejects(claim(), /admin_authorization_required/);
+
+    await db.exec('reset role');
+    await db.query('delete from sadid_private.admin_session_lease where user_id = $1', [user]);
+  });
+
   await check('Store isolation and suspended store or expired subscription refusal in current_capability', async () => {
     // Re-create session after end-sessions
     await db.exec('reset role');

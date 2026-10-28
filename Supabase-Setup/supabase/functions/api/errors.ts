@@ -34,6 +34,7 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   proof_replayed: 409,
   installation_key_changed: 409,
   session_installation_conflict: 409,
+  session_in_use: 409,
   duplicate_phone: 409,
   entity_id_exists: 409,
   entity_version_changed: 409,
