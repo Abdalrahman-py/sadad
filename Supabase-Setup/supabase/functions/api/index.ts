@@ -1,7 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { createApp, DEFAULT_ALLOWED_ORIGINS } from "./app.ts";
 import { authSignInError } from "./account.ts";
+import { handleError } from "./errors.ts";
 import type { LeaseSigner } from "./mobile.ts";
+import { routePath } from "./mobile.ts";
+import { captureUnexpected, initSentry } from "./scrub.ts";
+
+// Crash reporting starts only when the project environment carries a DSN; otherwise nothing is sent.
+initSentry(Deno.env.get("SENTRY_DSN"));
 
 function env(name: string): string {
   const value = Deno.env.get(name);
@@ -113,6 +119,13 @@ const app = createApp({
     authAdmin: serviceClient.auth.admin,
     verifyPassword,
   },
+});
+
+// The same handler createApp registered (contract responses via handleError); this wrapper only
+// adds the Sentry report for 5xx-class unexpected errors, never for contract 4xx refusals.
+app.onError((err, c) => {
+  captureUnexpected(err, routePath(c.req.raw));
+  return handleError(err, c);
 });
 
 Deno.serve(app.fetch);
