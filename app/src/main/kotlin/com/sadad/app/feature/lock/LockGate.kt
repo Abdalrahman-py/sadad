@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -119,12 +120,20 @@ internal fun LockGate(
   val applies = hasSession == true && enabled == true && pinSet == true
   // Lock off, no PIN or signed out: drop the pending lock so a later PIN does not lock at once.
   LaunchedEffect(locked, known, applies) { if (locked && known && !applies) lock.markUnlocked() }
+  // The content still leaves composition while locked (a lock that keeps the ledger composed puts
+  // real balances in the recents thumbnail), but the holder keeps its saveable state, so the
+  // `rememberNavController` inside it saves and restores the back stack: unlocking puts the owner
+  // back on the screen he was on instead of at the start destination (#177).
+  val kept = rememberSaveableStateHolder()
   when {
-    !locked || (known && !applies) -> content()
+    !locked || (known && !applies) -> kept.SaveableStateProvider(GATED_CONTENT) { content() }
     !known -> Surface(Modifier.fillMaxSize()) {}
     else -> UnlockScreen(lock, biometric)
   }
 }
+
+/** One gated subtree, so its saved state is kept under a stable key while the lock is up. */
+private const val GATED_CONTENT = "gated-content"
 
 @Composable
 private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {

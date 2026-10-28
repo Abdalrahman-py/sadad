@@ -14,8 +14,13 @@ import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -190,28 +195,42 @@ class ContactDetailViewModelTest {
     TestGraph.signedIn(online = { online }).use { fixture ->
       val person = contact("سامي", contactId(1))
       fixture.seedCommands(listOf(person))
-      val model =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
-      model.state.first { it.loaded }
-      model.requestDelete()
-      model.state.first { it.confirmDelete }
-      model.confirmDelete()
-      model.state.first { it.undoName != null }
-      online = false
+      // The refusal is produced by a job this test starts, so the test holds the scope and joins
+      // that job instead of waiting for the state it happens to write. Waiting on the state alone
+      // left the job running past the assertion, and under CI load that raced the fixture closing
+      // the database underneath it (#168).
+      val undoScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+      try {
+        val model =
+            ContactDetailViewModel(
+                    fixture.graph,
+                    person.entityId,
+                    context,
+                    undoScope = undoScope,
+                )
+                .also { fixture.closeWithStore(it.viewModelScope) }
+        model.state.first { it.loaded }
+        model.requestDelete()
+        model.state.first { it.confirmDelete }
+        model.confirmDelete()
+        model.state.first { it.undoName != null }
+        online = false
 
-      model.commitDelete()
+        model.commitDelete()
+        undoScope.coroutineContext.job.children.toList().joinAll()
 
-      val state = model.state.first { it.error != null }
-      assertEquals(context.getString(R.string.contacts_delete_offline), state.error)
-      assertFalse(state.done)
-      assertTrue(outboxRows(fixture).isEmpty())
-      assertTrue(
-          checkNotNull(fixture.graph.current.value).repository.view.value!!.contacts.any {
-            it.id == person.entityId
-          }
-      )
+        val state = model.state.first { it.error != null }
+        assertEquals(context.getString(R.string.contacts_delete_offline), state.error)
+        assertFalse(state.done)
+        assertTrue(outboxRows(fixture).isEmpty())
+        assertTrue(
+            checkNotNull(fixture.graph.current.value).repository.view.value!!.contacts.any {
+              it.id == person.entityId
+            }
+        )
+      } finally {
+        undoScope.cancel()
+      }
     }
   }
 

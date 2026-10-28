@@ -42,6 +42,11 @@ class MainActivity : FragmentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     launchIntent = intent
+    // The ledger never becomes the app-switcher snapshot: recents keeps a picture of whatever was
+    // on screen when the owner left, and that picture is his customers' balances. Unlike
+    // FLAG_SECURE this only covers the recents thumbnail, so the owner can still screenshot a
+    // receipt to send it (#177).
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
     observeNotificationPermission()
     setContent {
       var destination by remember { mutableStateOf<Any?>(null) }

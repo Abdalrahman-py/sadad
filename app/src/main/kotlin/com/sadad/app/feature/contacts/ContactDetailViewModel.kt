@@ -80,6 +80,14 @@ class ContactDetailViewModel(
     private val appContext: Context,
     /** The Java banner's five seconds; tests shorten it. */
     private val undoWindowMs: Long = UNDO_WINDOW_MS,
+    /**
+     * The undo window runs here, not in the screen's composition, like the Java banner on the
+     * Activity: leaving the Contact during the five seconds must not drop a delete the dialog
+     * already promised. It runs off the Main dispatcher so a test dispatcher's virtual clock cannot
+     * fire it early, and it is a parameter so a test can hold the job and join it instead of racing
+     * a background thread it cannot see (#168).
+     */
+    private val undoScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) : ViewModel() {
   private data class Dialogs(
       val newestFirst: Boolean = true,
@@ -94,13 +102,6 @@ class ContactDetailViewModel(
   private val mutable = MutableStateFlow(ContactDetailState())
   val state: StateFlow<ContactDetailState> = mutable.asStateFlow()
 
-  /**
-   * The undo window runs here, not in the screen's composition, like the Java banner on the
-   * Activity: leaving the Contact during the five seconds must not drop a delete the dialog already
-   * promised. Nothing else uses this scope, the job ends within [undoWindowMs], and it runs off the
-   * Main dispatcher so a test dispatcher's virtual clock cannot fire it early.
-   */
-  private val undoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var undoJob: Job? = null
 
   @Volatile private var currentView: LedgerView? = null

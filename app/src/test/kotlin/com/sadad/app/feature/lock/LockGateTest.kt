@@ -1,7 +1,9 @@
 package com.sadad.app.feature.lock
 
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -12,6 +14,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import java.io.File
@@ -32,6 +37,9 @@ import org.robolectric.annotation.Config
 
 private const val CONTENT = "المحتوى"
 private const val LOCKED = "التطبيق مقفل"
+private const val HOME = "الرئيسية"
+private const val GO = "افتح"
+private const val CONTACT = "جهة الاتصال"
 
 @RunWith(RobolectricTestRunner::class)
 // A real phone's height, not Robolectric's 320x470 default: the lock board is a full screen with
@@ -155,6 +163,42 @@ class LockGateTest {
     show(lock, biometric = Sensor(available = false))
     waitFor(LOCKED)
     assertFalse(shown("استخدام البصمة أو الوجه"))
+  }
+
+  @Test
+  fun unlockingComesBackToTheScreenTheOwnerWasOn() {
+    val lock = lockWithPin().also { it.markUnlocked() }
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+          // The nav controller is created inside the gated content, exactly as SadadApp is wrapped
+          // by the gate: locking removes the NavHost from composition, so only saved state can put
+          // the owner back on the screen he was on (#177).
+          LockGate(lock, hasSession = true, biometric = NoBiometric) {
+            val nav = rememberNavController()
+            NavHost(nav, startDestination = HOME) {
+              composable(HOME) {
+                Text(HOME)
+                Text(GO, modifier = Modifier.clickable { nav.navigate(CONTACT) })
+              }
+              composable(CONTACT) { Text(CONTACT) }
+            }
+          }
+        }
+      }
+    }
+    waitFor(HOME)
+    compose.onNodeWithText(GO).performClick()
+    waitFor(CONTACT)
+
+    leaveFor(2_000)
+    waitFor(LOCKED)
+    assertFalse(shown(CONTACT))
+
+    lock.markUnlocked()
+
+    waitFor(CONTACT)
+    assertFalse(shown(HOME))
   }
 
   private object NoBiometric : BiometricAuth {
