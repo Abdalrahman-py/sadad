@@ -8,6 +8,9 @@ Git عند الوسم `pre-prune-2026-10`. حالة كل تذكرة في ملف�
 
 ## المنشور حاليًا (المشروع السحابي `vhftjmiltqfwmrszdtgf`)
 
+- **`main` (27–28 أكتوبر):** يحمل الآن إعادة التصميم كاملة مع إصلاحاتها ودورات التحديث المؤكدة (دمج `67f26be`، 56 commit من `dev`). بناء الفريق `dev-24-d18af66-team` (`versionCode 64`) هو ما على جهاز الاختبار، وواجهة الإصدار الرسمي لم تُنشر بعد.
+- **مفتاح الإنتاج (28 أكتوبر):** أُنشئ `~/sadad-private/sadad-production.jks` (RSA 4096، صالح حتى 2054، `SHA-256 2C:90:34:03:…:9D`) وكلماته في `~/sadad-private/production-signing.properties` (صلاحية 600). **لم تُضف أسراره الأربعة إلى GitHub بعد**، فوسم `vX.Y.Z` سيفشل عند خطوة «Require production signing credentials» حتى تُضاف (#82). الأصل والنسخ الاحتياطية خارج الحاسوب مسؤولية الإنسان؛ فقد الملف يمنع تحديث النسخ المثبّتة.
+
 - **القطع السحابي منفَّذ (التذكرة 27، 24 أكتوبر):** وظيفة Edge الوحيدة `api` (نشرها سير عمل «Deploy Supabase schema and api» في 22 أكتوبر)، وسجل الترحيلات `20261015000000` (`baseline`) وحده، وفحص الصحة `/functions/v1/api/v1/health` يعيد `{"ok":true}`. التفاصيل في `docs/CHANGELOG.md`.
 - **المفاتيح:** مفتاح `sb_publishable_...` ومفتاح سري `default`؛ مفاتيح `anon` و`service_role` القديمة معطّلة؛ مفاتيح JWT بـES256؛ سر الوظيفة `SADAD_LEASE_PRIVATE_JWK`، ونصفه العام مثبّت في `app/build.gradle.kts`.
 - **لوحة الإدارة الجديدة:** منشورة على GitHub Pages (`https://abdalrahman-py.github.io/sadad/`) بمستخدمَي Auth بدورَي `admin` و`support`.
