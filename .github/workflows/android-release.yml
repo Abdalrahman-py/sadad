@@ -46,6 +46,9 @@ jobs:
           done
           code=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
           echo "SADAD_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          # The tag is the version name too, so the published app has its own line (v1.x.y) while
+          # dev keeps building 3.0.0-team from the gradle property default.
+          echo "SADAD_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           echo "Sadad ${GITHUB_REF_NAME#v} is versionCode $code"
       - name: Install release verification tools
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
@@ -83,7 +86,8 @@ jobs:
           # activity in the production APK. The logic is covered by the `checks` job, which runs the
           # whole suite on debug on this same commit; what this job verifies is the artifact itself
           # (signature, badging, mapping, size, Baseline Profile).
-          ./gradlew assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE"
+          ./gradlew assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" \
+            -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE" -PSADAD_VERSION_NAME="$SADAD_VERSION_NAME"
       - name: Fail when R8 reports missing classes
         run: |
           missing=app/build/outputs/mapping/release/missing_rules.txt
