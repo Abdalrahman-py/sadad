@@ -39,6 +39,9 @@ data class DebtView(
     val createdBy: String,
     /** The operation that created it; a Payment on a pending Debt depends on it. */
     val operationId: String,
+    val origin: DebtOrigin = DebtOrigin.MANUAL,
+    /** Sum of the confirmed credit Offsets on this Debt; never cash, never part of [paid]. */
+    val offsetted: Cents = Cents.ZERO,
 )
 
 data class PaymentView(
@@ -128,11 +131,17 @@ fun LedgerState.view(
   for (row in payments.values) {
     if (!row.reversed) paid[row.debtId] = (paid[row.debtId] ?: Cents.ZERO) + row.amount
   }
+  val offsetted = HashMap<String, Cents>()
+  for (row in offsets.values) {
+    offsetted[row.receivableDebtId] = (offsetted[row.receivableDebtId] ?: Cents.ZERO) + row.amount
+    offsetted[row.payableDebtId] = (offsetted[row.payableDebtId] ?: Cents.ZERO) + row.amount
+  }
   val debtViews = LinkedHashMap<String, DebtView>()
   for (row in debts.values) {
     if (row.contactId !in contactViews) continue
     val debtPaid = paid[row.id] ?: Cents.ZERO
-    val open = row.amount - debtPaid
+    val debtOffsetted = offsetted[row.id] ?: Cents.ZERO
+    val open = row.amount - debtPaid - debtOffsetted
     debtViews[row.id] =
         DebtView(
             row.id,
@@ -150,6 +159,8 @@ fun LedgerState.view(
             row.createdAt,
             author(row.originInstallationId),
             row.operationId,
+            origin = row.origin,
+            offsetted = debtOffsetted,
         )
   }
   val paymentViews = mutableListOf<PaymentView>()
@@ -178,7 +189,7 @@ fun LedgerState.view(
   for (command in pending) {
     if (!command.type.offline) continue
     val id = command.entityId
-    if (id in contacts || id in debts || id in payments) continue
+    if (id in contacts || id in debts || id in payments || id in offsets) continue
     if (command.dependsOn.any { it in failed || it in excluded }) {
       excluded += command.operationId
       continue
@@ -225,8 +236,29 @@ fun LedgerState.view(
                 at,
                 by,
                 command.operationId,
+                origin = payload.origin ?: DebtOrigin.MANUAL,
             )
         pendingDebts++
+      }
+      is DebtOffset -> {
+        val receivable = debtViews[payload.receivableDebtId]
+        val payable = debtViews[payload.payableDebtId]
+        if (
+            receivable == null ||
+                payable == null ||
+                receivable.contactId != payable.contactId ||
+                receivable.direction != Direction.RECEIVABLE ||
+                payable.direction != Direction.PAYABLE ||
+                payload.amountCents > receivable.remaining ||
+                payload.amountCents > payable.remaining
+        ) {
+          excluded += command.operationId
+          continue
+        }
+        // An offset settles both sides but moves no cash, so no payment row appears.
+        debtViews[receivable.id] =
+            receivable.copy(remaining = receivable.remaining - payload.amountCents)
+        debtViews[payable.id] = payable.copy(remaining = payable.remaining - payload.amountCents)
       }
       is PaymentCreate -> {
         val debt = debtViews[payload.debtId]

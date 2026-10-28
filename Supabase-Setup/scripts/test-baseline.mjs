@@ -649,6 +649,108 @@ try {
     );
   });
 
+  await check('Credit: overpayment origin, debt.offset remaining rules, and zero correction guards', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const person = command('contact.create', { kind: 'customer', name: 'عميل رصيد', phone: '' });
+      assert.equal((await apply(person)).status, 'accepted');
+      const debt250 = command('debt.create', { contactId: person.entityId, amountCents: 25000, direction: 'receivable' }, { dependsOn: [person.operationId] });
+      assert.equal((await apply(debt250)).status, 'accepted');
+
+      assert.equal(
+        (await apply(command('debt.create', { contactId: person.entityId, amountCents: 100, direction: 'receivable', origin: 'overpayment' }))).code,
+        'invalid_input',
+        'overpayment credit is always payable',
+      );
+
+      const pay250 = command('payment.create', { debtId: debt250.entityId, amountCents: 25000, method: 'cash' }, { dependsOn: [debt250.operationId] });
+      assert.equal((await apply(pay250)).status, 'accepted');
+      const credit = command('debt.create', { contactId: person.entityId, amountCents: 25000, direction: 'payable', origin: 'overpayment', note: 'رصيد من دفعة زائدة' }, { dependsOn: [pay250.operationId] });
+      assert.equal((await apply(credit)).status, 'accepted');
+
+      const debt100 = command('debt.create', { contactId: person.entityId, amountCents: 10000, direction: 'receivable' }, { dependsOn: [credit.operationId] });
+      assert.equal((await apply(debt100)).status, 'accepted');
+
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt250.entityId, payableDebtId: debt100.entityId, amountCents: 1 }))).code,
+        'offset_invalid',
+        'same-direction pair refused',
+      );
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 0 }))).code,
+        'offset_invalid',
+        'zero offset refused',
+      );
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 10001 }))).code,
+        'offset_invalid',
+        'above the receivable remaining, within the credit',
+      );
+
+      const stranger = command('contact.create', { kind: 'customer', name: 'عميل آخر', phone: '' });
+      assert.equal((await apply(stranger)).status, 'accepted');
+      const strangerDebt = command('debt.create', { contactId: stranger.entityId, amountCents: 5000, direction: 'receivable' }, { dependsOn: [stranger.operationId] });
+      assert.equal((await apply(strangerDebt)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: strangerDebt.entityId, payableDebtId: credit.entityId, amountCents: 1000 }))).code,
+        'offset_invalid',
+        'two contacts refused',
+      );
+
+      const off100 = command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 10000 }, { dependsOn: [debt100.operationId, credit.operationId] });
+      assert.equal((await apply(off100)).status, 'accepted');
+
+      const remaining = async (id) => Number((await db.query(
+        `select coalesce((select a.amount_cents from public.sadid_adjustments a
+                          where a.store_id = d.store_id and a.debt_id = d.id order by a.version desc limit 1), d.amount_cents)
+                - coalesce((select sum(p.amount_cents) from public.sadid_payments p
+                            where p.store_id = d.store_id and p.debt_id = d.id
+                              and not exists (select 1 from public.sadid_reversals r where r.store_id = p.store_id and r.payment_id = p.id)), 0)
+                - coalesce((select sum(o.amount_cents) from public.sadid_offsets o
+                            where o.store_id = d.store_id and (o.receivable_debt_id = d.id or o.payable_debt_id = d.id)), 0) as left
+         from public.sadid_debts d where d.id = $1`, [id])).rows[0].left);
+      await db.exec('reset role');
+      assert.equal(await remaining(debt100.entityId), 0, 'the new debt is settled by the offset');
+      assert.equal(await remaining(credit.entityId), 15000, '150 of 250 credit remains');
+
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 1 }))).code,
+        'offset_invalid',
+        'a settled debt cannot be offset again',
+      );
+      assert.equal(
+        (await apply(command('payment.create', { debtId: debt100.entityId, amountCents: 1, method: 'cash' }))).code,
+        'overpayment',
+        'after a full offset nothing is left to pay',
+      );
+
+      const bigDebt = command('debt.create', { contactId: person.entityId, amountCents: 20000, direction: 'receivable' });
+      assert.equal((await apply(bigDebt)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: bigDebt.entityId, payableDebtId: credit.entityId, amountCents: 15001 }))).code,
+        'offset_invalid',
+        'above the credit remaining, within the receivable',
+      );
+
+      assert.equal(
+        (await apply(command('debt.correct', { debtId: credit.entityId, amountCents: 0, reason: 'تصفية رصيد' }, { expectedVersion: 1 }))).code,
+        'below_paid_total',
+        'used credit cannot be corrected to zero',
+      );
+      const credit2 = command('debt.create', { contactId: person.entityId, amountCents: 5000, direction: 'payable', origin: 'overpayment' });
+      assert.equal((await apply(credit2)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.correct', { debtId: credit2.entityId, amountCents: 0, reason: 'عكس رصيد غير مستخدم' }, { expectedVersion: 1 }))).status,
+        'accepted',
+        'unused credit corrects to zero',
+      );
+      await db.exec('reset role');
+      assert.equal(await remaining(credit2.entityId), 0, 'a zero correction closes the credit');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
   await check('Batch apply returns one receipt per operation and is idempotent on resend', async () => {
     const c1 = command('contact.create', { kind: 'customer', name: 'دفعة ١', phone: '' });
     const c2 = command('debt.create', { contactId: c1.entityId, amountCents: 2500, direction: 'receivable' }, { dependsOn: [c1.operationId] });
@@ -1062,6 +1164,21 @@ try {
     await db.query('delete from public.stores where id = $1', [id]);
     await db.exec('reset role');
     assert.equal((await db.query('select count(*)::int n from sadid_private.store_memberships where user_id = $1', [owner])).rows[0].n, 0);
+  });
+
+  await check('changes lists the store devices with their names, approved and revoked alike, and no other store\'s', async () => {
+    await db.exec('reset role');
+    const otherStoreDevice = (await db.query('select id from sadid_private.installations where store_id = 2')).rows[0].id;
+    await capability('read');
+    const page = (await db.query('select public.sadid_changes(0, 500) as result')).rows[0].result;
+    const byId = Object.fromEntries(page.installations.map((i) => [i.id, i]));
+    assert.deepEqual(byId[activeInstallation], { id: activeInstallation, label: 'جهاز بديل', staffName: 'أحمد' });
+    assert.deepEqual(
+      byId[installation],
+      { id: installation, label: 'هاتف الكاشير', staffName: 'أحمد' },
+      'the revoked device is still listed, so its old events still resolve',
+    );
+    assert.equal(byId[otherStoreDevice], undefined, "another store's devices are absent");
   });
 
   console.log(JSON.stringify({ engine: (await db.query('select version()')).rows[0].version, tests }, null, 2));

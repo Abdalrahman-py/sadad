@@ -16,6 +16,7 @@ data class SavedStore(
 enum class QueuedKind {
   DEBT,
   DEBT_CORRECT,
+  OFFSET,
   PAYMENT,
   PAYMENT_REVERSE,
   CONTACT_NEW,

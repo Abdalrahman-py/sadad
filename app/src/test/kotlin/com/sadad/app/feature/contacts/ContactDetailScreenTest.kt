@@ -6,6 +6,10 @@ import android.content.ContextWrapper
 import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -149,12 +153,16 @@ class ContactDetailScreenTest {
       compose.waitUntil(10_000) { model.state.value.movements.size == 2 }
       timelineRow("دفع للمورد").assertIsDisplayed()
       timelineRow("بضاعة بالدين").assertIsDisplayed()
+      // The row's own label, not any text in it: «عكس الدفعة» is an action on the row, not a label.
       compose
-          .onNode(
-              hasText("دفعة", substring = true) and
-                  hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
+          .onAllNodes(
+              SemanticsMatcher("a label that starts with «دفعة»") { node ->
+                node.config.getOrNull(SemanticsProperties.Text)?.any {
+                  it.text.startsWith("دفعة")
+                } == true
+              } and hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS))
           )
-          .assertDoesNotExist()
+          .assertCountEquals(0)
     }
   }
 

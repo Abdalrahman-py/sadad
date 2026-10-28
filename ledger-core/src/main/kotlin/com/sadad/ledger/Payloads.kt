@@ -39,6 +39,15 @@ data class DebtCreate(
     val note: String? = null,
     /** `yyyy-MM-dd`. */
     val dueDate: String? = null,
+    /** Absent for a manual Debt; the server defaults to `manual`. */
+    val origin: DebtOrigin? = null,
+) : CommandPayload
+
+@Serializable
+data class DebtOffset(
+    val receivableDebtId: String,
+    val payableDebtId: String,
+    val amountCents: Cents,
 ) : CommandPayload
 
 @Serializable

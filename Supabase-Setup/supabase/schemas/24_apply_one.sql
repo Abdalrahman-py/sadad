@@ -16,10 +16,18 @@ declare
   payment uuid;
   amount bigint;
   paid bigint;
+  offset_sum bigint;
   principal bigint;
   ver bigint;
   v_phone text;
   occurred timestamptz;
+  -- debt.offset's two Debts and what remains on each after payments and earlier offsets.
+  v_receivable uuid;
+  v_payable uuid;
+  r_debt public.sadid_debts;
+  p_debt public.sadid_debts;
+  r_left bigint;
+  p_left bigint;
   -- The archive verdict, captured before the UPDATE: the variable name kind would be ambiguous
   -- against sadid_contacts' new kind column inside the statement.
   toggled boolean;
@@ -160,9 +168,13 @@ begin
         if amount not between 1 and 9007199254740991 or payload ->> 'direction' not in ('receivable', 'payable') or length(coalesce(payload ->> 'note', '')) > 2000 then
           raise exception 'invalid_input';
         end if;
-        insert into public.sadid_debts(store_id, id, contact_id, direction, amount_cents, note, due_date, operation_id, created_at)
+        if coalesce(payload ->> 'origin', 'manual') not in ('manual', 'overpayment')
+           or (payload ->> 'origin' = 'overpayment' and payload ->> 'direction' <> 'payable') then
+          raise exception 'invalid_input';
+        end if;
+        insert into public.sadid_debts(store_id, id, contact_id, direction, origin, amount_cents, note, due_date, operation_id, created_at)
         values (
-          c.store_id, entity, contact, payload ->> 'direction', amount,
+          c.store_id, entity, contact, payload ->> 'direction', coalesce(payload ->> 'origin', 'manual'), amount,
           coalesce(payload ->> 'note', ''), nullif(payload ->> 'dueDate', '')::date, op, occurred
         );
       elsif kind in ('payment.create', 'debt.correct') then
@@ -180,13 +192,18 @@ begin
         from public.sadid_payments p
         where p.store_id = c.store_id and p.debt_id = debt
           and not exists (select 1 from public.sadid_reversals r where r.store_id = p.store_id and r.payment_id = p.id);
+        select coalesce(sum(o.amount_cents), 0) into offset_sum
+        from public.sadid_offsets o
+        where o.store_id = c.store_id and (o.receivable_debt_id = debt or o.payable_debt_id = debt);
         if jsonb_typeof(payload -> 'amountCents') <> 'number' or payload ->> 'amountCents' !~ '^[0-9]+$' then
           raise exception 'invalid_money';
         end if;
         amount := (payload ->> 'amountCents')::bigint;
-        if amount not between 1 and 9007199254740991 then raise exception 'invalid_money'; end if;
+        -- A correction may zero an unused Debt; a payment is always at least one cent.
+        if (kind = 'payment.create' and amount not between 1 and 9007199254740991)
+           or (correcting and amount not between 0 and 9007199254740991) then raise exception 'invalid_money'; end if;
         if kind = 'payment.create' then
-          if amount > principal - paid then raise exception 'overpayment'; end if;
+          if amount > principal - paid - offset_sum then raise exception 'overpayment'; end if;
           if payload ->> 'method' not in ('cash', 'bank', 'wallet', 'wallet_jawwal', 'wallet_palpay') or length(coalesce(payload ->> 'note', '')) > 2000 then
             raise exception 'invalid_input';
           end if;
@@ -196,10 +213,41 @@ begin
           reason := trim(coalesce(payload ->> 'reason', ''));
           if length(reason) not between 1 and 2000 then raise exception 'reason_required'; end if;
           if coalesce((p_command ->> 'expectedVersion')::bigint, -1) <> ver then raise exception 'entity_version_changed'; end if;
-          if amount < paid then raise exception 'below_paid_total'; end if;
+          if amount < paid + offset_sum then raise exception 'below_paid_total'; end if;
           insert into public.sadid_adjustments(store_id, id, debt_id, amount_cents, previous_amount_cents, version, reason, operation_id)
           values (c.store_id, entity, debt, amount, principal, ver + 1, reason, op);
         end if;
+      elsif kind = 'debt.offset' then
+        -- Credit settles a new debt: both Debts are one Contact's, opposite directions,
+        -- and the amount fits what remains on each. An offset is not cash.
+        v_receivable := (payload ->> 'receivableDebtId')::uuid;
+        v_payable := (payload ->> 'payableDebtId')::uuid;
+        if v_receivable is null or v_payable is null or v_receivable = v_payable then raise exception 'offset_invalid'; end if;
+        if jsonb_typeof(payload -> 'amountCents') <> 'number' or payload ->> 'amountCents' !~ '^[0-9]+$' then
+          raise exception 'invalid_money';
+        end if;
+        amount := (payload ->> 'amountCents')::bigint;
+        if amount < 1 or amount > 9007199254740991 then raise exception 'offset_invalid'; end if;
+        select d.* into r_debt from public.sadid_debts d
+          join public.sadid_contacts t on t.store_id = d.store_id and t.id = d.contact_id
+          where d.store_id = c.store_id and d.id = v_receivable and d.direction = 'receivable' and not t.archived;
+        select d.* into p_debt from public.sadid_debts d
+          join public.sadid_contacts t on t.store_id = d.store_id and t.id = d.contact_id
+          where d.store_id = c.store_id and d.id = v_payable and d.direction = 'payable' and not t.archived;
+        if r_debt.id is null or p_debt.id is null or r_debt.contact_id <> p_debt.contact_id then raise exception 'offset_invalid'; end if;
+        select coalesce((select a.amount_cents from public.sadid_adjustments a where a.store_id = c.store_id and a.debt_id = v_receivable order by a.version desc limit 1), r_debt.amount_cents)
+               - coalesce((select sum(p.amount_cents) from public.sadid_payments p where p.store_id = c.store_id and p.debt_id = v_receivable
+                           and not exists (select 1 from public.sadid_reversals r where r.store_id = p.store_id and r.payment_id = p.id)), 0)
+               - coalesce((select sum(o.amount_cents) from public.sadid_offsets o where o.store_id = c.store_id and (o.receivable_debt_id = v_receivable or o.payable_debt_id = v_receivable)), 0)
+          into r_left;
+        select coalesce((select a.amount_cents from public.sadid_adjustments a where a.store_id = c.store_id and a.debt_id = v_payable order by a.version desc limit 1), p_debt.amount_cents)
+               - coalesce((select sum(p.amount_cents) from public.sadid_payments p where p.store_id = c.store_id and p.debt_id = v_payable
+                           and not exists (select 1 from public.sadid_reversals r where r.store_id = p.store_id and r.payment_id = p.id)), 0)
+               - coalesce((select sum(o.amount_cents) from public.sadid_offsets o where o.store_id = c.store_id and (o.receivable_debt_id = v_payable or o.payable_debt_id = v_payable)), 0)
+          into p_left;
+        if amount > r_left or amount > p_left then raise exception 'offset_invalid'; end if;
+        insert into public.sadid_offsets(store_id, id, receivable_debt_id, payable_debt_id, amount_cents, operation_id, created_at)
+        values (c.store_id, entity, v_receivable, v_payable, amount, op, occurred);
       elsif kind = 'payment.reverse' then
         payment := (payload ->> 'paymentId')::uuid;
         reason := trim(coalesce(payload ->> 'reason', ''));

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.R
 import com.sadad.app.data.db.Events
+import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
@@ -12,7 +13,9 @@ import com.sadad.app.testing.TestGraph
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
+import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentReverse
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -254,6 +257,160 @@ class ContactDetailViewModelTest {
     }
   }
 
+  @Test
+  fun anOverpaymentIsOnePaymentRowCarryingWhatSettledAndWhatBecameCredit() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val owed = debt(person.entityId, amount = 25_000, minute = 1)
+      // One save: the payment that settles the Debt, and the credit Debt for the excess, at the
+      // same instant — that is how the quick-add flow writes a compound.
+      val paid = payment(owed.entityId, amount = 25_000, minute = 2)
+      val credit = creditDebt(person.entityId, amount = 25_000, minute = 2)
+      fixture.seedCommands(listOf(person, owed, paid, credit))
+
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val state = model.state.first { it.loaded && it.movements.isNotEmpty() }
+
+      assertEquals("the credit Debt is not a row of its own", 2, state.movements.size)
+      val row = state.movements.first { it.kind == MovementKind.PAYMENT }
+      assertEquals("the row states the payment the owner typed", Cents(50_000), row.amount)
+      assertEquals("half of it settled the Debt", Cents(25_000), row.settled)
+      assertEquals("the rest is credit", Cents(25_000), row.credit)
+      assertTrue("nothing used the credit yet", row.canReverse)
+    }
+  }
+
+  @Test
+  fun aDebtPaidFromCreditSaysHowMuchWasDeducted() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val credit = creditDebt(person.entityId, amount = 25_000, minute = 1)
+      val later = debt(person.entityId, amount = 10_000, minute = 2)
+      fixture.seedCommands(
+          listOf(person, credit, later, offset(later.entityId, credit.entityId, 10_000, minute = 2))
+      )
+
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val state = model.state.first { it.loaded && it.movements.isNotEmpty() }
+
+      val row = state.movements.first { it.id == later.entityId }
+      assertEquals(Cents(10_000), row.offsetted)
+    }
+  }
+
+  @Test
+  fun reversingAnOverpayingPaymentQueuesTheReversalAndTheZeroCorrection() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val owed = debt(person.entityId, amount = 25_000, minute = 1)
+      val paid = payment(owed.entityId, amount = 25_000, minute = 2)
+      val credit = creditDebt(person.entityId, amount = 25_000, minute = 2)
+      fixture.seedCommands(listOf(person, owed, paid, credit))
+
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val state =
+          model.state.first { it.loaded && it.movements.any { it.kind == MovementKind.PAYMENT } }
+
+      model.reverse(state.movements.first { it.kind == MovementKind.PAYMENT }.id)
+
+      val rows = awaitOutbox(fixture, 2)
+      assertEquals(
+          listOf(CommandType.PAYMENT_REVERSE, CommandType.DEBT_CORRECT),
+          rows.map { it.type },
+      )
+      assertEquals(paid.entityId, (rows[0].command.payload() as PaymentReverse).paymentId)
+      val correction = rows[1].command.payload() as DebtCorrect
+      assertEquals(credit.entityId, correction.debtId)
+      assertEquals(Cents.ZERO, correction.amountCents)
+    }
+  }
+
+  @Test
+  fun reversingIsRefusedOncePartOfTheCreditWasUsed() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val owed = debt(person.entityId, amount = 25_000, minute = 1)
+      val paid = payment(owed.entityId, amount = 25_000, minute = 2)
+      val credit = creditDebt(person.entityId, amount = 25_000, minute = 2)
+      val later = debt(person.entityId, amount = 10_000, minute = 3)
+      fixture.seedCommands(
+          listOf(
+              person,
+              owed,
+              paid,
+              credit,
+              later,
+              offset(later.entityId, credit.entityId, 10_000, minute = 3),
+          )
+      )
+
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val state =
+          model.state.first { it.loaded && it.movements.any { it.kind == MovementKind.PAYMENT } }
+      val row = state.movements.first { it.kind == MovementKind.PAYMENT }
+
+      assertFalse("part of the credit is spent", row.canReverse)
+      assertEquals(
+          context.getString(R.string.contacts_reverse_credit_used),
+          row.blockedReason,
+      )
+
+      model.reverse(row.id)
+      Thread.sleep(300)
+      assertTrue(outboxRows(fixture).isEmpty())
+    }
+  }
+
+  @Test
+  fun aCreditCorrectedToZeroIsShownStruckThrough() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val credit = creditDebt(person.entityId, amount = 25_000, minute = 1)
+      val zeroed =
+          Commands.debtCorrect(
+              Events.origin,
+              Events.at(2),
+              credit.entityId,
+              expectedVersion = 1,
+              amount = Cents.ZERO,
+              reason = "الدفعة عُكست",
+              entityId = UUID.randomUUID().toString(),
+              operationId = UUID.randomUUID().toString(),
+          )
+      fixture.seedCommands(listOf(person, credit, zeroed))
+
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val state = model.state.first { it.loaded && it.movements.isNotEmpty() }
+
+      val row = state.movements.first { it.id == credit.entityId }
+      assertTrue("a zeroed credit stays in the history, struck through", row.struck)
+      assertEquals(Cents.ZERO, row.amount)
+    }
+  }
+
   private suspend fun outboxRows(fixture: TestGraph) =
       checkNotNull(fixture.graph.current.value).outbox.snapshot()
+
+  private suspend fun awaitOutbox(fixture: TestGraph, count: Int): List<OutboxRow> {
+    val deadline = System.currentTimeMillis() + 5_000
+    while (outboxRows(fixture).size < count && System.currentTimeMillis() < deadline) {
+      Thread.sleep(10)
+    }
+    return outboxRows(fixture)
+  }
 }

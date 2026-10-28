@@ -32,6 +32,18 @@ data class DebtRow(
     val operationId: String,
     val createdAt: Instant,
     val originInstallationId: String,
+    val origin: DebtOrigin = DebtOrigin.MANUAL,
+)
+
+/** One credit settlement between a Contact's receivable and payable Debt. Not cash. */
+data class OffsetRow(
+    val id: String,
+    val receivableDebtId: String,
+    val payableDebtId: String,
+    val amount: Cents,
+    val operationId: String,
+    val createdAt: Instant,
+    val originInstallationId: String,
 )
 
 data class PaymentRow(
@@ -59,6 +71,7 @@ data class LedgerState(
     val contacts: Map<String, ContactRow>,
     val debts: Map<String, DebtRow>,
     val payments: Map<String, PaymentRow>,
+    val offsets: Map<String, OffsetRow> = emptyMap(),
 ) {
   /**
    * Folds one page. Throws [IllegalStateException], leaving this state as it was, when the page
@@ -75,7 +88,13 @@ data class LedgerState(
       check(page.epoch == epoch) { "page is for epoch ${page.epoch}, not $epoch" }
     }
     // One copy per page, so folding many events stays linear.
-    val fold = Fold(LinkedHashMap(contacts), LinkedHashMap(debts), LinkedHashMap(payments))
+    val fold =
+        Fold(
+            LinkedHashMap(contacts),
+            LinkedHashMap(debts),
+            LinkedHashMap(payments),
+            LinkedHashMap(offsets),
+        )
     var last = cursor
     for (event in page.events) {
       check(event.sequence > last) { "event ${event.sequence} does not follow $last" }
@@ -92,6 +111,7 @@ data class LedgerState(
         fold.contacts,
         fold.debts,
         fold.payments,
+        fold.offsets,
     )
   }
 
@@ -104,6 +124,7 @@ private class Fold(
     val contacts: MutableMap<String, ContactRow>,
     val debts: MutableMap<String, DebtRow>,
     val payments: MutableMap<String, PaymentRow>,
+    val offsets: MutableMap<String, OffsetRow>,
 ) {
   fun accept(event: ChangeEvent) {
     val command: LedgerCommand
@@ -168,6 +189,22 @@ private class Fold(
                 payload.note.orEmpty(),
                 payload.dueDate,
                 version = 1,
+                command.operationId,
+                at,
+                origin,
+                origin = payload.origin ?: DebtOrigin.MANUAL,
+            )
+      }
+      is DebtOffset -> {
+        held(debts, payload.receivableDebtId, "Debt", event)
+        held(debts, payload.payableDebtId, "Debt", event)
+        fresh(id, offsets, event)
+        offsets[id] =
+            OffsetRow(
+                id,
+                payload.receivableDebtId,
+                payload.payableDebtId,
+                payload.amountCents,
                 command.operationId,
                 at,
                 origin,

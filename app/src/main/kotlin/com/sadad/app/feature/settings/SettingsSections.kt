@@ -884,6 +884,7 @@ private fun queuedText(entry: QueuedEntry): String {
     QueuedKind.DEBT -> stringResource(R.string.settings_queued_debt, entry.name, amount)
     QueuedKind.DEBT_CORRECT ->
         stringResource(R.string.settings_queued_debt_correct, entry.name, amount)
+    QueuedKind.OFFSET -> stringResource(R.string.settings_queued_offset, entry.name, amount)
     QueuedKind.PAYMENT -> stringResource(R.string.settings_queued_payment, entry.name, amount)
     QueuedKind.PAYMENT_REVERSE ->
         stringResource(R.string.settings_queued_payment_reverse, entry.name)

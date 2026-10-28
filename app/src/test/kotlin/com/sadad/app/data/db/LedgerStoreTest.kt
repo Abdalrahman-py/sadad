@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.PaymentMethod
@@ -86,6 +87,65 @@ class LedgerStoreTest {
     assertEquals(1L, db.contactDao().all().single().createdSeq)
     assertEquals(2L, db.debtDao().all().single().createdSeq)
     assertEquals(3L, db.paymentDao().all().single().createdSeq)
+  }
+
+  @Test
+  fun roundTripsACreditDebtAndAnOffset() = runTest {
+    val store = LedgerStore(db)
+    val page =
+        Events.page(
+            listOf(
+                Events.accepted(contact("أ", CONTACT_ID), 1),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(1),
+                        contactId = CONTACT_ID,
+                        direction = Direction.RECEIVABLE,
+                        amount = Cents(10000),
+                        entityId = DEBT_ID,
+                    ),
+                    2,
+                ),
+                // The excess of a payment: a payable Debt that marks where it came from.
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(2),
+                        contactId = CONTACT_ID,
+                        direction = Direction.PAYABLE,
+                        amount = Cents(25000),
+                        note = "رصيد من دفعة زائدة",
+                        debtOrigin = DebtOrigin.OVERPAYMENT,
+                        entityId = CREDIT_ID,
+                    ),
+                    3,
+                ),
+                Events.accepted(
+                    Commands.debtOffset(
+                        Events.origin,
+                        Events.at(3),
+                        receivableDebtId = DEBT_ID,
+                        payableDebtId = CREDIT_ID,
+                        amount = Cents(10000),
+                        entityId = OFFSET_ID,
+                    ),
+                    4,
+                ),
+            ),
+            cursor = 9,
+        )
+    val state = LedgerState.EMPTY.apply(page)
+
+    store.persist(LedgerState.EMPTY, state, page)
+
+    assertEquals("the offset and the credit must survive a round trip", state, store.load())
+    assertEquals(
+        DebtOrigin.OVERPAYMENT,
+        db.debtDao().all().first { it.id == CREDIT_ID }.origin,
+    )
+    assertEquals(DebtOrigin.MANUAL, db.debtDao().all().first { it.id == DEBT_ID }.origin)
+    assertEquals(4L, db.offsetDao().all().single().createdSeq)
   }
 
   @Test
@@ -308,6 +368,8 @@ class LedgerStoreTest {
   private companion object {
     const val CONTACT_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
     const val DEBT_ID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"
+    const val CREDIT_ID = "d4e5f6a7-b8c9-4d0e-9f1a-2b3c4d5e6f70"
+    const val OFFSET_ID = "e5f6a7b8-c9d0-4e1f-8a2b-3c4d5e6f7081"
     const val PAYMENT_ID = "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f"
     const val Z_ID = "ffffffff-1111-4111-8111-111111111111"
     const val M_ID = "aaaaaaaa-2222-4222-8222-222222222222"

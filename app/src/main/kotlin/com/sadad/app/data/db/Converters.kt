@@ -2,6 +2,7 @@ package com.sadad.app.data.db
 
 import androidx.room.TypeConverter
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
@@ -40,6 +41,14 @@ class Converters {
   @TypeConverter
   fun textToPaymentMethod(value: String): PaymentMethod =
       PaymentMethod.entries.first { paymentMethodToText(it) == value }
+
+  @TypeConverter
+  fun debtOriginToText(value: DebtOrigin): String =
+      DebtOrigin.serializer().descriptor.getElementName(value.ordinal)
+
+  @TypeConverter
+  fun textToDebtOrigin(value: String): DebtOrigin =
+      DebtOrigin.entries.first { debtOriginToText(it) == value }
 
   @TypeConverter
   fun receiptStatusToText(value: ReceiptStatus): String =

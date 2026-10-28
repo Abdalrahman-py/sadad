@@ -54,4 +54,11 @@
     <string name="contacts_type_supplier">مورد</string>
     <string name="contacts_supplier_explain">ما عليك لهذا المورد. يقل حين تدفع له.</string>
     <string name="contacts_order">الترتيب: %1$s. اضغط للتغيير</string>
+
+    <!-- Credit: a payment above the debt, and a debt the credit paid for. -->
+    <string name="contacts_row_settled_credit">سدّد %1$s · %2$s رصيد</string>
+    <string name="contacts_row_offset">خُصم من الرصيد %1$s</string>
+    <string name="contacts_reverse">عكس الدفعة</string>
+    <string name="contacts_reverse_credit_used">استُخدم جزء من الرصيد. صحّح الحركة اللاحقة أولًا.</string>
+    <string name="contacts_reverse_offline">عكس الدفعة يحتاج اتصالًا.</string>
 </resources>

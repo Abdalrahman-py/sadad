@@ -25,6 +25,7 @@ import com.sadad.ledger.ContactRestore
 import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentReverse
@@ -450,6 +451,12 @@ class SettingsViewModel(
                   QueuedEntry(
                       QueuedKind.DEBT_CORRECT,
                       debtContact(view, payload.debtId),
+                      payload.amountCents,
+                  )
+              is DebtOffset ->
+                  QueuedEntry(
+                      QueuedKind.OFFSET,
+                      debtContact(view, payload.receivableDebtId),
                       payload.amountCents,
                   )
               is PaymentCreate ->

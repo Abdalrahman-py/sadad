@@ -396,6 +396,55 @@ dbTest(
 );
 
 dbTest(
+  "the changes route passes installations through",
+  async () => {
+    const { store, device } = await activeStore(2);
+    const second = await newDevice();
+    const enrolled = await send(
+      store.jwt,
+      second,
+      "POST",
+      "/v1/mobile/enroll",
+      {
+        body: {
+          ...enrollBody(second),
+          label: "جهاز الكاشير",
+          staffName: "سامر",
+        },
+      },
+    );
+    assertEqual(enrolled.status, 200);
+    await database.asAdmin("sadid_approve_installation", [
+      second.installationId,
+      "اعتماد في الاختبار",
+    ]);
+    await database.asAdmin("sadid_revoke_installation", [
+      second.installationId,
+      "خُرج من المتجر",
+    ]);
+
+    const res = await send(store.jwt, device, "GET", changesFixture.route);
+    assertEqual(res.status, 200);
+    const { ok, changes } = await res.json();
+    assertEqual(ok, true);
+    const byId = new Map(
+      changes.installations.map((i: Record<string, string>) => [i.id, i]),
+    );
+    assertEqual(byId.size, 2);
+    assertEqual(byId.get(device.installationId), {
+      id: device.installationId,
+      label: "Redmi M2101K7BI",
+      staffName: "سامي",
+    });
+    assertEqual(byId.get(second.installationId), {
+      id: second.installationId,
+      label: "جهاز الكاشير",
+      staffName: "سامر",
+    });
+  },
+);
+
+dbTest(
   "changes signed for one cursor cannot be replayed for another",
   async () => {
     const { store, device } = await activeStore();
@@ -549,6 +598,7 @@ dbTest(
     assertEqual(payload.allowed, [
       "contact.create",
       "debt.create",
+      "debt.offset",
       "payment.create",
     ]);
   },

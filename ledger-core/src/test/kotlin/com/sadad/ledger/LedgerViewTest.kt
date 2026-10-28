@@ -190,4 +190,76 @@ class LedgerViewTest {
     val view = Events.stateOf(contact).viewWith()
     assertEquals(Cents.ZERO, view.net(contact.entityId))
   }
+
+  @Test
+  fun mainBoardCreditSteps() {
+    // دين 250 → عليه 250
+    val debt250 =
+        Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(25_000))
+    assertEquals(Cents(25_000), Events.stateOf(contact, debt250).viewWith().net(contact.entityId))
+
+    // دفعة 500: 250 settle the debt, 250 become credit → له 250
+    val pay250 =
+        Commands.paymentCreate(origin, at(2), debt250.entityId, Cents(25_000), PaymentMethod.CASH)
+    val credit =
+        Commands.debtCreate(
+            origin,
+            at(3),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(25_000),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+            note = "رصيد من دفعة زائدة",
+        )
+    val afterPayment = Events.stateOf(contact, debt250, pay250, credit).viewWith()
+    assertEquals(Cents(-25_000), afterPayment.net(contact.entityId))
+    assertEquals(
+        DebtOrigin.OVERPAYMENT,
+        afterPayment.debts.single { it.id == credit.entityId }.origin,
+    )
+
+    // دين 100 paid from the credit → له 150
+    val debt100 =
+        Commands.debtCreate(origin, at(4), contact.entityId, Direction.RECEIVABLE, Cents(10_000))
+    val offset =
+        Commands.debtOffset(origin, at(5), debt100.entityId, credit.entityId, Cents(10_000))
+    val afterOffset = Events.stateOf(contact, debt250, pay250, credit, debt100, offset).viewWith()
+    assertEquals(Cents(-15_000), afterOffset.net(contact.entityId))
+
+    // An offset is not cash: the one real payment is still the only payment row.
+    assertEquals(listOf(pay250.entityId), afterOffset.payments.map { it.id })
+    val creditRow = afterOffset.debts.single { it.id == credit.entityId }
+    assertEquals(Cents.ZERO, creditRow.paid)
+    assertEquals(Cents(10_000), creditRow.offsetted)
+    assertEquals(Cents(15_000), creditRow.remaining)
+    assertEquals(Cents(15_000), creditRow.confirmedRemaining)
+    assertEquals(Cents.ZERO, afterOffset.debts.single { it.id == debt100.entityId }.remaining)
+  }
+
+  @Test
+  fun queuedOffsetsReduceBothSidesAndTooLargeOnesAreExcluded() {
+    val credit =
+        Commands.debtCreate(
+            origin,
+            at(1),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(25_000),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+        )
+    val debt100 =
+        Commands.debtCreate(origin, at(2), contact.entityId, Direction.RECEIVABLE, Cents(10_000))
+    val offset =
+        Commands.debtOffset(origin, at(3), debt100.entityId, credit.entityId, Cents(10_000))
+    val tooBig = Commands.debtOffset(origin, at(4), debt100.entityId, credit.entityId, Cents(1))
+    val view = Events.stateOf(contact).viewWith(listOf(credit, debt100, offset, tooBig))
+    assertEquals(Cents(-15_000), view.net(contact.entityId))
+    assertEquals(setOf(tooBig.operationId), view.excludedOperations)
+    assertTrue(view.payments.isEmpty())
+
+    // An offset the server already accepted is not projected twice.
+    val confirmed = Events.stateOf(contact, credit, debt100, offset).viewWith(listOf(offset))
+    assertEquals(Cents(-15_000), confirmed.net(contact.entityId))
+    assertTrue(confirmed.excludedOperations.isEmpty())
+  }
 }
