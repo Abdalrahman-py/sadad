@@ -116,6 +116,10 @@ object QuickAddTags {
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
   const val ERROR = "quickadd:error"
+  const val DUE_CHIP = "quickadd:due-chip"
+  const val NOTE_CHIP = "quickadd:note-chip"
+  const val DUE_DIALOG = "quickadd:due-dialog"
+  const val NOTE_DIALOG = "quickadd:note-dialog"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -621,6 +625,7 @@ private fun KindCell(
 
 /* ---------------------------------------------------------------- amount */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AmountStep(
     state: QuickAddState,
@@ -727,20 +732,22 @@ private fun AmountStep(
         // A due date belongs to what a customer owes; a supplier's goods have none.
         if (supplier != true) {
           Chip(
-              state.dueDate?.let { stringResource(R.string.quickadd_due_on, it) }
-                  ?: stringResource(R.string.quickadd_due),
+              label =
+                  state.dueDate?.let { stringResource(R.string.quickadd_due_on, it) }
+                      ?: stringResource(R.string.quickadd_due),
               active = state.dueDate != null,
-          ) {
-            choosingDue = true
-          }
+              onClick = { choosingDue = true },
+              tag = QuickAddTags.DUE_CHIP,
+          )
         }
         Chip(
-            state.note.takeIf { it.isNotBlank() }?.let { it.trim().take(NOTE_CHIP_CHARS) }
-                ?: stringResource(R.string.quickadd_note),
+            label =
+                state.note.takeIf { it.isNotBlank() }?.let { it.trim().take(NOTE_CHIP_CHARS) }
+                    ?: stringResource(R.string.quickadd_note),
             active = state.note.isNotEmpty(),
-        ) {
-          writingNote = true
-        }
+            onClick = { writingNote = true },
+            tag = QuickAddTags.NOTE_CHIP,
+        )
       } else {
         for (method in QUICK_METHODS) {
           Chip(
@@ -902,13 +909,21 @@ private fun Keypad(onKey: (String) -> Unit, onDelete: () -> Unit) {
 }
 
 @Composable
-private fun Chip(label: String, active: Boolean, onClick: () -> Unit) {
+private fun Chip(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    tag: String? = null,
+) {
   val p = sadadPalette
   Surface(
       color = if (active) p.soft else p.card,
       shape = RoundedCornerShape(22.dp),
       border = BorderStroke(1.dp, p.line),
-      modifier = Modifier.height(44.dp).clickable(onClick = onClick),
+      modifier =
+          Modifier.height(44.dp)
+              .then(if (tag == null) Modifier else Modifier.testTag(tag))
+              .clickable(onClick = onClick),
   ) {
     Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
       Text(
@@ -941,6 +956,7 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
       )
   val picked = state.selectedDateMillis
   DatePickerDialog(
+      modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
       onDismissRequest = onDismiss,
       confirmButton = {
         TextButton(
@@ -974,6 +990,7 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
 private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
   var text by remember { mutableStateOf(current) }
   AlertDialog(
+      modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
       title = { Text(stringResource(R.string.quickadd_note), fontWeight = FontWeight.Bold) },
       text = {
@@ -1083,18 +1100,18 @@ private fun DoneStep(
       }
     }
 
-    SadadButton(
-        text =
-            stringResource(R.string.quickadd_undo) +
-                " " +
-                stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
-        onClick = { model.undo(context) },
-        // The count runs down each second; at zero the entry is queued and there is nothing to
-        // undo.
-        enabled = done.secondsLeft > 0,
-        style = SadadButtonStyle.SURFACE,
-        modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
-    )
+    // Once the entry is queued there is nothing to undo here, so the offer goes away with it.
+    if (done.secondsLeft > 0) {
+      SadadButton(
+          text =
+              stringResource(R.string.quickadd_undo) +
+                  " " +
+                  stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
+          onClick = { model.undo(context) },
+          style = SadadButtonStyle.SURFACE,
+          modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
+      )
+    }
     SadadButton(
         text = stringResource(R.string.quickadd_another),
         onClick = { model.another(context) },

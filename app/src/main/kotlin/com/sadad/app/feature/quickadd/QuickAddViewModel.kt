@@ -128,6 +128,9 @@ class QuickAddViewModel(
    */
   @Volatile private var openBalances: Map<String, Cents> = emptyMap()
 
+  /** Everyone the store holds, before the picker's query narrows it; duplicate checks read this. */
+  @Volatile private var allPeople: List<QuickAddPerson> = emptyList()
+
   /**
    * The person a pending «new person» step will create; the contact command is held, not queued.
    */
@@ -148,6 +151,7 @@ class QuickAddViewModel(
             project(view, permissions, saveBlocked)
           }
           .collect { facts ->
+            allPeople = facts.people
             mutable.update { current ->
               val people = facts.people
               val chosen =
@@ -166,7 +170,7 @@ class QuickAddViewModel(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
                   restricted = facts.restricted,
-                  people = members(facts.people, current),
+                  people = members(PersonSearch.search(people, current.query), current),
                   selected = selected,
                   overBalance =
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
@@ -183,10 +187,18 @@ class QuickAddViewModel(
   }
 
   fun onQueryChange(value: String) {
-    mutable.update { it.copy(query = value, error = null) }
+    mutable.update { current -> current.withQuery(value) }
   }
 
-  fun clearQuery() = mutable.update { it.copy(query = "") }
+  fun clearQuery() = mutable.update { it.withQuery("") }
+
+  /** The rows are the query's result, so the list and its count always agree. */
+  private fun QuickAddState.withQuery(value: String): QuickAddState =
+      copy(
+          query = value,
+          people = members(PersonSearch.search(allPeople, value), this),
+          error = null,
+      )
 
   /** The picker's tap: the flow continues at the amount with that person's debts in view. */
   fun pick(personId: String) {
@@ -244,7 +256,7 @@ class QuickAddViewModel(
    */
   fun useDuplicate() {
     val current = mutable.value
-    val person = current.people.firstOrNull { it.name == current.duplicate } ?: return
+    val person = allPeople.firstOrNull { it.name == current.duplicate } ?: return
     mutable.update {
       it.copy(
           selected = person,
@@ -372,6 +384,8 @@ class QuickAddViewModel(
    */
   fun save(context: Context) {
     val current = mutable.value
+    // Saving is the amount step's action; the done step cannot queue the same entry again.
+    if (current.step != QuickAddStep.AMOUNT) return
     val amount = parseCents(current.amount)
     if (!current.canSave || amount == null) return
     if (amount >= ANOMALY_LIMIT && anomalyApproved != current.amount) {
@@ -437,7 +451,7 @@ class QuickAddViewModel(
 
   /** «تراجع»: the held commands are dropped, nothing was ever queued. */
   fun undo(context: Context) {
-    // Past the window the entry is already queued: there is nothing left to take back.
+    // The window closed and the commands are queued: this screen can no longer take them back.
     if (pending.isEmpty()) return
     commitJob?.cancel()
     commitJob = null
@@ -636,7 +650,7 @@ class QuickAddViewModel(
   private fun duplicateFor(name: String, phone: String): String? {
     val digits = normalizePhone(phone)
     if (digits.length < MIN_PHONE_DIGITS) return null
-    return mutable.value.people
+    return allPeople
         .firstOrNull { person ->
           val stored = person.phone.filter { it.isDigit() }
           stored.isNotEmpty() &&
