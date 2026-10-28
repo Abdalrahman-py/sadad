@@ -10,6 +10,7 @@ import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactRow
 import com.sadad.ledger.DebtRow
 import com.sadad.ledger.Direction
+import com.sadad.ledger.InstallationName
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentRow
 import com.sadad.ledger.ReceiptStatus
@@ -203,3 +204,18 @@ data class OutboxEntity(
     val recoveryPermit: String?,
     val payload: ByteArray,
 )
+
+/**
+ * A device of the store, as the last `changes` page carried it; screens say who recorded an entry.
+ */
+@Entity(tableName = "installation_names")
+data class InstallationNameEntity(
+    @PrimaryKey val id: String,
+    val label: String,
+    val staffName: String,
+)
+
+fun InstallationNameEntity.toName(): InstallationName = InstallationName(id, label, staffName)
+
+fun InstallationName.toEntity(): InstallationNameEntity =
+    InstallationNameEntity(id, label, staffName)

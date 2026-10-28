@@ -1064,6 +1064,21 @@ try {
     assert.equal((await db.query('select count(*)::int n from sadid_private.store_memberships where user_id = $1', [owner])).rows[0].n, 0);
   });
 
+  await check('changes lists the store devices with their names, approved and revoked alike, and no other store\'s', async () => {
+    await db.exec('reset role');
+    const otherStoreDevice = (await db.query('select id from sadid_private.installations where store_id = 2')).rows[0].id;
+    await capability('read');
+    const page = (await db.query('select public.sadid_changes(0, 500) as result')).rows[0].result;
+    const byId = Object.fromEntries(page.installations.map((i) => [i.id, i]));
+    assert.deepEqual(byId[activeInstallation], { id: activeInstallation, label: 'جهاز بديل', staffName: 'أحمد' });
+    assert.deepEqual(
+      byId[installation],
+      { id: installation, label: 'هاتف الكاشير', staffName: 'أحمد' },
+      'the revoked device is still listed, so its old events still resolve',
+    );
+    assert.equal(byId[otherStoreDevice], undefined, "another store's devices are absent");
+  });
+
   console.log(JSON.stringify({ engine: (await db.query('select version()')).rows[0].version, tests }, null, 2));
 } catch (error) {
   console.error(JSON.stringify({ message: error.message, code: error.code, where: error.where, tests }, null, 2));

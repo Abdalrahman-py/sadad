@@ -248,6 +248,12 @@
             "items": {
               "$ref": "#/components/schemas/ChangeEvent"
             }
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstallationName"
+            }
           }
         },
         "required": [
@@ -258,7 +264,8 @@
           "nextCursor",
           "hasMore",
           "currency",
-          "events"
+          "events",
+          "installations"
         ]
       },
       "ChangeEvent": {
@@ -360,6 +367,26 @@
           "sequence",
           "epoch",
           "serverTime"
+        ]
+      },
+      "InstallationName": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "staffName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "staffName"
         ]
       },
       "AdminOverview": {

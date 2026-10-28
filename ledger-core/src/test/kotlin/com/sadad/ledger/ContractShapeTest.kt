@@ -31,6 +31,7 @@ class ContractShapeTest {
   fun dtosHaveExactlyTheContractFields() {
     assertEquals(required("Changes"), elements(Changes.serializer()))
     assertEquals(required("ChangeEvent"), elements(ChangeEvent.serializer()))
+    assertEquals(required("InstallationName"), elements(InstallationName.serializer()))
     assertEquals(required("Receipt"), elements(Receipt.serializer()))
   }
 
@@ -78,6 +79,40 @@ class ContractShapeTest {
         changes.events.map { it.kind },
     )
     assertEquals(events, changes.events)
+  }
+
+  @Test
+  fun changesReadsInstallations() {
+    val response =
+        JsonObject(
+            mapOf(
+                "schemaVersion" to JsonPrimitive(1),
+                "storeId" to JsonPrimitive(Events.STORE_ID),
+                "epoch" to JsonPrimitive(Fixtures.EPOCH),
+                "cursor" to JsonPrimitive(3),
+                "nextCursor" to JsonPrimitive(3),
+                "hasMore" to JsonPrimitive(false),
+                "currency" to JsonPrimitive("ILS"),
+                "installations" to
+                    JsonArray(
+                        listOf(
+                            JsonObject(
+                                mapOf(
+                                    "id" to JsonPrimitive(Fixtures.INSTALLATION_ID),
+                                    "label" to JsonPrimitive("جهاز الكاشير"),
+                                    "staffName" to JsonPrimitive("سامر"),
+                                )
+                            )
+                        )
+                    ),
+                "events" to JsonArray(emptyList()),
+            )
+        )
+    val changes = LedgerJson.decodeFromJsonElement(Changes.serializer(), response)
+    assertEquals(
+        listOf(InstallationName(Fixtures.INSTALLATION_ID, "جهاز الكاشير", "سامر")),
+        changes.installations,
+    )
   }
 
   @Test

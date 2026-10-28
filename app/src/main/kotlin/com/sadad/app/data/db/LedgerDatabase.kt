@@ -23,10 +23,11 @@ import androidx.room.TypeConverters
             LedgerMetaEntity::class,
             EventEntity::class,
             OutboxEntity::class,
+            InstallationNameEntity::class,
         ],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 @TypeConverters(Converters::class)
 abstract class LedgerDatabase : RoomDatabase() {
@@ -41,6 +42,8 @@ abstract class LedgerDatabase : RoomDatabase() {
   abstract fun eventDao(): EventDao
 
   abstract fun outboxDao(): OutboxDao
+
+  abstract fun installationNameDao(): InstallationNameDao
 
   companion object {
     fun open(context: Context, storeUserId: String): LedgerDatabase =

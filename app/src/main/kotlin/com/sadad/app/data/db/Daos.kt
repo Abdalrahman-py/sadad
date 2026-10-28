@@ -64,6 +64,13 @@ interface EventDao {
   @Query("DELETE FROM events") suspend fun clear()
 }
 
+@Dao
+interface InstallationNameDao {
+  @Upsert suspend fun upsert(names: List<InstallationNameEntity>)
+
+  @Query("SELECT * FROM installation_names") fun observe(): Flow<List<InstallationNameEntity>>
+}
+
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */
 data class OutboxAnswer(val operationId: String, val state: String, val code: String?)
 

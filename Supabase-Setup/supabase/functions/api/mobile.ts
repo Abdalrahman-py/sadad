@@ -216,6 +216,14 @@ const ChangeEventSchema = z
   })
   .openapi("ChangeEvent");
 
+const InstallationNameSchema = z
+  .object({
+    id: z.uuid(),
+    label: z.string(),
+    staffName: z.string(),
+  })
+  .openapi("InstallationName");
+
 const ChangesSchema = z
   .object({
     schemaVersion: z.number().int(),
@@ -226,6 +234,7 @@ const ChangesSchema = z
     hasMore: z.boolean(),
     currency: z.string(),
     events: z.array(ChangeEventSchema),
+    installations: z.array(InstallationNameSchema),
   })
   .openapi("Changes");
 
