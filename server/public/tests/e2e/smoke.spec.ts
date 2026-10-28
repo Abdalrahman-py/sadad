@@ -129,38 +129,38 @@ test("sign in, create a store, open it and approve its device", async ({ page })
   await page.getByLabel("كلمة المرور").fill("correct horse battery");
   await page.getByRole("button", { name: "دخول آمن" }).click();
 
-  await expect(page.getByText("admin@sadad.test")).toBeVisible();
-  await expect(page.getByText("لا توجد حسابات متاجر")).toBeVisible();
+  // The landing screen is the queue, not a table of stores.
+  await expect(page.getByRole("heading", { level: 1, name: "المهام" })).toBeVisible();
+  await expect(page.locator(".bar-user")).toContainText("admin@sadad.test");
+  await expect(page.getByText("لا أجهزة تنتظر")).toBeVisible();
 
   // Create the store from contract/fixtures/admin/create-store.json.
-  await page.getByRole("button", { name: "إنشاء حساب متجر" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("اسم المتجر").fill(createStore.request.name);
-  await dialog.getByLabel("اسم المستخدم").fill(createStore.request.username);
-  await dialog.getByLabel("نوع الاشتراك").selectOption(createStore.request.subscriptionMode);
-  await dialog
-    .getByLabel("مدة الاشتراك بالأيام")
-    .fill(String(createStore.request.subscriptionDays));
-  await dialog.getByLabel("عدد الأجهزة المسموحة").fill(String(createStore.request.allowedDevices));
-  await dialog.getByLabel("حد جهات الاتصال النشطة").fill(String(createStore.request.debtorLimit));
-  await dialog.getByLabel("التصدير").uncheck();
-  await dialog.getByRole("button", { name: "إنشاء الحساب" }).click();
+  await page.getByRole("link", { name: "إنشاء حساب متجر" }).click();
+  await page.getByLabel("اسم المتجر").fill(createStore.request.name);
+  await page.getByLabel(/اسم الدخول/).fill(createStore.request.username);
+  await page.getByLabel(/المدة/).fill(String(createStore.request.subscriptionDays));
+  await page.getByLabel(/الأجهزة المسموحة/).fill(String(createStore.request.allowedDevices));
+  await page.getByLabel(/حد الأشخاص النشطين/).fill(String(createStore.request.debtorLimit));
+  await page.getByText("الصلاحيات").click();
+  await page.getByLabel("التصدير").uncheck();
+  await page.getByRole("button", { name: "إنشاء الحساب" }).click();
   await expect(page.getByText(PASSWORD)).toBeVisible();
   const createCall = calls.find((c) => c.method === "POST" && c.path === "/v1/admin/stores");
   expect(createCall?.body).toMatchObject(createStore.request);
 
-  // List → open store.
-  const listed = page.getByRole("row", { name: /بقالة الزاوية/ });
-  await expect(listed).toBeVisible();
-  await listed.getByRole("button", { name: "إدارة" }).click();
-  await expect(page.getByRole("heading", { name: "بقالة الزاوية" })).toBeVisible();
-  await expect(page.getByText("بانتظار اعتمادك")).toBeVisible();
+  // Hand off → the store page, whose overview shows the waiting device.
+  await page.getByRole("link", { name: "فتح صفحة المتجر" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "بقالة الزاوية" })).toBeVisible();
+  await expect(page.getByText("جهاز ينتظر الاعتماد")).toBeVisible();
 
   // Approve the pending installation with a reason.
-  await page.getByRole("button", { name: "اعتماد الهاتف" }).click();
-  await page.getByRole("dialog").getByLabel("سبب الإجراء").fill("هاتف المتجر الجديد");
-  await page.getByRole("dialog").getByRole("button", { name: "تأكيد" }).click();
-  await expect(page.getByText("هاتف معتمد")).toBeVisible();
+  await page.getByRole("link", { name: "مراجعة واعتماد" }).click();
+  await expect(page.getByText("بانتظار الاعتماد")).toBeVisible();
+  await page.getByRole("button", { name: "اعتماد", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("سبب الإجراء").fill("هاتف المتجر الجديد");
+  await dialog.getByRole("button", { name: "اعتماد الجهاز" }).click();
+  await expect(page.getByText("معتمد", { exact: true })).toBeVisible();
   const approveCall = calls.find((c) => c.path === `/v1/admin/installations/${PENDING_ID}/approve`);
   expect(approveCall?.body).toEqual({ reason: "هاتف المتجر الجديد" });
 

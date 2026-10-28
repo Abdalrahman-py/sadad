@@ -15,13 +15,20 @@ export function recoveryChoices(detail: StoreDetail) {
 
 const permits = (detail: StoreDetail) =>
   detail.recoveryPermits.length
-    ? html`<h4>تصاريح الاسترداد السابقة</h4><div class="record-list">${detail.recoveryPermits.map(
-        (permit) => html`<div class="record-row"><div>
-          <b>${permit.approvedBy} · ${new Date(permit.expiresAt) > new Date() ? "صالح" : "منتهٍ"}</b>
-          <small>${permit.reason} · ينتهي ${dateTime(permit.expiresAt)}</small>
-          <code dir="ltr">${permit.permitId}</code>
-        </div></div>`,
-      )}</div>`
+    ? html`<div class="stack">
+        <h3 class="row-title">تصاريح الاسترداد السابقة</h3>
+        <div class="list">
+          ${detail.recoveryPermits.map(
+            (permit) => html`<div class="list-row">
+              <div class="grow">
+                <b>${permit.approvedBy} · ${new Date(permit.expiresAt) > new Date() ? "صالح" : "منتهٍ"}</b>
+                <small class="small muted">${permit.reason} · ينتهي ${dateTime(permit.expiresAt)}</small>
+                <code class="permit-code" dir="ltr">${permit.permitId}</code>
+              </div>
+            </div>`,
+          )}
+        </div>
+      </div>`
     : nothing;
 
 function preview(state: RecoveryState, detail: StoreDetail) {
@@ -41,17 +48,21 @@ function preview(state: RecoveryState, detail: StoreDetail) {
   return {
     ready: !!stats && blocking.length === 0,
     view: html`
-      <div class="panel-inset stack">
-        <div class="panel-head"><h4>معاينة قبل الاعتماد</h4><span class="small muted" role="status">${verdict}</span></div>
+      <div class="stack">
+        <div class="spread">
+          <h3 class="row-title">معاينة قبل الاعتماد</h3>
+          <span class="small muted" role="status">${verdict}</span>
+        </div>
         ${
           stats
-            ? html`<div class="mini-metrics">
-                ${metric("الإدخالات", fmt(stats.total), true)}
-                ${metric("أشخاص", fmt(stats.byType["contact.create"] ?? 0), true)}
-                ${metric("ديون", fmt(stats.byType["debt.create"] ?? 0), true)}
-                ${metric("دفعات", fmt(stats.byType["payment.create"] ?? 0), true)}
-                ${metric("إجمالي الديون", money(stats.debtCents), true)}
-                ${metric("إجمالي الدفعات", money(stats.paymentCents), true)}
+            ? html`
+              <div class="grid-cards">
+                <article class="card">${metric("الإدخالات", fmt(stats.total))}</article>
+                <article class="card">${metric("أشخاص", fmt(stats.byType["contact.create"] ?? 0))}</article>
+                <article class="card">${metric("ديون", fmt(stats.byType["debt.create"] ?? 0))}</article>
+                <article class="card">${metric("دفعات", fmt(stats.byType["payment.create"] ?? 0))}</article>
+                <article class="card">${metric("إجمالي الديون", money(stats.debtCents))}</article>
+                <article class="card">${metric("إجمالي الدفعات", money(stats.paymentCents))}</article>
               </div>
               ${
                 stats.first !== null && stats.last !== null
@@ -60,22 +71,27 @@ function preview(state: RecoveryState, detail: StoreDetail) {
               }`
             : nothing
         }
-        <div class="record-list">${
-          report.problems.length
-            ? report.problems.map(
-                (p) => html`<div class="record-row"><div>
-                  <b class=${p.blocking ? "form-error" : ""}>${p.blocking ? "يمنع الاعتماد" : "تنبيه"}</b>
-                  <small>${p.message}</small></div></div>`,
-              )
-            : html`<div class="record-row"><div><b>لا مشاكل في الصيغة</b>
-                <small>كل إدخال يحمل النوع ومعرّف العملية وهوية الهاتف السابق.</small></div></div>`
-        }</div>
-        <details><summary>تفاصيل الإدخالات</summary><div class="record-list">${report.details
-          .slice(0, 200)
-          .map(
-            (d) =>
-              html`<div class="record-row"><div><b>${d.at}</b><small>${d.text} · ${d.sub}</small></div></div>`,
-          )}</div></details>
+        <div class="list">
+          ${
+            report.problems.length
+              ? report.problems.map(
+                  (problem) => html`<div class="list-row"><div class="grow">
+                    <b class=${problem.blocking ? "form-error" : ""}>${problem.blocking ? "يمنع الاعتماد" : "تنبيه"}</b>
+                    <small class="small muted">${problem.message}</small></div></div>`,
+                )
+              : html`<div class="list-row"><div class="grow"><b>لا مشاكل في الصيغة</b>
+                  <small class="small muted">كل إدخال يحمل النوع ومعرّف العملية وهوية الهاتف السابق.</small></div></div>`
+          }
+        </div>
+        <details>
+          <summary>تفاصيل الإدخالات</summary>
+          <div class="list push-sm">
+            ${report.details.slice(0, 200).map(
+              (detailRow) => html`<div class="list-row"><div class="grow">
+                <b>${detailRow.at}</b><small class="small muted">${detailRow.text} · ${detailRow.sub}</small></div></div>`,
+            )}
+          </div>
+        </details>
       </div>`,
   };
 }
@@ -91,48 +107,99 @@ export function recoveryView(
   const check = preview(state, detail);
   const set = (key: "oldId" | "newId" | "reason" | "manifest") => (event: Event) =>
     actions.setRecovery({ [key]: (event.currentTarget as HTMLInputElement).value });
+  const optionLabel = (phone: (typeof active)[number]) =>
+    `${fmt(phone.generation)} · ${phone.staffName || phone.label || phone.installationId}`;
   return html`
-    <section class="panel-inset stack">
-      <h3>استرداد إدخالات الهاتف السابق</h3>
+    <section class="card stack narrow">
+      <div class="stack">
+        <h2 class="section-title">استرداد إدخالات الهاتف السابق</h2>
+        <p class="muted small">
+          حين يغيّر صاحب المتجر هاتفه وعليه إدخالات لم تُرسل، يرسل لك «قائمة اعتماد» من التطبيق. تعتمدها
+          هنا فتُقبل إدخالات الهاتف القديم. التصريح صالح 24 ساعة؛ يُدخله الهاتف المعتمد عبر «إدخال تصريح
+          الاسترداد».
+        </p>
+      </div>
       ${
         write
           ? html`
-            <p class="muted small">صدّر «قائمة اعتماد الإدارة» من الهاتف السابق، واخترها أو الصقها هنا. التصريح صالح 24 ساعة؛ يُدخله الهاتف المعتمد عبر «إدخال تصريح الاسترداد».</p>
             <form class="stack" @submit=${(event: SubmitEvent) => {
               event.preventDefault();
               actions.approveRecovery();
             }}>
               <fieldset class="stack" ?disabled=${!permitted || state.busy}>
-                <label>الهاتف السابق<select required .value=${state.oldId} @change=${set("oldId")}>
-                  <option value="">اختر الهاتف السابق</option>
-                  ${old.map((p) => html`<option value=${p.installationId} ?selected=${p.installationId === state.oldId}>${fmt(p.generation)} · ${p.installationId}</option>`)}
-                </select></label>
-                <label>الهاتف المعتمد حاليًا<select required .value=${state.newId} @change=${set("newId")}>
-                  <option value="">${active.length ? "اختر الهاتف المعتمد" : "اعتمد الهاتف الجديد أولًا"}</option>
-                  ${active.map((p) => html`<option value=${p.installationId} ?selected=${p.installationId === state.newId}>${fmt(p.generation)} · ${p.installationId}</option>`)}
-                </select></label>
-                <label>قائمة الأوامر الأصلية<textarea dir="ltr" rows="6" required .value=${state.manifest}
-                  @input=${set("manifest")} placeholder="الصق قائمة الأوامر من الهاتف"></textarea></label>
-                <label>أو اختر ملف قائمة الأوامر<input type="file" accept="application/json,.json"
-                  @change=${(event: Event) => {
-                    const file = (event.currentTarget as HTMLInputElement).files?.[0];
-                    if (file) actions.loadManifestFile(file);
-                  }}></label>
-                <label>سبب الاسترداد<textarea rows="2" maxlength="2000" required .value=${state.reason}
-                  @input=${set("reason")}></textarea></label>
-                <button class="button primary" ?disabled=${!check.ready}>اعتماد الاسترداد</button>
+                <ol class="steps">
+                  <li>
+                    <b>1 · الهاتفان</b>
+                    <div class="field-row">
+                      <label class="field">الهاتف القديم
+                        <select required .value=${state.oldId} @change=${set("oldId")}>
+                          <option value="">اختر الهاتف السابق</option>
+                          ${old.map(
+                            (phone) => html`<option value=${phone.installationId}
+                              ?selected=${phone.installationId === state.oldId}>${optionLabel(phone)}</option>`,
+                          )}
+                        </select>
+                      </label>
+                      <label class="field">الهاتف المعتمد الآن
+                        <select required .value=${state.newId} @change=${set("newId")}>
+                          <option value="">${active.length ? "اختر الهاتف المعتمد" : "اعتمد الهاتف الجديد أولًا"}</option>
+                          ${active.map(
+                            (phone) => html`<option value=${phone.installationId}
+                              ?selected=${phone.installationId === state.newId}>${optionLabel(phone)}</option>`,
+                          )}
+                        </select>
+                      </label>
+                    </div>
+                    ${
+                      permitted
+                        ? nothing
+                        : html`<span class="small tone-warn">
+                            يحتاج الاسترداد هاتفًا قديمًا ملغى وهاتفًا معتمدًا حاليًا على الأقل.
+                          </span>`
+                    }
+                  </li>
+                  <li>
+                    <b>2 · قائمة الاعتماد</b>
+                    <label class="drop">
+                      اختر ملف القائمة (JSON)
+                      <input type="file" accept="application/json,.json" class="sr-only"
+                        @change=${(event: Event) => {
+                          const file = (event.currentTarget as HTMLInputElement).files?.[0];
+                          if (file) actions.loadManifestFile(file);
+                        }}>
+                    </label>
+                    <label class="field">أو الصق محتوى القائمة
+                      <textarea dir="ltr" rows="4" required .value=${state.manifest}
+                        @input=${set("manifest")} placeholder="الصق قائمة الأوامر من الهاتف"></textarea>
+                    </label>
+                  </li>
+                  <li>
+                    <b>3 · السبب والاعتماد</b>
+                    <label class="field">سبب الاسترداد
+                      <textarea rows="2" maxlength="2000" required .value=${state.reason}
+                        @input=${set("reason")} placeholder="مثال: تغيير هاتف صاحب المتجر بعد عطل"></textarea>
+                    </label>
+                    <button class="btn btn-primary start"
+                      ?disabled=${!check.ready}>اعتماد الاسترداد</button>
+                  </li>
+                </ol>
               </fieldset>
               <p class="form-error" role="alert">${state.error}</p>
             </form>
             ${check.view}
             ${
               state.permit
-                ? html`<div class="result" role="status"><b>تم اعتماد الاسترداد</b>
-                    <span class="permit-id">${state.permit.permitId}</span>
-                    <p>ينتهي ${dateTime(state.permit.expiresAt)}. انسخ رقم التصريح إلى الهاتف المعتمد ← مزامنة السجلات والاسترداد ← إدخال تصريح الاسترداد.</p></div>`
+                ? html`<div class="notice-inline" role="status">
+                    <b>تم اعتماد الاسترداد</b>
+                    <p class="permit-id">${state.permit.permitId}</p>
+                    <p class="small">
+                      ينتهي ${dateTime(state.permit.expiresAt)}. انسخ رقم التصريح إلى الهاتف المعتمد ←
+                      مزامنة السجلات والاسترداد ← إدخال تصريح الاسترداد.
+                    </p>
+                  </div>`
                 : nothing
             }`
-          : html`<p class="muted small">اعتماد الاسترداد للإدارة فقط.</p>`
+          : html`<p class="small muted">اعتماد الاسترداد للإدارة فقط.</p>`
       }
       ${permits(detail)}
     </section>

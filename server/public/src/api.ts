@@ -77,7 +77,7 @@ export function createApi(options: ApiOptions) {
             query: {
               q: query.q || undefined,
               cursor: query.cursor,
-              limit: 50,
+              limit: 100,
               includeArchived: query.includeArchived ? "true" : "false",
             },
           },
@@ -121,7 +121,7 @@ export function createApi(options: ApiOptions) {
     pendingInstallations: (query: { q?: string; cursor?: string }, signal?: AbortSignal) =>
       unwrap(
         client.GET("/v1/admin/installations", {
-          params: { query: { q: query.q || undefined, cursor: query.cursor, limit: 50 } },
+          params: { query: { q: query.q || undefined, cursor: query.cursor, limit: 100 } },
           signal,
         }),
       ),

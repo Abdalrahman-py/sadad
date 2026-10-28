@@ -4,7 +4,7 @@ import { dateTime, fmt } from "../format";
 import type { Actions, Model, Paged, PageStep } from "../model";
 import { loadState, pager, searchBox } from "./common";
 
-const KINDS: Record<string, string> = {
+export const KIND_LABELS: Record<string, string> = {
   "store.updated": "تعديل المتجر",
   "store.subscription": "تعديل الاشتراك",
   "account.password-reset": "كلمة مرور مؤقتة",
@@ -26,17 +26,24 @@ const counts = (recordCounts: Record<string, number> | undefined) =>
     : "";
 
 const event = (item: AuditEvent, showStore: boolean) => html`
-  <div class="record-row"><div>
-    <b>${item.kind ? (KINDS[item.kind] ?? item.kind) : "قراءة مسجلة"} · ${item.actor}</b>
-    <small>${item.reason}${showStore ? ` · المتجر ${item.storeId}` : ""} · ${dateTime(item.createdAt)}</small>
-    ${item.recordCounts ? html`<small>${counts(item.recordCounts)}</small>` : nothing}
-  </div></div>
+  <div class="list-row">
+    <div class="grow">
+      <b>${item.kind ? (KIND_LABELS[item.kind] ?? item.kind) : "قراءة مسجلة"} · ${item.actor}</b>
+      <small class="small muted">
+        ${item.reason}${showStore && item.storeId ? ` · المتجر ${fmt(item.storeId)}` : ""} ·
+        ${dateTime(item.createdAt)}
+      </small>
+      ${item.recordCounts ? html`<small class="small muted">${counts(item.recordCounts)}</small>` : nothing}
+    </div>
+  </div>
 `;
 
-export const sourceSwitch = (source: AuditSource, set: (source: AuditSource) => void) => html`
-  <div class="button-row" role="group" aria-label="نوع السجل">
-    <button type="button" class="tab" aria-pressed=${source === "control"} @click=${() => set("control")}>إجراءات الإدارة</button>
-    <button type="button" class="tab" aria-pressed=${source === "access"} @click=${() => set("access")}>قراءات الدفتر</button>
+export const sourceChips = (source: AuditSource, set: (source: AuditSource) => void) => html`
+  <div class="chips" role="group" aria-label="نوع السجل">
+    <button class="chip" type="button" aria-pressed=${source === "control"} @click=${() => set("control")}>
+      إجراءات الإدارة</button>
+    <button class="chip" type="button" aria-pressed=${source === "access"} @click=${() => set("access")}>
+      قراءات الدفتر</button>
   </div>
 `;
 
@@ -47,25 +54,30 @@ export const auditList = (
   step: (step: PageStep) => void,
 ) => html`
   ${loadState(page)}
-  <div class="record-list">
-    ${
-      page.rows.length
-        ? page.rows.map((item) => event(item, showStore))
-        : page.loading
-          ? nothing
-          : html`<p class="muted">لا توجد أحداث مسجلة.</p>`
-    }
-  </div>
+  ${
+    page.rows.length
+      ? html`<div class="list">${page.rows.map((item) => event(item, showStore))}</div>`
+      : page.loading
+        ? nothing
+        : html`<p class="empty">لا توجد أحداث مسجلة.</p>`
+  }
   ${pager(label, page, step)}
 `;
 
-export const auditView = (model: Model, actions: Actions) => html`
-  <section class="panel">
-    <div class="panel-head">
-      <div><h2>سجل الإدارة</h2><p class="muted">كل إجراء إداري وكل قراءة للدفتر، الأحدث أولًا.</p></div>
-      ${searchBox("بحث بالمنفذ أو النوع أو السبب", model.audit.q, actions.searchAudit)}
-    </div>
-    ${sourceSwitch(model.audit.source, actions.setAuditSource)}
-    ${auditList(model.audit, true, "صفحات سجل الإدارة", actions.pageAudit)}
-  </section>
-`;
+export function auditView(model: Model, actions: Actions) {
+  return html`
+    <main class="page">
+      <div class="page-head">
+        <div class="title-group">
+          <h1>سجل الإدارة</h1>
+          <p class="muted">كل إجراء إداري وكل قراءة للدفتر، الأحدث أولًا.</p>
+        </div>
+      </div>
+      <div class="row">
+        ${searchBox("بحث بالمنفذ أو النوع أو السبب", model.audit.q, actions.searchAudit)}
+        ${sourceChips(model.audit.source, actions.setAuditSource)}
+      </div>
+      ${auditList(model.audit, true, "صفحات سجل الإدارة", actions.pageAudit)}
+    </main>
+  `;
+}
