@@ -16,6 +16,7 @@ class LedgerStore(
     private val contacts: ContactDao = db.contactDao(),
     private val debts: DebtDao = db.debtDao(),
     private val payments: PaymentDao = db.paymentDao(),
+    private val offsets: OffsetDao = db.offsetDao(),
     private val meta: LedgerMetaDao = db.metaDao(),
     private val events: EventDao = db.eventDao(),
 ) {
@@ -29,6 +30,7 @@ class LedgerStore(
         contacts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
         debts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
         payments.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        offsets.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
     )
   }
 
@@ -66,6 +68,13 @@ class LedgerStore(
             else payments.createdSeq(id) ?: error("payment $id is not stored")
         payments.upsert(row.toEntity(seq))
       }
+      for ((id, row) in new.offsets) {
+        if (old.offsets[id] === row) continue
+        val seq =
+            if (old.offsets[id] == null) created.getValue(id)
+            else offsets.createdSeq(id) ?: error("offset $id is not stored")
+        offsets.upsert(row.toEntity(seq))
+      }
       events.insert(page.events.map { it.toEntity() })
       meta.put(LedgerMetaEntity(storeId = new.storeId, epoch = new.epoch, cursor = new.cursor))
       events.trim(EVENT_KEEP)
@@ -78,6 +87,7 @@ class LedgerStore(
       contacts.clear()
       debts.clear()
       payments.clear()
+      offsets.clear()
       events.clear()
       meta.clear()
     }

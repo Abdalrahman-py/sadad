@@ -3,6 +3,7 @@ package com.sadad.app.export
 import com.sadad.app.data.db.Events
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerState
@@ -131,6 +132,56 @@ class StatementTest {
         Statement.build(exportView(contact, oldDebt, payable, paid), null, null, null).single()
     assertEquals(1, statement.rows.size)
     assertEquals(Cents(10000), statement.closing)
+  }
+
+  @Test
+  fun anOverpaymentIsOnePaymentRowAndTheCreditItLeftShowsInTheBalance() {
+    // 100 owed, 500 paid: 100 settles the Debt, 400 stays with the store as the person's credit.
+    val settled =
+        Commands.paymentCreate(
+            Events.origin,
+            from,
+            oldDebt.entityId,
+            Cents(10000),
+            PaymentMethod.CASH,
+        )
+    val credit =
+        Commands.debtCreate(
+            Events.origin,
+            from,
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(40000),
+            "رصيد من دفعة زائدة",
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+        )
+    // A later Debt takes 50 of that credit: it moves no cash, so the balance only loses the Debt.
+    val later = debt(from.plusSeconds(2), 5000)
+    val use =
+        Commands.debtOffset(
+            Events.origin,
+            from.plusSeconds(2),
+            later.entityId,
+            credit.entityId,
+            Cents(5000),
+        )
+    val statement =
+        Statement.build(exportView(contact, oldDebt, settled, credit, later, use), null, null, null)
+            .single()
+
+    assertEquals(
+        "the credit Debt is not a row of its own",
+        listOf(oldDebt.entityId, settled.entityId, later.entityId),
+        statement.rows.map { it.id },
+    )
+    assertEquals(listOf(Cents(10000), Cents.ZERO, Cents(5000)), statement.rows.map { it.debt })
+    assertEquals(listOf(Cents.ZERO, Cents(50000), Cents.ZERO), statement.rows.map { it.payment })
+    assertEquals(
+        "the credit shows as a negative balance, and the offset moves nothing",
+        listOf(Cents(10000), Cents(-40000), Cents(-35000)),
+        statement.rows.map { it.balance },
+    )
+    assertEquals(Cents(-35000), statement.closing)
   }
 
   @Test

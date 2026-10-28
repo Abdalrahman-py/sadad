@@ -17,8 +17,14 @@
     <string name="quickadd_preview_credit">يصبح له ₪%1$s</string>
     <string name="quickadd_preview_over">المبلغ أكبر من الرصيد المفتوح ₪%1$s</string>
     <!-- The board's two richer previews: a debt against a credit, and a large amount. -->
-    <string name="quickadd_preview_deduct">يُخصم من رصيده ₪%1$s · %2$s</string>
+    <string name="quickadd_preview_deduct">يُخصم من رصيده ₪ %1$s · %2$s</string>
+    <string name="quickadd_preview_deduct_left">يُخصم من رصيده ₪ %1$s · يبقى له ₪ %2$s</string>
+    <string name="quickadd_preview_overpay">يسدد ₪ %1$s الدين · يبقى له ₪ %2$s رصيدًا</string>
+    <string name="quickadd_preview_overpay_all">يُحفظ له رصيدًا · %1$s</string>
     <string name="quickadd_preview_large">%1$s · مبلغ كبير، سنطلب تأكيدًا</string>
+
+    <!-- The note the credit Debt carries, so the timeline says where the balance came from. -->
+    <string name="quickadd_credit_note">رصيد من دفعة زائدة</string>
 
     <string name="quickadd_failed">تعذّر الحفظ، حاول مرة أخرى</string>
 

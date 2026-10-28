@@ -4,14 +4,18 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
+import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtOffset
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentCreate
 import kotlinx.coroutines.cancel
@@ -210,28 +214,94 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun aPaymentAboveTheOpenBalanceIsRefusedAndCannotBeSaved() = runTest {
+  fun aPaymentAboveTheOpenBalanceBecomesCreditAndThePreviewSaysSo() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
-      fixture.openDebt(contact, 10_000)
+      fixture.openDebt(contact, 25_000)
       val store = checkNotNull(fixture.graph.current.value)
-      val model = fixture.model()
+      val model = fixture.model(undoWindowMs = 50)
       model.state.first { it.loaded && it.people.isNotEmpty() }
       model.pick(contact)
       model.toPayment()
+      model.state.first { it.overBalance == Cents(25_000) }
+
+      for (key in listOf("5", "0", "0")) model.press(key)
+
+      assertEquals(
+          "يسدد ₪ 250.00 الدين · يبقى له ₪ 250.00 رصيدًا",
+          model.preview(context),
+      )
+      assertTrue("a customer's overpayment is accepted", model.state.value.canSave)
+
+      model.save(context)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.PAYMENT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      val payment = rows[0].command.payload() as PaymentCreate
+      assertEquals(Cents(25_000), payment.amountCents)
+      val credit = rows[1].command.payload() as DebtCreate
+      assertEquals(contact, credit.contactId)
+      assertEquals(Direction.PAYABLE, credit.direction)
+      assertEquals(Cents(25_000), credit.amountCents)
+      assertEquals(DebtOrigin.OVERPAYMENT, credit.origin)
+    }
+  }
+
+  @Test
+  fun aDebtIsPaidFromTheCreditHeldAndThePreviewSaysWhatIsLeft() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val (contact, credit) = fixture.creditFor("خالد", 25_000)
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded && it.people.any { person -> person.id == contact } }
+      model.pick(contact)
+
+      for (key in listOf("1", "0", "0")) model.press(key)
+
+      assertEquals("يُخصم من رصيده ₪ 100.00 · يبقى له ₪ 150.00", model.preview(context))
+
+      model.save(context)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.DEBT_CREATE, CommandType.DEBT_OFFSET),
+          rows.map { it.type },
+      )
+      val debt = rows[0].command.payload() as DebtCreate
+      assertEquals(Direction.RECEIVABLE, debt.direction)
+      assertEquals(Cents(10_000), debt.amountCents)
+
+      val offset = rows[1].command.payload() as DebtOffset
+      assertEquals("the new Debt is the one settled", rows[0].entityId, offset.receivableDebtId)
+      assertEquals("the credit pays for it", credit, offset.payableDebtId)
+      assertEquals(Cents(10_000), offset.amountCents)
+      assertEquals(
+          "the offset waits for the Debt it settles",
+          listOf(rows[0].operationId),
+          rows[1].command.dependsOn,
+      )
+    }
+  }
+
+  @Test
+  fun aSupplierPaymentAboveTheBalanceIsStillRefused() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val supplier = fixture.settledContact("مخبز الأمل", kind = ContactKind.SUPPLIER)
+      fixture.openDebt(supplier, 10_000, Direction.PAYABLE)
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.isNotEmpty() }
+      model.pick(supplier)
+      model.toPayment()
       model.state.first { it.overBalance == Cents(10_000) }
 
-      model.press("1")
-      model.press("2")
-      model.press("0")
+      for (key in listOf("1", "2", "0")) model.press(key)
 
-      val state = model.state.value
-      assertEquals(Cents(10_000), state.overBalance)
-      assertFalse("a payment over the balance cannot be saved", state.canSave)
-      model.save(context)
-      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-      Thread.sleep(600)
-      assertTrue(store.outbox.snapshot().isEmpty())
+      assertFalse("no supplier credit in this ticket", model.state.value.canSave)
     }
   }
 
@@ -527,6 +597,46 @@ class QuickAddViewModelTest {
           .addDebt(contactId, direction, Cents(cents), null, null)
           .getOrThrow()
           .also { settleAll() }
+
+  /**
+   * A Contact holding [cents] of credit: the excess of an earlier payment, as `apply_one` stores
+   * it.
+   */
+  private suspend fun TestGraph.creditFor(name: String, cents: Long): Pair<String, String> {
+    val contact = java.util.UUID.nameUUIDFromBytes("credit-$name".toByteArray()).toString()
+    val credit = java.util.UUID.randomUUID().toString()
+    seed {
+      applyPage(
+          Events.page(
+              listOf(
+                  Events.accepted(
+                      Commands.contactCreate(
+                          Events.origin,
+                          Events.at(0),
+                          name = name,
+                          entityId = contact,
+                      ),
+                      1,
+                  ),
+                  Events.accepted(
+                      Commands.debtCreate(
+                          Events.origin,
+                          Events.at(1),
+                          contactId = contact,
+                          direction = Direction.PAYABLE,
+                          amount = Cents(cents),
+                          note = "رصيد من دفعة زائدة",
+                          debtOrigin = DebtOrigin.OVERPAYMENT,
+                          entityId = credit,
+                      ),
+                      2,
+                  ),
+              )
+          )
+      )
+    }
+    return contact to credit
+  }
 
   private suspend fun TestGraph.limitPermissions(permissions: Map<String, Boolean>) {
     val account = checkNotNull(graph.accounts.accounts.first().firstOrNull())

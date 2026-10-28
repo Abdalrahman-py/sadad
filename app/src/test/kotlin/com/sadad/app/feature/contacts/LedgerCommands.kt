@@ -4,6 +4,7 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.testing.TestGraph
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import java.util.UUID
@@ -66,6 +67,45 @@ internal fun payment(
         debtId = debtId,
         amount = Cents(amount),
         method = com.sadad.ledger.PaymentMethod.CASH,
+        entityId = id,
+        operationId = operationId,
+    )
+
+/** The excess of a payment: a payable Debt that says it is the person's credit. */
+internal fun creditDebt(
+    contactId: String,
+    amount: Long,
+    id: String = UUID.randomUUID().toString(),
+    minute: Int = 0,
+    operationId: String = UUID.randomUUID().toString(),
+): LedgerCommand =
+    Commands.debtCreate(
+        Events.origin,
+        Events.at(minute),
+        contactId = contactId,
+        direction = Direction.PAYABLE,
+        amount = Cents(amount),
+        note = "رصيد من دفعة زائدة",
+        debtOrigin = DebtOrigin.OVERPAYMENT,
+        entityId = id,
+        operationId = operationId,
+    )
+
+/** A new Debt eating the credit: one `debt.offset` against the credit Debt. */
+internal fun offset(
+    receivableDebtId: String,
+    payableDebtId: String,
+    amount: Long,
+    id: String = UUID.randomUUID().toString(),
+    minute: Int = 0,
+    operationId: String = UUID.randomUUID().toString(),
+): LedgerCommand =
+    Commands.debtOffset(
+        Events.origin,
+        Events.at(minute),
+        receivableDebtId = receivableDebtId,
+        payableDebtId = payableDebtId,
+        amount = Cents(amount),
         entityId = id,
         operationId = operationId,
     )

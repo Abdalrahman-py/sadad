@@ -29,6 +29,7 @@ create table public.sadid_debts (
   id uuid not null,
   contact_id uuid not null,
   direction text not null check (direction in ('receivable', 'payable')),
+  origin text not null default 'manual' check (origin in ('manual', 'overpayment')),
   amount_cents bigint not null check (amount_cents between 1 and 9007199254740991),
   note text not null default '',
   due_date date,
@@ -53,11 +54,26 @@ create table public.sadid_payments (
 );
 create index sadid_payments_debt on public.sadid_payments(store_id, debt_id);
 
+create table public.sadid_offsets (
+  store_id bigint not null,
+  id uuid not null,
+  receivable_debt_id uuid not null,
+  payable_debt_id uuid not null,
+  amount_cents bigint not null check (amount_cents between 1 and 9007199254740991),
+  operation_id uuid not null,
+  created_at timestamptz not null,
+  primary key (store_id, id),
+  foreign key (store_id, receivable_debt_id) references public.sadid_debts(store_id, id),
+  foreign key (store_id, payable_debt_id) references public.sadid_debts(store_id, id)
+);
+create index sadid_offsets_receivable on public.sadid_offsets(store_id, receivable_debt_id);
+create index sadid_offsets_payable on public.sadid_offsets(store_id, payable_debt_id);
+
 create table public.sadid_adjustments (
   store_id bigint not null,
   id uuid not null,
   debt_id uuid not null,
-  amount_cents bigint not null check (amount_cents between 1 and 9007199254740991),
+  amount_cents bigint not null check (amount_cents between 0 and 9007199254740991),
   previous_amount_cents bigint not null,
   version bigint not null,
   reason text not null check (length(trim(reason)) between 1 and 2000),

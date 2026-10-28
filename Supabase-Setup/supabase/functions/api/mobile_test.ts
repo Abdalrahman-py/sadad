@@ -598,6 +598,7 @@ dbTest(
     assertEqual(payload.allowed, [
       "contact.create",
       "debt.create",
+      "debt.offset",
       "payment.create",
     ]);
   },

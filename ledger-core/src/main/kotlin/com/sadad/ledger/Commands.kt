@@ -126,6 +126,7 @@ object Commands {
       note: String? = null,
       /** `yyyy-MM-dd`. */
       dueDate: String? = null,
+      debtOrigin: DebtOrigin? = null,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -144,6 +145,7 @@ object Commands {
               amount(amount),
               optional(note),
               optional(dueDate),
+              debtOrigin,
           ),
       )
 
@@ -166,8 +168,33 @@ object Commands {
           operationId,
           dependsOn,
           DebtCorrect.serializer(),
-          DebtCorrect(uuid("debtId", debtId), amount(amount), reason(reason)),
+          DebtCorrect(uuid("debtId", debtId), correctionAmount(amount), reason(reason)),
           expectedVersion = expectedVersion,
+      )
+
+  fun debtOffset(
+      origin: Origin,
+      at: Instant,
+      receivableDebtId: String,
+      payableDebtId: String,
+      amount: Cents,
+      entityId: String = newId(),
+      operationId: String = newId(),
+      dependsOn: List<String> = emptyList(),
+  ): LedgerCommand =
+      command(
+          origin,
+          at,
+          CommandType.DEBT_OFFSET,
+          entityId,
+          operationId,
+          dependsOn,
+          DebtOffset.serializer(),
+          DebtOffset(
+              uuid("receivableDebtId", receivableDebtId),
+              uuid("payableDebtId", payableDebtId),
+              amount(amount),
+          ),
       )
 
   fun paymentCreate(
@@ -268,6 +295,13 @@ object Commands {
   private fun amount(cents: Cents): Cents = cents.also {
     require(it >= Cents(1) && it <= Cents.MAX_WIRE) {
       "an amount is 1 to ${Cents.MAX_WIRE.value} cents"
+    }
+  }
+
+  /** A correction may zero an unused Debt (reversing credit); the server guards the rest. */
+  private fun correctionAmount(cents: Cents): Cents = cents.also {
+    require(it >= Cents.ZERO && it <= Cents.MAX_WIRE) {
+      "a correction is 0 to ${Cents.MAX_WIRE.value} cents"
     }
   }
 }

@@ -31,6 +31,7 @@
           "reason_required",
           "already_reversed",
           "below_paid_total",
+          "offset_invalid",
           "unsupported_operation",
           "dependency_rejected",
           "dependency_pending",

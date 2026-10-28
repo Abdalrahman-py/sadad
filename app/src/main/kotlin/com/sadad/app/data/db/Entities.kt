@@ -8,9 +8,11 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.ChangeEvent
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactRow
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.DebtRow
 import com.sadad.ledger.Direction
 import com.sadad.ledger.InstallationName
+import com.sadad.ledger.OffsetRow
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentRow
 import com.sadad.ledger.ReceiptStatus
@@ -81,6 +83,8 @@ data class DebtEntity(
     val operationId: String,
     val createdAt: Instant,
     val originInstallationId: String,
+    // Added in schema 4, with the wire's default: a Debt recorded before credit existed is manual.
+    @ColumnInfo(defaultValue = "manual") val origin: DebtOrigin,
     val createdSeq: Long,
 )
 
@@ -96,6 +100,7 @@ fun DebtEntity.toRow(): DebtRow =
         operationId,
         createdAt,
         originInstallationId,
+        origin,
     )
 
 fun DebtRow.toEntity(createdSeq: Long): DebtEntity =
@@ -107,6 +112,46 @@ fun DebtRow.toEntity(createdSeq: Long): DebtEntity =
         note,
         dueDate,
         version,
+        operationId,
+        createdAt,
+        originInstallationId,
+        origin,
+        createdSeq,
+    )
+
+/** One credit settlement between a Contact's receivable and payable Debt. Added in schema 4. */
+@Entity(
+    tableName = "offsets",
+    indices = [Index("receivableDebtId"), Index("payableDebtId")],
+)
+data class OffsetEntity(
+    @PrimaryKey val id: String,
+    val receivableDebtId: String,
+    val payableDebtId: String,
+    val amountCents: Long,
+    val operationId: String,
+    val createdAt: Instant,
+    val originInstallationId: String,
+    val createdSeq: Long,
+)
+
+fun OffsetEntity.toRow(): OffsetRow =
+    OffsetRow(
+        id,
+        receivableDebtId,
+        payableDebtId,
+        Cents(amountCents),
+        operationId,
+        createdAt,
+        originInstallationId,
+    )
+
+fun OffsetRow.toEntity(createdSeq: Long): OffsetEntity =
+    OffsetEntity(
+        id,
+        receivableDebtId,
+        payableDebtId,
+        amount.value,
         operationId,
         createdAt,
         originInstallationId,

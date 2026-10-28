@@ -39,6 +39,7 @@
     <!-- The newest entry waiting for the server -->
     <string name="settings_queued_debt">دين %1$s %2$s</string>
     <string name="settings_queued_debt_correct">تصحيح دين %1$s %2$s</string>
+    <string name="settings_queued_offset">خصم %1$s من رصيد %2$s</string>
     <string name="settings_queued_payment">دفعة %1$s %2$s</string>
     <string name="settings_queued_payment_reverse">عكس دفعة %1$s</string>
     <string name="settings_queued_contact_new">شخص جديد %1$s</string>

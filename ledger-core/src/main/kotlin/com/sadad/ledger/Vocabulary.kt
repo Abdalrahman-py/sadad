@@ -4,7 +4,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** The eight command types `24_apply_one.sql` accepts, with the payload each one carries. */
+/** The nine command types `24_apply_one.sql` accepts, with the payload each one carries. */
 @Serializable
 enum class CommandType(
     /** May be queued under an offline lease (`LEASE_ALLOWED` in the api's mobile.ts). */
@@ -16,6 +16,7 @@ enum class CommandType(
   @SerialName("contact.archive") CONTACT_ARCHIVE(false, ContactArchive.serializer()),
   @SerialName("contact.restore") CONTACT_RESTORE(false, ContactRestore.serializer()),
   @SerialName("debt.create") DEBT_CREATE(true, DebtCreate.serializer()),
+  @SerialName("debt.offset") DEBT_OFFSET(true, DebtOffset.serializer()),
   @SerialName("debt.correct") DEBT_CORRECT(false, DebtCorrect.serializer()),
   @SerialName("payment.create") PAYMENT_CREATE(true, PaymentCreate.serializer()),
   @SerialName("payment.reverse") PAYMENT_REVERSE(false, PaymentReverse.serializer());
@@ -23,6 +24,13 @@ enum class CommandType(
   /** The name on the wire, e.g. `contact.create`. */
   val wireName: String
     get() = serializer().descriptor.getElementName(ordinal)
+}
+
+/** Where a Debt came from: recorded by hand, or the excess of a customer's payment (credit). */
+@Serializable
+enum class DebtOrigin {
+  @SerialName("manual") MANUAL,
+  @SerialName("overpayment") OVERPAYMENT,
 }
 
 @Serializable

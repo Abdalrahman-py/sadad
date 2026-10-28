@@ -28,7 +28,12 @@ const MAX_BODY_BYTES = 65_536;
 const MAX_BATCH_BYTES = 524_288;
 const MAX_BATCH = 100;
 const LEASE_DAYS = 7;
-const LEASE_ALLOWED = ["contact.create", "debt.create", "payment.create"];
+const LEASE_ALLOWED = [
+  "contact.create",
+  "debt.create",
+  "debt.offset",
+  "payment.create",
+];
 
 /** The path after the function prefix: /api/v1/x and /functions/v1/api/v1/x are both /v1/x. */
 export const routePath = (req: Request): string =>

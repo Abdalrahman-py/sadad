@@ -4,6 +4,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -127,5 +128,46 @@ class ContractShapeTest {
     assertEquals("supplier", supplier.payload.getValue("kind").jsonPrimitive.content)
     val customer = Commands.contactCreate(Events.origin, Events.at(0), "سامي")
     assertEquals("customer", customer.payload.getValue("kind").jsonPrimitive.content)
+  }
+
+  @Test
+  fun creditAndOffsetWireShapes() {
+    val contact = Commands.contactCreate(Events.origin, Events.at(0), "سامي")
+    val credit =
+        Commands.debtCreate(
+            Events.origin,
+            Events.at(1),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(100),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+        )
+    assertEquals("overpayment", credit.payload.getValue("origin").jsonPrimitive.content)
+    val manual =
+        Commands.debtCreate(
+            Events.origin,
+            Events.at(2),
+            contact.entityId,
+            Direction.RECEIVABLE,
+            Cents(100),
+        )
+    assertEquals(null, manual.payload["origin"])
+
+    val offset =
+        Commands.debtOffset(
+            Events.origin,
+            Events.at(3),
+            manual.entityId,
+            credit.entityId,
+            Cents(100),
+        )
+    assertEquals("debt.offset", offset.type.wireName)
+    assertEquals(true, offset.type.offline)
+    assertEquals(manual.entityId, offset.payload.getValue("receivableDebtId").jsonPrimitive.content)
+    assertEquals(credit.entityId, offset.payload.getValue("payableDebtId").jsonPrimitive.content)
+    assertEquals(100, offset.payload.getValue("amountCents").jsonPrimitive.int)
+
+    // A zero correction is buildable; the server judges whether the Debt is unused.
+    Commands.debtCorrect(Events.origin, Events.at(4), credit.entityId, 1, Cents.ZERO, "عكس رصيد")
   }
 }

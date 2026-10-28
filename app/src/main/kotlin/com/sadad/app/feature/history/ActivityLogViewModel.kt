@@ -38,6 +38,7 @@ enum class HistoryAction(@StringRes val label: Int) {
   CONTACT_RESTORE(R.string.history_action_contact_restore),
   DEBT_CREATE(R.string.history_action_debt_create),
   DEBT_CORRECT(R.string.history_action_debt_correct),
+  DEBT_OFFSET(R.string.history_action_debt_offset),
   PAYMENT_CREATE(R.string.history_action_payment_create),
   PAYMENT_REVERSE(R.string.history_action_payment_reverse),
   /** A kind this build cannot name, e.g. an operation the server logged for another version. */
@@ -52,6 +53,7 @@ enum class HistoryAction(@StringRes val label: Int) {
           CommandType.CONTACT_RESTORE -> CONTACT_RESTORE
           CommandType.DEBT_CREATE -> DEBT_CREATE
           CommandType.DEBT_CORRECT -> DEBT_CORRECT
+          CommandType.DEBT_OFFSET -> DEBT_OFFSET
           CommandType.PAYMENT_CREATE -> PAYMENT_CREATE
           CommandType.PAYMENT_REVERSE -> PAYMENT_REVERSE
           null -> OTHER
