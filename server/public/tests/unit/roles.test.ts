@@ -1,24 +1,89 @@
 import { render } from "lit-html";
 import { describe, expect, it } from "vitest";
+import type { Model } from "../../src/model";
 import { app as view } from "../../src/views/app";
 import { loadedModel, noActions } from "./support";
 
-// Labels of every control that changes data. A support user must see none of them.
-const MUTATING = [
-  "إنشاء حساب متجر",
-  "حفظ إعدادات المتجر",
-  "تفعيل الحساب",
-  "تجميد الحساب",
-  "حفظ حالة الاشتراك",
-  "تمديد الاشتراك",
-  "إنشاء كلمة مؤقتة",
-  "أرشفة الحساب",
-  "إنهاء جلسات الدخول",
-  "إلغاء اعتماد جميع الأجهزة",
-  "اعتماد الهاتف",
-  "إلغاء الاعتماد",
-  "اعتماد الاسترداد",
+interface Screen {
+  name: string;
+  set(model: Model): void;
+  /** Labels of the controls that change data on this screen. */
+  controls: string[];
+  /** The account settings form only exists on its tab. */
+  hasSettings?: boolean;
+}
+
+const SCREENS: Screen[] = [
+  {
+    name: "المهام",
+    set: (m) => {
+      m.screen = "tasks";
+    },
+    controls: ["اعتماد الجهاز", "رفض"],
+  },
+  {
+    name: "المتاجر",
+    set: (m) => {
+      m.screen = "stores";
+    },
+    controls: ["إنشاء حساب متجر"],
+  },
+  {
+    name: "الأجهزة",
+    set: (m) => {
+      m.screen = "store";
+      if (m.store) m.store.tab = "devices";
+    },
+    controls: ["اعتماد", "رفض"],
+  },
+  {
+    name: "الإعدادات",
+    set: (m) => {
+      m.screen = "store";
+      if (m.store) m.store.tab = "settings";
+    },
+    controls: ["حفظ التغييرات", "تجميد", "إنهاء الجلسات", "إلغاء الكل", "أرشفة"],
+    hasSettings: true,
+  },
+  {
+    name: "الاشتراك",
+    set: (m) => {
+      m.screen = "store";
+      if (m.store) m.store.tab = "subscription";
+    },
+    controls: ["تفعيل بعدد الأيام"],
+  },
+  {
+    name: "الاسترداد",
+    set: (m) => {
+      m.screen = "store";
+      if (m.store) m.store.tab = "recovery";
+    },
+    controls: ["اعتماد الاسترداد"],
+  },
+  {
+    name: "إنشاء متجر",
+    set: (m) => {
+      m.screen = "create";
+    },
+    controls: ["إنشاء الحساب"],
+  },
 ];
+
+function renderScreen(role: "admin" | "support", screen: Screen) {
+  const root = document.createElement("main");
+  const model = loadedModel(role);
+  screen.set(model);
+  render(view(model, noActions), root);
+  const buttons = [...root.querySelectorAll("button")];
+  // Links that are styled as buttons change data too (the create-store call to action).
+  const actions = [...root.querySelectorAll("a.btn")];
+  return {
+    root,
+    labels: [...buttons, ...actions].map((element) => element.textContent?.trim() ?? ""),
+    submits: buttons.filter((button) => button.type === "submit" && !button.closest("[data-read]")),
+  };
+}
 
 /** A form control is disabled by any disabled fieldset around it, nested ones included. */
 function insideDisabledFieldset(field: Element): boolean {
@@ -28,39 +93,22 @@ function insideDisabledFieldset(field: Element): boolean {
   return false;
 }
 
-function buttonsFor(role: "admin" | "support", tab: "stores" | "installations" | "audit") {
-  const root = document.createElement("main");
-  const model = loadedModel(role);
-  model.tab = tab;
-  render(view(model, noActions), root);
-  const buttons = [...root.querySelectorAll("button")];
-  return {
-    root,
-    labels: buttons.map((b) => b.textContent?.trim() ?? ""),
-    submits: buttons.filter((b) => b.type === "submit" && !b.closest("[data-read]")),
-  };
-}
-
 describe("role-aware UI", () => {
-  for (const tab of ["stores", "installations", "audit"] as const) {
-    it(`shows an admin the mutating controls (${tab})`, () => {
-      const { labels } = buttonsFor("admin", tab);
-      expect(labels).toEqual(expect.arrayContaining(["اعتماد الهاتف", "إلغاء الاعتماد"]));
+  for (const screen of SCREENS) {
+    it(`shows an admin the controls that change data (${screen.name})`, () => {
+      const { labels } = renderScreen("admin", screen);
+      for (const control of screen.controls) expect(labels).toContain(control);
     });
 
-    it(`shows a support user no mutating buttons (${tab})`, () => {
-      const { root, labels, submits } = buttonsFor("support", tab);
-      for (const label of MUTATING) expect(labels).not.toContain(label);
+    it(`shows a support user no control that changes data (${screen.name})`, () => {
+      const { root, labels, submits } = renderScreen("support", screen);
+      for (const control of screen.controls) expect(labels).not.toContain(control);
       expect(submits).toHaveLength(0);
-      // The settings stay readable but cannot be edited.
+      if (!screen.hasSettings) return;
+      // Readable, not editable: the settings form renders with its fieldset disabled.
       const fields = root.querySelectorAll<HTMLInputElement>("[data-settings] input");
       expect(fields.length).toBeGreaterThan(0);
       for (const field of fields) expect(insideDisabledFieldset(field)).toBe(true);
     });
   }
-
-  it("lists every mutating label for an admin, so the support check is not vacuous", () => {
-    const { labels } = buttonsFor("admin", "stores");
-    for (const label of MUTATING) expect(labels).toContain(label);
-  });
 });

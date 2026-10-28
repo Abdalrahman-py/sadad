@@ -1,9 +1,19 @@
-// Owns the Model, talks to Auth and the api, and re-renders after every change. Every list is
-// paged and searched on the server; a newer request aborts the older one on the same channel.
+// Owns the Model, talks to Auth and the api, and re-renders after every change. The screens follow
+// the hash (#/tasks, #/stores, #/stores/12/devices), so the back button and a copied link work.
+// Lists that the views filter (stores, pending devices) are loaded whole up to STORE_PAGE_CAP; the
+// audit and ledger lists stay server-paged.
 import { render } from "lit-html";
-import type { Api, AuditEvent, AuditSource, LedgerKind, StoreAction } from "./api";
+import type {
+  Api,
+  AuditSource,
+  LedgerKind,
+  PendingInstallation,
+  Store,
+  StoreAction,
+  StoreRow,
+} from "./api";
 import { failure, messageOf } from "./errors";
-import { integer } from "./format";
+import { fmt, integer } from "./format";
 import {
   type Actions,
   type Dialog,
@@ -14,8 +24,10 @@ import {
   type Paged,
   type PageStep,
   type RecoveryState,
+  STORE_TABS,
+  type StoreFilter,
   type StoreState,
-  type Tab,
+  type StoreTab,
 } from "./model";
 import { inspectManifest, MAX_MANIFEST_BYTES } from "./recovery-manifest";
 import { checkCaller, type SessionPort } from "./session";
@@ -24,26 +36,35 @@ import { readPermissions } from "./views/common";
 import { LEDGER_COLUMNS, LEDGER_KINDS } from "./views/ledger";
 import { recoveryChoices } from "./views/recovery";
 
-const ACTION_TEXT: Record<StoreAction, { title: string; description: string; danger: boolean }> = {
+/** The store and device lists are read page by page; this is where the loop stops. */
+const STORE_PAGE_CAP = 10;
+
+/** One tap from the queue has no form, so it records a fixed reason the audit can read. */
+const QUICK_REASON = {
+  approve: "اعتماد جهاز من شاشة المهام",
+  reject: "رفض طلب جهاز من شاشة المهام",
+  approveDialog: "اعتماد جهاز من لوحة الإدارة",
+  revoke: "إلغاء اعتماد جهاز من لوحة الإدارة",
+  suspend: "تجميد الحساب من لوحة الإدارة",
+  activate: "تفعيل الحساب من لوحة الإدارة",
+} as const;
+
+const ACTION_TEXT: Record<StoreAction, { title: string; description: string }> = {
   archive: {
     title: "أرشفة الحساب",
     description: "يُوقف الحساب وتُلغى صلاحية أجهزته وتُنهى جلساته. يبقى الدفتر والسجل محفوظين.",
-    danger: true,
   },
   unarchive: {
     title: "إعادة الحساب من الأرشيف",
     description: "يعود الحساب مجمّدًا مع دفتره. فعّله واعتمد جهازًا جديدًا بعد ذلك.",
-    danger: false,
   },
   "end-sessions": {
     title: "إنهاء جلسات الدخول",
     description: "تُنهى كل جلسات المتجر الآن. اعتماد الأجهزة يبقى كما هو.",
-    danger: false,
   },
   "revoke-all": {
     title: "إلغاء اعتماد جميع الأجهزة",
     description: "تتوقف صلاحية كل أجهزة المتجر للمزامنة. يحتاج كل جهاز تسجيلًا جديدًا واعتمادك.",
-    danger: true,
   },
 };
 
@@ -61,19 +82,42 @@ const emptyRecovery = (): RecoveryState => ({
 
 const isAbort = (error: unknown) => error instanceof DOMException && error.name === "AbortError";
 
-function moveCursors(page: Paged<unknown>, step: PageStep): (string | undefined)[] | null {
+const moveCursors = (page: Paged<unknown>, step: PageStep): (string | undefined)[] | null => {
   if (step === "next") return page.next ? [...page.cursors, page.next] : null;
   return page.cursors.length > 1 ? page.cursors.slice(0, -1) : null;
-}
+};
 
 /** Cells that start with =, +, - or @ would run as formulas in a spreadsheet. */
 const csvCell = (value: string) =>
   `"${(/^[=+\-@\t\r]/.test(value) ? `'${value}` : value).replaceAll('"', '""')}"`;
 
+type Route =
+  | { screen: "tasks" | "stores" | "audit" | "create" }
+  | { screen: "store"; id: number; tab: StoreTab };
+
+export function parseHash(hash: string): Route {
+  const [head, id, tab] = hash.replace(/^#\/?/, "").split("/");
+  if (head === "stores") {
+    const storeId = Number(id);
+    if (id && Number.isSafeInteger(storeId) && storeId > 0) {
+      return {
+        screen: "store",
+        id: storeId,
+        tab: STORE_TABS.includes(tab as StoreTab) ? (tab as StoreTab) : "overview",
+      };
+    }
+    return { screen: "stores" };
+  }
+  if (head === "audit") return { screen: "audit" };
+  if (head === "create") return { screen: "create" };
+  return { screen: "tasks" };
+}
+
 export class Controller implements Actions {
   model: Model = initialModel();
   private channels = new Map<string, AbortController>();
-  private scrollToStore = false;
+  /** Set while a dialog is being opened, so focus lands in its first field. */
+  private focusDialog = false;
 
   constructor(
     private readonly root: HTMLElement,
@@ -87,11 +131,9 @@ export class Controller implements Actions {
     render(view(this.model, this), this.root);
     const dialog = this.root.querySelector("dialog");
     if (dialog && !dialog.open) dialog.showModal();
-    if (this.scrollToStore) {
-      this.scrollToStore = false;
-      this.root
-        .querySelector("#store-panel")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (dialog && this.focusDialog) {
+      this.focusDialog = false;
+      dialog.querySelector<HTMLElement>("textarea, input")?.focus();
     }
   }
 
@@ -133,10 +175,12 @@ export class Controller implements Actions {
   // ---- session ----
 
   async start() {
+    window.addEventListener("hashchange", () => this.applyRoute());
     const caller = await this.session.current().catch(() => null);
     if (!caller) return this.set({ booting: false });
     try {
       this.set({ booting: false, caller: checkCaller(caller) });
+      this.applyRoute();
       this.loadAll();
     } catch (error) {
       await this.session.signOut();
@@ -149,6 +193,7 @@ export class Controller implements Actions {
     try {
       const caller = checkCaller(await this.session.signIn(email, password));
       this.set({ caller, signIn: { error: "", busy: false } });
+      this.applyRoute();
       this.loadAll();
     } catch (error) {
       await this.session.signOut();
@@ -176,13 +221,34 @@ export class Controller implements Actions {
     this.render();
   };
 
+  // ---- routing ----
+
+  private applyRoute() {
+    if (!this.model.caller) return;
+    const route = parseHash(window.location.hash);
+    if (route.screen === "store") {
+      this.set({ screen: "store" });
+      this.openStore(route.id, route.tab);
+      return;
+    }
+    this.leaveStore();
+    this.set({ screen: route.screen });
+    if (route.screen === "create") this.model.create = initialModel().create;
+    if (route.screen === "audit") this.loadAudit(this.model.audit.cursors);
+  }
+
   // ---- lists ----
 
   private loadAll() {
     this.loadOverview();
-    this.loadTab();
-    if (this.model.store) this.reloadStore();
+    this.loadStores();
+    this.loadPending();
+    this.loadAudit(this.model.audit.cursors);
   }
+
+  refresh = () => this.loadAll();
+
+  dismissNotice = () => this.set({ notice: null });
 
   private async loadOverview() {
     try {
@@ -192,221 +258,226 @@ export class Controller implements Actions {
     }
   }
 
-  private loadTab() {
-    const tab = this.model.tab;
-    if (tab === "stores") this.loadStores(this.model.stores.cursors);
-    else if (tab === "installations") this.loadPending(this.model.pending.cursors);
-    else this.loadAudit(this.model.audit.cursors);
-  }
-
-  private async loadPaged<T, P extends Paged<T>>(
-    name: string,
-    get: () => P,
-    put: (page: P) => void,
-    cursors: (string | undefined)[],
-    fetch: (
-      cursor: string | undefined,
-      signal: AbortSignal,
-    ) => Promise<{ rows: T[]; next: string | null }>,
-  ) {
-    const signal = this.channel(name);
-    put({ ...get(), cursors, loading: true, error: "" });
+  /** Every page of the store list, so the chips and the queue can filter honestly. */
+  private async loadStores() {
+    const signal = this.channel("stores");
+    this.model.stores = { ...this.model.stores, loading: true, error: "" };
     this.render();
+    const q = this.model.stores.q;
+    const rows: StoreRow[] = [];
+    let cursor: string | undefined;
+    let complete = false;
     try {
-      const { rows, next } = await fetch(cursors.at(-1), signal);
-      put({ ...get(), rows, next, loading: false });
+      for (let page = 0; page < STORE_PAGE_CAP; page++) {
+        const result = await this.api.stores({ q, cursor, includeArchived: true }, signal);
+        rows.push(...result.stores);
+        cursor = result.nextCursor ?? undefined;
+        if (!cursor) {
+          complete = true;
+          break;
+        }
+      }
+      this.model.stores = { ...this.model.stores, rows, loading: false, complete };
+      this.fillStoreSummary(rows);
     } catch (error) {
       if (isAbort(error)) return;
-      put({ ...get(), rows: [], next: null, loading: false, error: messageOf(error) });
+      this.model.stores = {
+        ...this.model.stores,
+        rows,
+        loading: false,
+        complete: false,
+        error: messageOf(error),
+      };
     }
     this.render();
   }
 
-  private loadStores(cursors: (string | undefined)[]) {
-    const { q, includeArchived } = this.model.stores;
-    return this.loadPaged(
-      "stores",
-      () => this.model.stores,
-      (page) => {
-        this.model.stores = page;
-      },
-      cursors,
-      async (cursor, signal) => {
-        const r = await this.api.stores({ q, cursor, includeArchived }, signal);
-        return { rows: r.stores, next: r.nextCursor };
-      },
-    );
+  /** The open store's counters may have arrived with this list. */
+  private fillStoreSummary(rows: StoreRow[]) {
+    const state = this.model.store;
+    if (!state) return;
+    const row = rows.find((store) => store.id === state.id);
+    if (row && state.summary !== row.summary) {
+      this.model.store = { ...state, summary: row.summary };
+    }
   }
 
-  private loadPending(cursors: (string | undefined)[]) {
-    const { q } = this.model.pending;
-    return this.loadPaged(
-      "pending",
-      () => this.model.pending,
-      (page) => {
-        this.model.pending = page;
-      },
-      cursors,
-      async (cursor, signal) => {
-        const r = await this.api.pendingInstallations({ q, cursor }, signal);
-        return { rows: r.installations, next: r.nextCursor };
-      },
-    );
+  private async loadPending() {
+    const signal = this.channel("pending");
+    this.model.pending = { ...this.model.pending, loading: true, error: "" };
+    this.render();
+    const rows: PendingInstallation[] = [];
+    let cursor: string | undefined;
+    let complete = false;
+    try {
+      for (let page = 0; page < STORE_PAGE_CAP; page++) {
+        const result = await this.api.pendingInstallations({ cursor }, signal);
+        rows.push(...result.installations);
+        cursor = result.nextCursor ?? undefined;
+        if (!cursor) {
+          complete = true;
+          break;
+        }
+      }
+      this.model.pending = { rows, loading: false, complete, error: "" };
+    } catch (error) {
+      if (isAbort(error)) return;
+      this.model.pending = { rows, loading: false, complete: false, error: messageOf(error) };
+    }
+    this.render();
   }
 
-  private loadAudit(cursors: (string | undefined)[]) {
+  private async loadAudit(cursors: (string | undefined)[]) {
+    const signal = this.channel("audit");
     const { q, source } = this.model.audit;
-    return this.loadPaged(
-      "audit",
-      () => this.model.audit,
-      (page) => {
-        this.model.audit = page;
-      },
-      cursors,
-      async (cursor, signal) => {
-        const r = await this.api.audit({ source, q, cursor }, signal);
-        return { rows: r.events, next: r.nextCursor };
-      },
-    );
+    const current = this.model.audit;
+    this.model.audit = { ...current, cursors, loading: true, error: "" };
+    this.render();
+    try {
+      const result = await this.api.audit({ source, q, cursor: cursors.at(-1) }, signal);
+      this.model.audit = {
+        ...this.model.audit,
+        rows: result.events,
+        next: result.nextCursor,
+        loading: false,
+      };
+    } catch (error) {
+      if (isAbort(error)) return;
+      this.model.audit = {
+        ...this.model.audit,
+        rows: [],
+        next: null,
+        loading: false,
+        error: messageOf(error),
+      };
+    }
+    this.render();
   }
-
-  refresh = () => this.loadAll();
-
-  setTab = (tab: Tab) => {
-    this.set({ tab });
-    this.loadTab();
-  };
-
-  dismissNotice = () => this.set({ notice: null });
 
   searchStores = (q: string) => {
     this.model.stores = { ...this.model.stores, q };
-    this.loadStores([undefined]);
+    void this.loadStores();
   };
 
-  setIncludeArchived = (includeArchived: boolean) => {
-    this.model.stores = { ...this.model.stores, includeArchived };
-    this.loadStores([undefined]);
-  };
-
-  pageStores = (step: PageStep) => {
-    const cursors = moveCursors(this.model.stores, step);
-    if (cursors) this.loadStores(cursors);
-  };
-
-  searchPending = (q: string) => {
-    this.model.pending = { ...this.model.pending, q };
-    this.loadPending([undefined]);
-  };
-
-  pagePending = (step: PageStep) => {
-    const cursors = moveCursors(this.model.pending, step);
-    if (cursors) this.loadPending(cursors);
+  setStoreFilter = (filter: StoreFilter) => {
+    this.set({ stores: { ...this.model.stores, filter } });
   };
 
   searchAudit = (q: string) => {
     this.model.audit = { ...this.model.audit, q };
-    this.loadAudit([undefined]);
+    void this.loadAudit([undefined]);
   };
 
   setAuditSource = (source: AuditSource) => {
     this.model.audit = { ...this.model.audit, source };
-    this.loadAudit([undefined]);
+    void this.loadAudit([undefined]);
   };
 
   pageAudit = (step: PageStep) => {
     const cursors = moveCursors(this.model.audit, step);
-    if (cursors) this.loadAudit(cursors);
+    if (cursors) void this.loadAudit(cursors);
   };
 
-  // ---- create ----
+  // ---- the queue's one-tap actions ----
 
-  openCreateStore = () => this.set({ dialog: { kind: "create", error: "", busy: false } });
+  private afterDeviceChange(storeId: number) {
+    this.loadOverview();
+    void this.loadStores();
+    void this.loadPending();
+    if (this.model.store?.id === storeId) this.reloadStore();
+  }
 
-  createStore = async (form: FormData) => {
-    const dialog = this.model.dialog;
-    if (dialog?.kind !== "create" || dialog.busy) return;
-    let body: Parameters<Api["createStore"]>[0];
-    try {
-      const subscriptionMode = String(form.get("subscriptionMode")) as
-        | "permanent"
-        | "timed"
-        | "paused";
-      body = {
-        name: String(form.get("name") ?? "").trim(),
-        username: String(form.get("username") ?? "").trim(),
-        subscriptionMode,
-        ...(subscriptionMode === "timed"
-          ? { subscriptionDays: integer(form.get("subscriptionDays"), 1, 36500) }
-          : {}),
-        allowedDevices: integer(form.get("allowedDevices"), 1, 50),
-        debtorLimit: integer(form.get("debtorLimit"), 0, 1_000_000),
-        verified: form.get("verified") === "on",
-        permissions: readPermissions(form),
-      };
-    } catch (error) {
-      return this.set({ dialog: { ...dialog, error: messageOf(error) } });
-    }
-    this.set({ dialog: { ...dialog, busy: true, error: "" } });
-    try {
-      const created = await this.api.createStore(body);
-      this.set({
-        dialog: null,
-        secret: {
-          storeId: created.storeId,
-          username: created.username,
-          password: created.temporaryPassword,
-        },
-      });
-      this.notify(
-        "تم إنشاء الحساب. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور ثم يطلب اعتماد جهازه.",
-      );
+  quickApprove = (device: { installationId: string; storeId: number }) =>
+    this.attempt(async () => {
+      await this.api.decideInstallation(device.installationId, "approve", QUICK_REASON.approve);
+      this.afterDeviceChange(device.storeId);
+      this.notify("اعتُمد الجهاز. يستطيع البدء الآن.");
+    });
+
+  quickReject = (device: { installationId: string; storeId: number }) =>
+    this.attempt(async () => {
+      await this.api.decideInstallation(device.installationId, "revoke", QUICK_REASON.reject);
+      this.afterDeviceChange(device.storeId);
+      this.notify("رُفض طلب الجهاز.");
+    });
+
+  raiseLimitAndApprove = (device: { installationId: string; storeId: number }, store: Store) =>
+    this.attempt(async () => {
+      await this.api.updateStore(store.id, { allowedDevices: store.allowedDevices + 1 });
+      await this.api.decideInstallation(device.installationId, "approve", QUICK_REASON.approve);
+      this.afterDeviceChange(device.storeId);
+      this.notify(`رُفع الحد إلى ${fmt(store.allowedDevices + 1)} واعتُمد الجهاز.`);
+    });
+
+  quickExtend = (store: Store, days: number) =>
+    this.attempt(async () => {
+      await this.api.subscription(store.id, { mode: "timed", days, extend: true });
       this.loadOverview();
-      this.model.stores = { ...this.model.stores, q: "" };
-      if (this.model.tab !== "stores") this.set({ tab: "stores" });
-      this.loadStores([undefined]);
-      this.openStore(created.storeId);
-    } catch (error) {
-      this.set({ dialog: { ...dialog, busy: false, error: messageOf(error) } });
-    }
-  };
+      void this.loadStores();
+      if (this.model.store?.id === store.id) this.reloadStore();
+      this.notify(`تم تمديد اشتراك ${store.name} ${fmt(days)} يومًا.`);
+    });
 
   // ---- one store ----
 
-  openStore = (storeId: number) => {
-    this.channels.get("ledger")?.abort();
+  private openStore(id: number, tab: StoreTab) {
+    const existing = this.model.store;
+    if (existing?.id === id) {
+      if (existing.tab !== tab) this.patchStore({ tab });
+      if (!existing.detail && !existing.loading) this.reloadStore();
+      return;
+    }
+    const row = this.model.stores.rows.find((store) => store.id === id);
     const state: StoreState = {
-      id: storeId,
+      id,
       detail: null,
+      summary: row?.summary ?? null,
       loading: true,
       error: "",
+      tab,
       ledger: null,
       audit: { ...emptyPage(), source: "control" },
       recovery: emptyRecovery(),
     };
-    if (this.model.secret && this.model.secret.storeId !== storeId) this.model.secret = null;
-    this.scrollToStore = true;
+    this.channels.get("ledger")?.abort();
+    this.model.secret = this.model.secret?.storeId === id ? this.model.secret : null;
     this.set({ store: state });
     this.reloadStore();
-  };
+    this.loadStoreAudit([undefined]);
+  }
 
-  closeStore = () => {
+  private leaveStore() {
     for (const name of ["store", "ledger", "storeAudit"]) this.channels.get(name)?.abort();
-    this.set({ store: null, secret: null });
-  };
+    if (this.model.store || this.model.secret) this.model.store = null;
+    this.model.secret = null;
+  }
 
   private async reloadStore() {
     const state = this.model.store;
     if (!state) return;
     const id = state.id;
-    this.loadStoreAudit(state.audit.cursors);
     const signal = this.channel("store");
     this.patchStore({ loading: true, error: "" });
     try {
       const detail = await this.api.store(id, signal);
       this.patchStore({ detail, loading: false }, id);
+      if (!this.model.store?.summary) await this.fetchSummary(id, detail.store.username);
     } catch (error) {
       if (!isAbort(error)) this.patchStore({ loading: false, error: messageOf(error) }, id);
+    }
+  }
+
+  /**
+   * The detail endpoint carries no ledger counters, so the list row is read by the store's username
+   * and the matching row's summary is kept. One request, and only when the list did not have it.
+   */
+  private async fetchSummary(id: number, username: string) {
+    try {
+      const result = await this.api.stores({ q: username, includeArchived: true });
+      const row = result.stores.find((store) => store.id === id);
+      if (row && this.model.store?.id === id) this.patchStore({ summary: row.summary }, id);
+    } catch (error) {
+      if (!isAbort(error)) void error; // the overview tab shows dashes instead
     }
   }
 
@@ -421,10 +492,11 @@ export class Controller implements Actions {
   private afterStoreChange() {
     this.reloadStore();
     this.loadOverview();
-    this.loadTab();
+    void this.loadStores();
+    if (this.model.store) this.loadStoreAudit(this.model.store.audit.cursors);
   }
 
-  private currentStore() {
+  private currentStore(): Store {
     const store = this.model.store?.detail?.store;
     if (!store) throw failure("store_not_found");
     return store;
@@ -444,34 +516,44 @@ export class Controller implements Actions {
       this.afterStoreChange();
     }, "تم حفظ إعدادات المتجر.");
 
-  setStatus = (status: "active" | "suspended") =>
-    this.attempt(
-      async () => {
-        await this.api.updateStore(this.currentStore().id, { status });
+  setStatus = (status: "active" | "suspended") => {
+    const store = this.model.store?.detail?.store;
+    if (!store) return;
+    this.openDanger({
+      title: status === "active" ? "تفعيل الحساب؟" : "تجميد الحساب؟",
+      description:
+        status === "active"
+          ? "يعود الحساب للعمل. اعتماد الأجهزة يبقى كما هو."
+          : "يُوقف الحساب وينهي جلساته فورًا. الدفتر يبقى محفوظًا.",
+      confirm: status === "active" ? "تفعيل" : "تجميد",
+      username: store.username,
+      needsReason: false,
+      run: async () => {
+        await this.api.updateStore(store.id, { status });
         this.afterStoreChange();
       },
-      status === "active" ? "تم تفعيل الحساب." : "تم تجميد الحساب وإنهاء جلساته.",
-    );
+      done: status === "active" ? "تم تفعيل الحساب." : "تم تجميد الحساب وإنهاء جلساته.",
+    });
+  };
 
-  saveSubscription = (form: FormData) =>
-    this.attempt(async () => {
-      const mode = String(form.get("mode")) as "permanent" | "timed" | "paused";
-      await this.api.subscription(this.currentStore().id, {
-        mode,
-        ...(mode === "timed" ? { days: integer(form.get("days"), 1, 36500) } : {}),
-      });
-      this.afterStoreChange();
-    }, "تم تحديث الاشتراك.");
-
-  extendSubscription = (form: FormData) =>
-    this.attempt(async () => {
-      await this.api.subscription(this.currentStore().id, {
-        mode: "timed",
-        days: integer(form.get("days"), 1, 36500),
-        extend: true,
-      });
-      this.afterStoreChange();
-    }, "تم تمديد الاشتراك.");
+  storeAction = (action: StoreAction) => {
+    const store = this.model.store?.detail?.store;
+    if (!store) return;
+    const text = ACTION_TEXT[action];
+    this.openDanger({
+      title: `${text.title}؟`,
+      description: text.description,
+      confirm: text.title,
+      username: store.username,
+      needsReason: true,
+      reason: `${text.title} من لوحة الإدارة`,
+      run: async (reason) => {
+        await this.api.storeAction(store.id, action, reason);
+        this.afterStoreChange();
+      },
+      done: "تم حفظ الإجراء وتسجيل سببه.",
+    });
+  };
 
   resetPassword = () => {
     const store = this.model.store?.detail?.store;
@@ -481,6 +563,8 @@ export class Controller implements Actions {
       title: "إنشاء كلمة مرور مؤقتة",
       description: `تُنهى جلسات ${store.username} الحالية، ويجب تغيير الكلمة المؤقتة عند أول دخول.`,
       confirm: "إنشاء كلمة مؤقتة",
+      error: "",
+      busy: false,
       run: async () => {
         const result = await this.api.resetPassword(store.id);
         this.set({
@@ -495,77 +579,101 @@ export class Controller implements Actions {
     });
   };
 
-  storeAction = (action: StoreAction) => {
-    const store = this.model.store?.detail?.store;
-    if (!store) return;
-    const text = ACTION_TEXT[action];
-    this.openDialog({
-      kind: "reason",
-      ...text,
-      confirm: "تأكيد الإجراء",
-      run: async (reason) => {
-        await this.api.storeAction(store.id, action, reason);
-        this.notify("تم حفظ الإجراء وتسجيل سببه.");
-        this.afterStoreChange();
-      },
-    });
-  };
-
-  openDelete = () => {
-    const store = this.model.store?.detail?.store;
-    if (!store) return;
-    this.set({
-      dialog: {
-        kind: "delete",
-        storeId: store.id,
-        username: store.username,
-        error: "",
-        busy: false,
-      },
-    });
-  };
-
-  deleteStore = async (confirm: string) => {
-    const dialog = this.model.dialog;
-    if (dialog?.kind !== "delete" || dialog.busy) return;
-    if (confirm.trim() !== dialog.username) {
-      return this.set({
-        dialog: { ...dialog, error: failure("delete_confirmation_required").message },
+  saveSubscription = (mode: "permanent" | "timed" | "paused", days?: number) =>
+    this.attempt(async () => {
+      const store = this.currentStore();
+      await this.api.subscription(store.id, {
+        mode,
+        ...(mode === "timed" ? { days: days ?? 30 } : {}),
       });
-    }
-    this.set({ dialog: { ...dialog, busy: true, error: "" } });
-    try {
-      await this.api.deleteStore(dialog.storeId, confirm.trim());
-      this.set({ dialog: null });
-      this.closeStore();
-      this.notify("تم حذف الحساب نهائيًا.");
-      this.loadOverview();
-      this.loadTab();
-    } catch (error) {
-      this.set({ dialog: { ...dialog, busy: false, error: messageOf(error) } });
-    }
-  };
-
-  decideInstallation = (installationId: string, decision: "approve" | "revoke", storeId: number) =>
-    this.openDialog({
-      kind: "reason",
-      title: decision === "approve" ? "اعتماد جهاز المتجر" : "إلغاء اعتماد الجهاز",
-      description:
-        decision === "approve"
-          ? "يصبح الجهاز معتمدًا للمزامنة ضمن حد أجهزة المتجر. لا يُلغى أي جهاز آخر تلقائيًا."
-          : "تتوقف صلاحية هذا الجهاز للمزامنة فورًا. يحتاج تسجيلًا جديدًا واعتمادك ليعود.",
-      confirm: "تأكيد الإجراء",
-      danger: decision === "revoke",
-      run: async (reason) => {
-        await this.api.decideInstallation(installationId, decision, reason);
-        this.notify(decision === "approve" ? "تم اعتماد الجهاز." : "تم إلغاء اعتماد الجهاز.");
-        if (this.model.store?.id === storeId) this.reloadStore();
-        this.loadOverview();
-        this.loadTab();
-      },
-    });
+      this.afterStoreChange();
+    }, "تم تحديث الاشتراك.");
 
   dismissSecret = () => this.set({ secret: null });
+
+  approveDevice = (installationId: string, storeId: number) =>
+    this.openDialog({
+      kind: "reason",
+      title: "اعتماد جهاز المتجر",
+      description: "يصبح الجهاز معتمدًا للمزامنة ضمن حد أجهزة المتجر. لا يُلغى أي جهاز آخر تلقائيًا.",
+      confirm: "اعتماد الجهاز",
+      danger: false,
+      value: QUICK_REASON.approveDialog,
+      error: "",
+      busy: false,
+      run: async (reason) => {
+        await this.api.decideInstallation(installationId, "approve", reason);
+        this.afterDeviceChange(storeId);
+      },
+    });
+
+  revokeDevice = (installationId: string, storeId: number) =>
+    this.openDialog({
+      kind: "reason",
+      title: "إلغاء اعتماد الجهاز",
+      description: "تتوقف صلاحية هذا الجهاز للمزامنة فورًا. يحتاج تسجيلًا جديدًا واعتمادك ليعود.",
+      confirm: "إلغاء الاعتماد",
+      danger: true,
+      value: QUICK_REASON.revoke,
+      error: "",
+      busy: false,
+      run: async (reason) => {
+        await this.api.decideInstallation(installationId, "revoke", reason);
+        this.afterDeviceChange(storeId);
+      },
+    });
+
+  // ---- create ----
+
+  setName = (name: string) => this.set({ create: { ...this.model.create, name } });
+
+  setUsername = (username: string) => this.set({ create: { ...this.model.create, username } });
+
+  setMode = (mode: "permanent" | "timed" | "paused") =>
+    this.set({ create: { ...this.model.create, mode } });
+
+  restartCreate = () => this.set({ create: initialModel().create });
+
+  createStore = async (form: FormData) => {
+    const state = this.model.create;
+    if (state.busy || state.done) return;
+    let body: Parameters<Api["createStore"]>[0];
+    try {
+      const mode = state.mode;
+      body = {
+        name: String(form.get("name") ?? "").trim(),
+        username: String(form.get("username") ?? "").trim(),
+        subscriptionMode: mode,
+        ...(mode === "timed"
+          ? { subscriptionDays: integer(form.get("subscriptionDays"), 1, 36500) }
+          : {}),
+        allowedDevices: integer(form.get("allowedDevices"), 1, 50),
+        debtorLimit: integer(form.get("debtorLimit"), 0, 1_000_000),
+        permissions: readPermissions(form),
+      };
+    } catch (error) {
+      return this.set({ create: { ...state, error: messageOf(error) } });
+    }
+    this.set({ create: { ...state, busy: true, error: "" } });
+    try {
+      const created = await this.api.createStore(body);
+      this.set({
+        create: {
+          ...initialModel().create,
+          done: {
+            storeId: created.storeId,
+            username: created.username,
+            password: created.temporaryPassword,
+          },
+        },
+      });
+      this.loadOverview();
+      await this.loadStores();
+      this.notify("تم إنشاء الحساب. سلّم بيانات الدخول لصاحب المتجر.");
+    } catch (error) {
+      this.set({ create: { ...state, busy: false, error: messageOf(error) } });
+    }
+  };
 
   // ---- recovery ----
 
@@ -594,14 +702,14 @@ export class Controller implements Actions {
     if (!state || !detail) return;
     const recovery = state.recovery;
     const { active, old } = recoveryChoices(detail);
-    const oldPhone = old.find((p) => p.installationId === recovery.oldId);
-    const newPhone = active.find((p) => p.installationId === recovery.newId);
+    const oldPhone = old.find((phone) => phone.installationId === recovery.oldId);
+    const newPhone = active.find((phone) => phone.installationId === recovery.newId);
     if (!oldPhone || !newPhone)
       return this.patchRecovery({ error: "اختر الهاتف السابق والهاتف المعتمد." });
     if (!recovery.reason.trim())
       return this.patchRecovery({ error: failure("reason_required").message });
     const report = inspectManifest(recovery.manifest, oldPhone);
-    const blocking = report.problems.find((p) => p.blocking);
+    const blocking = report.problems.find((problem) => problem.blocking);
     if (blocking || !report.commands || !report.stats) {
       return this.patchRecovery({
         error: `لا يمكن الاعتماد: ${blocking?.message ?? "القائمة غير صالحة."}`,
@@ -612,8 +720,10 @@ export class Controller implements Actions {
     this.openDialog({
       kind: "confirm",
       title: "اعتماد الاسترداد",
-      description: `اعتماد استرداد ${commands.length} إدخالًا من الهاتف السابق. الموافقة تشمل هذه الأوامر الأصلية فقط ولا يمكن التراجع عنها.`,
+      description: `اعتماد استرداد ${fmt(commands.length)} إدخالًا من الهاتف السابق. الموافقة تشمل هذه الأوامر الأصلية فقط ولا يمكن التراجع عنها.`,
       confirm: "اعتماد الاسترداد نهائيًا",
+      error: "",
+      busy: false,
       run: async () => {
         const permit = await this.api.approveRecovery({
           oldInstallationId: oldPhone.installationId,
@@ -670,27 +780,27 @@ export class Controller implements Actions {
         error: "",
       },
     });
-    this.loadLedger([undefined]);
+    void this.loadLedger([undefined]);
   };
 
   setLedgerKind = (kind: LedgerKind) => {
     const ledger = this.model.store?.ledger;
     if (!ledger || !this.model.store) return;
     this.patchLedger({ kind, q: "" }, this.model.store.id);
-    this.loadLedger([undefined]);
+    void this.loadLedger([undefined]);
   };
 
   searchLedger = (q: string) => {
     if (!this.model.store?.ledger) return;
     this.patchLedger({ q }, this.model.store.id);
-    this.loadLedger([undefined]);
+    void this.loadLedger([undefined]);
   };
 
   pageLedger = (step: PageStep) => {
     const ledger = this.model.store?.ledger;
     if (!ledger) return;
     const cursors = moveCursors({ ...ledger, rows: [] }, step);
-    if (cursors) this.loadLedger(cursors);
+    if (cursors) void this.loadLedger(cursors);
   };
 
   /** Every page of the current section, read with the same audited reason. */
@@ -714,7 +824,7 @@ export class Controller implements Actions {
             lines.push(columns.map(([, cell]) => csvCell(cell(row))).join(","));
           cursor = page.nextCursor ?? undefined;
         } while (cursor);
-        const blob = new Blob([`﻿${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
+        const blob = new Blob([`\ufeff${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
         const anchor = document.createElement("a");
         anchor.href = URL.createObjectURL(blob);
         anchor.download = `sadad-store-${state.id}-${ledger.kind}.csv`;
@@ -726,62 +836,128 @@ export class Controller implements Actions {
 
   // ---- store audit ----
 
-  private loadStoreAudit(cursors: (string | undefined)[]) {
+  private async loadStoreAudit(cursors: (string | undefined)[]) {
     const state = this.model.store;
     if (!state) return;
     const id = state.id;
     const source = state.audit.source;
-    return this.loadPaged(
-      "storeAudit",
-      () => this.model.store?.audit ?? { ...emptyPage<AuditEvent>(), source },
-      (page) => {
-        if (this.model.store?.id === id) this.model.store = { ...this.model.store, audit: page };
-      },
-      cursors,
-      async (cursor, signal) => {
-        const r = await this.api.audit({ source, storeId: id, cursor }, signal);
-        return { rows: r.events, next: r.nextCursor };
-      },
-    );
+    const signal = this.channel("storeAudit");
+    this.model.store = { ...state, audit: { ...state.audit, cursors, loading: true, error: "" } };
+    this.render();
+    try {
+      const result = await this.api.audit({ source, storeId: id, cursor: cursors.at(-1) }, signal);
+      if (this.model.store?.id !== id) return;
+      this.model.store = {
+        ...this.model.store,
+        audit: {
+          ...this.model.store.audit,
+          rows: result.events,
+          next: result.nextCursor,
+          loading: false,
+        },
+      };
+    } catch (error) {
+      if (isAbort(error)) return;
+      if (this.model.store?.id !== id) return;
+      this.model.store = {
+        ...this.model.store,
+        audit: {
+          ...this.model.store.audit,
+          rows: [],
+          next: null,
+          loading: false,
+          error: messageOf(error),
+        },
+      };
+    }
+    this.render();
   }
 
   setStoreAuditSource = (source: AuditSource) => {
     const state = this.model.store;
     if (!state) return;
     this.model.store = { ...state, audit: { ...state.audit, source } };
-    this.loadStoreAudit([undefined]);
+    void this.loadStoreAudit([undefined]);
   };
 
   pageStoreAudit = (step: PageStep) => {
     const audit = this.model.store?.audit;
     const cursors = audit && moveCursors(audit, step);
-    if (cursors) this.loadStoreAudit(cursors);
+    if (cursors) void this.loadStoreAudit(cursors);
   };
 
   // ---- dialogs ----
 
-  private openDialog(
-    dialog:
-      | Omit<Extract<Dialog, { kind: "reason" }>, "error" | "busy">
-      | Omit<Extract<Dialog, { kind: "confirm" }>, "error" | "busy">,
-  ) {
-    this.set({ dialog: { ...dialog, error: "", busy: false } as Dialog });
+  private openDialog(dialog: Dialog) {
+    this.focusDialog = true;
+    this.set({ dialog });
   }
 
-  submitDialog = async (value: string) => {
+  private openDanger(options: {
+    title: string;
+    description: string;
+    confirm: string;
+    username: string;
+    needsReason: boolean;
+    reason?: string;
+    run: (reason: string) => Promise<void>;
+    done: string;
+  }) {
+    this.openDialog({
+      kind: "danger",
+      title: options.title,
+      description: options.description,
+      confirm: options.confirm,
+      username: options.username,
+      typed: "",
+      needsReason: options.needsReason,
+      reason: options.reason ?? "",
+      error: "",
+      busy: false,
+      run: async (reason) => {
+        await options.run(reason);
+        this.notify(options.done);
+      },
+    });
+  }
+
+  dialogReason = (value: string) => {
+    const dialog = this.model.dialog;
+    if (!dialog || (dialog.kind !== "reason" && dialog.kind !== "danger")) return;
+    this.set({
+      dialog: dialog.kind === "reason" ? { ...dialog, value } : { ...dialog, reason: value },
+    });
+  };
+
+  dialogTyped = (value: string) => {
+    const dialog = this.model.dialog;
+    if (dialog?.kind !== "danger") return;
+    this.set({ dialog: { ...dialog, typed: value } });
+  };
+
+  submitDialog = async () => {
     const dialog = this.model.dialog;
     if (!dialog || dialog.busy) return;
-    if (dialog.kind === "delete") return this.deleteStore(value);
-    if (dialog.kind !== "reason" && dialog.kind !== "confirm") return;
-    const reason = value.trim();
-    if (dialog.kind === "reason" && !reason) {
+    const reason =
+      dialog.kind === "danger"
+        ? dialog.reason.trim()
+        : dialog.kind === "reason"
+          ? dialog.value.trim()
+          : "";
+    if (dialog.kind === "danger" && dialog.typed.trim() !== dialog.username) {
+      return this.set({ dialog: { ...dialog, error: "اكتب اسم الدخول كما هو للتأكيد." } });
+    }
+    const needsReason =
+      dialog.kind === "reason" || (dialog.kind === "danger" && dialog.needsReason);
+    if (needsReason && !reason) {
       return this.set({ dialog: { ...dialog, error: failure("reason_required").message } });
     }
     this.set({ dialog: { ...dialog, busy: true, error: "" } });
     try {
-      await (dialog.kind === "reason" ? dialog.run(reason) : dialog.run());
-      if (this.model.dialog === null || this.model.dialog.kind === dialog.kind)
+      await (dialog.kind === "confirm" ? dialog.run() : dialog.run(reason));
+      if (this.model.dialog === null || this.model.dialog.kind === dialog.kind) {
         this.set({ dialog: null });
+      }
     } catch (error) {
       this.set({ dialog: { ...dialog, busy: false, error: messageOf(error) } });
     }

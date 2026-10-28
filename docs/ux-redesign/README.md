@@ -7,3 +7,9 @@ The Android app and admin dashboard redesign from 2026-10-25. Tickets 79–91 (i
 - `board-text.md` — every app board as plain text: its copy, props and the start of its script. Quickest way to find a string.
 
 The canvas is the live design; these files are the snapshot the tickets were written against.
+
+The admin boards (`AdminBar`, `AdminTasks`, `AdminStores`, `AdminStore`, `AdminCreate`, `AdminSignIn`)
+are implemented in `server/public/`: screens and routing in `src/controller.ts` + `src/views/`
+(`tasks`, `stores`, `store`, `create`, `audit`), the subscription and filter rules in
+`src/subscription.ts`, design tokens in `src/styles.css`. The build forbids `style=` attributes
+(`style-src 'self'`), so layout lives in the stylesheet.
