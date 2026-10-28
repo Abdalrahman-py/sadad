@@ -90,13 +90,17 @@ jobs:
             -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE" -PSADAD_VERSION_NAME="$SADAD_VERSION_NAME"
       - name: Fail when R8 reports missing classes
         run: |
+          mapping=app/build/outputs/mapping/release/mapping.txt
+          [[ -s "$mapping" ]] || { echo "::error::$mapping is missing; R8 did not run, so this gate proves nothing"; exit 1; }
+          # R8 writes missing_rules.txt only when it actually finds missing classes. Its absence is
+          # the clean result, not a moved path — checking for the file failed every good build.
           missing=app/build/outputs/mapping/release/missing_rules.txt
-          [[ -f "$missing" ]] || { echo "::error::$missing not found; AGP moved it, so this gate checks nothing"; exit 1; }
           if [[ -s "$missing" ]]; then
             echo "::error::R8 reported missing classes; add a keep rule with a reason in app/proguard-rules.pro"
             cat "$missing"
             exit 1
           fi
+          echo "R8 reported no missing classes."
       - name: Verify Sentry mapping metadata when crash reporting is enabled
         env:
           SADAD_SENTRY_DSN: ${{ secrets.SADAD_SENTRY_DSN }}
