@@ -1,5 +1,6 @@
 package com.sadad.app.export
 
+import com.sadad.app.data.ledger.paymentGroups
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtOrigin
@@ -59,8 +60,7 @@ object Statement {
             .filter { it.origin == DebtOrigin.OVERPAYMENT && it.amount > Cents.ZERO }
             .associateBy { it.contactId to it.createdAt }
     val seen = view.payments.filter { !it.reversed && it.debtId in debtIds }
-    val compounds = seen.groupBy { it.contactId to it.createdAt }.filterKeys { it in credits }
-    val emitted = HashSet<Pair<String, Instant>>()
+    val groups = paymentGroups(seen, debts.associateBy { it.id })
     val movements = HashMap<String, MutableList<StatementRow>>()
     for (debt in debts) {
       movements.getOrPut(debt.contactId) { mutableListOf() } +=
@@ -76,36 +76,18 @@ object Statement {
               debt.createdBy,
           )
     }
-    for (payment in view.payments) {
-      if (payment.reversed || payment.debtId !in debtIds) continue
+    for (parts in groups) {
+      val payment = parts.first()
       val key = payment.contactId to payment.createdAt
-      val credit = credits[key]?.takeIf { key in compounds }
-      if (credit != null) {
-        // One row for the whole save: the parts that settled Debts and the excess kept as credit.
-        if (!emitted.add(key)) continue
-        val settled =
-            compounds.getValue(key).fold(Cents.ZERO) { total, part -> total + part.amount }
-        movements.getOrPut(payment.contactId) { mutableListOf() } +=
-            StatementRow(
-                payment.id,
-                payment.createdAt,
-                MovementKind.PAYMENT,
-                Cents.ZERO,
-                settled + credit.amount,
-                Cents.ZERO,
-                null,
-                payment.note,
-                payment.createdBy,
-            )
-        continue
-      }
+      val credit = credits[key]?.takeIf { it.createdBy == payment.createdBy }
+      val settled = parts.fold(Cents.ZERO) { total, part -> total + part.amount }
       movements.getOrPut(payment.contactId) { mutableListOf() } +=
           StatementRow(
               payment.id,
               payment.createdAt,
               MovementKind.PAYMENT,
               Cents.ZERO,
-              payment.amount,
+              settled + (credit?.amount ?: Cents.ZERO),
               Cents.ZERO,
               null,
               payment.note,

@@ -228,7 +228,7 @@ class QuickAddViewModelTest {
       for (key in listOf("5", "0", "0")) model.press(key)
 
       assertEquals(
-          "يسدد ₪ 250.00 الدين · يبقى له ₪ 250.00 رصيدًا",
+          "يسدد ₪ 250 الدين · يبقى له ₪ 250 رصيدًا",
           model.preview(context),
       )
       assertTrue("a customer's overpayment is accepted", model.state.value.canSave)
@@ -262,7 +262,7 @@ class QuickAddViewModelTest {
 
       for (key in listOf("1", "0", "0")) model.press(key)
 
-      assertEquals("يُخصم من رصيده ₪ 100.00 · يبقى له ₪ 150.00", model.preview(context))
+      assertEquals("يُخصم من رصيده ₪ 100 · يبقى له ₪ 150", model.preview(context))
 
       model.save(context)
       store.awaitOutbox(2)

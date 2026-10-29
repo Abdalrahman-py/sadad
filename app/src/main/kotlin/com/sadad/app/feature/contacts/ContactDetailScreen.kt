@@ -625,7 +625,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
         contentAlignment = Alignment.Center,
     ) {
       Icon(
-          painterResource(if (debt) R.drawable.ic_record else R.drawable.ic_payment_in),
+          painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
           null,
           tint = if (debt) p.owes else link,
           modifier = Modifier.size(18.dp),
@@ -721,7 +721,7 @@ private fun RecordActions(
           horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
           verticalAlignment = Alignment.CenterVertically,
       ) {
-        Icon(painterResource(R.drawable.ic_record), null, modifier = Modifier.size(18.dp))
+        Icon(painterResource(R.drawable.ic_payment_out), null, modifier = Modifier.size(18.dp))
         Text(
             stringResource(
                 if (supplier) R.string.contacts_record_goods else R.string.contacts_record_debt

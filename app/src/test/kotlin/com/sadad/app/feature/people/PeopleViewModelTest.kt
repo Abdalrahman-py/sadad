@@ -194,9 +194,9 @@ class PeopleViewModelTest {
   @Test
   fun theTotalLineSumsTheChipAndIsAbsentOnEveryone() {
     assertNull("الكل has no total line", state().totalLine)
-    assertEquals("المجموع عليهم ₪ 1,455.00", state(filter = PeopleFilter.OWES).totalLine)
-    assertEquals("المجموع لهم ₪ 1,390.00", state(filter = PeopleFilter.CREDIT).totalLine)
-    assertEquals("المجموع المتأخر ₪ 1,120.00", state(filter = PeopleFilter.LATE).totalLine)
+    assertEquals("المجموع عليهم ₪ 1,455", state(filter = PeopleFilter.OWES).totalLine)
+    assertEquals("المجموع لهم ₪ 1,390", state(filter = PeopleFilter.CREDIT).totalLine)
+    assertEquals("المجموع المتأخر ₪ 1,120", state(filter = PeopleFilter.LATE).totalLine)
   }
 
   @Test

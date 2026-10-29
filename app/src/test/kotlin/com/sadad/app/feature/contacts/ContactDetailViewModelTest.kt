@@ -15,6 +15,7 @@ import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +62,41 @@ class ContactDetailViewModelTest {
       assertEquals("سامي", state.name)
       assertEquals(Direction.PAYABLE, state.movements.first { it.id == payable.entityId }.direction)
       assertEquals(Direction.RECEIVABLE, state.movements.first { it.id == paid.entityId }.direction)
+    }
+  }
+
+  @Test
+  fun onePaymentSettlingTwoDebtsIsOneMovementAndCanBeReversedTogether() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سامي", contactId(1), minute = 0)
+      val first = debt(person.entityId, amount = 10_000, minute = 1)
+      val second = debt(person.entityId, amount = 5_000, minute = 2)
+      fixture.seedCommands(listOf(person, first, second))
+      fixture.seed {
+        payContact(person.entityId, Cents(15_000), PaymentMethod.CASH, null).getOrThrow()
+      }
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val pending = model.state.first { it.loaded && it.balance == Cents.ZERO }
+      val queued = pending.movements.single { it.kind == MovementKind.PAYMENT }
+      assertTrue(queued.pending)
+      assertFalse(queued.canReverse)
+      fixture.settleAll()
+      val state =
+          model.state.first {
+            it.loaded && it.balance == Cents.ZERO && it.movements.none { row -> row.pending }
+          }
+      val payments = state.movements.filter { it.kind == MovementKind.PAYMENT }
+      assertEquals("one 150 payment, not separate 100 and 50 rows", 1, payments.size)
+      val row = payments.single()
+      assertEquals(Cents(15_000), row.amount)
+      assertEquals(2, row.parts.size)
+      assertTrue(row.canReverse)
+      model.reverse(row.id)
+      val reversals = awaitOutbox(fixture, 2).map { it.command.payload() as PaymentReverse }
+      assertEquals(row.parts.toSet(), reversals.map { it.paymentId }.toSet())
     }
   }
 

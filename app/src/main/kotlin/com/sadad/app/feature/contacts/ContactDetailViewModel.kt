@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.ledger.Refusal
+import com.sadad.app.data.ledger.paymentGroups
 import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementExport
 import com.sadad.app.export.StatementHeader
@@ -287,62 +288,39 @@ class ContactDetailViewModel(
   private fun view(): Flow<LedgerView?> =
       graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
 
-  /**
-   * One row per payment, except one that left credit: its parts and the credit Debt are one row
-   * that says what settled and what the store now holds, and that can be reversed as a unit.
-   */
+  /** One row per saved payment, including its allocations and any excess kept as credit. */
   private fun paymentRows(
-      visible: List<PaymentView>,
-      compounds: Map<Instant, List<PaymentView>>,
+      groups: Collection<List<PaymentView>>,
       credits: Map<Instant, DebtView>,
       debts: Map<String, DebtView>,
-  ): List<ContactMovement> {
-    val rows = mutableListOf<ContactMovement>()
-    val emitted = HashSet<Instant>()
-    for (payment in visible) {
-      val credit = credits[payment.createdAt]?.takeIf { payment.createdAt in compounds }
-      if (credit == null) {
-        rows +=
-            ContactMovement(
-                id = payment.id,
-                kind = MovementKind.PAYMENT,
-                direction = debts.getValue(payment.debtId).direction,
-                amount = payment.amount,
-                method = payment.method,
-                note = payment.note,
-                createdAt = payment.createdAt,
-                pending = payment.pending,
-                canReverse = !payment.pending,
-            )
-        continue
-      }
-      // The compound's parts share one instant; the first one speaks for them.
-      if (!emitted.add(payment.createdAt)) continue
-      val parts = compounds.getValue(payment.createdAt)
-      val settled = parts.fold(Cents.ZERO) { total, part -> total + part.amount }
-      val first = parts.first()
-      // An offset, or a correction, out of the credit means the reversal belongs to a later step.
-      val spent = credit.remaining < credit.amount
-      rows +=
-          ContactMovement(
-              id = first.id,
-              kind = MovementKind.PAYMENT,
-              direction = debts.getValue(first.debtId).direction,
-              amount = settled + credit.amount,
-              method = first.method,
-              note = first.note,
-              createdAt = first.createdAt,
-              pending = parts.any { it.pending } || credit.pending,
-              parts = parts.map { it.id },
-              creditDebtId = credit.id,
-              settled = settled,
-              credit = credit.amount,
-              canReverse = !parts.any { it.pending } && !credit.pending && !spent,
-              blockedReason =
-                  if (spent) appContext.getString(R.string.contacts_reverse_credit_used) else null,
-          )
-    }
-    return rows
+  ): List<ContactMovement> = groups.map { parts ->
+    val first = parts.first()
+    val credit =
+        credits[first.createdAt]?.takeIf {
+          debts.getValue(first.debtId).direction == Direction.RECEIVABLE &&
+              it.createdBy == first.createdBy
+        }
+    val settled = parts.fold(Cents.ZERO) { total, part -> total + part.amount }
+    val pending = parts.any { it.pending } || credit?.pending == true
+    // An offset, or a correction, out of the credit means the reversal belongs to a later step.
+    val spent = credit != null && credit.remaining < credit.amount
+    ContactMovement(
+        id = first.id,
+        kind = MovementKind.PAYMENT,
+        direction = debts.getValue(first.debtId).direction,
+        amount = settled + (credit?.amount ?: Cents.ZERO),
+        method = first.method,
+        note = first.note,
+        createdAt = first.createdAt,
+        pending = pending,
+        parts = parts.map { it.id },
+        creditDebtId = credit?.id,
+        settled = settled.takeIf { credit != null },
+        credit = credit?.amount,
+        canReverse = !pending && !spent,
+        blockedReason =
+            if (spent) appContext.getString(R.string.contacts_reverse_credit_used) else null,
+    )
   }
 
   private fun permissions(): Flow<Map<String, Boolean>> =
@@ -393,10 +371,11 @@ class ContactDetailViewModel(
         own.filter { it.origin == DebtOrigin.OVERPAYMENT && it.amount > Cents.ZERO }
             .associateBy { it.createdAt }
     val visible = view.payments.filter { it.contactId == contactId && !it.reversed }
-    val compounds = visible.groupBy { it.createdAt }.filterKeys { it in credits }
+    val groups = paymentGroups(visible, ownById)
+    val paymentTimes = visible.mapTo(HashSet()) { it.createdAt }
     val movements =
         own.filter { debt ->
-              !(debt.origin == DebtOrigin.OVERPAYMENT && debt.createdAt in compounds)
+              !(debt.origin == DebtOrigin.OVERPAYMENT && debt.createdAt in paymentTimes)
             }
             .map { debt ->
               ContactMovement(
@@ -411,7 +390,7 @@ class ContactDetailViewModel(
                   offsetted = debt.offsetted.takeIf { it > Cents.ZERO },
                   struck = debt.amount == Cents.ZERO,
               )
-            } + paymentRows(visible, compounds, credits, ownById)
+            } + paymentRows(groups, credits, ownById)
     val ordered =
         movements.sortedWith(
             if (dialogs.newestFirst) {
