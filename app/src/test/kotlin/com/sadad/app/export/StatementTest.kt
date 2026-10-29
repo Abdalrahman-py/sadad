@@ -43,6 +43,58 @@ class StatementTest {
       )
 
   @Test
+  fun aSinglePaymentAllocatedAcrossTwoDebtsIsOneStatementRow() {
+    val at = from.plusSeconds(1)
+    val first =
+        Commands.paymentCreate(
+            Events.origin,
+            at,
+            oldDebt.entityId,
+            Cents(10000),
+            PaymentMethod.CASH,
+        )
+    val second =
+        Commands.paymentCreate(Events.origin, at, newDebt.entityId, Cents(5000), PaymentMethod.CASH)
+    val statement =
+        Statement.build(exportView(contact, oldDebt, newDebt, first, second), null, null, null)
+            .single()
+    val rows = statement.rows.filter { it.kind == MovementKind.PAYMENT }
+    assertEquals(1, rows.size)
+    assertEquals(Cents(15000), rows.single().payment)
+    assertEquals(Cents.ZERO, rows.single().balance)
+    assertEquals(Cents(15000), statement.totalPaid)
+    assertEquals(Cents.ZERO, statement.closing)
+  }
+
+  @Test
+  fun paymentsAtDifferentTimesOrByDifferentMethodsStaySeparate() {
+    val at = from.plusSeconds(1)
+    val first =
+        Commands.paymentCreate(Events.origin, at, oldDebt.entityId, Cents(5000), PaymentMethod.CASH)
+    val second =
+        Commands.paymentCreate(Events.origin, at, newDebt.entityId, Cents(5000), PaymentMethod.BANK)
+    val third =
+        Commands.paymentCreate(
+            Events.origin,
+            at.plusSeconds(1),
+            oldDebt.entityId,
+            Cents(5000),
+            PaymentMethod.CASH,
+        )
+    val statement =
+        Statement.build(
+                exportView(contact, oldDebt, newDebt, first, second, third),
+                null,
+                null,
+                null,
+            )
+            .single()
+    assertEquals(3, statement.rows.count { it.kind == MovementKind.PAYMENT })
+    assertEquals(Cents(15000), statement.totalPaid)
+    assertEquals(Cents.ZERO, statement.closing)
+  }
+
+  @Test
   fun octoberCarriesOpeningBalanceAndEveryMovement() {
     val statement =
         Statement.build(exportView(contact, oldDebt, newDebt, payment), contact.entityId, from, to)

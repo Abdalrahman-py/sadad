@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
@@ -23,7 +24,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The People tab at both font sizes (ticket 76), and its chips saying which one is on. */
+/** The People tab at both font sizes (ticket 76), and its filter menu saying which one is on. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
 class PeopleA11yTest {
@@ -42,11 +43,17 @@ class PeopleA11yTest {
         }
     awaiting { model.state.first { it.registered > 0 } }
     compose.showAt(fontScale) { PeopleScreen(onOpenContact = {}, viewModel = model) }
-    compose.assertAccessible(hasTestTag(PeopleTags.SEARCH))
+    compose.assertAccessible(
+        hasTestTag(PeopleTags.SEARCH),
+        hasTestTag(PeopleTags.ADD),
+        hasTestTag(PeopleTags.FILTER),
+    )
+    compose.onNodeWithTag(PeopleTags.FILTER).performClick()
+    compose.assertAccessible(hasText("موردون"))
   }
 
   @Test
-  fun theChipsSayWhichOneIsOnAndSwitchWhenTapped() = compose.withStore { fixture ->
+  fun theMenuSaysWhichFilterIsOnAndSwitchesWhenTapped() = compose.withStore { fixture ->
     awaiting { seedContacts(fixture) }
     val model =
         PeopleViewModel(fixture.graph, SavedStateHandle()).also {
@@ -55,13 +62,17 @@ class PeopleA11yTest {
     awaiting { model.state.first { it.registered > 0 } }
     compose.showAt(NORMAL_FONT) { PeopleScreen(onOpenContact = {}, viewModel = model) }
 
+    compose.onNodeWithTag(PeopleTags.FILTER).performClick()
     compose.onNode(hasText("الكل") and isSelectable()).assertIsSelected()
     compose.onNode(hasText("عليهم") and isSelectable()).assertIsNotSelected()
 
     compose.onNode(hasText("عليهم") and isSelectable()).performClick()
 
+    compose.onNodeWithTag(PeopleTags.FILTER).performClick()
     compose.onNode(hasText("عليهم") and isSelectable()).assertIsSelected()
     compose.onNode(hasText("الكل") and isSelectable()).assertIsNotSelected()
+    compose.onNode(hasText("عليهم") and isSelectable()).performClick()
+    awaiting { model.state.first { it.filter == PeopleFilter.OWES } }
     assertEquals(PeopleFilter.OWES, model.state.value.filter)
     // Eight settled Contacts with no entry owe nothing, so the chip empties the list.
     compose.onNode(hasText("لا توجد نتائج")).assertExists()

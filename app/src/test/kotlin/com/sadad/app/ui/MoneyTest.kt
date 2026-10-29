@@ -1,6 +1,7 @@
 package com.sadad.app.ui
 
 import com.sadad.app.ui.components.formatCents
+import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import kotlin.random.Random
@@ -61,6 +62,16 @@ class MoneyTest {
     assertEquals("1,234.56 ₪", formatCents(Cents(123_456)))
     assertEquals("0.05 ₪", formatCents(Cents(5)))
     assertEquals("0 ₪", formatCents(Cents(0)))
+  }
+
+  @Test
+  fun displayedAmountsDropOnlyInsignificantDecimalZeros() {
+    assertEquals("₪ 50", formatShekels(Cents(5000)))
+    assertEquals("₪ 100", formatShekels(Cents(10000)))
+    assertEquals("₪ 50.5", formatShekels(Cents(5050)))
+    assertEquals("₪ 50.05", formatShekels(Cents(5005)))
+    assertEquals("-₪ 50.5", formatShekels(Cents(-5050)))
+    assertEquals("₪ 0", formatShekels(Cents.ZERO))
   }
 
   @Test

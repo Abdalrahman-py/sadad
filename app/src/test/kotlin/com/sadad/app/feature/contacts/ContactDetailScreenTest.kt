@@ -137,6 +137,40 @@ class ContactDetailScreenTest {
   @Test fun aFailedPdfDoesNotSuppressTheNextLock() = failedExternalAction(share = true)
 
   @Test
+  fun aFullPaymentAcrossTwoDebtsShowsOneAmountAndSettledBalance() {
+    val person = contact("سامي", contactId(1))
+    val first = debt(person.entityId, 10000, minute = 1)
+    val second = debt(person.entityId, 5000, minute = 2)
+    val fixture = runBlocking {
+      TestGraph.signedIn().also {
+        it.seedCommands(
+            listOf(
+                person,
+                first,
+                second,
+                payment(first.entityId, 10000, minute = 3),
+                payment(second.entityId, 5000, minute = 3),
+            )
+        )
+      }
+    }
+    fixture.use {
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
+      compose.waitUntil(10000) { model.state.value.loaded && model.state.value.movements.size == 3 }
+      timelineRow("دفعة · نقدي").assertIsDisplayed()
+      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToNode(hasText("₪ 150"))
+      compose
+          .onNode(hasText("₪ 150") and hasAnyAncestor(hasTestTag(ContactsTag.MOVEMENTS)))
+          .assertIsDisplayed()
+      timelineRow("مسدد").assertIsDisplayed()
+    }
+  }
+
+  @Test
   fun payableHistoryLabelsTheDebtAndPaymentAsMoneyWeOweAndPayOut() {
     val person = contact("مورد", contactId(1))
     val owing = debt(person.entityId, 2000, direction = Direction.PAYABLE, minute = 1)

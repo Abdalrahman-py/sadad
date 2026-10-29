@@ -69,18 +69,10 @@ fun parseCents(text: String): Cents? {
   return Cents(cents)
 }
 
-/**
- * The redesign's money format: `₪` first, grouped, always two decimals («₪ 1,234.50»). Screens move
- * to it from [formatCents] as tickets 81–87 redesign them.
- */
+/** Shekel symbol first, with the same exact values and trimmed decimals as [formatCents]. */
 fun formatShekels(cents: Cents): String {
-  val magnitude = Math.abs(cents.value)
-  val fraction = (magnitude % 100).toString().padStart(2, '0')
-  return (if (cents.value < 0) "-" else "") +
-      "₪ " +
-      groupThousands(magnitude / 100) +
-      "." +
-      fraction
+  val number = formatCents(cents).removeSuffix(" ₪")
+  return if (number.startsWith('-')) "-₪ ${number.drop(1)}" else "₪ $number"
 }
 
 /** [formatShekels], laid out left to right inside the Arabic page. */

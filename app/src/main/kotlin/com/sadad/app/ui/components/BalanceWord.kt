@@ -43,7 +43,7 @@ fun balanceWord(netCents: Long): BalanceWordText {
   val word = if (netCents > 0) "عليه" else "له"
   val amount = formatShekels(Cents(Math.abs(netCents)))
   // Read as words: no «₪» symbol, no minus, trailing zero cents dropped.
-  val spokenAmount = amount.removePrefix("₪ ").removeSuffix(".00")
+  val spokenAmount = amount.removePrefix("₪ ")
   return BalanceWordText(
       word = word,
       tone = if (netCents > 0) BalanceTone.OWES else BalanceTone.CREDIT,

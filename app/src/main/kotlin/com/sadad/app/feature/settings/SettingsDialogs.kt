@@ -164,7 +164,7 @@ private fun PinField(
 ) {
   OutlinedTextField(
       value = value,
-      onValueChange = { onChange(it.filter(Char::isDigit).take(12)) },
+      onValueChange = { onChange(it.filter(Char::isDigit).take(4)) },
       label = { Text(stringResource(label)) },
       singleLine = true,
       isError = isError,
