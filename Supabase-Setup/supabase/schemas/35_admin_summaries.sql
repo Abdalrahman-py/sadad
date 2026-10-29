@@ -20,7 +20,7 @@ begin
     with balances as (
       select d.id, d.direction,
              coalesce(a.amount_cents, d.amount_cents) as principal,
-             coalesce(a.amount_cents, d.amount_cents) - coalesce(p.paid, 0) as remaining
+             coalesce(a.amount_cents, d.amount_cents) - coalesce(p.paid, 0) - coalesce(o.offsetted, 0) as remaining
       from public.sadid_debts d
       left join lateral (
         select amount_cents from public.sadid_adjustments x
@@ -31,6 +31,10 @@ begin
         where x.store_id = d.store_id and x.debt_id = d.id
           and not exists (select 1 from public.sadid_reversals r where r.store_id = x.store_id and r.payment_id = x.id)
       ) p on true
+      left join lateral (
+        select sum(x.amount_cents) as offsetted from public.sadid_offsets x
+        where x.store_id = d.store_id and (x.receivable_debt_id = d.id or x.payable_debt_id = d.id)
+      ) o on true
       where d.store_id = store_number
     )
     select jsonb_build_object(

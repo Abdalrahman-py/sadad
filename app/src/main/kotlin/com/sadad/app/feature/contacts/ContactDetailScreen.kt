@@ -57,6 +57,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -198,7 +199,11 @@ internal fun ContactDetailScreen(
                 item(key = "month:$its") { MonthHeader(its) }
               }
               item(key = "movement:${movement.id}") {
-                MovementRow(movement, after[movement.id] ?: 0L)
+                MovementRow(
+                    movement,
+                    after[movement.id] ?: 0L,
+                    onReverse = { viewModel.reverse(movement.id) },
+                )
               }
             }
           }
@@ -585,7 +590,7 @@ private fun MonthHeader(month: YearMonth) {
 
 /** One entry: its icon, what it was and when, its amount, and the balance it left behind. */
 @Composable
-private fun MovementRow(movement: ContactMovement, afterNet: Long) {
+private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: () -> Unit) {
   val p = sadadPalette
   val debt = movement.kind == MovementKind.DEBT
   val link = if (p.isDark) p.accent else p.primary
@@ -633,8 +638,44 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long) {
           fontSize = 15.sp,
           lineHeight = 22.sp,
           fontWeight = FontWeight.Bold,
+          textDecoration = if (movement.struck) TextDecoration.LineThrough else null,
       )
       Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
+      movement.settled?.let { settled ->
+        Text(
+            stringResource(
+                R.string.contacts_row_settled_credit,
+                formatCents(settled),
+                formatCents(movement.credit ?: Cents.ZERO),
+            ),
+            color = p.credit,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+      }
+      movement.offsetted?.let { used ->
+        Text(
+            stringResource(R.string.contacts_row_offset, formatCents(used)),
+            color = p.credit,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+        )
+      }
+      when {
+        movement.canReverse ->
+            Text(
+                stringResource(R.string.contacts_reverse),
+                color = link,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier =
+                    Modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onReverse),
+            )
+        movement.blockedReason != null ->
+            Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
+      }
     }
     Column(horizontalAlignment = Alignment.End) {
       MoneyText(

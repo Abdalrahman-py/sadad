@@ -1,5 +1,6 @@
 package com.sadad.app.data.sync
 
+import com.sadad.app.data.db.toEntity
 import com.sadad.app.data.ledger.LedgerReset
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
@@ -280,6 +281,7 @@ class SyncEngine(
         val page = call { api.changes(it, scope.signer, cursor, 500) }
         try {
           scope.repository.applyPage(page)
+          scope.database.installationNameDao().upsert(page.installations.map { it.toEntity() })
           scope.setEpoch(page.epoch)
         } catch (changed: LedgerReset) {
           scope.setEpoch(null)

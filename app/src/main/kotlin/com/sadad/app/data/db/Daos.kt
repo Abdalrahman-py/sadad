@@ -41,6 +41,17 @@ interface PaymentDao {
 }
 
 @Dao
+interface OffsetDao {
+  @Query("SELECT * FROM offsets ORDER BY createdSeq") suspend fun all(): List<OffsetEntity>
+
+  @Upsert suspend fun upsert(row: OffsetEntity)
+
+  @Query("SELECT createdSeq FROM offsets WHERE id = :id") suspend fun createdSeq(id: String): Long?
+
+  @Query("DELETE FROM offsets") suspend fun clear()
+}
+
+@Dao
 interface LedgerMetaDao {
   @Query("SELECT * FROM ledger_meta WHERE id = 0") suspend fun get(): LedgerMetaEntity?
 
@@ -62,6 +73,13 @@ interface EventDao {
   suspend fun trim(keep: Int)
 
   @Query("DELETE FROM events") suspend fun clear()
+}
+
+@Dao
+interface InstallationNameDao {
+  @Upsert suspend fun upsert(names: List<InstallationNameEntity>)
+
+  @Query("SELECT * FROM installation_names") fun observe(): Flow<List<InstallationNameEntity>>
 }
 
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */

@@ -1,10 +1,12 @@
--- Each debt's principal after its latest correction, and what was paid on it net of reversals.
+-- Each debt's principal after its latest correction, what was paid on it net of reversals,
+-- and what credit offsets settled on it. Remaining is principal - paid - offsetted.
 create function sadid_private.debt_balances(p_store bigint)
-returns table (id uuid, contact_id uuid, direction text, amount_cents bigint, principal bigint, paid bigint)
+returns table (id uuid, contact_id uuid, direction text, amount_cents bigint, principal bigint, paid bigint, offsetted bigint)
 language sql stable security invoker set search_path = '' as $$
   select d.id, d.contact_id, d.direction, d.amount_cents,
          coalesce(a.amount_cents, d.amount_cents),
-         coalesce(p.paid, 0)::bigint
+         coalesce(p.paid, 0)::bigint,
+         coalesce(o.offsetted, 0)::bigint
   from public.sadid_debts d
   left join lateral (
     select x.amount_cents from public.sadid_adjustments x
@@ -15,6 +17,10 @@ language sql stable security invoker set search_path = '' as $$
     where x.store_id = d.store_id and x.debt_id = d.id
       and not exists (select 1 from public.sadid_reversals r where r.store_id = x.store_id and r.payment_id = x.id)
   ) p on true
+  left join lateral (
+    select sum(x.amount_cents) as offsetted from public.sadid_offsets x
+    where x.store_id = d.store_id and (x.receivable_debt_id = d.id or x.payable_debt_id = d.id)
+  ) o on true
   where d.store_id = p_store
 $$;
 revoke all on function sadid_private.debt_balances(bigint) from public, anon, authenticated, service_role;
@@ -60,8 +66,8 @@ begin
   if not found then raise exception 'ledger_not_initialized'; end if;
 
   select jsonb_build_object(
-    'receivableCents', coalesce(sum(principal - paid) filter (where direction = 'receivable'), 0),
-    'payableCents', coalesce(sum(principal - paid) filter (where direction = 'payable'), 0)
+    'receivableCents', coalesce(sum(principal - paid - offsetted) filter (where direction = 'receivable'), 0),
+    'payableCents', coalesce(sum(principal - paid - offsetted) filter (where direction = 'payable'), 0)
   ) into v_totals from sadid_private.debt_balances(p_store);
   v_totals := v_totals || jsonb_build_object('netCents', (v_totals ->> 'receivableCents')::bigint - (v_totals ->> 'payableCents')::bigint);
 
@@ -89,8 +95,8 @@ begin
       ),
       balances as (
         select b.contact_id,
-               sum(b.principal - b.paid) filter (where b.direction = 'receivable') as receivable,
-               sum(b.principal - b.paid) filter (where b.direction = 'payable') as payable
+               sum(b.principal - b.paid - b.offsetted) filter (where b.direction = 'receivable') as receivable,
+               sum(b.principal - b.paid - b.offsetted) filter (where b.direction = 'payable') as payable
         from sadid_private.debt_balances(p_store) b
         where b.contact_id in (select id from page)
         group by b.contact_id
@@ -107,13 +113,13 @@ begin
       'originalCents', t.amount_cents,
       'amountCents', t.principal,
       'paidCents', t.paid,
-      'remainingCents', t.principal - t.paid,
+      'remainingCents', t.principal - t.paid - t.offsetted,
       'note', t.note,
       'dueDate', t.due_date,
       'createdAt', t.created_at
     ) order by t.created_at desc, t.id desc), '[]'::jsonb) into v_rows
     from (
-      select d.id, d.contact_id, c.name as contact_name, d.direction, d.amount_cents, b.principal, b.paid,
+      select d.id, d.contact_id, c.name as contact_name, d.direction, d.amount_cents, b.principal, b.paid, b.offsetted,
              d.note, d.due_date, d.created_at
       from public.sadid_debts d
       join sadid_private.debt_balances(p_store) b on b.id = d.id

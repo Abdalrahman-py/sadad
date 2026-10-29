@@ -11,6 +11,9 @@ import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.CreditAllocation
+import com.sadad.ledger.DebtOrigin
+import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
@@ -82,14 +85,15 @@ data class QuickAddState(
     get() = selected?.name.orEmpty()
 
   /**
-   * Whether the amount on screen may be saved: a positive amount, and a payment within the debt.
+   * Whether the amount on screen may be saved: a positive amount, and a supplier payment within the
+   * debt. A customer's payment above what is open becomes credit instead of being refused.
    */
   val canSave: Boolean
     get() {
       val value = parseCents(amount) ?: return false
       if (value <= Cents.ZERO) return false
       if (blocked) return false
-      if (payment && value > overBalance) return false
+      if (payment && value > overBalance && selected?.kind != ContactKind.CUSTOMER) return false
       return true
     }
 }
@@ -392,7 +396,7 @@ class QuickAddViewModel(
       mutable.update { it.copy(anomaly = amount) }
       return
     }
-    val commands = commandsFor(current, amount)
+    val commands = commandsFor(current, amount, context.getString(R.string.quickadd_credit_note))
     if (commands.isEmpty()) {
       mutable.update { it.copy(error = context.getString(R.string.quickadd_failed)) }
       return
@@ -522,23 +526,52 @@ class QuickAddViewModel(
     val current = mutable.value
     val amount = parseCents(current.amount) ?: Cents.ZERO
     if (amount <= Cents.ZERO) return context.getString(R.string.quickadd_preview_empty)
+    val supplier = current.selected?.kind == ContactKind.SUPPLIER
     if (current.payment && amount > current.overBalance) {
-      return context.getString(R.string.quickadd_preview_over, money(current.overBalance))
+      if (supplier) {
+        return context.getString(R.string.quickadd_preview_over, money(current.overBalance))
+      }
+      // A customer's excess is kept as credit: the statement says what settles and what is left.
+      val owed = current.overBalance
+      if (owed > Cents.ZERO) {
+        return context.getString(
+            R.string.quickadd_preview_overpay,
+            money(owed),
+            money(amount - owed),
+        )
+      }
+      val all =
+          previewWords(
+              before = current.selected?.net ?: Cents.ZERO,
+              amount = amount,
+              payment = true,
+              supplier = false,
+          )
+      return context.getString(R.string.quickadd_preview_overpay_all, after(context, all.after))
     }
     val words =
         previewWords(
             before = current.selected?.net ?: Cents.ZERO,
             amount = amount,
             payment = current.payment,
-            supplier = current.selected?.kind == ContactKind.SUPPLIER,
+            supplier = supplier,
         )
     val line =
         if (words.deduct != null) {
-          context.getString(
-              R.string.quickadd_preview_deduct,
-              money(words.deduct),
-              after(context, words.after),
-          )
+          val left = words.after
+          if (left < Cents.ZERO) {
+            context.getString(
+                R.string.quickadd_preview_deduct_left,
+                money(words.deduct),
+                money(Cents(-left.value)),
+            )
+          } else {
+            context.getString(
+                R.string.quickadd_preview_deduct,
+                money(words.deduct),
+                after(context, left),
+            )
+          }
         } else {
           after(context, words.after)
         }
@@ -577,8 +610,16 @@ class QuickAddViewModel(
    * The commands one save will queue, built from the view the previews came from. The mode on
    * screen decides what is recorded; the held Contact is only ever the parent of the entry, never
    * its kind, and a child names that parent in `dependsOn`.
+   *
+   * A customer's payment above what is open records the excess as a payable Debt that marks itself
+   * `overpayment` (the credit), and a new Debt on a person holding credit is settled from it with
+   * one `debt.offset` per credit Debt, oldest first — the compound the ticket asks for.
    */
-  private fun commandsFor(current: QuickAddState, amount: Cents): List<LedgerCommand> {
+  private fun commandsFor(
+      current: QuickAddState,
+      amount: Cents,
+      creditNote: String,
+  ): List<LedgerCommand> {
     val scope = graph.current.value ?: return emptyList()
     val origin = scope.origin() ?: return emptyList()
     val person = current.selected ?: return emptyList()
@@ -591,18 +632,40 @@ class QuickAddViewModel(
       if (held != null) return emptyList()
       val view = currentView ?: return emptyList()
       val contact = view.contacts.firstOrNull { it.id == person.id } ?: return emptyList()
-      return PaymentAllocation.allocate(view, person.id, amount, contact.kind.debtDirection).map {
-          part ->
-        Commands.paymentCreate(
-            origin,
-            at,
-            part.debtId,
-            part.amount,
-            current.method,
-            note,
-            dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
-        )
-      }
+      val direction = contact.kind.debtDirection
+      val allocation =
+          if (contact.kind == ContactKind.CUSTOMER) {
+            PaymentAllocation.allocateWithCredit(view, person.id, amount, direction)
+          } else {
+            // Only a customer keeps credit; a supplier payment above the balance is refused.
+            CreditAllocation(
+                PaymentAllocation.allocate(view, person.id, amount, direction),
+                Cents.ZERO,
+            )
+          }
+      val payments =
+          allocation.parts.map { part ->
+            Commands.paymentCreate(
+                origin,
+                at,
+                part.debtId,
+                part.amount,
+                current.method,
+                note,
+                dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
+            )
+          }
+      if (allocation.creditCents <= Cents.ZERO) return payments
+      return payments +
+          Commands.debtCreate(
+              origin,
+              at,
+              person.id,
+              Direction.PAYABLE,
+              allocation.creditCents,
+              creditNote,
+              debtOrigin = DebtOrigin.OVERPAYMENT,
+          )
     }
     // A Debt on a Contact the server has not confirmed must name the command that creates it.
     val parent =
@@ -619,7 +682,26 @@ class QuickAddViewModel(
             if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
             dependsOn = listOfNotNull(parent),
         )
-    return listOfNotNull(held, debt)
+    val view = currentView
+    val credit =
+        if (view != null && person.kind == ContactKind.CUSTOMER) {
+          PaymentAllocation.allocateCredit(view, person.id, amount)
+        } else {
+          emptyList()
+        }
+    val offsets = credit.map { part ->
+      Commands.debtOffset(
+          origin,
+          at,
+          receivableDebtId = debt.entityId,
+          payableDebtId = part.debtId,
+          amount = part.amount,
+          dependsOn =
+              listOfNotNull(debt.operationId) +
+                  if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
+      )
+    }
+    return listOfNotNull(held, debt) + offsets
   }
 
   /** Appends the held commands: the only place this flow writes to the outbox. */

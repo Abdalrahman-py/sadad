@@ -95,7 +95,7 @@ class AppLock(
 
   suspend fun setPin(pin: String) =
       withContext(Dispatchers.IO) {
-        require(pin.length in 4..12 && pin.all(Char::isDigit))
+        require(pin.length == 4 && pin.all(Char::isDigit))
         val salt = ByteArray(16).also(SecureRandom()::nextBytes)
         val hash = derive(pin, salt)
         data.edit {

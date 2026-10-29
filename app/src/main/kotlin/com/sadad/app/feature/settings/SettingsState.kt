@@ -16,6 +16,7 @@ data class SavedStore(
 enum class QueuedKind {
   DEBT,
   DEBT_CORRECT,
+  OFFSET,
   PAYMENT,
   PAYMENT_REVERSE,
   CONTACT_NEW,
@@ -70,7 +71,7 @@ sealed interface Pending {
 }
 
 enum class PinError {
-  /** Not 4 to 12 digits. */
+  /** Not exactly 4 digits. */
   INVALID,
   MISMATCH,
 }

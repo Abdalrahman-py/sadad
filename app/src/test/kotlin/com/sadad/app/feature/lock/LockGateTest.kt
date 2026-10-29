@@ -4,12 +4,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -137,13 +140,57 @@ class LockGateTest {
     assertFalse(shown(CONTENT))
 
     typePin("9999")
-    compose.onNodeWithTag(LockTag.OPEN).performClick()
     waitFor("رمز القفل غير صحيح")
     assertFalse(shown(CONTENT))
 
     typePin("1234")
-    compose.onNodeWithTag(LockTag.OPEN).performClick()
     waitFor(CONTENT)
+  }
+
+  @Test
+  fun threeDigitsDoNotSubmitAndTheFourthOpensAutomatically() {
+    show(lockWithPin())
+    waitFor(LOCKED)
+    typePin("123")
+    compose.waitForIdle()
+    assertFalse(shown(CONTENT))
+    typePin("4")
+    waitFor(CONTENT)
+  }
+
+  @Test
+  fun theLockBoardIsCenteredVertically() {
+    show(lockWithPin())
+    waitFor(LOCKED)
+    val board = compose.onNodeWithTag("lock_board").fetchSemanticsNode().boundsInRoot
+    val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+    org.junit.Assert.assertTrue(kotlin.math.abs(board.center.y - root.center.y) < 12f)
+  }
+
+  @Test
+  fun rapidExtraPressesSubmitOnlyOneFourDigitAttempt() {
+    val lock = lockWithPin()
+    show(lock)
+    waitFor(LOCKED)
+    val press =
+        compose
+            .onNodeWithTag(LockTag.key("9"))
+            .fetchSemanticsNode()
+            .config[SemanticsActions.OnClick]
+            .action!!
+    compose.runOnUiThread { repeat(8) { press() } }
+    waitFor("رمز القفل غير صحيح")
+    assertEquals(PinResult.Wrong(3), runBlocking { lock.verifyPin("9999") })
+    typePin("1234")
+    waitFor(CONTENT)
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h480dp-xxhdpi")
+  fun theKeypadStillScrollsIntoViewOnASmallScreen() {
+    show(lockWithPin())
+    waitFor(LOCKED)
+    compose.onNodeWithTag(LockTag.key("0")).performScrollTo().assertIsDisplayed()
   }
 
   @Test

@@ -1,0 +1,80 @@
+-- Ticket 90: the changes feed names every device of the caller's store, so old events recorded
+-- by a revoked device still resolve to «سجّلها سامر · جهاز الكاشير». No table change: the
+-- function body matches schemas/27_changes.sql exactly.
+create or replace function sadid_private.changes(p_after bigint default 0, p_limit integer default 200) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  c sadid_private.capabilities;
+  st public.sadid_ledger_state;
+  v_after bigint := greatest(coalesce(p_after, 0), 0);
+  v_limit integer := least(greatest(coalesce(p_limit, 200), 1), 500);
+  v_events jsonb;
+  v_installations jsonb;
+  v_next_cursor bigint;
+  v_has_more boolean;
+begin
+  c := sadid_private.current_capability();
+  if c.store_id is null or c.scope <> 'read' then raise exception 'authorization_required'; end if;
+
+  select * into st from public.sadid_ledger_state where store_id = c.store_id;
+  if not found then raise exception 'ledger_not_initialized'; end if;
+
+  with page as (
+    select e.sequence, e.operation_id, e.kind, e.entity_id, e.user_id, e.installation_id,
+           e.generation, e.command, e.created_at, o.result
+    from public.sadid_events e
+    join public.sadid_operations o on o.store_id = e.store_id and o.operation_id = e.operation_id
+    where e.store_id = c.store_id and e.sequence > v_after
+    order by e.sequence asc
+    limit v_limit + 1
+  ),
+  bounded as (
+    select * from page order by sequence asc limit v_limit
+  )
+  select
+    coalesce(jsonb_agg(jsonb_build_object(
+      'sequence', b.sequence,
+      'operationId', b.operation_id,
+      'kind', b.kind,
+      'entityId', b.entity_id,
+      'userId', b.user_id,
+      'installationId', b.installation_id,
+      'generation', b.generation,
+      'command', b.command,
+      'result', b.result,
+      'createdAt', b.created_at
+    ) order by b.sequence asc), '[]'::jsonb),
+    coalesce((select max(sequence) from bounded), v_after),
+    (select count(*) from page) > v_limit
+  into v_events, v_next_cursor, v_has_more
+  from bounded b;
+
+  -- Every approved or revoked device of the caller's store, so old events still resolve; a
+  -- pending device never recorded one.
+  select coalesce(jsonb_agg(
+           jsonb_build_object('id', i.id, 'label', i.label, 'staffName', i.staff_name)
+           order by i.created_at, i.id
+         ), '[]'::jsonb)
+    into v_installations
+    from sadid_private.installations i
+    where i.store_id = c.store_id and i.status in ('active', 'revoked');
+
+  return jsonb_build_object(
+    'schemaVersion', st.schema_version,
+    'storeId', c.store_id,
+    'epoch', st.epoch,
+    'cursor', st.cursor,
+    'nextCursor', v_next_cursor,
+    'hasMore', coalesce(v_has_more, false),
+    'currency', st.currency,
+    'events', v_events,
+    'installations', v_installations
+  );
+end $$;
+alter function sadid_private.changes(bigint, integer) owner to sadid_ledger_executor;
+revoke all on function sadid_private.changes(bigint, integer) from public, anon, service_role;
+grant execute on function sadid_private.changes(bigint, integer) to authenticated;
+
+-- The function reads the devices of the caller's store as sadid_ledger_executor.
+grant select on sadid_private.installations to sadid_ledger_executor;
+create policy ledger_reader on sadid_private.installations for select to sadid_ledger_executor using (true);

@@ -2,6 +2,7 @@ package com.sadad.app.export
 
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactView
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import java.time.Instant
@@ -52,6 +53,14 @@ object Statement {
     val debts =
         view.debts.filter { it.contactId in selected && it.direction == Direction.RECEIVABLE }
     val debtIds = debts.map { it.id }.toHashSet()
+    // A credit Debt is the second half of the payment that left it: one row, at that one instant.
+    val credits =
+        view.debts
+            .filter { it.origin == DebtOrigin.OVERPAYMENT && it.amount > Cents.ZERO }
+            .associateBy { it.contactId to it.createdAt }
+    val seen = view.payments.filter { !it.reversed && it.debtId in debtIds }
+    val compounds = seen.groupBy { it.contactId to it.createdAt }.filterKeys { it in credits }
+    val emitted = HashSet<Pair<String, Instant>>()
     val movements = HashMap<String, MutableList<StatementRow>>()
     for (debt in debts) {
       movements.getOrPut(debt.contactId) { mutableListOf() } +=
@@ -69,6 +78,27 @@ object Statement {
     }
     for (payment in view.payments) {
       if (payment.reversed || payment.debtId !in debtIds) continue
+      val key = payment.contactId to payment.createdAt
+      val credit = credits[key]?.takeIf { key in compounds }
+      if (credit != null) {
+        // One row for the whole save: the parts that settled Debts and the excess kept as credit.
+        if (!emitted.add(key)) continue
+        val settled =
+            compounds.getValue(key).fold(Cents.ZERO) { total, part -> total + part.amount }
+        movements.getOrPut(payment.contactId) { mutableListOf() } +=
+            StatementRow(
+                payment.id,
+                payment.createdAt,
+                MovementKind.PAYMENT,
+                Cents.ZERO,
+                settled + credit.amount,
+                Cents.ZERO,
+                null,
+                payment.note,
+                payment.createdBy,
+            )
+        continue
+      }
       movements.getOrPut(payment.contactId) { mutableListOf() } +=
           StatementRow(
               payment.id,

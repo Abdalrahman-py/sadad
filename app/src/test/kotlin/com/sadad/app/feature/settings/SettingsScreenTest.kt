@@ -272,11 +272,29 @@ class SettingsScreenTest {
       compose.onNodeWithTag(SettingsDialogTags.PIN_SAVE).performClick()
 
       compose.waitUntil(timeoutMillis = 10_000) {
-        compose
-            .onAllNodesWithText("الرمز يجب أن يكون من 4 إلى 12 رقماً.")
-            .fetchSemanticsNodes()
-            .isNotEmpty()
+        compose.onAllNodesWithText("الرمز يجب أن يكون 4 أرقام.").fetchSemanticsNodes().isNotEmpty()
       }
+    }
+  }
+
+  @Test
+  fun thePinFieldsKeepOnlyFourDigits() {
+    show { kit, _, _ ->
+      scrollTo(hasText("إنشاء رمز قفل"))
+      compose.onNodeWithText("إنشاء رمز قفل").performScrollTo().performClick()
+      compose.waitUntil(10_000) {
+        compose.onAllNodesWithTag(SettingsDialogTags.PIN_FIRST).fetchSemanticsNodes().isNotEmpty()
+      }
+      compose.onNodeWithTag(SettingsDialogTags.PIN_FIRST).performTextInput("12345")
+      compose.onNodeWithTag(SettingsDialogTags.PIN_SECOND).performTextInput("12346")
+      compose.onNodeWithTag(SettingsDialogTags.PIN_SAVE).performClick()
+      compose.waitUntil(10_000) {
+        compose.onAllNodesWithTag(SettingsDialogTags.PIN_FIRST).fetchSemanticsNodes().isEmpty()
+      }
+      assertEquals(
+          com.sadad.app.feature.lock.PinResult.Ok,
+          runBlocking { kit.lock.verifyPin("1234") },
+      )
     }
   }
 

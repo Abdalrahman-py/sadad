@@ -236,7 +236,6 @@ class LedgerCommandTest {
     val builders: List<(Cents) -> LedgerCommand> =
         listOf(
             { Commands.debtCreate(origin, at, contactId, Direction.RECEIVABLE, it) },
-            { Commands.debtCorrect(origin, at, debtId, 1, it, "تصحيح") },
             { Commands.paymentCreate(origin, at, debtId, it, PaymentMethod.CASH) },
         )
     for (build in builders) {
@@ -248,6 +247,15 @@ class LedgerCommandTest {
         assertFalse(amount.isString)
         assertEquals(good.value, amount.long)
       }
+    }
+    // A correction may zero an unused Debt, but never goes negative or above the wire range.
+    for (bad in listOf(Cents(-1), Cents.MAX_WIRE + Cents(1))) {
+      assertThrows(IllegalArgumentException::class.java) {
+        Commands.debtCorrect(origin, at, debtId, 1, bad, "تصحيح")
+      }
+    }
+    for (good in listOf(Cents(0), Cents(1), Cents.MAX_WIRE)) {
+      Commands.debtCorrect(origin, at, debtId, 1, good, "تصحيح")
     }
   }
 
@@ -335,6 +343,7 @@ class LedgerCommandTest {
             "contact.archive",
             "contact.restore",
             "debt.create",
+            "debt.offset",
             "debt.correct",
             "payment.create",
             "payment.reverse",
@@ -350,7 +359,7 @@ class LedgerCommandTest {
         names(PaymentMethod.entries.toTypedArray()) { serialName(PaymentMethod.serializer(), it) },
     )
     assertEquals(
-        setOf("contact.create", "debt.create", "payment.create"),
+        setOf("contact.create", "debt.create", "debt.offset", "payment.create"),
         CommandType.entries
             .filter { it.offline }
             .map { serialName(CommandType.serializer(), it) }
