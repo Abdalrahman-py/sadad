@@ -72,6 +72,8 @@ class PeopleScreenTest {
         )
       }
     }
+    compose.onNodeWithTag("people:sort").assertDoesNotExist()
+    compose.onNodeWithText("آخر حركة").assertDoesNotExist()
     val search = compose.onNodeWithTag(PeopleTags.SEARCH).fetchSemanticsNode().boundsInRoot
     val add = compose.onNodeWithTag(PeopleTags.ADD).fetchSemanticsNode().boundsInRoot
     val filter = compose.onNodeWithTag("people:filter").fetchSemanticsNode().boundsInRoot

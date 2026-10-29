@@ -1,10 +1,8 @@
 package com.sadad.app.feature.people
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +26,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,15 +35,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -79,7 +72,6 @@ internal object PeopleTags {
   const val SCREEN = "people:screen"
   const val TITLE = "people:title"
   const val COUNT = "people:count"
-  const val SORT = "people:sort"
   const val ADD = "people:add"
   const val FILTER = "people:filter"
   const val SEARCH = "people:search"
@@ -89,7 +81,7 @@ internal object PeopleTags {
   fun row(id: String) = "people:row:$id"
 }
 
-/** The people tab: search, add and filter controls, one sort button and the contact list. */
+/** The people tab: search, add and filter controls, and the contact list. */
 @Composable
 fun PeopleScreen(
     onOpenContact: (String) -> Unit = {},
@@ -106,7 +98,6 @@ fun PeopleScreen(
       onOpenContact = onOpenContact,
       onQueryChange = viewModel::onQueryChange,
       onFilter = viewModel::onFilterChange,
-      onCycleSort = viewModel::cycleSort,
       onAdd = onAdd,
   )
 }
@@ -117,7 +108,6 @@ fun PeopleContent(
     onOpenContact: (String) -> Unit = {},
     onQueryChange: (String) -> Unit = {},
     onFilter: (PeopleFilter) -> Unit = {},
-    onCycleSort: () -> Unit = {},
     onAdd: () -> Unit = {},
 ) {
   val p = sadadPalette
@@ -126,11 +116,7 @@ fun PeopleContent(
         Modifier.padding(start = 18.dp, end = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      PeopleHeader(
-          registered = state.registered,
-          sort = state.sortChoice,
-          onCycleSort = onCycleSort,
-      )
+      PeopleHeader(registered = state.registered)
       PeopleSearch(value = state.queryInput, onValueChange = onQueryChange)
       PeopleActions(state, onAdd, onFilter)
     }
@@ -151,23 +137,15 @@ fun PeopleContent(
 
 /* ------------------------------------------------------------------ header */
 
-/** «الأشخاص» with the store's total, and the sort button that cycles the three orders. */
+/** «الأشخاص» with the store's total. */
 @Composable
-private fun PeopleHeader(
-    registered: Int,
-    sort: PeopleSort,
-    onCycleSort: () -> Unit,
-) {
+private fun PeopleHeader(registered: Int) {
   val p = sadadPalette
-  val link = if (p.isDark) p.accent else p.primary
-  val sortText = sortLabel(sort)
-  val spoken = stringResource(R.string.people_sort_spoken, sortText)
   Row(
       Modifier.fillMaxWidth().heightIn(min = 64.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Row(
-        Modifier.weight(1f),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -188,77 +166,6 @@ private fun PeopleHeader(
           color = p.muted,
       )
     }
-    Row(
-        modifier =
-            // A 40dp pill, as the board draws it, on the 48dp touch target the a11y gate wants.
-            Modifier.minimumInteractiveComponentSize()
-                .heightIn(min = 40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(p.card)
-                .border(BorderStroke(1.dp, p.line), RoundedCornerShape(20.dp))
-                .clickable(role = Role.Button, onClick = onCycleSort)
-                .semantics { contentDescription = spoken }
-                .padding(horizontal = 12.dp)
-                .testTag(PeopleTags.SORT),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      SortGlyph(link)
-      Text(sortText, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = link)
-    }
-  }
-}
-
-/** The board's two arrows: one down, one up, drawn rather than shipped as a second drawable. */
-@Composable
-private fun SortGlyph(tint: Color) {
-  Canvas(Modifier.size(18.dp).clearAndSetSemantics {}) {
-    val stroke = 1.8.dp.toPx()
-    val head = size.width * 0.16f
-    val downX = size.width * 0.3f
-    val upX = size.width * 0.7f
-    drawLine(
-        tint,
-        Offset(downX, size.height * 0.1f),
-        Offset(downX, size.height * 0.9f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(downX - head, size.height * 0.64f),
-        Offset(downX, size.height * 0.9f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(downX + head, size.height * 0.64f),
-        Offset(downX, size.height * 0.9f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(upX, size.height * 0.9f),
-        Offset(upX, size.height * 0.1f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(upX - head, size.height * 0.36f),
-        Offset(upX, size.height * 0.1f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(upX + head, size.height * 0.36f),
-        Offset(upX, size.height * 0.1f),
-        stroke,
-        StrokeCap.Round,
-    )
   }
 }
 
@@ -533,16 +440,6 @@ private fun filterLabel(filter: PeopleFilter): String =
           PeopleFilter.CREDIT -> R.string.people_filter_credit
           PeopleFilter.LATE -> R.string.people_filter_late
           PeopleFilter.SUPPLIERS -> R.string.people_filter_suppliers
-        }
-    )
-
-@Composable
-private fun sortLabel(sort: PeopleSort): String =
-    stringResource(
-        when (sort) {
-          PeopleSort.RECENT -> R.string.people_sort_recent
-          PeopleSort.BALANCE -> R.string.people_sort_balance
-          PeopleSort.NAME -> R.string.people_sort_name
         }
     )
 
