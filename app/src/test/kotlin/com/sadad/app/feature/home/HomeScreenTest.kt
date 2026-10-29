@@ -89,8 +89,8 @@ class HomeScreenTest {
   fun theHeroStatesBothFiguresAndTheMonthsShare() {
     show(state)
 
-    compose.onNodeWithTag(HomeTags.OWED).assertTextEquals("₪ 12,480.50")
-    compose.onNodeWithTag(HomeTags.OWES).assertTextEquals("₪ 1,240.00")
+    compose.onNodeWithTag(HomeTags.OWED).assertTextEquals("₪ 12,480.5")
+    compose.onNodeWithTag(HomeTags.OWES).assertTextEquals("₪ 1,240")
     compose.onNodeWithText("61٪ من ديون الشهر").assertIsDisplayed()
   }
 

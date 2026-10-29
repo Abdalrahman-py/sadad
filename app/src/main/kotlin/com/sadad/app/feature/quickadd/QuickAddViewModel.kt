@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.session.StoreScope
+import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
@@ -582,7 +583,7 @@ class QuickAddViewModel(
     }
   }
 
-  /** «يصبح مسددًا» / «يصبح عليه ₪ 85.00» / «يصبح له ₪ 85.00». */
+  /** «يصبح مسددًا» / «يصبح عليه ₪ 85» / «يصبح له ₪ 85». */
   private fun after(context: Context, after: Cents): String =
       when {
         after == Cents.ZERO -> context.getString(R.string.quickadd_preview_settled)
@@ -590,12 +591,7 @@ class QuickAddViewModel(
         else -> context.getString(R.string.quickadd_preview_credit, money(Cents(-after.value)))
       }
 
-  private fun money(value: Cents): String {
-    val shekels = value.value / 100
-    val agorot = Math.abs(value.value % 100)
-    val grouped = shekels.toString().reversed().chunked(3).joinToString(",").reversed()
-    return "$grouped.${agorot.toString().padStart(2, '0')}"
-  }
+  private fun money(value: Cents): String = formatCents(value).removeSuffix(" ₪")
 
   private fun netAfter(current: QuickAddState, amount: Cents): Cents =
       previewWords(
