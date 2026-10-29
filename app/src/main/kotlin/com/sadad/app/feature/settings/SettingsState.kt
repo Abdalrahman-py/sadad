@@ -71,7 +71,7 @@ sealed interface Pending {
 }
 
 enum class PinError {
-  /** Not 4 to 12 digits. */
+  /** Not exactly 4 digits. */
   INVALID,
   MISMATCH,
 }
