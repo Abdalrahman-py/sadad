@@ -293,7 +293,7 @@ private fun ContactTopBar(
     if (state.missing || !state.loaded) return@Row
     Box {
       RoundButton(
-          R.drawable.ic_more,
+          R.drawable.ic_menu,
           stringResource(R.string.contacts_more),
           { open = !open },
           filled = open,

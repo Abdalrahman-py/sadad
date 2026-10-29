@@ -21,6 +21,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,11 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contacts.ContactDetailScreen
+import com.sadad.app.feature.contacts.ContactDetailViewModel
+import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.history.ActivityLogViewModel
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryViewModel
@@ -177,6 +183,37 @@ class EdgeToEdgeTest {
         awaiting { model.state.first { it.loaded } }
         val destinations: NavGraphBuilder.() -> Unit = {
           composable<Store> { StoreScreen(settingsViewModel = model) }
+        }
+        destinations
+      }
+
+  @Test
+  fun contactActionsRemainAboveThePersistentNavigationBar() =
+      inShellWithStore(
+          ContactDetail(contactId(1)),
+          check = {
+            val barTop =
+                compose.onNodeWithTag(ScreenTag.NAV_HOME).fetchSemanticsNode().boundsInWindow.top
+            for (label in listOf("دين جديد", "استلام دفعة")) {
+              val bottom = compose.onNodeWithText(label).fetchSemanticsNode().boundsInWindow.bottom
+              assertTrue("$label is covered by the app navigation", bottom <= barTop)
+            }
+          },
+      ) { fixture ->
+        val person = contact("سامي", contactId(1))
+        awaiting { fixture.seedCommands(listOf(person)) }
+        val model =
+            ContactDetailViewModel(
+                    fixture.graph,
+                    person.entityId,
+                    compose.activity.applicationContext,
+                )
+                .also {
+                  fixture.closeWithStore(it.viewModelScope)
+                }
+        awaiting { model.state.first { it.loaded } }
+        val destinations: NavGraphBuilder.() -> Unit = {
+          composable<ContactDetail> { ContactDetailScreen(model, {}, {}, {}, {}) }
         }
         destinations
       }
