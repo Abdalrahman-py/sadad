@@ -1,5 +1,8 @@
 package com.sadad.app.data.session
 
+import android.content.Context
+import android.provider.Settings
+import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.AwaitingApproval
@@ -32,6 +35,41 @@ class SessionsTest {
       assertEquals(2, fixture.server.requestCount)
       assertEquals("refresh-b", fixture.graph.accounts.refreshToken(STORE_A))
     }
+  }
+
+  @Test
+  fun aReinstallOnTheSamePhoneKeepsTheInstallationId() = runTest {
+    // The hardware id survives an uninstall; a random UUID does not.
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    Settings.Secure.putString(
+        context.contentResolver,
+        Settings.Secure.ANDROID_ID,
+        "device-android-id-1",
+    )
+
+    val first = TestGraph.unsigned()
+    val firstId =
+        try {
+          first.signIn(STORE_A)
+          checkNotNull(first.graph.accounts.account(STORE_A)).installationId
+        } finally {
+          first.close()
+        }
+
+    val second = TestGraph.unsigned()
+    val secondId =
+        try {
+          second.signIn(STORE_A)
+          checkNotNull(second.graph.accounts.account(STORE_A)).installationId
+        } finally {
+          second.close()
+        }
+
+    assertEquals(
+        "the same phone signing in again must present the installation it already approved",
+        firstId,
+        secondId,
+    )
   }
 
   @Test

@@ -56,18 +56,18 @@ class AppLockTest {
   }
 
   @Test
-  fun aPinMustHaveFourToTwelveDigitsAndOnlyItsVerifierIsPersisted() = runBlocking {
+  fun aPinMustHaveExactlyFourDigitsAndOnlyItsVerifierIsPersisted() = runBlocking {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     try {
       val file = File(temporary.root, "lock.preferences_pb")
       val lock = AppLock(file, scope, elapsedRealtime = { 0L }, bootCount = { 1 })
-      for (pin in listOf("12", "1234567890123", "12a4")) {
+      for (pin in listOf("12", "12345", "1234567890123", "12a4")) {
         assertThrows(IllegalArgumentException::class.java) { runBlocking { lock.setPin(pin) } }
       }
-      lock.setPin("483927")
+      lock.setPin("4839")
       assertTrue(lock.hasPin())
-      assertEquals(PinResult.Ok, lock.verifyPin("483927"))
-      assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains("483927"))
+      assertEquals(PinResult.Ok, lock.verifyPin("4839"))
+      assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains("4839"))
       lock.clearPin()
       assertFalse(lock.hasPin())
     } finally {

@@ -230,7 +230,7 @@ class SettingsViewModel(
   fun savePin(first: String, second: String) {
     val error =
         when {
-          first.length !in 4..12 || !first.all(Char::isDigit) -> PinError.INVALID
+          first.length != 4 || !first.all(Char::isDigit) -> PinError.INVALID
           first != second -> PinError.MISMATCH
           else -> null
         }

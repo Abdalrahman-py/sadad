@@ -29,7 +29,7 @@ import org.robolectric.annotation.Config
 
 private const val VIEWPORT_DP = 800
 
-/** The lock screen (PIN field, open button, biometric button) at both font sizes (ticket 76). */
+/** The lock screen (PIN dots, keypad, biometric key) at both font sizes (ticket 76). */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
 class LockA11yTest {
@@ -60,7 +60,7 @@ class LockA11yTest {
       }
     }
     compose.waitUntil(5_000) { lockShown() }
-    compose.assertAccessible(hasTestTag(LockTag.PIN), hasTestTag(LockTag.OPEN))
+    compose.assertAccessible(hasTestTag(LockTag.PIN), hasTestTag(LockTag.key("0")))
   }
 
   private fun lockShown() =

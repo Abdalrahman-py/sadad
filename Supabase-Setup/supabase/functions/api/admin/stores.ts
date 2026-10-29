@@ -1,5 +1,6 @@
 // Store accounts: list and search, create, settings, subscription, password reset, account actions, delete.
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import type { AppEnv } from "../auth.ts";
 import { ApiError, errorResponses } from "../errors.ts";
 import { call } from "../rpc.ts";
@@ -363,6 +364,21 @@ export function registerStoreRoutes(
   app: OpenAPIHono<AppEnv>,
   deps: AdminDeps,
 ): void {
+  // The store-side routines check role and session themselves, but no routine guards the
+  // Auth admin calls that run with the service key, so each Auth admin call below confirms
+  // a live admin session through SQL first.
+  const confirmAdminSession = async (
+    c: Context<AppEnv>,
+  ): Promise<void> => {
+    const role = await call<string | null>(
+      adminDb(c, deps),
+      "sadid_admin_role",
+    );
+    if (role !== "admin") {
+      throw new ApiError("admin_authorization_required", 403);
+    }
+  };
+
   app.openapi(overviewRoute, async (c) => {
     const overview = await call<z.infer<typeof OverviewSchema>>(
       adminDb(c, deps),
@@ -403,14 +419,7 @@ export function registerStoreRoutes(
 
   app.openapi(createStoreRoute, async (c) => {
     const { name, username, ...rest } = c.req.valid("json");
-    // No routine guards the Auth admin call, so confirm a live admin session first.
-    const role = await call<string | null>(
-      adminDb(c, deps),
-      "sadid_admin_role",
-    );
-    if (role !== "admin") {
-      throw new ApiError("admin_authorization_required", 403);
-    }
+    await confirmAdminSession(c);
 
     const password = temporaryPassword();
     keepSecret(c, password);
@@ -456,6 +465,7 @@ export function registerStoreRoutes(
   app.openapi(updateRoute, async (c) => {
     const { storeId } = c.req.valid("param");
     const changes = c.req.valid("json");
+    await confirmAdminSession(c);
     const db = adminDb(c, deps);
     const result = await call<
       { store: Store; userId: string | null; previousUsername: string }
@@ -502,6 +512,13 @@ export function registerStoreRoutes(
   app.openapi(passwordRoute, async (c) => {
     const { storeId } = c.req.valid("param");
     const { reason } = c.req.valid("json");
+    await confirmAdminSession(c);
+    // The order stays routine-first: sadid_admin_reset_password is the only source of the
+    // store's userId, and its two effects — end_store_sessions and the account.password-reset
+    // audit row — cannot be reversed once it has run (no reverse routine, and only Auth holds
+    // the old password, hashed). They are also the safe direction: after a refused update the
+    // old password still signs the store owner in, and a retry re-ends the already-ended
+    // sessions. So a refused Auth update fails loudly and leaves the routine's state standing.
     const account = await call<{ userId: string; username: string }>(
       adminDb(c, deps),
       "sadid_admin_reset_password",
@@ -539,6 +556,11 @@ export function registerStoreRoutes(
   app.openapi(deleteRoute, async (c) => {
     const { storeId } = c.req.valid("param");
     const { confirm } = c.req.valid("query");
+    await confirmAdminSession(c);
+    // sadid_admin_delete_store has already removed the row when deleteUser below is reached,
+    // and it refuses a retry (store_not_found), so nothing can compensate a failed Auth
+    // deletion: the Auth user is left without a store. It can start no session and see no
+    // ledger without the membership row, so the orphan waits until a human prunes it in Auth.
     const deleted = await call<{ userId: string | null }>(
       adminDb(c, deps),
       "sadid_admin_delete_store",
