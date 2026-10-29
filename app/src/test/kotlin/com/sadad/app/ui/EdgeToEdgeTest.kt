@@ -39,7 +39,6 @@ import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.contacts.contact
 import com.sadad.app.feature.contacts.contactId
 import com.sadad.app.feature.contacts.seedCommands
-import com.sadad.app.feature.history.ActivityLogViewModel
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryViewModel
 import com.sadad.app.feature.home.HomeContent
@@ -137,16 +136,13 @@ class EdgeToEdgeTest {
       inShellWithStore(Activity) { fixture ->
         awaiting { seedContacts(fixture) }
         val history = HistoryViewModel(fixture.graph, SavedStateHandle())
-        val activity = ActivityLogViewModel(fixture.graph)
         fixture.closeWithStore(history.viewModelScope)
-        fixture.closeWithStore(activity.viewModelScope)
         awaiting {
           history.state.first { it.loaded }
-          activity.state.first { it.loaded }
         }
         val destinations: NavGraphBuilder.() -> Unit = {
           composable<Activity> {
-            HistoryScreen(historyViewModel = history, activityViewModel = activity)
+            HistoryScreen(historyViewModel = history)
           }
         }
         destinations

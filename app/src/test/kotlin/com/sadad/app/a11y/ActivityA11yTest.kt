@@ -5,7 +5,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.feature.auth.MainDispatcherRule
-import com.sadad.app.feature.history.ActivityLogViewModel
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryTags
 import com.sadad.app.feature.history.HistoryViewModel
@@ -15,6 +14,8 @@ import com.sadad.app.feature.reports.ReportsState
 import com.sadad.app.feature.reports.ReportsTags
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.flow.first
 import org.junit.Rule
 import org.junit.Test
@@ -22,10 +23,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/**
- * The الحركات tab (today's history body) and the reports it absorbs in ticket 85, at both font
- * sizes (ticket 76).
- */
+/** The movement feed and the report controls at normal and large font sizes. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
 class ActivityA11yTest {
@@ -41,22 +39,25 @@ class ActivityA11yTest {
   @Test fun reportsAtLargestFont() = reports(LARGEST_FONT)
 
   private fun history(fontScale: Float) = compose.withStore { fixture ->
-    awaiting { seedContacts(fixture) }
-    val history = HistoryViewModel(fixture.graph, SavedStateHandle())
-    val activity = ActivityLogViewModel(fixture.graph)
-    fixture.closeWithStore(history.viewModelScope)
-    fixture.closeWithStore(activity.viewModelScope)
     awaiting {
-      history.state.first { it.loaded }
-      activity.state.first { it.loaded }
+      seedContacts(fixture)
+      val repository = checkNotNull(fixture.graph.current.value).repository
+      val id = repository.view.first { it != null }!!.contacts.first().id
+      val debt = repository.addDebt(id, Direction.RECEIVABLE, Cents(10000), null, null).getOrThrow()
+      repository.payDebt(debt, Cents(2000), PaymentMethod.CASH, null).getOrThrow()
+      fixture.settleAll()
+    }
+    val history = HistoryViewModel(fixture.graph, SavedStateHandle())
+    fixture.closeWithStore(history.viewModelScope)
+    awaiting {
+      history.state.first { it.loaded && it.movements.isNotEmpty() }
     }
     compose.showAt(fontScale) {
-      HistoryScreen(historyViewModel = history, activityViewModel = activity)
+      HistoryScreen(historyViewModel = history)
     }
     compose.assertAccessible(
-        hasTestTag(HistoryTags.TAB_PEOPLE),
-        hasTestTag(HistoryTags.TAB_ACTIVITY),
-        hasTestTag(HistoryTags.PERIOD_CUSTOM),
+        hasTestTag(HistoryTags.ORDER),
+        hasTestTag(HistoryTags.PERIOD),
     )
   }
 
