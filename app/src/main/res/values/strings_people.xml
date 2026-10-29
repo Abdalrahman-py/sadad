@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="people_title">الأشخاص</string>
-    <string name="people_add">إضافة</string>
+    <string name="people_add">إضافة شخص</string>
     <string name="people_no_details">بلا هاتف أو تصنيف</string>
     <string name="people_search">ابحث بالاسم أو رقم الهاتف</string>
-    <string name="people_filters">تصفية</string>
+    <string name="people_filter_selected">تصفية: %1$s</string>
     <string name="people_filter_all">الكل</string>
     <string name="people_filter_owes">عليهم</string>
     <string name="people_filter_credit">لهم</string>
@@ -16,5 +16,5 @@
     <string name="people_sort_spoken">ترتيب حسب %1$s</string>
     <string name="people_supplier">مورد</string>
     <string name="people_no_results">لا توجد نتائج</string>
-    <string name="people_no_results_detail">جرّب اسمًا أو رقمًا آخر، أو أضف الشخص من زر «إضافة».</string>
+    <string name="people_no_results_detail">جرّب اسمًا أو رقمًا آخر، أو أضف الشخص من زر «إضافة شخص».</string>
 </resources>
