@@ -1,7 +1,12 @@
 package com.sadad.app.feature.people
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -29,6 +34,8 @@ import com.sadad.app.ui.People
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +52,47 @@ class PeopleScreenTest {
   @get:Rule val main = MainDispatcherRule()
 
   private val context: Context = ApplicationProvider.getApplicationContext()
+
+  @Test
+  fun addingAndChoosingAFilterLiveTogetherBelowSearch() {
+    var added = 0
+    var chosen = PeopleFilter.ALL
+    compose.setContent {
+      var state by remember {
+        mutableStateOf(PeopleState(counts = PeopleFilter.entries.associateWith { 4 }))
+      }
+      SadadTheme {
+        PeopleContent(
+            state,
+            onAdd = { added++ },
+            onFilter = {
+              chosen = it
+              state = state.copy(filterChoice = it)
+            },
+        )
+      }
+    }
+    compose.onNodeWithTag("people:sort").assertDoesNotExist()
+    compose.onNodeWithText("آخر حركة").assertDoesNotExist()
+    val search = compose.onNodeWithTag(PeopleTags.SEARCH).fetchSemanticsNode().boundsInRoot
+    val add = compose.onNodeWithTag(PeopleTags.ADD).fetchSemanticsNode().boundsInRoot
+    val filter = compose.onNodeWithTag("people:filter").fetchSemanticsNode().boundsInRoot
+    assertTrue(add.top >= search.bottom)
+    assertEquals(add.center.y, filter.center.y, 1f)
+    compose.onNodeWithTag(PeopleTags.ADD).performClick()
+    assertEquals(1, added)
+
+    val labels = listOf("الكل", "عليهم", "لهم", "متأخرون", "موردون")
+    PeopleFilter.entries.zip(labels).forEach { (value, label) ->
+      compose.onNodeWithTag("people:filter").performClick()
+      labels.forEach { compose.onNodeWithText(it).assertIsDisplayed() }
+      compose.onNodeWithText(label).performClick()
+      assertEquals(value, chosen)
+      compose.onNodeWithTag("people:filter").performClick()
+      compose.onNodeWithText(label).assertIsSelected()
+      compose.onNodeWithText(label).performClick()
+    }
+  }
 
   @Test
   fun theListScrollsToTheLastOfFiveThousandRows() {
