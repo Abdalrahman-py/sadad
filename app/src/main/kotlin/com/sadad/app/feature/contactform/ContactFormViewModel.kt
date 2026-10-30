@@ -33,6 +33,7 @@ data class ContactReview(
 
 data class ContactFormState(
     val edit: Boolean = false,
+    val validationAttempt: Int = 0,
     val name: String = "",
     val prefix: String = "970",
     val phone: String = "",
@@ -212,6 +213,15 @@ class ContactFormViewModel(
   }
 
   private fun validate(): Draft? {
+    mutable.update {
+      it.copy(
+          validationAttempt = it.validationAttempt + 1,
+          nameError = null,
+          phoneError = null,
+          debtError = null,
+          duplicate = null,
+      )
+    }
     val current = mutable.value
     val name = current.name.trim()
     if (name.isEmpty() || name.codePointCount(0, name.length) > MAX_NAME) {
@@ -233,7 +243,11 @@ class ContactFormViewModel(
     }
     if (duplicate != null) {
       mutable.update {
-        it.copy(duplicate = DuplicateContact(duplicate.id, duplicate.name))
+        it.copy(
+            duplicate = DuplicateContact(duplicate.id, duplicate.name),
+            phoneError =
+                appContext.getString(R.string.contactform_duplicate_message, duplicate.name),
+        )
       }
       return null
     }

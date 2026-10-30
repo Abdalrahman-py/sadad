@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +25,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -75,6 +79,25 @@ fun ContactFormScreen(
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
+  val nameFocus = remember { FocusRequester() }
+  val phoneFocus = remember { FocusRequester() }
+  val debtFocus = remember { FocusRequester() }
+  val nameView = remember { BringIntoViewRequester() }
+  val phoneView = remember { BringIntoViewRequester() }
+  val debtView = remember { BringIntoViewRequester() }
+  LaunchedEffect(state.validationAttempt, state.duplicate) {
+    if (state.validationAttempt == 0) return@LaunchedEffect
+    val target =
+        when {
+          state.nameError != null -> nameFocus to nameView
+          state.phoneError != null -> phoneFocus to phoneView
+          state.debtError != null -> debtFocus to debtView
+          else -> return@LaunchedEffect
+        }
+    // A duplicate dialog owns focus until dismissed; its phone field is already scrolled into view.
+    if (state.duplicate == null) target.first.requestFocus()
+    target.second.bringIntoView()
+  }
   // Saved: the form is replaced by the person's page, so back from there is the list again.
   LaunchedEffect(state.savedContactId) { state.savedContactId?.let(onOpenContact) }
 
@@ -98,11 +121,10 @@ fun ContactFormScreen(
         singleLine = true,
         enabled = !state.busy,
         isError = state.nameError != null,
-        fieldModifier = Modifier.fillMaxWidth(),
+        supportingText = state.nameError,
+        modifier = Modifier.bringIntoViewRequester(nameView),
+        fieldModifier = Modifier.fillMaxWidth().focusRequester(nameFocus),
     )
-    state.nameError?.let {
-      Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-    }
     SadadChoiceField(
         label = stringResource(R.string.contactform_prefix),
         options =
@@ -122,12 +144,11 @@ fun ContactFormScreen(
         singleLine = true,
         enabled = !state.busy,
         isError = state.phoneError != null,
+        supportingText = state.phoneError,
+        modifier = Modifier.bringIntoViewRequester(phoneView),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-        fieldModifier = Modifier.fillMaxWidth(),
+        fieldModifier = Modifier.fillMaxWidth().focusRequester(phoneFocus),
     )
-    state.phoneError?.let {
-      Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-    }
     // A customer or a supplier, whether the person is new or being edited.
     SadadSegments(
         options =
@@ -180,7 +201,7 @@ fun ContactFormScreen(
       )
     }
     if (state.withFirstDebt && !state.edit) {
-      FirstDebtFields(state, viewModel)
+      FirstDebtFields(state, viewModel, debtFocus, debtView)
     }
     state.message?.let {
       Text(it, color = MaterialTheme.colorScheme.error)
@@ -229,7 +250,12 @@ fun ContactFormScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FirstDebtFields(state: ContactFormState, viewModel: ContactFormViewModel) {
+private fun FirstDebtFields(
+    state: ContactFormState,
+    viewModel: ContactFormViewModel,
+    focus: FocusRequester,
+    bringIntoView: BringIntoViewRequester,
+) {
   var picking by remember { mutableStateOf(false) }
   SadadField(
       value = state.debtAmount,
@@ -238,12 +264,11 @@ private fun FirstDebtFields(state: ContactFormState, viewModel: ContactFormViewM
       singleLine = true,
       enabled = !state.busy,
       isError = state.debtError != null,
+      supportingText = state.debtError,
+      modifier = Modifier.bringIntoViewRequester(bringIntoView),
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-      fieldModifier = Modifier.fillMaxWidth(),
+      fieldModifier = Modifier.fillMaxWidth().focusRequester(focus),
   )
-  state.debtError?.let {
-    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-  }
   Text(stringResource(R.string.contactform_debt_due), style = MaterialTheme.typography.labelLarge)
   SadadButton(
       text = state.debtDue ?: stringResource(R.string.contactform_pick_date),
