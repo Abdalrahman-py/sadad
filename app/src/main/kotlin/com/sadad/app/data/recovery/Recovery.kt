@@ -106,9 +106,9 @@ object Recovery {
   data class PermitResult(val stamped: Int, val outside: Int)
 
   /**
-   * Puts the admin's [permit] on the rows [manifest] named: the bytes the admin approved. Sync
-   * then sends them in their own batches. A row of [origin] that appeared after the export stays
-   * queued without a permit instead of poisoning the batch with a command the permit cannot name.
+   * Puts the admin's [permit] on the rows [manifest] named: the bytes the admin approved. Sync then
+   * sends them in their own batches. A row of [origin] that appeared after the export stays queued
+   * without a permit instead of poisoning the batch with a command the permit cannot name.
    */
   suspend fun setPermit(
       scope: StoreScope,
@@ -133,14 +133,12 @@ object Recovery {
     val approvedIds = approved.mapTo(HashSet()) { it.operationId }
     val stamped = scope.outbox.setPermit(origin, canonical, approvedIds)
     val outside =
-        scope.outbox
-            .snapshot()
-            .count {
-              it.state == OutboxState.QUEUED &&
-                  it.command.type.offline &&
-                  it.command.originInstallationId == origin &&
-                  it.operationId !in approvedIds
-            }
+        scope.outbox.snapshot().count {
+          it.state == OutboxState.QUEUED &&
+              it.command.type.offline &&
+              it.command.originInstallationId == origin &&
+              it.operationId !in approvedIds
+        }
     return PermitResult(stamped, outside)
   }
 

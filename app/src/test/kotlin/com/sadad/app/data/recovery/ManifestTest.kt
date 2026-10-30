@@ -99,8 +99,7 @@ class ManifestTest {
       f.scope.outbox.append(listOf(contact, archive))
 
       val manifestBytes = Recovery.manifest(f.scope, oldInstallation)
-      val manifest =
-          Json.parseToJsonElement(String(manifestBytes, Charsets.UTF_8)).jsonArray
+      val manifest = Json.parseToJsonElement(String(manifestBytes, Charsets.UTF_8)).jsonArray
       assertEquals(
           listOf(LedgerJson.encodeToJsonElement(LedgerCommand.serializer(), contact)),
           manifest,

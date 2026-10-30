@@ -66,15 +66,13 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
         val result = Recovery.setPermit(scope(), origin, permit, manifest)
         manifests.remove(origin)
         val message =
-            if (result.outside == 0) {
-              appContext.getString(R.string.recovery_permit_stored)
-            } else {
-              appContext.getString(
-                  R.string.recovery_permit_partial,
-                  result.stamped,
-                  result.outside,
-              )
-            }
+            if (result.outside == 0) appContext.getString(R.string.recovery_permit_stored)
+            else
+                appContext.getString(
+                    R.string.recovery_permit_partial,
+                    result.stamped,
+                    result.outside,
+                )
         showMessage(message)
         runCatching { graph.syncStore(scope().account.storeUserId) }
       } catch (cancelled: CancellationException) {
