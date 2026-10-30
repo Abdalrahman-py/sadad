@@ -60,8 +60,9 @@ fun ContactFormScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onOpenContact: (String) -> Unit = {},
+    initialName: String = "",
 ) {
-  ContactFormScreen(contactFormViewModel(contactId), modifier, onBack, onOpenContact)
+  ContactFormScreen(contactFormViewModel(contactId, initialName), modifier, onBack, onOpenContact)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -367,7 +368,7 @@ private fun generalCategories(kind: ContactKind, context: android.content.Contex
         .toList()
 
 @Composable
-private fun contactFormViewModel(contactId: String?): ContactFormViewModel =
+private fun contactFormViewModel(contactId: String?, initialName: String): ContactFormViewModel =
     viewModel(
         factory =
             viewModelFactory {
@@ -383,6 +384,7 @@ private fun contactFormViewModel(contactId: String?): ContactFormViewModel =
                     app,
                     createSavedStateHandle(),
                     contactId,
+                    initialName,
                 )
               }
             }

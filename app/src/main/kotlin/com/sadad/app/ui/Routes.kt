@@ -16,9 +16,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class ContactDetail(val contactId: String)
 
-/** Edit only: a new person is created in quick add. */
 /** A null [contactId] opens the form empty, to add a customer or a supplier. */
-@Serializable data class ContactForm(val contactId: String? = null)
+@Serializable data class ContactForm(val contactId: String? = null, val initialName: String = "")
 
 @Serializable data class QuickAdd(val contactId: String? = null, val payment: Boolean = false)
 

@@ -38,6 +38,52 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class QuickAddViewModelTest {
+  @Test
+  fun aPersonSavedThroughTheFullFormCanReceiveADebtAndSurvivesSettlement() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val form =
+          com.sadad.app.feature.contactform.ContactFormViewModel(
+              store.repository,
+              store.account.storeUserId,
+              context,
+              SavedStateHandle(),
+              initialName = "إبراهيم",
+          )
+      fixture.closeWithStore(form.viewModelScope)
+      assertEquals("إبراهيم", form.state.value.name)
+      form.onPhoneChange("0599123456")
+      form.save()
+      form.confirm()
+      val id = checkNotNull(form.state.first { it.savedContactId != null }.savedContactId)
+      val model = QuickAddViewModel(fixture.graph, id, false, SavedStateHandle(), 100)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.selected?.id == id }
+      model.press("2")
+      model.press("5")
+      model.press("8")
+      model.save(context)
+      store.awaitOutbox(2)
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      assertEquals(
+          "+970599123456",
+          (rows.first().command.payload() as com.sadad.ledger.ContactCreate).phone,
+      )
+      assertEquals(listOf(rows.first().operationId), rows.last().command.dependsOn)
+      fixture.settleAll()
+      val view =
+          store.repository.view.first {
+            it?.contacts?.any { person -> person.id == id && !person.pending } == true
+          }!!
+      assertEquals("إبراهيم", view.contacts.first { it.id == id }.name)
+      assertEquals(Cents(25_800), view.debts.first { it.contactId == id }.remaining)
+    }
+  }
+
   @get:Rule val main = MainDispatcherRule()
   private val context: Context = ApplicationProvider.getApplicationContext()
 
@@ -334,58 +380,6 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun aPersonWhoDoesNotExistYetIsCreatedAndTheDebtDependsOnIt() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val store = checkNotNull(fixture.graph.current.value)
-      val model = fixture.model()
-      model.state.first { it.loaded }
-
-      model.onQueryChange("سامي")
-      model.startNewPerson()
-      assertEquals(QuickAddStep.NEW_PERSON, model.state.value.step)
-      assertEquals("سامي", model.state.value.newName)
-      model.createPerson()
-      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-
-      model.press("7")
-      model.press("5")
-      model.save(context)
-      store.awaitOutbox(2)
-
-      val rows = store.outbox.snapshot()
-      assertEquals(
-          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
-          rows.map { it.type },
-      )
-      assertEquals(
-          "the debt waits for the contact that carries it",
-          listOf(rows.first().operationId),
-          rows.last().command.dependsOn,
-      )
-    }
-  }
-
-  @Test
-  fun aPhoneAlreadyInTheStoreOffersThatPersonInstead() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      fixture.settledContact("سارة", phone = "+970599335640")
-      val model = fixture.model()
-      // duplicateFor reads the projected people, so wait for them, not only for loaded.
-      model.state.first { it.loaded && it.people.isNotEmpty() }
-
-      model.startNewPerson()
-      model.onNewName("سارة محمود")
-      model.onNewPhone("0599335640")
-
-      assertEquals("سارة", model.state.value.duplicate)
-      model.useDuplicate()
-
-      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-      assertEquals("سارة", model.state.value.selected?.name)
-    }
-  }
-
-  @Test
   fun withoutPermissionToRegisterPaymentsThereIsNoPaymentMode() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
@@ -506,7 +500,7 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun aHeldNewPersonDoesNotTurnTheNextPaymentIntoADebt() = runTest {
+  fun switchingFromANewlySavedPersonToAnExistingOneKeepsPaymentMode() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
       val debt = fixture.openDebt(contact, 10_000)
@@ -514,13 +508,10 @@ class QuickAddViewModelTest {
       val model = fixture.model(undoWindowMs = 300)
       model.state.first { it.loaded }
 
-      // «زبون جديد» → change your mind → pick somebody else → «دفع».
-      model.onQueryChange("سامي")
-      model.startNewPerson()
-      model.onNewName("سامي")
-      model.createPerson()
+      val added = store.repository.addContact("New customer", null, null, null, null).getOrThrow()
+      model.state.first { it.people.any { person -> person.id == added } }
+      model.pick(added)
       model.backToPicker()
-      // The query is still the new name; the picker shows the matches, so clear it to pick خالد.
       model.clearQuery()
       model.pick(contact)
       model.toPayment()
@@ -528,11 +519,11 @@ class QuickAddViewModelTest {
       model.press("0")
       model.press("0")
       model.save(context)
-      store.awaitOutbox(1)
+      store.awaitOutbox(2)
 
-      val row = store.outbox.snapshot().single()
+      val row = store.outbox.snapshot().last()
       assertEquals(
-          "the mode on screen decides, not the dropped contact",
+          "the mode on screen decides, not the previous contact",
           CommandType.PAYMENT_CREATE,
           row.type,
       )
@@ -541,15 +532,15 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun undoAfterANewPersonKeepsTheContactWithTheNextSave() = runTest {
+  fun undoingTheDebtKeepsTheSeparatelySavedPersonAndNextSaveDependsOnIt() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
       val model = fixture.model(undoWindowMs = 300)
       model.state.first { it.loaded }
 
-      model.startNewPerson()
-      model.onNewName("سامي")
-      model.createPerson()
+      val added = store.repository.addContact("New customer", null, null, null, null).getOrThrow()
+      model.state.first { it.people.any { person -> person.id == added } }
+      model.pick(added)
       model.press("5")
       model.press("0")
       model.press("0")
@@ -559,7 +550,8 @@ class QuickAddViewModelTest {
       model.undo(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
 
-      // The second save must rebuild the pair, not a debt for a contact that was never created.
+      assertEquals(CommandType.CONTACT_CREATE, store.outbox.snapshot().single().type)
+      // Undo removes only the debt; the separately saved person remains queued.
       model.save(context)
       store.awaitOutbox(2)
 

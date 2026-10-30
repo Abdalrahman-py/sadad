@@ -36,7 +36,7 @@ data class ContactFormState(
     val name: String = "",
     val prefix: String = "970",
     val phone: String = "",
-    /** The Contact's type; creation keeps `CUSTOMER` until quick add replaces it (ticket 81). */
+    /** The Contact's type, chosen in the full form. */
     val kind: ContactKind = ContactKind.CUSTOMER,
     val category: String = "",
     val note: String = "",
@@ -66,13 +66,14 @@ class ContactFormViewModel(
     context: Context,
     private val saved: SavedStateHandle,
     private val contactId: String? = null,
+    initialName: String = "",
 ) : ViewModel() {
   private val appContext = context.applicationContext
   private val mutable =
       MutableStateFlow(
           ContactFormState(
               edit = contactId != null,
-              name = saved.get<String>(NAME).orEmpty(),
+              name = saved.get<String>(NAME) ?: initialName.takeIf { contactId == null }.orEmpty(),
               prefix = saved.get<String>(PREFIX) ?: "970",
               phone = saved.get<String>(PHONE).orEmpty(),
               kind =

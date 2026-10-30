@@ -158,6 +158,7 @@ fun SadadApp(
             val editing = it.toRoute<ContactForm>().contactId
             ContactFormScreen(
                 contactId = editing,
+                initialName = it.toRoute<ContactForm>().initialName,
                 onBack = back,
                 onOpenContact = { id ->
                   if (editing != null) {
@@ -179,6 +180,11 @@ fun SadadApp(
                 contactId = route.contactId,
                 payment = route.payment,
                 onClose = back,
+                onCreateContact = { name ->
+                  navController.navigate(ContactForm(initialName = name)) {
+                    popUpTo<QuickAdd> { inclusive = true }
+                  }
+                },
                 onOpenContact = { id ->
                   // Single top: quick add opened from this contact returns to it, not a second
                   // copy.

@@ -104,6 +104,7 @@ class QuickAddA11yTest {
         payment = false,
         onClose = {},
         onOpenContact = {},
+        onCreateContact = {},
         viewModel = model,
     )
   }

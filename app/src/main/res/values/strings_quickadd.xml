@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="quickadd_customer">زبون</string>
     <string name="quickadd_title">تسجيل دين أو دفعة</string>
     <string name="quickadd_placeholder">قيد الإنشاء</string>
     <string name="quickadd_close">إغلاق</string>
@@ -41,19 +42,8 @@
     <string name="quickadd_blocked_body">انتهى تصريح الحفظ دون اتصال. اتصل بالإنترنت ثم سجّل.</string>
     <string name="quickadd_reconnect">إعادة الاتصال</string>
 
-    <!-- The new person sheet. -->
-    <string name="quickadd_new_title">شخص جديد</string>
-    <string name="quickadd_name">الاسم</string>
-    <string name="quickadd_phone">رقم الهاتف</string>
-    <string name="quickadd_phone_hint">(اختياري، للتذكير على واتساب)</string>
-    <string name="quickadd_phone_placeholder">05xxxxxxxx</string>
-    <string name="quickadd_customer">زبون</string>
-    <string name="quickadd_supplier">مورد</string>
-    <string name="quickadd_duplicate">هذا الرقم مسجل باسم</string>
-    <string name="quickadd_use_duplicate">التسجيل لـ%1$s بدلًا من ذلك</string>
-    <string name="quickadd_continue">متابعة إلى المبلغ</string>
+    <!-- Shared dialog action. -->
     <string name="quickadd_cancel">إلغاء</string>
-    <string name="quickadd_new_footnote">التصنيف والملاحظات تُضاف لاحقًا من صفحة الشخص.</string>
 
     <!-- The amount step. -->
     <string name="quickadd_change_person">تغيير الشخص</string>
