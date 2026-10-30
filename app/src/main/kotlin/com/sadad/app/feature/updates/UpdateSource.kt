@@ -38,130 +38,132 @@ internal class UpdateSource(
     /** The wait before each retry; a test passes a no-op so nothing sleeps. */
     private val pause: suspend (Long) -> Unit = { delay(it) },
 ) {
-  /**
-   * Set when the manifest or a refused download needed the API, so the APK is fetched there too.
-   */
-  @Volatile private var apkAssetId: Long? = null
+    /**
+     * Set when the manifest or a refused download needed the API, so the APK is fetched there too.
+     */
+    @Volatile private var apkAssetId: Long? = null
 
-  suspend fun latest(): ManifestResult {
-    apkAssetId = null
-    var result: ManifestResult = ManifestResult.Unreachable(0)
-    for (attempt in 0 until ATTEMPTS) {
-      if (attempt > 0) pause(WAITS[attempt - 1])
-      result = once()
-      if (!result.isTransient()) return result
+    suspend fun latest(): ManifestResult {
+        apkAssetId = null
+        var result: ManifestResult = ManifestResult.Unreachable(0)
+        for (attempt in 0 until ATTEMPTS) {
+            if (attempt > 0) pause(WAITS[attempt - 1])
+            result = once()
+            if (!result.isTransient()) return result
+        }
+        return viaApi() ?: result
     }
-    return viaApi() ?: result
-  }
 
-  fun apkUrl(manifest: UpdateManifest): String =
-      apkAssetId?.let { apiUrlFor("releases/assets/$it") } ?: urlFor(manifest.apk)
+    fun apkUrl(manifest: UpdateManifest): String =
+        apkAssetId?.let { apiUrlFor("releases/assets/$it") } ?: urlFor(manifest.apk)
 
-  /**
-   * The APK by asset id, for a download whose own URL keeps refusing.
-   *
-   * The release URL answering 404 is not a property of the check: the windows it happens in last
-   * one or two minutes and open and close under a running app, so a manifest read while it was
-   * closed says nothing about the download started a minute later. Without this the APK had one
-   * road even when the manifest had two, and the download could only fail (measured 27 October
-   * 2026: the release URL refused the APK while `releases/assets/<id>` served all 21,405,522
-   * bytes).
-   *
-   * `null` when the listing cannot be read or does not name the APK: the download's own refusal
-   * then stands, exactly as it does when both of the manifest's roads fail.
-   */
-  suspend fun apkFallbackUrl(manifest: UpdateManifest): String? {
-    val known = apkAssetId
-    if (known != null) return apiUrlFor("releases/assets/$known")
-    val id = assetIdOf(manifest.apk) ?: return null
-    apkAssetId = id
-    return apiUrlFor("releases/assets/$id")
-  }
+    /**
+     * The APK by asset id, for a download whose own URL keeps refusing.
+     *
+     * The release URL answering 404 is not a property of the check: the windows it happens in last
+     * one or two minutes and open and close under a running app, so a manifest read while it was
+     * closed says nothing about the download started a minute later. Without this the APK had one
+     * road even when the manifest had two, and the download could only fail (measured 27 October
+     * 2026: the release URL refused the APK while `releases/assets/<id>` served all 21,405,522
+     * bytes).
+     *
+     * `null` when the listing cannot be read or does not name the APK: the download's own refusal
+     * then stands, exactly as it does when both of the manifest's roads fail.
+     */
+    suspend fun apkFallbackUrl(manifest: UpdateManifest): String? {
+        val known = apkAssetId
+        if (known != null) return apiUrlFor("releases/assets/$known")
+        val id = assetIdOf(manifest.apk) ?: return null
+        apkAssetId = id
+        return apiUrlFor("releases/assets/$id")
+    }
 
-  private suspend fun once(): ManifestResult =
-      read(urlFor(UpdateChannel.MANIFEST_ASSET), accept = null)
+    private suspend fun once(): ManifestResult =
+        read(urlFor(UpdateChannel.MANIFEST_ASSET), accept = null)
 
-  /**
-   * The release as the API reports it. Returns null when the API cannot be read either, so the
-   * caller keeps the answer the download URL gave instead of inventing a third one.
-   */
-  private suspend fun viaApi(): ManifestResult? {
-    val assets = assets() ?: return null
-    val manifestId = assets[UpdateChannel.MANIFEST_ASSET] ?: return ManifestResult.Missing
-    val body = text(apiUrlFor("releases/assets/$manifestId"), BYTES_ACCEPT) ?: return null
-    val parsed = parseManifest(body, channel)
-    if (parsed is ManifestResult.Found) apkAssetId = assets[parsed.manifest.apk]
-    return parsed
-  }
+    /**
+     * The release as the API reports it. Returns null when the API cannot be read either, so the
+     * caller keeps the answer the download URL gave instead of inventing a third one.
+     */
+    private suspend fun viaApi(): ManifestResult? {
+        val assets = assets() ?: return null
+        val manifestId = assets[UpdateChannel.MANIFEST_ASSET] ?: return ManifestResult.Missing
+        val body = text(apiUrlFor("releases/assets/$manifestId"), BYTES_ACCEPT) ?: return null
+        val parsed = parseManifest(body, channel)
+        if (parsed is ManifestResult.Found) apkAssetId = assets[parsed.manifest.apk]
+        return parsed
+    }
 
-  /** The release's asset ids by name; null when the listing itself cannot be read. */
-  private suspend fun assets(): Map<String, Long>? =
-      text(apiUrlFor(channel.releaseApiPath()), JSON_ACCEPT)?.let(::assetsOf)
+    /** The release's asset ids by name; null when the listing itself cannot be read. */
+    private suspend fun assets(): Map<String, Long>? =
+        text(apiUrlFor(channel.releaseApiPath()), JSON_ACCEPT)?.let(::assetsOf)
 
-  private suspend fun assetIdOf(name: String): Long? = assets()?.get(name)
+    private suspend fun assetIdOf(name: String): Long? = assets()?.get(name)
 
-  private suspend fun text(url: String, accept: String): String? =
-      withContext(Dispatchers.IO) {
-        try {
-          client.newCall(request(url, accept)).execute().use { response ->
-            if (response.isSuccessful) response.body.string() else null
-          }
-        } catch (_: IOException) {
-          null
-        }
-      }
-
-  private suspend fun read(url: String, accept: String?): ManifestResult =
-      withContext(Dispatchers.IO) {
-        try {
-          client.newCall(request(url, accept)).execute().use { response ->
-            when {
-              response.code == 404 -> ManifestResult.Missing
-              !response.isSuccessful -> ManifestResult.Unreachable(response.code)
-              else -> parseManifest(response.body.string(), channel)
+    private suspend fun text(url: String, accept: String): String? =
+        withContext(Dispatchers.IO) {
+            try {
+                updateCall(client, request(url, accept)) { response ->
+                    if (response.isSuccessful) response.body.string() else null
+                }
+            } catch (_: IOException) {
+                null
             }
-          }
-        } catch (_: IOException) {
-          ManifestResult.Unreachable(0)
         }
-      }
 
-  private fun request(url: String, accept: String?): Request =
-      Request.Builder()
-          .url(url)
-          .header("User-Agent", USER_AGENT)
-          .header("Cache-Control", "no-cache")
-          .apply { if (accept != null) header("Accept", accept) }
-          .build()
-
-  /** `{"assets":[{"id":1,"name":"update.json"}, …]}` → the ids by name; empty when unreadable. */
-  private fun assetsOf(listing: String): Map<String, Long> =
-      runCatching {
-        val array = ApiJson.parseToJsonElement(listing).jsonObject["assets"] as? JsonArray
-        array
-            ?.mapNotNull { element ->
-              val asset = element.jsonObject
-              val name = asset["name"]?.jsonPrimitive?.content
-              val id = asset["id"]?.jsonPrimitive?.longOrNull
-              if (name != null && id != null) name to id else null
+    private suspend fun read(url: String, accept: String?): ManifestResult =
+        withContext(Dispatchers.IO) {
+            try {
+                updateCall(client, request(url, accept)) { response ->
+                    when {
+                        response.code == 404 -> ManifestResult.Missing
+                        !response.isSuccessful -> ManifestResult.Unreachable(response.code)
+                        else -> parseManifest(response.body.string(), channel)
+                    }
+                }
+            } catch (_: IOException) {
+                ManifestResult.Unreachable(0)
             }
-            ?.toMap()
-      }
-          .getOrNull() ?: emptyMap()
+        }
 
-  private companion object {
-    val USER_AGENT = "Sadad/${BuildConfig.VERSION_NAME}"
+    private fun request(url: String, accept: String?): Request =
+        Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Cache-Control", "no-cache")
+            .apply { if (accept != null) header("Accept", accept) }
+            .build()
 
-    val ApiJson = Json { ignoreUnknownKeys = true }
+    /** `{"assets":[{"id":1,"name":"update.json"}, …]}` → the ids by name; empty when unreadable. */
+    private fun assetsOf(listing: String): Map<String, Long> =
+        runCatching {
+            val array = ApiJson.parseToJsonElement(listing).jsonObject["assets"] as? JsonArray
+            array
+                ?.mapNotNull { element ->
+                    val asset = element.jsonObject
+                    val name = asset["name"]?.jsonPrimitive?.content
+                    val id = asset["id"]?.jsonPrimitive?.longOrNull
+                    if (name != null && id != null) name to id else null
+                }
+                ?.toMap()
+        }
+            .getOrNull() ?: emptyMap()
 
-    const val JSON_ACCEPT = "application/vnd.github+json"
-    const val BYTES_ACCEPT = "application/octet-stream"
+    private companion object {
+        val USER_AGENT = "Sadad/${BuildConfig.VERSION_NAME}"
 
-    const val ATTEMPTS = 4
+        val ApiJson = Json { ignoreUnknownKeys = true }
 
-    /** Roughly thirteen seconds in all: the window seen in the wild, without stalling a check. */
-    val WAITS = longArrayOf(1_500, 4_000, 8_000)
-  }
+        const val JSON_ACCEPT = "application/vnd.github+json"
+        const val BYTES_ACCEPT = "application/octet-stream"
+
+        const val ATTEMPTS = 4
+
+        /**
+         * Roughly thirteen seconds in all: the window seen in the wild, without stalling a check.
+         */
+        val WAITS = longArrayOf(1_500, 4_000, 8_000)
+    }
 }
 
 /**
