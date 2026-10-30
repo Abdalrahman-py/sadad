@@ -93,7 +93,9 @@ constructor(
                       stage,
                       clock.millis(),
                   )
-              if (reminders.record(event)) post(event)
+              // Record only what was actually shown: a denied permission must stay unsent so the
+              // next run can post it instead of the reminder disappearing as "already sent".
+              if (post(event)) reminders.record(event)
             }
           }
           Result.success()
@@ -102,7 +104,8 @@ constructor(
         }
       }
 
-  private fun post(event: Reminder) {
+  /** Returns false when nothing was posted, so the caller can leave the reminder unsent. */
+  private fun post(event: Reminder): Boolean {
     val context = applicationContext
     val manager = context.getSystemService(NotificationManager::class.java)
     if (Build.VERSION.SDK_INT >= 26) {
@@ -119,7 +122,7 @@ constructor(
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED
     )
-        return
+        return false
     val intent =
         Intent(context, MainActivity::class.java)
             .setData(Uri.parse("sadad://reminder/${Uri.encode(event.id)}"))
@@ -142,6 +145,7 @@ constructor(
             .setAutoCancel(true)
             .build()
     manager.notify(event.id, 0, notification)
+    return true
   }
 
   companion object {
