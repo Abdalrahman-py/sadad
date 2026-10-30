@@ -22,6 +22,10 @@ import com.sadad.app.data.session.KeystoreInstallations
 import com.sadad.app.data.session.SessionHost
 import com.sadad.app.data.session.Sessions
 import com.sadad.app.data.session.StoreScope
+import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.feature.photo.PhotoKind
+import com.sadad.app.feature.photo.PhotoStore
+import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.data.sync.LeaseStore
 import com.sadad.app.data.sync.SyncEngine
 import com.sadad.app.data.sync.SyncScheduler
@@ -235,6 +239,12 @@ internal constructor(
           installations.delete(account.keyAlias)
           deleteDatabase(storeUserId)
           accounts.remove(storeUserId)
+          // Everything the app kept for this store goes with it: a store added again under the
+          // same id must not inherit an old photo, hidden ids or reminders.
+          val photos = PhotoStore(context)
+          PhotoKind.entries.forEach { kind -> runCatching { photos.delete(storeUserId, kind) } }
+          TrashHidden.forget(context, storeUserId)
+          DueReminders.get(context).forget(storeUserId)
           true
         }
       }

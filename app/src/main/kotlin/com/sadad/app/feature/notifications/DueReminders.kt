@@ -103,6 +103,11 @@ class DueReminders(produceFile: () -> File, scope: CoroutineScope) {
     }
   }
 
+  /** Removes this store's reminders: the owner deleted the store they belonged to. */
+  suspend fun forget(storeUserId: String) {
+    store.edit { it.remove(key(storeUserId)) }
+  }
+
   companion object {
     private fun key(storeUserId: String) = stringPreferencesKey("store:$storeUserId")
 
