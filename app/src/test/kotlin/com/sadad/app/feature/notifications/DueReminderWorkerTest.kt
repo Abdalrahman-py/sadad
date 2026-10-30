@@ -140,6 +140,7 @@ class DueReminderWorkerTest {
       fixture.close()
     }
   }
+
   @Test
   fun aReminderThatCannotBePostedStaysUnsentAndFiresOnTheNextRun() = runTest {
     val fixture = TestGraph.signedIn()

@@ -55,8 +55,10 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
   /** The manifests this session exported, so a permit can name exactly the rows it approved. */
   private val manifests = mutableMapOf<String, ByteArray>()
 
-  suspend fun manifest(origin: String): ByteArray? =
-      guarded { Recovery.manifest(scope(), origin) }?.also { manifests[origin] = it }
+  suspend fun manifest(origin: String): ByteArray? = guarded {
+    Recovery.manifest(scope(), origin)
+  }
+      ?.also { manifests[origin] = it }
 
   fun enterPermit(origin: String, permit: String) {
     viewModelScope.launch {
