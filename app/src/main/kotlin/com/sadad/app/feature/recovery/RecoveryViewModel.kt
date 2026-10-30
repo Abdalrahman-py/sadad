@@ -52,13 +52,30 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
 
   suspend fun origins(): List<String> = guarded { Recovery.origins(scope()) } ?: emptyList()
 
-  suspend fun manifest(origin: String): ByteArray? = guarded { Recovery.manifest(scope(), origin) }
+  /** The manifests this session exported, so a permit can name exactly the rows it approved. */
+  private val manifests = mutableMapOf<String, ByteArray>()
+
+  suspend fun manifest(origin: String): ByteArray? =
+      guarded { Recovery.manifest(scope(), origin) }?.also { manifests[origin] = it }
 
   fun enterPermit(origin: String, permit: String) {
     viewModelScope.launch {
       try {
-        Recovery.setPermit(scope(), origin, permit)
-        showMessage(appContext.getString(R.string.recovery_permit_stored))
+        val manifest =
+            manifests[origin] ?: throw IllegalArgumentException(Recovery.MANIFEST_UNREADABLE)
+        val result = Recovery.setPermit(scope(), origin, permit, manifest)
+        manifests.remove(origin)
+        val message =
+            if (result.outside == 0) {
+              appContext.getString(R.string.recovery_permit_stored)
+            } else {
+              appContext.getString(
+                  R.string.recovery_permit_partial,
+                  result.stamped,
+                  result.outside,
+              )
+            }
+        showMessage(message)
         runCatching { graph.syncStore(scope().account.storeUserId) }
       } catch (cancelled: CancellationException) {
         throw cancelled

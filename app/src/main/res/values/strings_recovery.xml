@@ -19,6 +19,7 @@
     <string name="recovery_permit_hint">رقم التصريح من لوحة الإدارة</string>
     <string name="recovery_permit_invalid">رقم التصريح غير صالح.</string>
     <string name="recovery_permit_stored">حُفظ التصريح؛ ستُرسل إدخالات الهوية السابقة في مزامنة منفصلة.</string>
+    <string name="recovery_permit_partial">طُبّق التصريح على %1$d إدخالًا؛ بقي %2$d خارج قائمة الاعتماد وأنشئ بعده.</string>
     <string name="recovery_saved">تم حفظ الملف.</string>
     <string name="recovery_save_failed">تعذر حفظ الملف.</string>
     <string name="recovery_read_failed">تعذر قراءة الملف.</string>
