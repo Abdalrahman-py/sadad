@@ -69,6 +69,8 @@ data class ContactMovement(
 data class ContactDetailState(
     val loaded: Boolean = false,
     val missing: Boolean = false,
+    val syncFailure: String? = null,
+    val savedDebts: List<com.sadad.ledger.DebtCreate> = emptyList(),
     val name: String = "",
     val phone: String = "",
     val category: String = "",
@@ -129,9 +131,22 @@ class ContactDetailViewModel(
 
   init {
     viewModelScope.launch {
-      combine(view(), dialogs, permissions()) { view, ui, allowed ->
-            currentView = view
-            project(view, ui, allowed)
+      combine(view(), dialogs, permissions()) { records, ui, allowed ->
+            currentView = records?.ledger
+            val draft = records?.failed?.firstOrNull { it.contact.id == contactId }
+            if (draft == null) project(records?.ledger, ui, allowed)
+            else
+                ContactDetailState(
+                    loaded = true,
+                    name = draft.contact.name,
+                    phone = draft.contact.phone,
+                    category = draft.contact.category,
+                    note = draft.contact.note,
+                    syncFailure = graph.errorMessages.text(draft.code),
+                    savedDebts = draft.debts,
+                    canRegisterPayments = false,
+                    canDeleteContacts = false,
+                )
           }
           .flowOn(Dispatchers.Default)
           .collect { mutable.value = it }
@@ -285,8 +300,8 @@ class ContactDetailViewModel(
         }
   }
 
-  private fun view(): Flow<LedgerView?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
+  private fun view(): Flow<com.sadad.app.data.ledger.ContactRecords?> =
+      graph.current.flatMapLatest { scope -> scope?.repository?.contactRecords ?: flowOf(null) }
 
   /** One row per saved payment, including its allocations and any excess kept as credit. */
   private fun paymentRows(

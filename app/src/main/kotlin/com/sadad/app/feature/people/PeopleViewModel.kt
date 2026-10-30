@@ -83,6 +83,7 @@ data class PeopleRow(
     val lateDays: Int?,
     /** «عميل دائم», «خضار وفواكه»: the category chosen when the person was added. */
     val category: String = "",
+    val syncFailed: Boolean = false,
 ) {
   /** The last three digits the row shows after «…»; "" when the person has no number. */
   val phoneTail: String
@@ -320,7 +321,8 @@ class PeopleViewModel(
 
   init {
     viewModelScope.launch {
-      combine(view(), query, filter, sort, day) { view, text, chip, order, current ->
+      combine(view(), query, filter, sort, day) { records, text, chip, order, current ->
+            val view = records?.directory
             if (view == null) {
               PeopleState(
                   query = text,
@@ -331,8 +333,15 @@ class PeopleViewModel(
                   sortChoice = order,
               )
             } else {
-              peopleUiState(view, current.zone, current.today, text, chip, order)
-                  .copy(queryInput = text, filterChoice = chip, sortChoice = order)
+              peopleUiState(view, current.zone, current.today, text, chip, order).let { state ->
+                val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
+                state.copy(
+                    rows = state.rows.map { it.copy(syncFailed = it.id in failedIds) },
+                    queryInput = text,
+                    filterChoice = chip,
+                    sortChoice = order,
+                )
+              }
             }
           }
           .flowOn(Dispatchers.Default)
@@ -387,8 +396,8 @@ class PeopleViewModel(
       saved.get<String>(SORT)?.let { name -> PeopleSort.entries.firstOrNull { it.name == name } }
           ?: PeopleSort.RECENT
 
-  private fun view(): Flow<LedgerView?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
+  private fun view(): Flow<com.sadad.app.data.ledger.ContactRecords?> =
+      graph.current.flatMapLatest { scope -> scope?.repository?.contactRecords ?: flowOf(null) }
 }
 
 private const val CHIP = "people:chip"

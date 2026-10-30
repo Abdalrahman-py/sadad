@@ -42,6 +42,65 @@ class ContactDetailViewModelTest {
   private val context: Context = ApplicationProvider.getApplicationContext()
 
   @Test
+  fun aContactRejectedForTheStoreLimitDoesNotBecomeMissing() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val id =
+          store.repository
+              .addContact(
+                  "إبراهيم",
+                  null,
+                  "زبون",
+                  "ملاحظات محفوظة",
+                  com.sadad.app.data.ledger.FirstDebt(Cents(25_800), "دين محفوظ"),
+              )
+              .getOrThrow()
+      val model =
+          ContactDetailViewModel(fixture.graph, id, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      model.state.first { it.loaded && !it.missing }
+      val rows = store.outbox.snapshot()
+      store.outbox.settle(
+          rows.map { row ->
+            com.sadad.app.data.ledger.receiptOf(
+                row.command,
+                com.sadad.ledger.ReceiptStatus.REJECTED,
+                code =
+                    if (row.type == CommandType.CONTACT_CREATE) "contact_limit_reached"
+                    else "dependency_rejected",
+            )
+          }
+      )
+      val failed = model.state.first { it.missing || it.syncFailure != null }
+      assertFalse("the rejected contact must remain as a saved draft", failed.missing)
+      assertEquals("إبراهيم", failed.name)
+      assertEquals(Cents(25_800), failed.savedDebts.single().amountCents)
+      assertEquals(Cents.ZERO, failed.balance)
+      assertTrue(failed.movements.isEmpty())
+      assertFalse(failed.canDeleteContacts)
+      val people =
+          com.sadad.app.feature.people.PeopleViewModel(
+              fixture.graph,
+              androidx.lifecycle.SavedStateHandle(),
+          )
+      fixture.closeWithStore(people.viewModelScope)
+      val directory =
+          people.state.first { it.rows.any { person -> person.id == id && person.syncFailed } }
+      assertEquals(Cents.ZERO, directory.rows.single { it.id == id }.net)
+      val recreated = ContactDetailViewModel(fixture.graph, id, context)
+      fixture.closeWithStore(recreated.viewModelScope)
+      assertFalse(recreated.state.first { it.syncFailure != null }.missing)
+      val ledger =
+          store.repository.view.first {
+            it != null && it.contacts.none { person -> person.id == id }
+          }!!
+      assertEquals(Cents.ZERO, ledger.receivable)
+      assertEquals(Cents.ZERO, ledger.confirmedReceivable)
+    }
+  }
+
+  @Test
   fun theBalanceIsTheSumOfTheRemainingReceivableDebts() = runTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)
