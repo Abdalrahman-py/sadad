@@ -158,7 +158,7 @@ class LedgerRepository(
     val origin = origin()
     requireOfflineAllowed()
     val at = Instant.now()
-    val contact = Commands.contactCreate(origin, at, name, phone, category, note, kind)
+    val contact = Commands.contactCreate(origin, at, name, wirePhone(phone), category, note, kind)
     val commands = mutableListOf(contact)
     if (firstDebt != null) {
       commands +=
@@ -196,7 +196,7 @@ class LedgerRepository(
                 contactId,
                 nextVersion(contactId),
                 name,
-                phone,
+                wirePhone(phone),
                 category,
                 note,
                 kind,
@@ -376,6 +376,15 @@ class LedgerRepository(
   private suspend fun enqueue(commands: List<LedgerCommand>) {
     outbox.append(commands)
     session.onQueued()
+  }
+
+  /** UI formatting must finish before queueing a person and any dependent financial entries. */
+  private fun wirePhone(value: String?): String? {
+    val phone = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    require(phone.matches(Regex("\\+[1-9][0-9]{7,14}"))) {
+      "راجع رقم الهاتف ومقدمته؛ يجب إرساله بصيغة دولية تبدأ بـ +."
+    }
+    return phone
   }
 
   private suspend fun <T> guarded(block: suspend () -> T): Result<T> =
