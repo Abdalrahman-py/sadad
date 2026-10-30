@@ -72,7 +72,7 @@ fun PeriodFilter(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CustomRangeDialog(
+internal fun CustomRangeDialog(
     period: Period.Custom?,
     onDismiss: () -> Unit,
     onConfirm: (LocalDate, LocalDate) -> Unit,
