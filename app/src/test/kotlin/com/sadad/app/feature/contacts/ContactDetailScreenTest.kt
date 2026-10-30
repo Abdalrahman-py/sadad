@@ -51,6 +51,61 @@ class ContactDetailScreenTest {
   private val context: Context = ApplicationProvider.getApplicationContext()
 
   @Test
+  fun refusedContactShowsItsSavedInputsAndReasonInsteadOfMissingOrSettled() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      val store = checkNotNull(fixture.graph.current.value)
+      val id = runBlocking {
+        val id =
+            store.repository
+                .addContact(
+                    "إبراهيم",
+                    null,
+                    "عميل",
+                    "ملاحظة محفوظة",
+                    com.sadad.app.data.ledger.FirstDebt(com.sadad.ledger.Cents(25_800)),
+                )
+                .getOrThrow()
+        store.outbox.settle(
+            store.outbox.snapshot().map {
+              com.sadad.app.data.ledger.receiptOf(
+                  it.command,
+                  com.sadad.ledger.ReceiptStatus.REJECTED,
+                  if (it.type == com.sadad.ledger.CommandType.CONTACT_CREATE)
+                      "contact_limit_reached"
+                  else "dependency_rejected",
+              )
+            }
+        )
+        id
+      }
+      val model =
+          ContactDetailViewModel(fixture.graph, id, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
+      compose.waitUntil(5_000) { model.state.value.syncFailure != null }
+      compose
+          .onNodeWithText(context.getString(com.sadad.app.R.string.contacts_saved_draft))
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(
+              context.getString(
+                  com.sadad.app.R.string.contacts_sync_failed,
+                  "وصل المتجر إلى حد عدد الأشخاص.",
+              )
+          )
+          .assertIsDisplayed()
+      compose.onNodeWithTag(ContactsTag.MENU).assertDoesNotExist()
+      compose
+          .onNodeWithText(context.getString(com.sadad.app.R.string.contacts_record_debt))
+          .assertDoesNotExist()
+      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToNode(hasText("258 ₪"))
+      compose.onNodeWithText("258 ₪").assertIsDisplayed()
+    }
+  }
+
+  @Test
   fun restrictedPaymentAndDeletePermissionsReplaceTheButtons() {
     val person = contact("سامي", contactId(1), minute = 0)
     runBlocking {

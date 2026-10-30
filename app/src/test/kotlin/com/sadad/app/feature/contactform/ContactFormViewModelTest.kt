@@ -35,6 +35,45 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class ContactFormViewModelTest {
+  @Test
+  fun aSuggestedNameDoesNotOverwriteTheRestoredDraft() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model =
+          ContactFormViewModel(
+              store.repository,
+              STORE_A,
+              context,
+              SavedStateHandle(mapOf("name" to "إبراهيم أحمد")),
+              initialName = "إبراهيم",
+          )
+      assertEquals("إبراهيم أحمد", model.state.value.name)
+    }
+  }
+
+  @Test
+  fun theShortPhoneFromTheReportedCaseCannotCreateAPersonOrDebt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model =
+          ContactFormViewModel(
+              store.repository,
+              STORE_A,
+              context,
+              SavedStateHandle(),
+              initialName = "إبراهيم",
+          )
+      model.onPhoneChange("059669696")
+      model.onFirstDebtChange(true)
+      model.onDebtAmountChange("258")
+      model.save()
+      model.confirm()
+      assertNotNull(model.state.value.phoneError)
+      assertNull(model.state.value.savedContactId)
+      assertTrue(fixture.rows().isEmpty())
+    }
+  }
+
   @get:Rule val main = MainDispatcherRule()
 
   private val context: Context = ApplicationProvider.getApplicationContext()

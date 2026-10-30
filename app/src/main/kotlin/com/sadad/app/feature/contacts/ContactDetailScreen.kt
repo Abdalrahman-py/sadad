@@ -174,7 +174,38 @@ internal fun ContactDetailScreen(
           verticalArrangement = Arrangement.spacedBy(6.dp),
       ) {
         item(key = "identity") { Appear { Identity(state, supplier) } }
-        if (!state.missing) {
+        if (state.syncFailure != null) {
+          item(key = "sync-failure") {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Text(
+                  stringResource(R.string.contacts_saved_draft),
+                  color = sadadPalette.owes,
+                  fontWeight = FontWeight.Bold,
+              )
+              Text(
+                  stringResource(R.string.contacts_sync_failed, state.syncFailure.orEmpty()),
+                  color = sadadPalette.owes,
+              )
+              Text(stringResource(R.string.contacts_draft_kept))
+            }
+          }
+          item(key = "draft-info") { InfoCard(state) }
+          items(state.savedDebts.size) { index ->
+            val debt = state.savedDebts[index]
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              Text(stringResource(R.string.contacts_saved_debt), fontWeight = FontWeight.Bold)
+              Text(formatCents(debt.amountCents), color = sadadPalette.owes)
+              debt.note?.let { Text(it) }
+              debt.dueDate?.let { Text(it) }
+            }
+          }
+        } else if (!state.missing) {
           item(key = "balance") {
             Appear(delayMillis = 60) { BalanceBlock(net, supplier) }
           }
@@ -226,7 +257,7 @@ internal fun ContactDetailScreen(
         )
       }
     }
-    if (!state.missing && state.loaded) {
+    if (!state.missing && state.loaded && state.syncFailure == null) {
       RecordActions(
           supplier = supplier,
           canPay = state.canRegisterPayments,
@@ -290,7 +321,7 @@ private fun ContactTopBar(
   ) {
     RoundButton(R.drawable.ic_back, stringResource(R.string.contacts_back), onBack)
     Box(Modifier.weight(1f))
-    if (state.missing || !state.loaded) return@Row
+    if (state.missing || !state.loaded || state.syncFailure != null) return@Row
     Box {
       RoundButton(
           R.drawable.ic_menu,

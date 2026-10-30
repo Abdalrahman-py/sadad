@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -108,12 +109,15 @@ class LedgerRepository(
   private val state = MutableStateFlow(LedgerState.EMPTY)
   private val mutex = Mutex()
 
-  val view: StateFlow<LedgerView?> =
+  val contactRecords: StateFlow<ContactRecords?> =
       combine(state, outbox.rows, session.staffName) { current, rows, staff ->
-            project(current, rows, staff)
+            contactRecords(project(current, rows, staff), rows)
           }
           .flowOn(Dispatchers.Default)
           .stateIn(scope, SharingStarted.Eagerly, null)
+
+  val view: StateFlow<LedgerView?> =
+      contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
 
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {

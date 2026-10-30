@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="contacts_saved_draft">إضافة محفوظة — لم تكتمل</string>
+    <string name="contacts_sync_failed">تعذرت مزامنة الشخص: %1$s</string>
+    <string name="contacts_draft_kept">بيانات الشخص والدين محفوظة على هذا الجهاز. هذه المبالغ لم تُعتمد في الرصيد بعد. إذا بلغ المتجر حد الأشخاص، تواصل مع الإدارة لزيادة الحد قبل إعادة الإضافة.</string>
+    <string name="contacts_saved_debt">دين محفوظ — غير معتمد</string>
+</resources>

@@ -353,7 +353,11 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
       }
-      BalanceWord(row.net.value)
+      if (row.syncFailed) {
+        Text(stringResource(R.string.contacts_saved_draft), color = p.owes, fontSize = 12.sp)
+      } else {
+        BalanceWord(row.net.value)
+      }
     }
   }
 }
