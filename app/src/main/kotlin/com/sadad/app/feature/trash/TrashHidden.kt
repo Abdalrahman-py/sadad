@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -16,7 +17,7 @@ import kotlinx.coroutines.flow.map
  * The ids this phone removed from its trash list for good. The server keeps the archived Contact;
  * the Java app behaved the same way, so another phone still lists it.
  */
-class TrashHidden(produceFile: () -> File, scope: CoroutineScope) {
+class TrashHidden(produceFile: () -> File, private val scope: CoroutineScope) {
   constructor(file: File, scope: CoroutineScope) : this({ file }, scope)
 
   // produceFile runs on the DataStore's thread at the first read, never on the caller's.
@@ -30,6 +31,13 @@ class TrashHidden(produceFile: () -> File, scope: CoroutineScope) {
 
   companion object {
     private val instances = ConcurrentHashMap<String, TrashHidden>()
+
+    /** Drops the cached list and its file: the store they belonged to is gone for good. */
+    fun forget(context: Context, storeUserId: String) {
+      val instance = instances.remove(storeUserId) ?: return
+      instance.scope.cancel()
+      File(context.applicationContext.filesDir, "trash-$storeUserId.preferences_pb").delete()
+    }
 
     /** One DataStore per store file: a second instance for the same file would throw. */
     fun get(context: Context, storeUserId: String): TrashHidden =

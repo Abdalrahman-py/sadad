@@ -140,4 +140,69 @@ class DueReminderWorkerTest {
       fixture.close()
     }
   }
+
+  @Test
+  fun aReminderThatCannotBePostedStaysUnsentAndFiresOnTheNextRun() = runTest {
+    val fixture = TestGraph.signedIn()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    try {
+      val context = fixture.context
+      // Nothing is granted yet, so the post is refused.
+      val reminders =
+          DueReminders(
+              File(context.cacheDir, "reminders-${System.nanoTime()}.preferences_pb"),
+              scope,
+          )
+      val store = fixture.graph.current.value!!
+      val contact = Commands.contactCreate(Events.origin, Events.at(0), "سامي")
+      val debt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              contact.entityId,
+              Direction.RECEIVABLE,
+              Cents(12000),
+              dueDate = "2026-10-17",
+          )
+      store.repository.applyPage(
+          Events.page(listOf(Events.accepted(contact, 1), Events.accepted(debt, 2)))
+      )
+      val clock = Clock.fixed(Instant.parse("2026-10-17T05:00:00Z"), ZoneId.of("Asia/Gaza"))
+      fun worker(): DueReminderWorker =
+          TestListenableWorkerBuilder<DueReminderWorker>(context)
+              .setWorkerFactory(
+                  object : WorkerFactory() {
+                    override fun createWorker(
+                        appContext: Context,
+                        workerClassName: String,
+                        workerParameters: WorkerParameters,
+                    ): ListenableWorker =
+                        DueReminderWorker(
+                            appContext,
+                            workerParameters,
+                            fixture.graph,
+                            reminders,
+                            clock,
+                        )
+                  }
+              )
+              .build()
+      val manager = context.getSystemService(NotificationManager::class.java)
+
+      assertEquals(ListenableWorker.Result.success(), worker().doWork())
+      assertTrue(
+          "a reminder that was never shown must not be recorded as sent",
+          reminders.inbox(STORE_A).first().isEmpty(),
+      )
+      assertTrue(shadowOf(manager).allNotifications.isEmpty())
+
+      shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+      assertEquals(ListenableWorker.Result.success(), worker().doWork())
+      assertEquals(1, reminders.inbox(STORE_A).first().size)
+      assertEquals(1, shadowOf(manager).allNotifications.size)
+    } finally {
+      scope.cancel()
+      fixture.close()
+    }
+  }
 }

@@ -2,11 +2,16 @@ package com.sadad.app.data.session
 
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxState
+import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.feature.notifications.Reminder
+import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.Home
 import com.sadad.app.ui.Login
+import com.sadad.ledger.Cents
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
@@ -116,6 +121,43 @@ class StoresTest {
       fixture.graph.sessions.switchTo(STORE_A)
 
       assertEquals(Login, fixture.graph.startRoute())
+    }
+  }
+
+  @Test
+  fun removingAStoreRemovesItsPhotoItsHiddenTrashAndItsReminders() = runTest {
+    TestGraph.signedIn(STORE_A).use { fixture ->
+      val context = fixture.context
+      val photos = File(context.filesDir, "photos").apply { mkdirs() }
+      val storePhoto = File(photos, "$STORE_A-store.png").apply { writeBytes(byteArrayOf(1)) }
+      val accountPhoto = File(photos, "$STORE_A-account.png").apply { writeBytes(byteArrayOf(1)) }
+      TrashHidden.get(context, STORE_A).hide("contact-1")
+      DueReminders.get(context)
+          .record(
+              Reminder(
+                  STORE_A,
+                  "debt-1",
+                  "contact-1",
+                  "سامي",
+                  "متجري",
+                  Cents(1000),
+                  "2026-11-01",
+                  "today",
+                  0L,
+              )
+          )
+      assertEquals(1, DueReminders.get(context).inbox(STORE_A).first().size)
+
+      assertTrue(fixture.graph.removeStore(STORE_A))
+
+      assertFalse("the store photo must go with the store", storePhoto.exists())
+      assertFalse(accountPhoto.exists())
+      assertFalse(File(context.filesDir, "trash-$STORE_A.preferences_pb").exists())
+      assertTrue(TrashHidden.get(context, STORE_A).ids.first().isEmpty())
+      assertTrue(
+          "the store's reminders must go with the store",
+          DueReminders.get(context).inbox(STORE_A).first().isEmpty(),
+      )
     }
   }
 
