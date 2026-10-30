@@ -93,8 +93,9 @@ constructor(
                       stage,
                       clock.millis(),
                   )
-              // Record only what was actually shown: a denied permission must stay unsent so the
-              // next run can post it instead of the reminder disappearing as "already sent".
+              // Record only what was actually shown: a denied permission must stay unrecorded so
+              // the next run can post it instead of the reminder disappearing as "already sent".
+              if (reminders.wasShown(event)) continue
               if (post(event)) reminders.record(event)
             }
           }
