@@ -73,7 +73,13 @@ const passwordRoute = createRoute({
         forcePasswordChange: z.literal(false),
       })),
     },
-    ...errorResponses(400, 401, 403, 429, 500),
+    ...errorResponses(
+      "invalid_input",
+      "authorization_required",
+      "current_password_incorrect",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 

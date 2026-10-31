@@ -3,7 +3,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { type AppEnv, verifyCaller } from "./auth.ts";
+import { type AppEnv, gateCaller } from "./auth.ts";
 import { ApiError, errorResponses } from "./errors.ts";
 import { call, type RpcClient, unavailable } from "./rpc.ts";
 import { readProofHeaders, verifyProof } from "./proof.ts";
@@ -22,6 +22,12 @@ export interface MobileDeps {
   userDb: (jwt: string, capability?: string) => RpcClient;
   lease?: LeaseSigner;
 }
+
+/** What the store gate refuses with, for the routes' OpenAPI error lists. */
+const storeRefusals = [
+  "authorization_required",
+  "store_permission_denied",
+] as const;
 
 const MAX_BODY_BYTES = 65_536;
 // sadid_issue_capability refuses a write request above 512 KiB.
@@ -56,19 +62,10 @@ interface StoreCaller {
 }
 
 async function storeCaller(c: Context<AppEnv>): Promise<StoreCaller> {
-  const { jwt, userId, role, claims } = await verifyCaller(c);
-  if (role !== "store") {
-    throw new ApiError("store_permission_denied", 403);
-  }
-  const sessionId = claims.session_id;
-  if (typeof sessionId !== "string" || !sessionId) {
-    throw new ApiError("authorization_required", 401);
-  }
-  const appMeta = claims.app_metadata as Record<string, unknown> | undefined;
-  if (appMeta?.force_password_change === true) {
-    throw new ApiError("password_change_required", 403);
-  }
-  return { jwt, userId, sessionId };
+  const { jwt, userId, claims } = await gateCaller(c, ["store"], {
+    session: true,
+  });
+  return { jwt, userId, sessionId: claims.session_id as string };
 }
 
 interface InstallationKey {
@@ -290,7 +287,14 @@ const enrollRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 413, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "invalid_input",
+      "installation_key_changed",
+      "payload_too_large",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -311,7 +315,12 @@ const leaseRoute = createRoute({
         },
       },
     },
-    ...errorResponses(401, 403, 409, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "installation_key_changed",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -337,7 +346,13 @@ const changesRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "invalid_input",
+      "epoch_changed",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -373,7 +388,14 @@ const operationsRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 413, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "invalid_input",
+      "epoch_changed",
+      "payload_too_large",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
