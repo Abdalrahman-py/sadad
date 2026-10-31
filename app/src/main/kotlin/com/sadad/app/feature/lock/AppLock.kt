@@ -156,14 +156,25 @@ class AppLock(
         result
       }
 
-  suspend fun lockout(): PinResult.LockedOut? {
-    var result: PinResult.LockedOut? = null
-    data.edit { saved ->
-      val remaining = remaining(saved)
-      if (remaining > 0) result = PinResult.LockedOut(remaining)
-    }
-    return result
-  }
+  /**
+   * A read: it takes the write lock only after a reboot, when the deadline must restart on the new
+   * clock. An expired deadline is left for the next [verifyPin] to clear.
+   */
+  suspend fun lockout(): PinResult.LockedOut? =
+      withContext(Dispatchers.IO) {
+        val saved = data.data.first()
+        val deadline = saved[DEADLINE] ?: return@withContext null
+        if (saved[BOOT] != bootCount()) {
+          var result: PinResult.LockedOut? = null
+          data.edit { latest ->
+            val remaining = remaining(latest)
+            if (remaining > 0) result = PinResult.LockedOut(remaining)
+          }
+          return@withContext result
+        }
+        val remaining = deadline - elapsedRealtime()
+        if (remaining > 0) PinResult.LockedOut(remaining) else null
+      }
 
   private fun remaining(saved: MutablePreferences): Long {
     val deadline = saved[DEADLINE] ?: return 0L
