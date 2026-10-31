@@ -5,7 +5,6 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.ledger.paymentGroups
 import com.sadad.app.export.MovementKind
@@ -26,8 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -114,7 +111,7 @@ internal fun historyMovements(
 /** The movement feed follows the current store; period and order survive recreation. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HistoryViewModel(
-    private val graph: AppGraph,
+    private val source: StatementSource,
     private val saved: SavedStateHandle,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
@@ -126,7 +123,7 @@ class HistoryViewModel(
   @Volatile private var currentView: LedgerView? = null
 
   private val rows: StateFlow<HistoryUiState> =
-      combine(view(), newestFirst, period, export) { view, newestFirst, period, export ->
+      combine(source.view, newestFirst, period, export) { view, newestFirst, period, export ->
             currentView = view
             HistoryUiState(
                 newestFirst = newestFirst,
@@ -180,7 +177,7 @@ class HistoryViewModel(
       return
     }
     export.update { it.copy(busy = true, saved = false, error = null) }
-    val account = graph.current.value?.account
+    val account = source.account()
     val header =
         StatementHeader(
             store =
@@ -216,9 +213,6 @@ class HistoryViewModel(
   fun consumeSaved() = export.update { it.copy(saved = false) }
 
   fun clearError() = export.update { it.copy(error = null) }
-
-  private fun view() =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
 
   private data class Export(
       val busy: Boolean = false,

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import com.sadad.app.contactRecords
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.people.PeopleFilter
 import com.sadad.app.feature.people.PeopleScreen
@@ -38,7 +39,7 @@ class PeopleA11yTest {
   private fun people(fontScale: Float) = compose.withStore { fixture ->
     awaiting { seedContacts(fixture) }
     val model =
-        PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+        PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
           fixture.closeWithStore(it.viewModelScope)
         }
     awaiting { model.state.first { it.registered > 0 } }
@@ -56,7 +57,7 @@ class PeopleA11yTest {
   fun theMenuSaysWhichFilterIsOnAndSwitchesWhenTapped() = compose.withStore { fixture ->
     awaiting { seedContacts(fixture) }
     val model =
-        PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+        PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
           fixture.closeWithStore(it.viewModelScope)
         }
     awaiting { model.state.first { it.registered > 0 } }

@@ -445,6 +445,8 @@ private fun historyViewModel(): HistoryViewModel {
   val graph = requireGraph()
   return viewModel(
       factory =
-          viewModelFactory { initializer { HistoryViewModel(graph, createSavedStateHandle()) } }
+          viewModelFactory {
+            initializer { HistoryViewModel(graph.statementSource(), createSavedStateHandle()) }
+          }
   )
 }

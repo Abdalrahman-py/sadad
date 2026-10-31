@@ -8,6 +8,7 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryTags
 import com.sadad.app.feature.history.HistoryViewModel
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.feature.reports.ReportPerson
 import com.sadad.app.feature.reports.ReportsContent
 import com.sadad.app.feature.reports.ReportsState
@@ -47,7 +48,7 @@ class ActivityA11yTest {
       repository.payDebt(debt, Cents(2000), PaymentMethod.CASH, null).getOrThrow()
       fixture.settleAll()
     }
-    val history = HistoryViewModel(fixture.graph, SavedStateHandle())
+    val history = HistoryViewModel(fixture.graph.statementSource(), SavedStateHandle())
     fixture.closeWithStore(history.viewModelScope)
     awaiting {
       history.state.first { it.loaded && it.movements.isNotEmpty() }

@@ -19,11 +19,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.contactRecords
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.contacts.ContactsTag
 import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactDetailSource
 import com.sadad.app.feature.contacts.contactId
 import com.sadad.app.feature.contacts.debt
 import com.sadad.app.feature.contacts.pageOf
@@ -115,7 +117,7 @@ class PeopleScreenTest {
     }
         .use { fixture ->
           val model =
-              PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+              PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
                 fixture.closeWithStore(it.viewModelScope)
               }
           compose.setContent {
@@ -143,7 +145,7 @@ class PeopleScreenTest {
     }
     fixture.use {
       val model =
-          PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+          PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent { SadadTheme { PeopleScreen(onOpenContact = {}, viewModel = model) } }
@@ -163,13 +165,14 @@ class PeopleScreenTest {
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val list =
-          PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+          PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       val detail =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       compose.setContent {
         val nav = rememberNavController()
         SadadTheme {

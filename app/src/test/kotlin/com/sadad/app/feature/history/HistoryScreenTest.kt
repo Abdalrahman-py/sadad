@@ -123,7 +123,7 @@ class HistoryScreenTest {
               fixture.settleAll()
             }
           }
-          val history = HistoryViewModel(fixture.graph, SavedStateHandle(), clock)
+          val history = HistoryViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
           fixture.closeWithStore(history.viewModelScope)
           runBlocking {
             history.state.first { it.loaded && (!seed || it.movements.size == 3) }

@@ -1,6 +1,7 @@
 package com.sadad.app.feature.quickadd
 
 import com.sadad.app.AppGraph
+import com.sadad.app.permissions
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
@@ -50,17 +51,7 @@ fun AppGraph.quickAddSource(): QuickAddSource {
     override val view: Flow<LedgerView?> =
         graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
 
-    override val permissions: Flow<Map<String, Boolean>> =
-        graph.current.flatMapLatest { scope ->
-          val storeUserId = scope?.account?.storeUserId
-          graph.accounts.accounts.map { accounts ->
-            accounts
-                .firstOrNull { it.storeUserId == storeUserId }
-                ?.installation
-                ?.permissions
-                .orEmpty()
-          }
-        }
+    override val permissions: Flow<Map<String, Boolean>> = graph.permissions()
 
     /**
      * Only an unapproved device is barred: the lease gates the send, which is the sync pass's call,

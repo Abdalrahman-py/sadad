@@ -6,13 +6,13 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.export.StatementExport
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.export.StatementHeader
 import com.sadad.app.feature.history.Period
 import com.sadad.app.feature.history.PeriodPreset
+import com.sadad.app.feature.history.StatementSource
 import com.sadad.app.feature.history.bounds
 import com.sadad.app.feature.history.encoded
 import com.sadad.app.feature.history.periodLabel
@@ -25,13 +25,10 @@ import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -48,7 +45,7 @@ typealias PdfWriterCall =
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReportsViewModel(
-    private val graph: AppGraph,
+    private val source: StatementSource,
     private val saved: SavedStateHandle,
     private val clock: Clock = Clock.systemDefaultZone(),
     /** Writes one Contact's PDF; a seam because Robolectric's `PdfDocument` cannot draw pages. */
@@ -65,7 +62,7 @@ class ReportsViewModel(
   init {
     viewModelScope.launch {
       val base =
-          combine(view(), period) { view, period ->
+          combine(source.view, period) { view, period ->
             if (view == null) ReportBase(null, period, ReportTotals(), emptySet(), emptyMap())
             else reportBaseOf(view, period, clock.zone)
           }
@@ -111,7 +108,7 @@ class ReportsViewModel(
    */
   fun canExport(context: Context): Boolean {
     if (state.value.busy) return false
-    val view = graph.current.value?.repository?.view?.value
+    val view = source.latest()?.view
     val message =
         when {
           view == null -> R.string.reports_export_failed
@@ -220,14 +217,14 @@ class ReportsViewModel(
   private fun prepare(context: Context, contactId: String?): Request? {
     if (state.value.busy) return null
     // One scope for the view and the header: a store switch must not mix two stores.
-    val scope = graph.current.value
-    val view = scope?.repository?.view?.value
-    if (view == null) return refuse(context, R.string.reports_export_failed)
+    val latest = source.latest()
+    val view = latest?.view
+    if (latest == null || view == null) return refuse(context, R.string.reports_export_failed)
     if (view.contacts.none { contactId == null || it.id == contactId }) {
       return refuse(context, R.string.reports_nothing_to_export)
     }
     mutable.update { it.copy(busy = true, error = null, saved = false) }
-    val account = scope.account
+    val account = latest.account
     val period = period.value
     val bounds = period.bounds(clock.zone)
     val header =
@@ -256,9 +253,6 @@ class ReportsViewModel(
       it.copy(busy = false, error = context.getString(message), saved = false)
     }
   }
-
-  private fun view(): Flow<LedgerView?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
 
   private companion object {
     const val PERIOD = "reports:period"

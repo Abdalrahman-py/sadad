@@ -35,7 +35,7 @@ class HistoryViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
   private fun model(fixture: TestGraph, saved: SavedStateHandle = SavedStateHandle()) =
-      HistoryViewModel(fixture.graph, saved, clock).also {
+      HistoryViewModel(fixture.graph.statementSource(), saved, clock).also {
         fixture.closeWithStore(it.viewModelScope)
       }
 

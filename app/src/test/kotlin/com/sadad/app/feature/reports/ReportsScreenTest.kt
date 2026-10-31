@@ -20,6 +20,7 @@ import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.HistoryTags
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.components.formatCents
@@ -235,7 +236,7 @@ class ReportsScreenTest {
                 )
             )
           }
-          val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+          val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
           fixture.closeWithStore(model.viewModelScope)
           runBlocking { model.state.first { it.loaded } }
 
