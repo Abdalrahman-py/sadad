@@ -8,9 +8,15 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,6 +25,23 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class LedgerRepositoryTest : LedgerTestCase() {
+
+  @Test
+  fun theViewStaysNullUntilTheRowsAreLoaded() = runTest {
+    val repo = repository()
+
+    withContext(Dispatchers.Default) {
+      // Real time: by now the outbox and the staff name have emitted, only the rows are missing.
+      delay(300)
+      assertNull(repo.view.value)
+
+      repo.load()
+      withTimeout(5_000) {
+        repo.awaitLoaded()
+        repo.view.first { it != null }
+      }
+    }
+  }
 
   @Test
   fun firstContactWithALocalPhoneCannotQueueAnInvalidPersonAndItsDebt() = runTest {
