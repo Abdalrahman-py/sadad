@@ -90,31 +90,49 @@ enum class SettingsOutcome {
   NEEDS_LOGIN
 }
 
-data class SettingsState(
-    val loaded: Boolean = false,
+/** What the store card reads: the open store's profile and the stores the switcher lists. */
+data class StoreSlice(
     val storeName: String = "",
     val ownerName: String = "",
-    val theme: ThemeChoice = ThemeChoice.SYSTEM,
-    val exportPeriod: ExportPeriod =
-        ExportPeriod.Preset(com.sadad.app.feature.history.PeriodPreset.MONTH),
+    val accounts: List<SavedStore> = emptyList(),
+)
+
+/** What the devices section reads: the sync line and what is waiting to be sent. */
+data class DevicesSlice(
     val sync: SyncLine = SyncLine.Idle,
     /** Entries queued on this phone and not yet accepted by the server. */
     val unsent: Int = 0,
     /** The newest of those entries, for the status row's second line. */
     val newest: QueuedEntry? = null,
-    /** What the trash holds: archived Contacts and dismissed reminders this phone still lists. */
-    val trashCount: Int = 0,
-    /** This device's `permissions` allow the trash's actions (Q6/Q20). */
-    val canDelete: Boolean = true,
+)
+
+data class SecuritySlice(
     /** The phone has an enrolled fingerprint or face. */
     val biometricAvailable: Boolean = false,
     /** The lock applies: it is on and a PIN exists. */
     val lockOn: Boolean = false,
     val pinSet: Boolean = false,
     val biometricEnabled: Boolean = false,
+)
+
+data class DataSlice(
+    /** What the trash holds: archived Contacts and dismissed reminders this phone still lists. */
+    val trashCount: Int = 0,
+    /** This device's `permissions` allow the trash's actions (Q6/Q20). */
+    val canDelete: Boolean = true,
+    val exportPeriod: ExportPeriod = ExportPeriod.Preset(PeriodPreset.MONTH),
+)
+
+/** The module slices side by side, plus what the modules share: dialogs, errors and outcomes. */
+data class SettingsState(
+    val loaded: Boolean = false,
+    val store: StoreSlice = StoreSlice(),
+    val devices: DevicesSlice = DevicesSlice(),
+    val security: SecuritySlice = SecuritySlice(),
+    val data: DataSlice = DataSlice(),
+    val theme: ThemeChoice = ThemeChoice.SYSTEM,
     /** A document, sign-out or removal is running; the buttons wait for it. */
     val busy: Boolean = false,
-    val accounts: List<SavedStore> = emptyList(),
     val pending: Pending? = null,
     val pinError: PinError? = null,
     val error: SettingsError? = null,

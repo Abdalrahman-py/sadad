@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /** The fixed clock the settings tests share: zone `Asia/Gaza`, 17 October 2026. */
 internal val settingsZone: ZoneId = ZoneId.of("Asia/Gaza")
@@ -73,6 +74,8 @@ internal class SettingsKit(private val fixture: TestGraph) : AutoCloseable {
             clock = settingsClock,
             biometricAvailable = { biometricAvailable },
             syncStatus = syncStatus ?: fixture.graph::syncStatus,
+            reminders = { flowOf(emptyList()) },
+            hiddenTrash = { flowOf(emptySet()) },
         )
     fixture.closeWithStore(model.viewModelScope)
     return model

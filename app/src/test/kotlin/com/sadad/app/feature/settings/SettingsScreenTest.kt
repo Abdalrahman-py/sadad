@@ -32,6 +32,7 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -93,11 +94,11 @@ class SettingsScreenTest {
       val switched = runBlocking {
         withTimeoutOrNull(10_000) {
           model.state.first { state ->
-            state.accounts.firstOrNull { it.active }?.storeUserId == STORE_A
+            state.store.accounts.firstOrNull { it.active }?.storeUserId == STORE_A
           }
         }
       }
-      assertEquals(STORE_A, switched?.accounts?.firstOrNull { it.active }?.storeUserId)
+      assertEquals(STORE_A, switched?.store?.accounts?.firstOrNull { it.active }?.storeUserId)
     }
   }
 
@@ -374,7 +375,8 @@ class SettingsScreenTest {
               }
             }
             val model = kit.viewModel(biometricAvailable = sensor)
-            runBlocking { model.state.first { it.loaded } }
+            // Bounded: a module flow that never emits fails here instead of hanging the job.
+            runBlocking { withTimeout(10_000) { model.state.first { it.loaded } } }
             val nav = Nav()
             compose.setContent {
               SadadTheme {
