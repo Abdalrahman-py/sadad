@@ -311,7 +311,11 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.devices.unsent == 2 }
+        val state = // Rows emit before the view is recomputed: wait for the name, not just the
+                    // count.
+            model.state.first {
+              it.loaded && it.devices.unsent == 2 && it.devices.newest?.name?.isNotEmpty() == true
+            }
 
         assertEquals(2, state.devices.unsent)
         assertEquals(
@@ -336,7 +340,11 @@ class SettingsViewModelTest {
         fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.devices.unsent == 1 }
+        val state = // Rows emit before the view is recomputed: wait for the name, not just the
+                    // count.
+            model.state.first {
+              it.loaded && it.devices.unsent == 1 && it.devices.newest?.name?.isNotEmpty() == true
+            }
 
         assertEquals(QueuedEntry(QueuedKind.PAYMENT, "سامي", Cents(2_000)), state.devices.newest)
       }

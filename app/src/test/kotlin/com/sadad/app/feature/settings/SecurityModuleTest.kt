@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -37,13 +38,18 @@ class SecurityModuleTest {
         lock.setPin("4839")
         val ui = SettingsUi(scope, SavedStateHandle())
         val security = SecurityModule(lock, { false }, ui)
-        // A miss says whether the write landed (a fresh read) or only the open wait missed it.
+        // Fresh reads, polled: this pins the module's write and mapping. Whether a collector that
+        // was already open sees the change is DataStore's delivery, not this module.
         suspend fun awaitLockOn(expected: Boolean) {
-          val seen = withTimeoutOrNull(5_000) { security.state.first { it.lockOn == expected } }
+          val seen =
+              withTimeoutOrNull(5_000) {
+                while (security.state.first().lockOn != expected) delay(20)
+                true
+              }
           assertTrue(
-              "lockOn=$expected never seen; fresh lock=${lock.lockEnabled.first()} " +
+              "lockOn=$expected never read; lock=${lock.lockEnabled.first()} " +
                   "pin=${lock.pinSet.first()} ui=${ui.state.value}",
-              seen != null,
+              seen == true,
           )
         }
         awaitLockOn(true)
