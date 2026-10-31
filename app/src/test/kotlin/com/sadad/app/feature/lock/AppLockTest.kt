@@ -1,12 +1,20 @@
 package com.sadad.app.feature.lock
 
 import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -50,6 +58,102 @@ class AppLockTest {
       assertEquals(PinResult.Ok, lock.verifyPin("1234"))
       repeat(4) { lock.verifyPin("9999") }
       assertEquals(PinResult.LockedOut(30_000L), lock.verifyPin("9999"))
+    } finally {
+      scope.cancel()
+    }
+  }
+
+  /**
+   * A fast stand-in for PBKDF2 that parks the thread, so a test controls how long "deriving" takes.
+   */
+  private fun fakeDerive(onDerive: (String) -> Unit): (String, ByteArray) -> ByteArray =
+      { pin, salt ->
+        onDerive(pin)
+        MessageDigest.getInstance("SHA-256").digest(salt + pin.toByteArray())
+      }
+
+  @Test
+  fun aPinCheckDoesNotHoldTheWriteLockWhileItDerives() = runBlocking {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val armed = AtomicBoolean(false)
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    try {
+      val derive = fakeDerive {
+        if (armed.get()) {
+          entered.countDown()
+          release.await(10, TimeUnit.SECONDS)
+        }
+      }
+      val lock =
+          AppLock({ File(temporary.root, "derive.preferences_pb") }, scope, { 0L }, { 1 }, derive)
+      lock.setPin("1234")
+      armed.set(true)
+      val check = async(Dispatchers.IO) { lock.verifyPin("1234") }
+      assertTrue(entered.await(10, TimeUnit.SECONDS))
+      assertTrue(withTimeout(5_000) { lock.lockEnabled.first() })
+      release.countDown()
+      assertEquals(PinResult.Ok, check.await())
+    } finally {
+      release.countDown()
+      scope.cancel()
+    }
+  }
+
+  @Test
+  fun aCorrectPinCannotResetALockoutThatStartedWhileItDerived() = runBlocking {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val armed = AtomicBoolean(false)
+    val entered = CountDownLatch(1)
+    val release = CountDownLatch(1)
+    try {
+      val derive = fakeDerive { pin ->
+        if (armed.get() && pin == "1234") {
+          entered.countDown()
+          release.await(10, TimeUnit.SECONDS)
+        }
+      }
+      val lock =
+          AppLock(
+              { File(temporary.root, "late.preferences_pb") },
+              scope,
+              { 100_000L },
+              { 1 },
+              derive,
+          )
+      lock.setPin("1234")
+      armed.set(true)
+      val correct = async(Dispatchers.IO) { lock.verifyPin("1234") }
+      assertTrue(entered.await(10, TimeUnit.SECONDS))
+      repeat(4) { lock.verifyPin("9999") }
+      assertEquals(PinResult.LockedOut(30_000L), lock.verifyPin("9999"))
+      release.countDown()
+      assertEquals(PinResult.LockedOut(30_000L), correct.await())
+      assertEquals(PinResult.LockedOut(30_000L), lock.lockout())
+    } finally {
+      release.countDown()
+      scope.cancel()
+    }
+  }
+
+  @Test
+  fun twoWrongPinsDerivingAtTheSameTimeCountAsTwoFailures() = runBlocking {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val armed = AtomicBoolean(false)
+    val bothDeriving = CyclicBarrier(2)
+    try {
+      val derive = fakeDerive { if (armed.get()) bothDeriving.await(10, TimeUnit.SECONDS) }
+      val lock =
+          AppLock({ File(temporary.root, "pair.preferences_pb") }, scope, { 0L }, { 1 }, derive)
+      lock.setPin("1234")
+      armed.set(true)
+      val results =
+          listOf(
+                  async(Dispatchers.IO) { lock.verifyPin("9999") },
+                  async(Dispatchers.IO) { lock.verifyPin("8888") },
+              )
+              .awaitAll()
+      assertEquals(setOf(PinResult.Wrong(4), PinResult.Wrong(3)), results.toSet())
     } finally {
       scope.cancel()
     }
