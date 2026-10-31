@@ -3,8 +3,10 @@ package com.sadad.app.feature.auth
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.testAccount
 import com.sadad.app.ui.AwaitingApproval
 import com.sadad.app.ui.PasswordChange
 import kotlinx.coroutines.flow.first
@@ -60,6 +62,28 @@ class LoginViewModelTest {
       val state = model.state.first { !it.busy && it.destination != null }
       assertEquals(AwaitingApproval, state.destination)
       assertEquals(STORE_A, fixture.graph.accounts.file().activeStoreUserId)
+      // Navigation waited for the token only, not for the Keystore, Room and the ledger load.
+      assertNull(fixture.graph.current.value)
+    }
+  }
+
+  @Test
+  fun aStoreThatFailsToOpenShowsAnErrorAndKeepsTheSessionForARetry() = runTest {
+    TestGraph.unsigned().use { fixture ->
+      // An active installation whose key is gone: the token is fine, opening the store is not.
+      fixture.graph.accounts.add(
+          testAccount(STORE_A).copy(installation = StoredInstallation("active", generation = 1))
+      )
+      fixture.enqueueSession(STORE_A)
+      val model = viewModel(fixture)
+      model.onUsernameChange("store-a")
+      model.onPasswordChange("password-store-a")
+
+      model.signIn()
+
+      val state = model.state.first { !it.busy && it.error != null }
+      assertNull(state.destination)
+      assertEquals("refresh-$STORE_A", fixture.graph.accounts.refreshToken(STORE_A))
     }
   }
 
