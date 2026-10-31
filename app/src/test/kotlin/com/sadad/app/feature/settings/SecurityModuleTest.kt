@@ -10,6 +10,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -34,14 +35,19 @@ class SecurityModuleTest {
       try {
         val lock = AppLock(File(temporary.root, "lock.preferences_pb"), scope, { 0L }, { 1 })
         lock.setPin("4839")
-        val security = SecurityModule(lock, { false }, SettingsUi(scope, SavedStateHandle()))
+        val ui = SettingsUi(scope, SavedStateHandle())
+        val security = SecurityModule(lock, { false }, ui)
         assertTrue(security.state.first().lockOn)
 
         security.setLockEnabled(false)
         assertFalse(security.state.first { !it.lockOn }.lockOn)
 
         security.setLockEnabled(true)
-        assertTrue(security.state.first { it.lockOn }.lockOn)
+        val on = withTimeoutOrNull(5_000) { security.state.first { it.lockOn } }
+        assertTrue(
+            "lock=${lock.lockEnabled.first()} pin=${lock.pinSet.first()} ui=${ui.state.value}",
+            on?.lockOn == true,
+        )
       } finally {
         scope.cancel()
       }
