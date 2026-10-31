@@ -1,7 +1,7 @@
 import { html, nothing } from "lit-html";
 import type { StoreRow } from "../api";
 import { fmt, money } from "../format";
-import { type Actions, canWrite, type Model, STORE_FILTERS } from "../model";
+import { canWrite, type Model, STORE_FILTERS, type StoresActions } from "../model";
 import {
   arabicCount,
   matchesFilter,
@@ -44,7 +44,7 @@ const row = (store: StoreRow) => {
   `;
 };
 
-export function storesView(model: Model, actions: Actions) {
+export function storesView(model: Model, actions: StoresActions) {
   const page = model.stores;
   const counts = (filter: (typeof STORE_FILTERS)[number][0]) =>
     page.rows.filter((store) => matchesFilter(store, filter)).length;

@@ -1,7 +1,7 @@
 import { html, nothing } from "lit-html";
 import type { StoreDetail } from "../api";
 import { dateTime, fmt, money } from "../format";
-import type { Actions, RecoveryState } from "../model";
+import type { RecoveryActions, RecoveryState } from "../model";
 import { inspectManifest } from "../recovery-manifest";
 import { metric } from "./common";
 
@@ -100,7 +100,7 @@ export function recoveryView(
   detail: StoreDetail,
   state: RecoveryState,
   write: boolean,
-  actions: Actions,
+  actions: RecoveryActions,
 ) {
   const { active, old } = recoveryChoices(detail);
   const permitted = active.length > 0 && old.length > 0 && !detail.store.archived;
