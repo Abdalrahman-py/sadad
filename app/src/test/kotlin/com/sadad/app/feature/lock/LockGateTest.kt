@@ -54,13 +54,18 @@ class LockGateTest {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val owner = TestOwner()
   private var now = 100_000L
+  private var bootReads = 0
 
   @After fun close() = scope.cancel()
 
   private fun lockWithPin(): AppLock =
-      AppLock(File(temporary.root, "lock.preferences_pb"), scope, { now }, { 1 }).also {
-        runBlocking { it.setPin("1234") }
-      }
+      AppLock(
+              File(temporary.root, "lock.preferences_pb"),
+              scope,
+              { now },
+              { 1.also { bootReads++ } },
+          )
+          .also { runBlocking { it.setPin("1234") } }
 
   private fun show(
       lock: AppLock,
@@ -191,6 +196,19 @@ class LockGateTest {
     show(lockWithPin())
     waitFor(LOCKED)
     compose.onNodeWithTag(LockTag.key("0")).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun aLockoutCountsDownWithoutReadingTheLockAgain() {
+    val lock = lockWithPin()
+    runBlocking { repeat(5) { lock.verifyPin("9999") } }
+    show(lock)
+    waitFor("محاولات كثيرة؛ انتظر 30 ثانية.")
+    val reads = bootReads
+    compose.mainClock.autoAdvance = false
+    compose.mainClock.advanceTimeBy(3_000)
+    waitFor("محاولات كثيرة؛ انتظر 27 ثانية.")
+    assertEquals(reads, bootReads)
   }
 
   @Test
