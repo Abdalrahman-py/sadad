@@ -50,6 +50,8 @@ class LoginViewModel(
       try {
         // A pasted or autocorrected space at either end is never part of the credential.
         graph.sessions.signIn(current.username.trim(), current.password.trim())
+        // Only the route that shows the ledger (Home) opens the store here; approval and the
+        // password change navigate on the token alone.
         mutable.update { it.copy(busy = false, destination = graph.startRoute()) }
       } catch (refused: ApiException) {
         val text =
@@ -60,6 +62,13 @@ class LoginViewModel(
             }
         mutable.update { it.copy(busy = false, error = text) }
       } catch (_: IOException) {
+        mutable.update {
+          it.copy(busy = false, error = graph.errorMessages.text("temporary_service_failure"))
+        }
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        // The session is stored and only opening the store failed: signing in again retries.
         mutable.update {
           it.copy(busy = false, error = graph.errorMessages.text("temporary_service_failure"))
         }
