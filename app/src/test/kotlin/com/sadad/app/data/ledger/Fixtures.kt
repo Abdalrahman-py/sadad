@@ -111,8 +111,7 @@ fun paymentAmount(row: OutboxRow): Long = (row.command.payload() as PaymentCreat
 
 class FakeSession(var origin: Origin? = Events.origin) : RepositorySession {
   override val selfInstallationId: String = Events.INSTALLATION_ID
-  val staffNames = MutableStateFlow("سامي")
-  override val staffName: Flow<String> = staffNames
+  override val staffName: Flow<String> = MutableStateFlow("سامي")
   var online = true
   var offline = true
   var queued = 0

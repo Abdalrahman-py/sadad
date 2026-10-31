@@ -121,12 +121,10 @@ class LedgerRepository(
             contactRecords(project(current, rows, staff), rows)
           }
           .flowOn(Dispatchers.Default)
-          .stateIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+          .stateIn(scope, SharingStarted.Eagerly, null)
 
   val view: StateFlow<LedgerView?> =
-      contactRecords
-          .map { it?.ledger }
-          .stateIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
+      contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
 
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
@@ -444,9 +442,6 @@ class LedgerRepository(
       }
 
   private companion object {
-    /** Long enough that a rotation or a quick screen change does not stop the projection. */
-    const val STOP_TIMEOUT_MS = 5_000L
-
     /** Commands that advance a Contact's version on the server. */
     val EDITS =
         setOf(CommandType.CONTACT_UPDATE, CommandType.CONTACT_ARCHIVE, CommandType.CONTACT_RESTORE)
