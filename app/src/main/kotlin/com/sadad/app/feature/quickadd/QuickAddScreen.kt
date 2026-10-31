@@ -106,6 +106,7 @@ object QuickAddTags {
   const val PEOPLE = "quickadd:people"
   const val ADD_NEW = "quickadd:add-new"
   const val BLOCKED = "quickadd:blocked"
+  const val QUEUED = "quickadd:queued"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
   const val ERROR = "quickadd:error"
@@ -353,15 +354,6 @@ private fun BlockedCard() {
             stringResource(R.string.quickadd_blocked_body),
             fontSize = 12.sp,
             color = p.muted,
-        )
-      }
-      Surface(color = p.card, shape = RoundedCornerShape(10.dp)) {
-        Text(
-            stringResource(R.string.quickadd_reconnect),
-            color = if (p.isDark) p.accent else p.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         )
       }
     }
@@ -932,6 +924,16 @@ private fun DoneStep(
           )
         }
       }
+    }
+
+    if (done.offline) {
+      Text(
+          stringResource(R.string.quickadd_done_offline),
+          fontSize = 13.sp,
+          color = p.muted,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.QUEUED),
+      )
     }
 
     // Once the entry is queued there is nothing to undo here, so the offer goes away with it.
