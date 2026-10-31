@@ -38,18 +38,18 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.editProfile()
-        model.onProfileChange(storeName = "متجر سامي", ownerName = "سامي")
-        model.saveProfile()
+        model.store.editProfile(model.state.value.store)
+        model.store.onProfileChange(storeName = "متجر سامي", ownerName = "سامي")
+        model.store.saveProfile()
 
-        model.state.first { it.pending == null && it.storeName == "متجر سامي" }
+        model.state.first { it.pending == null && it.store.storeName == "متجر سامي" }
         val account = checkNotNull(fixture.graph.accounts.account(STORE_A))
         assertEquals("متجر سامي", account.storeName)
         assertEquals("سامي", account.ownerName)
         val recreated = kit.viewModel()
-        val state = recreated.state.first { it.loaded && it.storeName.isNotEmpty() }
-        assertEquals("متجر سامي", state.storeName)
-        assertEquals("سامي", state.ownerName)
+        val state = recreated.state.first { it.loaded && it.store.storeName.isNotEmpty() }
+        assertEquals("متجر سامي", state.store.storeName)
+        assertEquals("سامي", state.store.ownerName)
       }
     }
   }
@@ -61,8 +61,8 @@ class SettingsViewModelTest {
         val saved = SavedStateHandle()
         val model = kit.viewModel(saved)
         model.state.first { it.loaded }
-        model.editProfile()
-        model.onProfileChange(storeName = "متجر ل", ownerName = "")
+        model.store.editProfile(model.state.value.store)
+        model.store.onProfileChange(storeName = "متجر ل", ownerName = "")
 
         val recreated = kit.viewModel(saved)
         val state = recreated.state.first { it.loaded && it.pending is Pending.Profile }
@@ -79,7 +79,7 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         assertEquals(ThemeChoice.SYSTEM, model.state.first { it.loaded }.theme)
 
-        model.setTheme(ThemeChoice.DARK)
+        model.appearance.setTheme(ThemeChoice.DARK)
 
         model.state.first { it.theme == ThemeChoice.DARK }
         assertEquals("settings.preferences_pb", ThemePreference.FILE_NAME)
@@ -95,11 +95,11 @@ class SettingsViewModelTest {
         val status = MutableStateFlow<SyncStatus>(SyncStatus.Failed("store_suspended"))
         val model = kit.viewModel(syncStatus = { status })
 
-        val state = model.state.first { it.loaded && it.sync is SyncLine.Failed }
+        val state = model.state.first { it.loaded && it.devices.sync is SyncLine.Failed }
 
         val text = fixture.graph.errorMessages.text("store_suspended")
         assertEquals("المتجر موقوف؛ حُفظت الإدخالات المعلقة.", text)
-        assertEquals(SyncLine.Failed(text), state.sync)
+        assertEquals(SyncLine.Failed(text), state.devices.sync)
       }
     }
   }
@@ -125,7 +125,10 @@ class SettingsViewModelTest {
 
         for ((source, line) in expected) {
           status.value = source
-          assertEquals(line, model.state.first { it.loaded && it.sync == line }.sync)
+          assertEquals(
+              line,
+              model.state.first { it.loaded && it.devices.sync == line }.devices.sync,
+          )
         }
       }
     }
@@ -138,11 +141,11 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.setLockEnabled(true)
+        model.security.setLockEnabled(true)
 
         assertEquals(Pending.SetPin, model.state.first { it.pending != null }.pending)
         assertFalse(kit.lock.hasPin())
-        assertFalse(model.state.value.lockOn)
+        assertFalse(model.state.value.security.lockOn)
       }
     }
   }
@@ -153,12 +156,12 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.setLockEnabled(true)
+        model.security.setLockEnabled(true)
         model.state.first { it.pending == Pending.SetPin }
 
-        model.savePin("12", "12")
+        model.security.savePin("12", "12")
         assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
-        model.savePin("4839", "4838")
+        model.security.savePin("4839", "4838")
         assertEquals(
             PinError.MISMATCH,
             model.state.first { it.pinError == PinError.MISMATCH }.pinError,
@@ -176,12 +179,12 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.setLockEnabled(true)
+        model.security.setLockEnabled(true)
         model.state.first { it.pending == Pending.SetPin }
 
-        model.savePin("4839", "4839")
+        model.security.savePin("4839", "4839")
 
-        val state = model.state.first { it.pending == null && it.lockOn }
+        val state = model.state.first { it.pending == null && it.security.lockOn }
         assertTrue(kit.lock.hasPin())
         assertNull(state.pinError)
       }
@@ -194,11 +197,11 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         kit.lock.setPin("4839")
         val model = kit.viewModel()
-        model.state.first { it.loaded && it.lockOn }
+        model.state.first { it.loaded && it.security.lockOn }
 
-        model.setLockEnabled(false)
+        model.security.setLockEnabled(false)
 
-        model.state.first { !it.lockOn }
+        model.state.first { !it.security.lockOn }
         assertTrue(kit.lock.hasPin())
       }
     }
@@ -210,18 +213,18 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         val without = kit.viewModel(biometricAvailable = false)
         without.state.first { it.loaded }
-        without.setBiometric(true)
+        without.security.setBiometric(true)
         assertFalse(kit.lock.biometricEnabled.first())
 
         val withSensor = kit.viewModel(biometricAvailable = true)
         withSensor.state.first { it.loaded }
-        withSensor.setBiometric(true)
+        withSensor.security.setBiometric(true)
         assertEquals(Pending.SetPin, withSensor.state.first { it.pending != null }.pending)
 
         kit.lock.setPin("4839")
-        withSensor.dismiss()
-        withSensor.setBiometric(true)
-        withSensor.state.first { it.biometricEnabled }
+        withSensor.ui.dismiss()
+        withSensor.security.setBiometric(true)
+        withSensor.state.first { it.security.biometricEnabled }
         assertTrue(kit.lock.biometricEnabled.first())
       }
     }
@@ -234,15 +237,15 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         assertEquals(
             ExportPeriod.Preset(PeriodPreset.MONTH),
-            model.state.first { it.loaded }.exportPeriod,
+            model.state.first { it.loaded }.data.exportPeriod,
         )
 
-        model.selectPreset(PeriodPreset.YEAR)
-        model.state.first { it.exportPeriod == ExportPeriod.Preset(PeriodPreset.YEAR) }
-        model.selectCustom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
+        model.data.selectPreset(PeriodPreset.YEAR)
+        model.state.first { it.data.exportPeriod == ExportPeriod.Preset(PeriodPreset.YEAR) }
+        model.data.selectCustom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
 
         val custom = ExportPeriod.Custom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
-        model.state.first { it.exportPeriod == custom }
+        model.state.first { it.data.exportPeriod == custom }
         assertEquals(custom, kit.preferences.exportPeriod.first())
       }
     }
@@ -255,7 +258,7 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.downloadLatest()
+        model.devices.downloadLatest()
 
         assertEquals(listOf(STORE_A), kit.recording.syncNow)
       }
@@ -269,7 +272,7 @@ class SettingsViewModelTest {
         fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
         val model = kit.viewModel()
 
-        assertEquals(1, model.state.first { it.loaded && it.unsent == 1 }.unsent)
+        assertEquals(1, model.state.first { it.loaded && it.devices.unsent == 1 }.devices.unsent)
       }
     }
   }
@@ -281,14 +284,14 @@ class SettingsViewModelTest {
         val saved = SavedStateHandle()
         val model = kit.viewModel(saved)
         model.state.first { it.loaded }
-        model.requestPin()
+        model.security.requestPin()
         model.state.first { it.pending == Pending.SetPin }
 
         for (pin in listOf("12345", "1234567890123", "12a4")) {
-          model.savePin(pin, pin)
+          model.security.savePin(pin, pin)
           assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
         }
-        model.savePin("4839", "4839")
+        model.security.savePin("4839", "4839")
         model.state.first { it.pending == null }
 
         assertTrue(kit.lock.hasPin())
@@ -308,10 +311,13 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.unsent == 2 }
+        val state = model.state.first { it.loaded && it.devices.unsent == 2 }
 
-        assertEquals(2, state.unsent)
-        assertEquals(QueuedEntry(QueuedKind.DEBT, "سارة محمود", Cents(12_000)), state.newest)
+        assertEquals(2, state.devices.unsent)
+        assertEquals(
+            QueuedEntry(QueuedKind.DEBT, "سارة محمود", Cents(12_000)),
+            state.devices.newest,
+        )
       }
     }
   }
@@ -330,9 +336,9 @@ class SettingsViewModelTest {
         fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.unsent == 1 }
+        val state = model.state.first { it.loaded && it.devices.unsent == 1 }
 
-        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "سامي", Cents(2_000)), state.newest)
+        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "سامي", Cents(2_000)), state.devices.newest)
       }
     }
   }
@@ -346,10 +352,10 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.unsent == 3 }
+        val state = model.state.first { it.loaded && it.devices.unsent == 3 }
 
-        assertEquals(3, state.unsent)
-        assertEquals(QueuedEntry(QueuedKind.CONTACT_NEW, "شخص 2", null), state.newest)
+        assertEquals(3, state.devices.unsent)
+        assertEquals(QueuedEntry(QueuedKind.CONTACT_NEW, "شخص 2", null), state.devices.newest)
       }
     }
   }
@@ -364,8 +370,8 @@ class SettingsViewModelTest {
 
         val state = model.state.first { it.loaded }
 
-        assertEquals(0, state.unsent)
-        assertNull(state.newest)
+        assertEquals(0, state.devices.unsent)
+        assertNull(state.devices.newest)
       }
     }
   }
@@ -377,7 +383,7 @@ class SettingsViewModelTest {
         val status = MutableStateFlow<SyncStatus>(SyncStatus.Offline)
         val model = kit.viewModel(syncStatus = { status })
 
-        assertEquals(SyncLine.Offline, model.state.first { it.loaded }.sync)
+        assertEquals(SyncLine.Offline, model.state.first { it.loaded }.devices.sync)
       }
     }
   }
@@ -393,7 +399,7 @@ class SettingsViewModelTest {
         fixture.settleAll()
         val model = kit.viewModel()
 
-        assertEquals(1, model.state.first { it.loaded && it.trashCount == 1 }.trashCount)
+        assertEquals(1, model.state.first { it.loaded && it.data.trashCount == 1 }.data.trashCount)
       }
     }
   }
@@ -414,7 +420,7 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        assertFalse(model.state.first { it.loaded && !it.canDelete }.canDelete)
+        assertFalse(model.state.first { it.loaded && !it.data.canDelete }.data.canDelete)
       }
     }
   }
@@ -424,10 +430,18 @@ class SettingsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
         assertFalse(
-            kit.viewModel(biometricAvailable = false).state.first { it.loaded }.biometricAvailable
+            kit.viewModel(biometricAvailable = false)
+                .state
+                .first { it.loaded }
+                .security
+                .biometricAvailable
         )
         assertTrue(
-            kit.viewModel(biometricAvailable = true).state.first { it.loaded }.biometricAvailable
+            kit.viewModel(biometricAvailable = true)
+                .state
+                .first { it.loaded }
+                .security
+                .biometricAvailable
         )
       }
     }
@@ -449,14 +463,14 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.downloadLatest()
+        model.devices.downloadLatest()
 
         val state = model.state.first { it.error != null }
         assertEquals(SettingsError.ACTION_FAILED, state.error)
         assertFalse(state.busy)
 
         // A later action that works clears the old failure.
-        model.setTheme(ThemeChoice.DARK)
+        model.appearance.setTheme(ThemeChoice.DARK)
         assertNull(model.state.first { it.theme == ThemeChoice.DARK }.error)
       }
     }

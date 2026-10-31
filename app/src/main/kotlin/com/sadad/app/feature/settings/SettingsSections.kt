@@ -85,15 +85,15 @@ import kotlinx.coroutines.withContext
  */
 
 internal fun LazyListScope.storeCard(
-    state: SettingsState,
-    model: SettingsViewModel,
+    store: StoreSlice,
+    commands: StoreModule,
     storesOpen: Boolean,
     onToggleStores: () -> Unit,
     onOpenPhoto: () -> Unit,
     onAddStore: () -> Unit,
     onPickStore: () -> Unit,
 ) {
-  val open = state.accounts.firstOrNull { it.active }?.storeUserId
+  val open = store.accounts.firstOrNull { it.active }?.storeUserId
   item {
     val p = sadadPalette
     BoardCard(radius = 18.dp) {
@@ -109,7 +109,7 @@ internal fun LazyListScope.storeCard(
                 Modifier.weight(1f)
                     .heightIn(min = 48.dp)
                     .clickable(onClickLabel = description, role = Role.Button) {
-                      model.editProfile()
+                      commands.editProfile(store)
                     }
                     .semantics(mergeDescendants = true) {}
                     .testTag(SettingsTags.PROFILE)
@@ -117,7 +117,7 @@ internal fun LazyListScope.storeCard(
             verticalArrangement = Arrangement.Center,
         ) {
           Text(
-              text = state.storeName.ifBlank { stringResource(R.string.settings_default_store) },
+              text = store.storeName.ifBlank { stringResource(R.string.settings_default_store) },
               color = p.text,
               fontSize = 17.sp,
               lineHeight = 24.sp,
@@ -128,7 +128,7 @@ internal fun LazyListScope.storeCard(
           Text(
               // The owner as the account knows it; the part it does not know is left out.
               text =
-                  state.ownerName
+                  store.ownerName
                       .ifBlank { null }
                       ?.let { stringResource(R.string.settings_owner_line, it) }
                       ?: stringResource(R.string.settings_this_device),
@@ -159,11 +159,11 @@ internal fun LazyListScope.storeCard(
       if (storesOpen) {
         HorizontalDivider(color = p.line)
         Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-          for (store in state.accounts) {
+          for (saved in store.accounts) {
             StoreRow(
-                store,
+                saved,
                 onPick = {
-                  if (!store.active) model.switchTo(store.storeUserId)
+                  if (!saved.active) commands.switchTo(saved.storeUserId)
                   onPickStore()
                 },
             )
@@ -297,14 +297,10 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
   }
 }
 
-internal fun LazyListScope.devicesSection(
-    state: SettingsState,
-    model: SettingsViewModel,
-    navigation: SettingsNavigation,
-) {
+internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: SettingsNavigation) {
   item {
     val p = sadadPalette
-    val waiting = state.unsent > 0
+    val waiting = devices.unsent > 0
     Section(stringResource(R.string.settings_devices_heading)) {
       BoardCard(radius = 13.dp) {
         Row(
@@ -315,18 +311,18 @@ internal fun LazyListScope.devicesSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-          Box(Modifier.size(10.dp).background(statusColor(state), CircleShape))
+          Box(Modifier.size(10.dp).background(statusColor(devices), CircleShape))
           Column(Modifier.weight(1f)) {
             Text(
                 text =
-                    if (waiting) waitingText(state.unsent)
+                    if (waiting) waitingText(devices.unsent)
                     else stringResource(R.string.settings_sync_all_sent),
                 color = p.text,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.Bold,
             )
-            syncDetail(state)?.let { detail ->
+            syncDetail(devices)?.let { detail ->
               Text(detail, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
             }
           }
@@ -360,8 +356,8 @@ internal fun LazyListScope.devicesSection(
 }
 
 internal fun LazyListScope.securitySection(
-    state: SettingsState,
-    model: SettingsViewModel,
+    security: SecuritySlice,
+    commands: SecurityModule,
     navigation: SettingsNavigation,
 ) {
   item {
@@ -371,28 +367,28 @@ internal fun LazyListScope.securitySection(
         SwitchLine(
             title = stringResource(R.string.settings_lock_enable),
             detail = stringResource(R.string.settings_lock_enable_sub),
-            checked = state.lockOn,
-            onChange = model::setLockEnabled,
+            checked = security.lockOn,
+            onChange = commands::setLockEnabled,
         )
-        if (state.biometricAvailable) {
+        if (security.biometricAvailable) {
           HorizontalDivider(color = p.line)
           SwitchLine(
               title = stringResource(R.string.settings_lock_biometric),
               detail = stringResource(R.string.settings_lock_biometric_sub),
-              checked = state.biometricEnabled,
-              onChange = model::setBiometric,
+              checked = security.biometricEnabled,
+              onChange = commands::setBiometric,
           )
         }
         HorizontalDivider(color = p.line)
         LinkRow(
             title =
                 stringResource(
-                    if (state.pinSet) R.string.settings_lock_change_pin
+                    if (security.pinSet) R.string.settings_lock_change_pin
                     else R.string.settings_lock_create_pin
                 ),
             detail = null,
             tag = null,
-            onClick = model::requestPin,
+            onClick = commands::requestPin,
             minHeight = 52.dp,
         )
         LinkRow(
@@ -407,22 +403,17 @@ internal fun LazyListScope.securitySection(
   }
 }
 
-internal fun LazyListScope.dataSection(
-    state: SettingsState,
-    model: SettingsViewModel,
-    navigation: SettingsNavigation,
-    context: Context,
-) {
+internal fun LazyListScope.dataSection(data: DataSlice, navigation: SettingsNavigation) {
   // Q20/Q6: the trash exists to undo deletes, so a device that may delete neither records nor
   // Contacts cannot use it and does not see its section at all. Statements are exported from
   // «الحركات», where the entries they list are.
-  if (!state.canDelete) return
+  if (!data.canDelete) return
   item {
     Section(stringResource(R.string.settings_data_heading)) {
       BoardCard(radius = 13.dp) {
         LinkRow(
             title = stringResource(R.string.settings_trash),
-            detail = trashText(state.trashCount),
+            detail = trashText(data.trashCount),
             tag = SettingsTags.TRASH,
             onClick = navigation.onOpenTrash,
         )
@@ -432,8 +423,8 @@ internal fun LazyListScope.dataSection(
 }
 
 internal fun LazyListScope.appearanceSection(
-    state: SettingsState,
-    model: SettingsViewModel,
+    theme: ThemeChoice,
+    commands: AppearanceModule,
     context: Context,
 ) {
   item {
@@ -454,9 +445,9 @@ internal fun LazyListScope.appearanceSection(
                 ThemeChoice.LIGHT to stringResource(R.string.settings_theme_light),
                 ThemeChoice.DARK to stringResource(R.string.settings_theme_dark),
             )) {
-          val chosen = state.theme == choice
+          val chosen = theme == choice
           Surface(
-              onClick = { model.setTheme(choice) },
+              onClick = { commands.setTheme(choice) },
               shape = RoundedCornerShape(10.dp),
               color = if (chosen) p.primary else Color.Transparent,
               contentColor = if (chosen) Color.White else p.muted,
@@ -489,7 +480,11 @@ internal fun LazyListScope.appearanceSection(
   }
 }
 
-internal fun LazyListScope.accountSection(state: SettingsState, model: SettingsViewModel) {
+internal fun LazyListScope.accountSection(
+    commands: AccountModule,
+    busy: Boolean,
+    error: SettingsError?,
+) {
   item {
     val p = sadadPalette
     Section(stringResource(R.string.settings_account_heading)) {
@@ -498,18 +493,18 @@ internal fun LazyListScope.accountSection(state: SettingsState, model: SettingsV
             title = stringResource(R.string.settings_sign_out),
             detail = null,
             tag = SettingsTags.SIGN_OUT,
-            onClick = model::requestSignOut,
-            enabled = !state.busy,
+            onClick = commands::requestSignOut,
+            enabled = !busy,
         )
         HorizontalDivider(color = p.line)
         LinkRow(
             title = stringResource(R.string.settings_remove_store),
             detail = null,
             tag = SettingsTags.REMOVE,
-            onClick = model::requestRemove,
-            enabled = !state.busy,
+            onClick = commands::requestRemove,
+            enabled = !busy,
         )
-        state.error
+        error
             ?.takeIf { it == SettingsError.ACTION_FAILED }
             ?.let {
               Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) { ErrorLine(it) }
@@ -864,14 +859,14 @@ internal fun linkColor(): Color {
 
 /** The second line under the waiting count: the newest entry, then what sync is doing. */
 @Composable
-private fun syncDetail(state: SettingsState): String? {
-  val phrase = statusPhrase(state.sync)
+private fun syncDetail(devices: DevicesSlice): String? {
+  val phrase = statusPhrase(devices.sync)
   val parts = buildList {
-    state.newest?.let { add(queuedText(it)) }
+    devices.newest?.let { add(queuedText(it)) }
     when {
       phrase != null -> add(phrase)
       // Nothing special to report: say the queue sends itself.
-      state.unsent > 0 -> add(stringResource(R.string.settings_sync_auto))
+      devices.unsent > 0 -> add(stringResource(R.string.settings_sync_auto))
     }
   }
   return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
@@ -915,15 +910,15 @@ internal fun statusPhrase(line: SyncLine): String? =
     }
 
 @Composable
-private fun statusColor(state: SettingsState): Color {
+private fun statusColor(devices: DevicesSlice): Color {
   val p = sadadPalette
-  return when (state.sync) {
+  return when (devices.sync) {
     SyncLine.SignedOut,
     SyncLine.Revoked,
     SyncLine.Suspended,
     SyncLine.PasswordChangeRequired,
     is SyncLine.Failed -> p.debt
-    else -> if (state.unsent > 0 || state.sync == SyncLine.Offline) p.warn else p.primary
+    else -> if (devices.unsent > 0 || devices.sync == SyncLine.Offline) p.warn else p.primary
   }
 }
 

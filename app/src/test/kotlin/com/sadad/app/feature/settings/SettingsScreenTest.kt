@@ -93,11 +93,11 @@ class SettingsScreenTest {
       val switched = runBlocking {
         withTimeoutOrNull(10_000) {
           model.state.first { state ->
-            state.accounts.firstOrNull { it.active }?.storeUserId == STORE_A
+            state.store.accounts.firstOrNull { it.active }?.storeUserId == STORE_A
           }
         }
       }
-      assertEquals(STORE_A, switched?.accounts?.firstOrNull { it.active }?.storeUserId)
+      assertEquals(STORE_A, switched?.store?.accounts?.firstOrNull { it.active }?.storeUserId)
     }
   }
 
