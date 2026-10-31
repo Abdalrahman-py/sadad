@@ -26,6 +26,39 @@ class LedgerStateTest {
       Commands.paymentCreate(origin, at(2), debt.entityId, Cents(5000), PaymentMethod.CASH)
 
   @Test
+  fun trashPreservesTheWholeHistoryAndFinalDeletionRemovesOnlyThatContact() {
+    val full =
+        Commands.paymentCreate(origin, at(2), debt.entityId, Cents(15000), PaymentMethod.CASH)
+    val other = Commands.contactCreate(origin, at(0), "شخص آخر")
+    val archive = Commands.contactArchive(origin, at(3), contact.entityId, 1, "نقل للسلة")
+    val restore = Commands.contactRestore(origin, at(4), contact.entityId, 2, "استعادة")
+    val again = Commands.contactArchive(origin, at(5), contact.entityId, 3, "نقل للسلة")
+    val remove =
+        Commands.contactDelete(
+            origin,
+            at(6),
+            contact.entityId,
+            4,
+            "حذف نهائي",
+            entityId = contact.entityId,
+        )
+    val commands = listOf(contact, other, debt, full, archive, restore, again, remove)
+    val events = commands.mapIndexed { i, command -> accepted(command, i + 1L) }
+    val trashed = LedgerState.EMPTY.apply(page(events.take(5)))
+    assertTrue(trashed.contacts.getValue(contact.entityId).archived)
+    assertEquals(1, trashed.debts.size)
+    assertEquals(1, trashed.payments.size)
+    val restored = trashed.apply(page(events.subList(5, 6)))
+    assertTrue(!restored.contacts.getValue(contact.entityId).archived)
+    assertEquals(1, restored.plain().payments.size)
+    val removed = restored.apply(page(events.drop(6)))
+    assertEquals(setOf(other.entityId), removed.contacts.keys)
+    assertTrue(removed.debts.isEmpty())
+    assertTrue(removed.payments.isEmpty())
+    assertTrue(removed.offsets.isEmpty())
+  }
+
+  @Test
   fun foldsTheFixtureFlow() {
     val state = LedgerState.EMPTY.apply(page(fixture))
     assertEquals(3L, state.cursor)

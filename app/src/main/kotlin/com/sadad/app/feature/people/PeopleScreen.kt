@@ -117,6 +117,12 @@ fun PeopleContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       PeopleHeader(registered = state.registered)
+      if (state.incomplete > 0)
+          Text(
+              stringResource(R.string.people_incomplete_count, state.incomplete),
+              color = p.owes,
+              fontSize = 13.sp,
+          )
       PeopleSearch(value = state.queryInput, onValueChange = onQueryChange)
       PeopleActions(state, onAdd, onFilter)
     }

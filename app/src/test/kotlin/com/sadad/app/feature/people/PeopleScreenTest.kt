@@ -54,6 +54,16 @@ class PeopleScreenTest {
   private val context: Context = ApplicationProvider.getApplicationContext()
 
   @Test
+  fun confirmedPeopleAndIncompleteInputsHaveSeparateCounts() {
+    compose.setContent {
+      SadadTheme { PeopleContent(PeopleState(registered = 13, incomplete = 6)) }
+    }
+    compose.onNodeWithTag(PeopleTags.COUNT).assertIsDisplayed()
+    compose.onNodeWithText("13").assertIsDisplayed()
+    compose.onNodeWithText("6 إضافات محفوظة لم تكتمل مزامنتها").assertIsDisplayed()
+  }
+
+  @Test
   fun addingAndChoosingAFilterLiveTogetherBelowSearch() {
     var added = 0
     var chosen = PeopleFilter.ALL

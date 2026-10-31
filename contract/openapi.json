@@ -19,6 +19,8 @@
           "duplicate_phone",
           "invalid_phone",
           "contact_limit_reached",
+          "contact_has_balance",
+          "contact_not_archived",
           "contact_unavailable",
           "debt_unavailable",
           "payment_unavailable",

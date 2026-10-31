@@ -95,6 +95,7 @@ data class PeopleState(
     val rows: List<PeopleRow> = emptyList(),
     /** Everyone in the store, whatever the chip and the search say. */
     val registered: Int = 0,
+    val incomplete: Int = 0,
     /** How many people each chip shows under the current search. */
     val counts: Map<PeopleFilter, Int> = emptyMap(),
     /** «المجموع عليهم ₪ 1,455.00» for the chosen chip; null on الكل. */
@@ -337,6 +338,8 @@ class PeopleViewModel(
                 val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
                 state.copy(
                     rows = state.rows.map { it.copy(syncFailed = it.id in failedIds) },
+                    registered = records.ledger.contacts.size,
+                    incomplete = records.failed.size,
                     queryInput = text,
                     filterChoice = chip,
                     sortChoice = order,

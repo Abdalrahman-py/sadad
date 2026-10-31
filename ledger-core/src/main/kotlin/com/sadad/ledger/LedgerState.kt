@@ -177,6 +177,17 @@ private class Fold(
       }
       is ContactArchive -> archive(payload.contactId, archived = true, event)
       is ContactRestore -> archive(payload.contactId, archived = false, event)
+      is ContactDelete -> {
+        val row = held(contacts, payload.contactId, "Contact", event)
+        check(row.archived) { "only an archived Contact may be permanently deleted" }
+        val debtIds = debts.values.filter { it.contactId == row.id }.mapTo(HashSet()) { it.id }
+        offsets.entries.removeAll {
+          it.value.receivableDebtId in debtIds || it.value.payableDebtId in debtIds
+        }
+        payments.entries.removeAll { it.value.debtId in debtIds }
+        debts.keys.removeAll(debtIds)
+        contacts.remove(row.id)
+      }
       is DebtCreate -> {
         held(contacts, payload.contactId, "Contact", event)
         fresh(id, debts, event)

@@ -408,9 +408,7 @@ class SettingsViewModel(
                 reminders(open.account.storeUserId),
                 hiddenTrash(open.account.storeUserId),
             ) { view, dismissed, hidden ->
-              (view?.archivedContacts.orEmpty().map { it.id } + dismissed.map { it.id }).count {
-                it !in hidden
-              }
+              view?.archivedContacts.orEmpty().size + dismissed.count { it.id !in hidden }
             }
       }
 
@@ -479,6 +477,8 @@ class SettingsViewModel(
                       contactName(view, payload.contactId),
                       null,
                   )
+              is com.sadad.ledger.ContactDelete ->
+                  QueuedEntry(QueuedKind.CONTACT_DELETE, contactName(view, payload.contactId), null)
               is ContactRestore ->
                   QueuedEntry(
                       QueuedKind.CONTACT_RESTORE,

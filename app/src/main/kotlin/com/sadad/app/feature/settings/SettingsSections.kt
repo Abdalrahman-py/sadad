@@ -892,6 +892,7 @@ private fun queuedText(entry: QueuedEntry): String {
     QueuedKind.CONTACT_EDIT -> stringResource(R.string.settings_queued_contact_edit, entry.name)
     QueuedKind.CONTACT_ARCHIVE ->
         stringResource(R.string.settings_queued_contact_archive, entry.name)
+    QueuedKind.CONTACT_DELETE -> stringResource(R.string.settings_queued_contact_delete, entry.name)
     QueuedKind.CONTACT_RESTORE ->
         stringResource(R.string.settings_queued_contact_restore, entry.name)
   }

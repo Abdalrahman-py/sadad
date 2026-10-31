@@ -342,6 +342,7 @@ class LedgerCommandTest {
             "contact.update",
             "contact.archive",
             "contact.restore",
+            "contact.delete",
             "debt.create",
             "debt.offset",
             "debt.correct",

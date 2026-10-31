@@ -17,12 +17,13 @@ create table public.sadid_contacts (
   note text not null default '',
   external_reference text not null default '',
   archived boolean not null default false,
+  purged boolean not null default false check (not purged or archived),
   version bigint not null default 1,
   operation_id uuid not null,
   created_at timestamptz not null,
   primary key (store_id, id)
 );
-create unique index sadid_unique_phone on public.sadid_contacts(store_id, phone) where phone <> '';
+create unique index sadid_unique_phone on public.sadid_contacts(store_id, phone) where phone <> '' and not purged;
 
 create table public.sadid_debts (
   store_id bigint not null,

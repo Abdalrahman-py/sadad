@@ -66,6 +66,15 @@ class TrashViewModelTest {
     var id: String? = null
     seed { id = addContact(name, "+970599123456", "عميل", null, null).getOrThrow() }
     settleAll()
+    seed {
+      addDebt(id!!, com.sadad.ledger.Direction.RECEIVABLE, Cents(100), "دين محفوظ", null)
+          .getOrThrow()
+    }
+    settleAll()
+    seed {
+      payContact(id!!, Cents(100), com.sadad.ledger.PaymentMethod.CASH, "دفعة محفوظة").getOrThrow()
+    }
+    settleAll()
     seed { archiveContact(id!!, "حذف الزبون من التطبيق").getOrThrow() }
     settleAll()
     repository().view.first { view -> view?.archivedContacts?.any { it.id == id } == true }
@@ -73,6 +82,19 @@ class TrashViewModelTest {
   }
 
   private fun TestGraph.repository() = checkNotNull(graph.current.value).repository
+
+  @Test
+  fun permanentlyDeletingAContactQueuesASharedLedgerDeletionRatherThanHidingItLocally() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.archiveOne()
+      val model = fixture.model()
+      val item = model.state.first { it.items.isNotEmpty() }.items.single()
+      model.askDelete(item)
+      model.deleteForGood(item)
+      model.state.first { it.confirm == null }
+      assertTrue(fixture.rows().any { it.type.wireName == "contact.delete" })
+    }
+  }
 
   @Test
   fun anArchivedContactAppearsInTheTrash() = runTest {
@@ -112,23 +134,29 @@ class TrashViewModelTest {
   }
 
   @Test
-  fun deleteForGoodHidesTheContactAndQueuesNothing() = runTest {
+  fun finalDeletionWaitsForServerConfirmationAndDoesNotReappearAfterReload() = runTest {
     TestGraph.signedIn().use { fixture ->
-      fixture.archiveOne()
-      val before = fixture.rows().size
-      val hidden = hidden()
-      val reminders = reminders()
-      val model = fixture.model(reminders, hidden)
+      val id = fixture.archiveOne()
+      val model = fixture.model()
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
-
+      model.askDelete(item)
       model.deleteForGood(item)
-
-      val state = model.state.first { it.items.isEmpty() }
-      assertTrue(state.items.isEmpty())
-      assertEquals(before, fixture.rows().size)
-
-      val reopened = fixture.model(reminders, hidden)
-      assertTrue(reopened.state.first { it.items.isEmpty() }.items.isEmpty())
+      model.state.first { it.confirm == null }
+      assertTrue(model.state.value.items.any { it.id == id })
+      fixture.settleAll()
+      model.state.first { it.items.isEmpty() }
+      val database = checkNotNull(fixture.graph.current.value).database
+      assertTrue(database.debtDao().all().isEmpty())
+      assertTrue(database.paymentDao().all().isEmpty())
+      checkNotNull(fixture.graph.current.value).repository.load()
+      assertTrue(
+          fixture
+              .repository()
+              .view
+              .first { it?.archivedContacts?.isEmpty() == true }!!
+              .contacts
+              .isEmpty()
+      )
     }
   }
 

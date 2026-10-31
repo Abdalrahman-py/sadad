@@ -23,6 +23,7 @@ enum class QueuedKind {
   CONTACT_EDIT,
   CONTACT_ARCHIVE,
   CONTACT_RESTORE,
+  CONTACT_DELETE,
 }
 
 /** The newest entry waiting to be sent: what it was, for whom and for how much. */
