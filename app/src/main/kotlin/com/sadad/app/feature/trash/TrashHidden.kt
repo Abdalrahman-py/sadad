@@ -13,10 +13,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-/**
- * The ids this phone removed from its trash list for good. The server keeps the archived Contact;
- * the Java app behaved the same way, so another phone still lists it.
- */
+/** Device-local dismissal of reminders. Contact deletion is a shared ledger command. */
 class TrashHidden(produceFile: () -> File, private val scope: CoroutineScope) {
   constructor(file: File, scope: CoroutineScope) : this({ file }, scope)
 

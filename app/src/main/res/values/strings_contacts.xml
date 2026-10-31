@@ -25,13 +25,13 @@
     <string name="contacts_method_jawwal">محفظة جوال</string>
     <string name="contacts_method_palpay">محفظة بال بي</string>
     <string name="contacts_share">مشاركة الكشف PDF</string>
-    <string name="contacts_delete">أرشفة</string>
+    <string name="contacts_delete">حذف</string>
     <string name="contacts_delete_undo">الزبون %1$s — سيُنقل إلى سلة المحذوفات.</string>
     <string name="contacts_settle_title">لا يمكن حذف السجل</string>
     <string name="contacts_settle_message">سدّد الدين المتبقي %1$s أولاً، ثم يمكنك حذف السجل أو الزبون.</string>
     <string name="contacts_close">إغلاق</string>
     <string name="contacts_confirm_delete_title">تأكيد حذف الزبون</string>
-    <string name="contacts_confirm_delete_message">سيُنقل الزبون وسجل حركاته إلى سلة المحذوفات بعد انتهاء مهلة التراجع. ويمكن استعادته من الإعدادات أو من لوحة الأدمن.</string>
+    <string name="contacts_confirm_delete_message">سيُنقل الزبون وكل عملياته إلى سلة المحذوفات مع حفظ بياناته. يمكنك استعادته من المتجر ← سلة المحذوفات، ولا يتم الحذف النهائي إلا من داخل السلة.</string>
     <string name="contacts_cancel">إلغاء</string>
     <string name="contacts_default_store">متجري</string>
     <string name="contacts_all_periods">كل الفترات</string>

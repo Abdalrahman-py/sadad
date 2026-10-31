@@ -148,7 +148,7 @@ class ContactDetailScreenTest {
           compose.onNodeWithText("اطلب من صاحب المتجر تفعيل الدفعات").assertIsDisplayed()
           compose.onNodeWithText("استلام دفعة").assertDoesNotExist()
           compose.onNodeWithTag(ContactsTag.MENU).performClick()
-          compose.onNodeWithText("أرشفة").assertDoesNotExist()
+          compose.onNodeWithText("حذف").assertDoesNotExist()
         }
   }
 
@@ -180,7 +180,7 @@ class ContactDetailScreenTest {
         model.state.value.loaded && !model.state.value.canRegisterPayments
       }
       compose.onNodeWithTag(ContactsTag.MENU).performClick()
-      compose.onNodeWithText("أرشفة").performClick()
+      compose.onNodeWithText("حذف").performClick()
       compose.waitUntil(10_000) { model.state.value.settleFirst != null }
       compose.onNodeWithText("لا يمكن حذف السجل").assertIsDisplayed()
       compose.onNodeWithText("استلام دفعة").assertDoesNotExist()

@@ -184,9 +184,14 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
         dao.all()
             .filter {
               it.state == OutboxState.ACCEPTED.column &&
-                  (it.entityId in state.contacts ||
-                      it.entityId in state.debts ||
-                      it.entityId in state.payments) &&
+                  (if (it.type == CommandType.CONTACT_DELETE.wireName) {
+                    (commandOf(it).payload() as com.sadad.ledger.ContactDelete).contactId !in
+                        state.contacts
+                  } else {
+                    it.entityId in state.contacts ||
+                        it.entityId in state.debts ||
+                        it.entityId in state.payments
+                  }) &&
                   // The archived Contact already exists before its restore event is pulled.
                   (it.type != CommandType.CONTACT_RESTORE.wireName ||
                       checkNotNull(state.contacts[it.entityId]).version >

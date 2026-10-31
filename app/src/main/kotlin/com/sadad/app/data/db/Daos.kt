@@ -15,6 +15,8 @@ interface ContactDao {
 
   @Query("SELECT createdSeq FROM contacts WHERE id = :id") suspend fun createdSeq(id: String): Long?
 
+  @Query("DELETE FROM contacts WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
+
   @Query("DELETE FROM contacts") suspend fun clear()
 }
 
@@ -25,6 +27,8 @@ interface DebtDao {
   @Upsert suspend fun upsert(row: DebtEntity)
 
   @Query("SELECT createdSeq FROM debts WHERE id = :id") suspend fun createdSeq(id: String): Long?
+
+  @Query("DELETE FROM debts WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
 
   @Query("DELETE FROM debts") suspend fun clear()
 }
@@ -37,6 +41,8 @@ interface PaymentDao {
 
   @Query("SELECT createdSeq FROM payments WHERE id = :id") suspend fun createdSeq(id: String): Long?
 
+  @Query("DELETE FROM payments WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
+
   @Query("DELETE FROM payments") suspend fun clear()
 }
 
@@ -47,6 +53,8 @@ interface OffsetDao {
   @Upsert suspend fun upsert(row: OffsetEntity)
 
   @Query("SELECT createdSeq FROM offsets WHERE id = :id") suspend fun createdSeq(id: String): Long?
+
+  @Query("DELETE FROM offsets WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
 
   @Query("DELETE FROM offsets") suspend fun clear()
 }

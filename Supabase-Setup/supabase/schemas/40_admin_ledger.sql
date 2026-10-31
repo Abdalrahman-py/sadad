@@ -24,7 +24,7 @@ language sql stable security invoker set search_path = '' as $$
   where d.store_id = p_store
 $$;
 revoke all on function sadid_private.debt_balances(bigint) from public, anon, authenticated, service_role;
-grant execute on function sadid_private.debt_balances(bigint) to sadid_support_reader;
+grant execute on function sadid_private.debt_balances(bigint) to sadid_support_reader, sadid_ledger_executor;
 
 -- One page of a store's ledger for admin and support, with an audit row per read. Money is in cents.
 -- p_kind: contacts, debts, payments (newest first) or events (latest sequence first).

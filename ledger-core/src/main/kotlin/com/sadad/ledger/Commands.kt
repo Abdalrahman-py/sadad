@@ -117,6 +117,28 @@ object Commands {
           expectedVersion = expectedVersion,
       )
 
+  fun contactDelete(
+      origin: Origin,
+      at: Instant,
+      contactId: String,
+      expectedVersion: Long,
+      reason: String,
+      entityId: String = contactId,
+      operationId: String = newId(),
+      dependsOn: List<String> = emptyList(),
+  ): LedgerCommand =
+      command(
+          origin,
+          at,
+          CommandType.CONTACT_DELETE,
+          entityId,
+          operationId,
+          dependsOn,
+          ContactDelete.serializer(),
+          ContactDelete(uuid("contactId", contactId), reason(reason)),
+          expectedVersion = expectedVersion,
+      )
+
   fun debtCreate(
       origin: Origin,
       at: Instant,

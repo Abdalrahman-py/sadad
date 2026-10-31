@@ -36,6 +36,7 @@ enum class HistoryAction(@StringRes val label: Int) {
   CONTACT_UPDATE(R.string.history_action_contact_update),
   CONTACT_ARCHIVE(R.string.history_action_contact_archive),
   CONTACT_RESTORE(R.string.history_action_contact_restore),
+  CONTACT_DELETE(R.string.history_action_contact_delete),
   DEBT_CREATE(R.string.history_action_debt_create),
   DEBT_CORRECT(R.string.history_action_debt_correct),
   DEBT_OFFSET(R.string.history_action_debt_offset),
@@ -51,6 +52,7 @@ enum class HistoryAction(@StringRes val label: Int) {
           CommandType.CONTACT_UPDATE -> CONTACT_UPDATE
           CommandType.CONTACT_ARCHIVE -> CONTACT_ARCHIVE
           CommandType.CONTACT_RESTORE -> CONTACT_RESTORE
+          CommandType.CONTACT_DELETE -> CONTACT_DELETE
           CommandType.DEBT_CREATE -> DEBT_CREATE
           CommandType.DEBT_CORRECT -> DEBT_CORRECT
           CommandType.DEBT_OFFSET -> DEBT_OFFSET

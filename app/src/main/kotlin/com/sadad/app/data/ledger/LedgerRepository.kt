@@ -249,6 +249,40 @@ class LedgerRepository(
     )
   }
 
+  /** Permanent deletion is online-only and only targets a zero-balance contact in the trash. */
+  suspend fun deleteContact(contactId: String, reason: String): Result<Unit> = guarded {
+    val origin = origin()
+    requireOnline()
+    val contact =
+        currentView().archivedContacts.firstOrNull { it.id == contactId }
+            ?: throw Refusal.Invalid("انقل الشخص إلى سلة المحذوفات أولًا.")
+    val stored = state.value
+    val rows = outbox.snapshot()
+    val visible =
+        stored
+            .copy(
+                contacts =
+                    stored.contacts.mapValues { (id, row) ->
+                      if (id == contactId) row.copy(archived = false) else row
+                    }
+            )
+            .view(pendingCommands(rows), failedOperations(rows), session.selfInstallationId, "")
+    if (visible.debts.any { it.contactId == contactId && it.remaining > Cents.ZERO })
+        throw Refusal.Invalid("سدّد الرصيد قبل الحذف النهائي.")
+    enqueue(
+        listOf(
+            Commands.contactDelete(
+                origin,
+                Instant.now(),
+                contactId,
+                contact.version,
+                reason,
+                entityId = contactId,
+            )
+        )
+    )
+  }
+
   suspend fun addDebt(
       contactId: String,
       direction: Direction,

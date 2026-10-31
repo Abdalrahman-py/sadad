@@ -21,6 +21,31 @@ import org.robolectric.RobolectricTestRunner
 class OutboxTest : LedgerTestCase() {
 
   @Test
+  fun acceptedDeletionStaysPendingUntilItsChangesPageRemovesTheContact() = runTest {
+    val contact = contactCommand()
+    val archive = Commands.contactArchive(Events.origin, Events.at(1), contact.entityId, 1, "سلة")
+    val before =
+        LedgerState.EMPTY.apply(
+            Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
+        )
+    val deletion =
+        Commands.contactDelete(
+            Events.origin,
+            Events.at(2),
+            contact.entityId,
+            2,
+            "نهائي",
+            entityId = contact.entityId,
+        )
+    outbox.append(listOf(deletion))
+    outbox.settle(listOf(receiptOf(deletion, ReceiptStatus.ACCEPTED, sequence = 3)))
+    outbox.compact(before)
+    assertEquals(1, outbox.snapshot().size)
+    outbox.compact(before.apply(Events.page(listOf(Events.accepted(deletion, 3)))))
+    assertTrue(outbox.snapshot().isEmpty())
+  }
+
+  @Test
   fun appendSealsThePayloadAndDoesNotContainTheName() = runTest {
     val command = contactCommand(name = "سامي")
     outbox.append(listOf(command))

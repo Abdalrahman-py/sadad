@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trash_delete_failed">تعذّر الحذف النهائي. بقي الزبون وبياناته في السلة.</string>
+    <string name="settings_queued_contact_delete">حذف نهائي — %1$s</string>
+    <string name="history_action_contact_delete">حذف شخص نهائيًا</string>
+    <string name="trash_delete_queued">أُرسل طلب الحذف النهائي. يبقى العنصر في السلة حتى تأكيد المزامنة.</string>
+    <string name="people_incomplete_count">%1$d إضافات محفوظة لم تكتمل مزامنتها</string>
+</resources>
