@@ -12,9 +12,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -195,6 +198,48 @@ class AppLockTest {
       assertTrue(lock.lockEnabled.first())
     } finally {
       scope.cancel()
+    }
+  }
+
+  /**
+   * The settings screen collects the three flows once and keeps the collection open. Such a
+   * collection sees every toggle; a collection started while a write is in flight is the one that
+   * can stay on the old value (see [AppLock.lockEnabled]).
+   */
+  @Test
+  fun anOpenCollectionSeesEveryLockAndBiometricToggle() = runBlocking {
+    withTimeout(120_000) {
+      val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+      try {
+        val lock = AppLock(File(temporary.root, "switches.preferences_pb"), scope, { 0L }, { 1 })
+        lock.setPin("4839")
+        val seen =
+            combine(lock.lockEnabled, lock.pinSet, lock.biometricEnabled) { on, pin, biometric ->
+                  (on && pin) to biometric
+                }
+                .stateIn(scope)
+        suspend fun expect(step: String, lockOn: Boolean, biometric: Boolean) {
+          val want = lockOn to biometric
+          val got = withTimeoutOrNull(5_000) { seen.first { it == want } } ?: seen.value
+          assertEquals(
+              "$step: fresh read lock=${lock.lockEnabled.first()} " +
+                  "biometric=${lock.biometricEnabled.first()}",
+              want,
+              got,
+          )
+        }
+        expect("start", lockOn = true, biometric = false)
+        repeat(20) { round ->
+          lock.setBiometricEnabled(true)
+          expect("round $round biometric on", lockOn = true, biometric = true)
+          lock.setLockEnabled(false)
+          expect("round $round lock off", lockOn = false, biometric = false)
+          lock.setLockEnabled(true)
+          expect("round $round lock on", lockOn = true, biometric = false)
+        }
+      } finally {
+        scope.cancel()
+      }
     }
   }
 

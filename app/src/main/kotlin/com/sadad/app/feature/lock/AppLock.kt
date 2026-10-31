@@ -57,6 +57,8 @@ class AppLock(
   private val skip = AtomicBoolean(false)
   private var leftAt: Long? = null
 
+  // Collect these once and keep the collection open. DataStore 1.2.1 can start a new collection on
+  // the old value while a write is in flight and then skip that write; an open one sees it.
   /** The lock is on and the PIN is set; Java defaulted [lockEnabled] to true. */
   val lockEnabled: Flow<Boolean> = data.data.map { it[LOCK] ?: true }
   val biometricEnabled: Flow<Boolean> = data.data.map { it[BIOMETRIC] ?: false }
