@@ -167,9 +167,9 @@ fun StoreScreen(
             onAddStore = onAddStore,
             onPickStore = { storesOpen = false },
         )
+        dataSection(state, settingsViewModel, navigation, context)
         devicesSection(state, settingsViewModel, navigation)
         securitySection(state, settingsViewModel, navigation)
-        dataSection(state, settingsViewModel, navigation, context)
         appearanceSection(state, settingsViewModel, context)
         accountSection(state, settingsViewModel)
         supportItem(context)

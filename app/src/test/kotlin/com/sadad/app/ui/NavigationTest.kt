@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.sadad.app.feature.auth.navigateAuth
 import com.sadad.app.ui.theme.SadadTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -46,6 +47,14 @@ class NavigationTest {
             composable<Store> { Text("stub-store") }
             composable<QuickAdd> { Text("stub-quick-add") }
             composable<ContactForm> { Text("stub-contact-form") }
+            composable<ContactDetail> { Text("stub-contact") }
+            composable<Notifications> { Text("stub-notifications") }
+            composable<Trash> { Text("stub-trash") }
+            composable<Recovery> { Text("stub-recovery") }
+            composable<AppUpdate> { Text("stub-update") }
+            composable<Login> { Text("stub-login") }
+            composable<PasswordChange> { Text("stub-password") }
+            composable<AwaitingApproval> { Text("stub-approval") }
           }
         }
       }
@@ -98,18 +107,97 @@ class NavigationTest {
   }
 
   @Test
-  fun recordOpensQuickAddAndTheBarHides() {
+  fun recordOpensQuickAddAndKeepsTheBar() {
     showShell()
     compose.onNodeWithTag(ScreenTag.NAV_RECORD).performClick()
     compose.onNodeWithText("stub-quick-add").assertIsDisplayed()
-    compose.onNodeWithTag(ScreenTag.NAV_HOME).assertDoesNotExist()
+    compose.onNodeWithTag(ScreenTag.NAV_HOME).assertIsDisplayed()
   }
 
   @Test
-  fun theBarHidesOnTheContactForm() {
+  fun theBarStaysOnTheContactForm() {
     showShell()
     compose.runOnIdle { nav.navigate(ContactForm("c1")) }
     compose.onNodeWithText("stub-contact-form").assertIsDisplayed()
-    compose.onNodeWithTag(ScreenTag.NAV_HOME).assertDoesNotExist()
+    compose.onNodeWithTag(ScreenTag.NAV_HOME).assertIsDisplayed()
+  }
+
+  @Test
+  fun everyStorePageKeepsAllFiveNavigationActionsWorking() {
+    showShell()
+    for (route in
+        listOf(
+            ContactDetail("c1"),
+            ContactForm(),
+            QuickAdd(),
+            Notifications,
+            Trash,
+            Recovery,
+            AppUpdate,
+        )) {
+      compose.runOnIdle { nav.navigate(route) }
+      for (tag in
+          listOf(
+              ScreenTag.NAV_HOME,
+              ScreenTag.NAV_PEOPLE,
+              ScreenTag.NAV_RECORD,
+              ScreenTag.NAV_ACTIVITY,
+              ScreenTag.NAV_STORE,
+          )) {
+        compose.onNodeWithTag(tag).assertIsDisplayed()
+      }
+      compose.onNodeWithTag(ScreenTag.NAV_HOME).performClick()
+      compose.onNodeWithText("stub-home").assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun authGatesDoNotOfferNavigationBeforeEntry() {
+    showShell()
+    for (route in listOf(Login, PasswordChange, AwaitingApproval)) {
+      compose.runOnIdle { nav.navigateAuth(route) }
+      compose.onNodeWithTag(ScreenTag.NAV_HOME).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun accountPagesOpenedFromStoreKeepTheBar() {
+    showShell()
+    for (route in listOf(Login, PasswordChange)) {
+      compose.onNodeWithTag(ScreenTag.NAV_STORE).performClick()
+      compose.runOnIdle { nav.navigate(route) }
+      compose.onNodeWithTag(ScreenTag.NAV_STORE).assertIsDisplayed().assertIsSelected()
+    }
+  }
+
+  @Test
+  fun repeatedRecordTapsDoNotStackTheSameForm() {
+    showShell()
+    repeat(3) { compose.onNodeWithTag(ScreenTag.NAV_RECORD).performClick() }
+    compose.runOnIdle { nav.popBackStack() }
+    compose.onNodeWithText("stub-home").assertIsDisplayed()
+  }
+
+  @Test
+  fun theSelectedSectionReturnsFromItsSubpageToItsRoot() {
+    showShell()
+    compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
+    compose.runOnIdle { nav.navigate(ContactDetail("c1")) }
+    compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).assertIsSelected().performClick()
+    compose.onNodeWithText("stub-people").assertIsDisplayed()
+    compose.onNodeWithTag(ScreenTag.NAV_STORE).performClick()
+    compose.runOnIdle { nav.navigate(AppUpdate) }
+    compose.onNodeWithTag(ScreenTag.NAV_STORE).assertIsSelected().performClick()
+    compose.onNodeWithText("stub-store").assertIsDisplayed()
+  }
+
+  @Test
+  fun switchingAwayAndBackRestoresTheSectionsSubpage() {
+    showShell()
+    compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
+    compose.runOnIdle { nav.navigate(ContactDetail("c1")) }
+    compose.onNodeWithTag(ScreenTag.NAV_ACTIVITY).performClick()
+    compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
+    compose.onNodeWithText("stub-contact").assertIsDisplayed()
   }
 }

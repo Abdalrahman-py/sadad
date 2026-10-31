@@ -35,6 +35,42 @@ class QuickAddChipsTest {
   @get:Rule val main = MainDispatcherRule()
 
   @Test
+  fun newPersonDoesNotUseTheUnvalidatedInlineForm() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      var createdName: String? = null
+      val model =
+          QuickAddViewModel(fixture.graph, null, false, SavedStateHandle()).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      compose.setContent {
+        SadadTheme {
+          QuickAddScreen(
+              null,
+              false,
+              {},
+              {},
+              onCreateContact = { createdName = it },
+              viewModel = model,
+          )
+        }
+      }
+      compose.runOnIdle { model.onQueryChange("إبراهيم") }
+      compose.waitUntil(5_000) {
+        compose.onAllNodesWithTag(QuickAddTags.ADD_NEW).fetchSemanticsNodes().isNotEmpty()
+      }
+      compose.onNodeWithTag(QuickAddTags.ADD_NEW).performSemanticsAction(SemanticsActions.OnClick) {
+        it()
+      }
+      org.junit.Assert.assertEquals("إبراهيم", createdName)
+      org.junit.Assert.assertEquals(QuickAddStep.PICKER, model.state.value.step)
+      runBlocking {
+        assertTrue(checkNotNull(fixture.graph.current.value).outbox.snapshot().isEmpty())
+      }
+    }
+  }
+
+  @Test
   fun theDueChipOpensTheDatePicker() {
     val fixture = runBlocking { TestGraph.signedIn() }
     fixture.use {
@@ -57,6 +93,7 @@ class QuickAddChipsTest {
                 payment = false,
                 onClose = {},
                 onOpenContact = {},
+                onCreateContact = {},
                 viewModel = model,
             )
           }

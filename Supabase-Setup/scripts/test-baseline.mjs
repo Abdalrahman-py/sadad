@@ -635,18 +635,53 @@ try {
     assert.equal((await apply(reverse)).status, 'accepted');
     assert.equal((await apply(command('payment.reverse', reverse.payload))).code, 'already_reversed');
 
+    const archivedPerson = command('contact.create', { kind: 'customer', name: 'عميل للسلة', phone: '' });
+    assert.equal((await apply(archivedPerson)).status, 'accepted');
     assert.equal(
-      (await apply(command('contact.archive', { contactId: contact.entityId, reason: 'أرشفة' }, { expectedVersion: 1 }))).status,
+      (await apply(command('contact.archive', { contactId: archivedPerson.entityId, reason: 'أرشفة' }, { expectedVersion: 1 }))).status,
       'accepted',
     );
     assert.equal(
-      (await apply(command('debt.create', { contactId: contact.entityId, amountCents: 1, direction: 'receivable' }))).code,
+      (await apply(command('debt.create', { contactId: archivedPerson.entityId, amountCents: 1, direction: 'receivable' }))).code,
       'contact_unavailable',
     );
     assert.equal(
-      (await apply(command('contact.restore', { contactId: contact.entityId, reason: 'استعادة' }, { expectedVersion: 2 }))).status,
+      (await apply(command('contact.restore', { contactId: archivedPerson.entityId, reason: 'استعادة' }, { expectedVersion: 2 }))).status,
       'accepted',
     );
+  });
+
+  await check('Trash preserves paid history until explicit final deletion and refuses open balances', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const c = command('contact.create', { kind: 'customer', name: 'سلة', phone: '+999654321000' });
+      assert.equal((await apply(c)).status, 'accepted');
+      const d = command('debt.create', { contactId: c.entityId, direction: 'receivable', amountCents: 100 });
+      assert.equal((await apply(d)).status, 'accepted');
+      assert.equal((await apply(command('contact.archive', { contactId:c.entityId, reason:'سلة' }, {expectedVersion:1}))).code, 'contact_has_balance');
+      assert.equal((await apply(command('contact.delete', { contactId:c.entityId, reason:'حذف' }, {expectedVersion:1}))).code, 'contact_not_archived');
+      const p = command('payment.create', { debtId:d.entityId, amountCents:100, method:'cash' });
+      assert.equal((await apply(p)).status, 'accepted');
+      assert.equal((await apply(command('contact.archive', {contactId:c.entityId,reason:'سلة'}, {expectedVersion:1}))).status,'accepted');
+      assert.equal((await apply(command('payment.reverse', {paymentId:p.entityId,reason:'عكس أثناء السلة'}))).status,'accepted');
+      assert.equal((await apply(command('contact.delete', {contactId:c.entityId,reason:'مرفوض'}, {expectedVersion:2}))).code,'contact_has_balance');
+      assert.equal((await apply(command('contact.restore', {contactId:c.entityId,reason:'استعادة'}, {expectedVersion:2}))).status,'accepted');
+      assert.equal((await apply(command('payment.create', {debtId:d.entityId,amountCents:100,method:'cash'}))).status,'accepted');
+      assert.equal((await apply(command('contact.archive', {contactId:c.entityId,reason:'سلة'}, {expectedVersion:3}))).status,'accepted');
+      const del = command('contact.delete', {contactId:c.entityId,reason:'حذف نهائي'}, {expectedVersion:4, entityId:c.entityId});
+      assert.equal((await apply({...del, expectedVersion:3, operationId:randomUUID()})).code,'entity_version_changed');
+      await db.exec('reset role');
+      await db.query("update sadid_private.installations set permissions=permissions || '{\"deleteContacts\":false}'::jsonb where id=$1", [installation]);
+      assert.equal((await apply({...del,operationId:randomUUID()})).code,'store_permission_denied');
+      await db.exec('reset role');
+      await db.query("update sadid_private.installations set permissions=permissions || '{\"deleteContacts\":true}'::jsonb where id=$1", [installation]);
+      assert.equal((await apply(del)).status,'accepted');
+      assert.equal((await apply(del)).status,'accepted');
+      assert.equal((await apply(command('contact.restore', {contactId:c.entityId,reason:'ممنوع'}, {expectedVersion:5}))).code,'entity_version_changed');
+      assert.equal((await apply(command('payment.reverse', {paymentId:p.entityId,reason:'ممنوع'}))).code,'payment_unavailable');
+      assert.equal((await apply(command('debt.correct', {debtId:d.entityId,amountCents:200,reason:'ممنوع'}, {expectedVersion:1}))).code,'debt_unavailable');
+      assert.equal((await apply(command('contact.create', {kind:'customer', name:'جديد', phone:'+999654321000'}))).status,'accepted');
+    } finally { await db.exec('rollback; reset role'); }
   });
 
   await check('Credit: overpayment origin, debt.offset remaining rules, and zero correction guards', async () => {

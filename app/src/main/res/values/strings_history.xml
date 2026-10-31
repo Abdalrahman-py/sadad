@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_history">سجل الحركات</string>
+    <string name="title_history">آخر الحركات</string>
 
     <!-- Tabs -->
-    <string name="history_tab_people">الأشخاص</string>
-    <string name="history_tab_activity">عمليات الدفتر</string>
 
     <!-- Period filter -->
     <string name="history_filter_label">فلتر السجل: %1$s</string>
@@ -19,7 +17,7 @@
     <string name="history_custom_invalid">تاريخ النهاية يجب أن يقع بعد تاريخ البداية.</string>
 
     <!-- People tab -->
-    <string name="history_people_heading">%1$d شخصاً لديهم حركات ضمن %2$s</string>
+    <string name="history_movements_heading">%1$d حركة · %2$s</string>
     <string name="history_open_reports">فتح التقارير والكشوفات</string>
     <string name="history_empty_title">السجل فارغ</string>
     <string name="history_empty_detail">ستظهر الديون والدفعات هنا بعد تسجيلها.</string>

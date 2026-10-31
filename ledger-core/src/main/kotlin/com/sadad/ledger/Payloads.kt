@@ -31,6 +31,8 @@ data class ContactUpdate(
 
 @Serializable data class ContactRestore(val contactId: String, val reason: String) : CommandPayload
 
+@Serializable data class ContactDelete(val contactId: String, val reason: String) : CommandPayload
+
 @Serializable
 data class DebtCreate(
     val contactId: String,

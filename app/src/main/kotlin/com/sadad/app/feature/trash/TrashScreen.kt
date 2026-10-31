@@ -175,6 +175,7 @@ private fun TrashRow(
           text = stringResource(R.string.trash_delete),
           onClick = onDelete,
           style = SadadButtonStyle.TEXT,
+          enabled = !restoring,
           height = 44.dp,
       )
     }

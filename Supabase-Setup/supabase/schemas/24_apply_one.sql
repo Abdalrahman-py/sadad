@@ -119,7 +119,7 @@ begin
         v_phone := regexp_replace(coalesce(payload ->> 'phone', ''), '[[:space:]()\-]', '', 'g');
         v_phone := translate(v_phone, '٠١٢٣٤٥٦٧٨٩', '0123456789');
         if v_phone <> '' and v_phone !~ '^\+[1-9][0-9]{7,14}$' then raise exception 'invalid_phone'; end if;
-        if v_phone <> '' and exists (select 1 from public.sadid_contacts where store_id = c.store_id and sadid_contacts.phone = v_phone) then
+        if v_phone <> '' and exists (select 1 from public.sadid_contacts where store_id = c.store_id and sadid_contacts.phone = v_phone and not purged) then
           raise exception 'duplicate_phone';
         end if;
         insert into public.sadid_contacts(store_id, id, name, phone, kind, category, note, external_reference, operation_id, created_at)
@@ -142,7 +142,7 @@ begin
         if v_phone <> '' and v_phone !~ '^\+[1-9][0-9]{7,14}$' then raise exception 'invalid_phone'; end if;
         if v_phone <> '' and exists (
           select 1 from public.sadid_contacts
-          where store_id = c.store_id and sadid_contacts.phone = v_phone and sadid_contacts.id <> contact
+          where store_id = c.store_id and sadid_contacts.phone = v_phone and sadid_contacts.id <> contact and not purged
         ) then
           raise exception 'duplicate_phone';
         end if;
@@ -183,7 +183,7 @@ begin
         select d.amount_cents into principal
         from public.sadid_debts d
         join public.sadid_contacts t on t.store_id = d.store_id and t.id = d.contact_id
-        where d.store_id = c.store_id and d.id = debt and (correcting or not t.archived);
+        where d.store_id = c.store_id and d.id = debt and (correcting or not t.archived) and not t.purged;
         if not found then raise exception 'debt_unavailable'; end if;
         select coalesce(max(a.version), 1) into ver from public.sadid_adjustments a where a.store_id = c.store_id and a.debt_id = debt;
         select a.amount_cents into amount from public.sadid_adjustments a where a.store_id = c.store_id and a.debt_id = debt order by a.version desc limit 1;
@@ -252,7 +252,7 @@ begin
         payment := (payload ->> 'paymentId')::uuid;
         reason := trim(coalesce(payload ->> 'reason', ''));
         if length(reason) not between 1 and 2000 then raise exception 'reason_required'; end if;
-        if not exists (select 1 from public.sadid_payments where store_id = c.store_id and id = payment) then
+        if not exists (select 1 from public.sadid_payments p join public.sadid_debts d on d.store_id=p.store_id and d.id=p.debt_id join public.sadid_contacts t on t.store_id=d.store_id and t.id=d.contact_id where p.store_id=c.store_id and p.id=payment and not t.purged) then
           raise exception 'payment_unavailable';
         end if;
         if exists (select 1 from public.sadid_reversals where store_id = c.store_id and payment_id = payment) then
@@ -260,13 +260,23 @@ begin
         end if;
         insert into public.sadid_reversals(store_id, id, payment_id, reason, operation_id)
         values (c.store_id, entity, payment, reason, op);
+      elsif kind = 'contact.delete' then
+        contact := (payload ->> 'contactId')::uuid;
+        if length(trim(coalesce(payload ->> 'reason', ''))) not between 1 and 2000 then raise exception 'reason_required'; end if;
+        if not exists (select 1 from public.sadid_contacts t where t.store_id=c.store_id and t.id=contact and t.archived and not t.purged) then raise exception 'contact_not_archived'; end if;
+        if exists (select 1 from sadid_private.debt_balances(c.store_id) b where b.contact_id=contact and b.principal-b.paid-b.offsetted <> 0) then raise exception 'contact_has_balance'; end if;
+        -- A terminal tombstone preserves immutable audit history but cannot be restored or edited.
+        update public.sadid_contacts set purged=true, version=version+1
+        where store_id=c.store_id and id=contact and not purged and version=coalesce((p_command ->> 'expectedVersion')::bigint,-1);
+        if not found then raise exception 'entity_version_changed'; end if;
       elsif kind in ('contact.archive', 'contact.restore') then
         contact := (payload ->> 'contactId')::uuid;
         if length(trim(coalesce(payload ->> 'reason', ''))) not between 1 and 2000 then raise exception 'reason_required'; end if;
         toggled := (kind = 'contact.archive');
+        if toggled and exists (select 1 from sadid_private.debt_balances(c.store_id) b where b.contact_id=contact and b.principal-b.paid-b.offsetted <> 0) then raise exception 'contact_has_balance'; end if;
         update public.sadid_contacts
         set archived = toggled, version = version + 1
-        where store_id = c.store_id and id = contact and version = coalesce((p_command ->> 'expectedVersion')::bigint, -1);
+        where store_id = c.store_id and id = contact and not purged and version = coalesce((p_command ->> 'expectedVersion')::bigint, -1);
         if not found then raise exception 'entity_version_changed'; end if;
       else
         raise exception 'unsupported_operation';

@@ -158,6 +158,7 @@ fun SadadApp(
             val editing = it.toRoute<ContactForm>().contactId
             ContactFormScreen(
                 contactId = editing,
+                initialName = it.toRoute<ContactForm>().initialName,
                 onBack = back,
                 onOpenContact = { id ->
                   if (editing != null) {
@@ -179,6 +180,11 @@ fun SadadApp(
                 contactId = route.contactId,
                 payment = route.payment,
                 onClose = back,
+                onCreateContact = { name ->
+                  navController.navigate(ContactForm(initialName = name)) {
+                    popUpTo<QuickAdd> { inclusive = true }
+                  }
+                },
                 onOpenContact = { id ->
                   // Single top: quick add opened from this contact returns to it, not a second
                   // copy.
@@ -267,11 +273,16 @@ internal fun SadadShell(
     destinations: NavGraphBuilder.() -> Unit,
 ) {
   val destination = navController.currentBackStackEntryAsState().value?.destination
+  val fromStore = navController.previousBackStackEntry?.destination?.hasRoute<Store>() == true
+  val showNavigation =
+      destination != null &&
+          (!destination.isAny(AUTH_GATES) ||
+              (fromStore && !destination.hasRoute<AwaitingApproval>()))
   Scaffold(
       modifier = Modifier.sadadPageBackground(),
       containerColor = Color.Transparent,
       contentColor = sadadPalette.text,
-      bottomBar = { if (destination.isAny(WITH_BAR)) SadadBottomBar(navController, syncDot) },
+      bottomBar = { if (showNavigation) SadadBottomBar(navController, syncDot) },
   ) { insets ->
     NavHost(
         navController = navController,
@@ -283,11 +294,8 @@ internal fun SadadShell(
   }
 }
 
-/**
- * The four tabs show the bar; the contact page has its own sticky record buttons instead (the
- * Contact board), and quick add, forms and sub-pages hide it.
- */
-private val WITH_BAR = listOf(Home::class, People::class, Activity::class, Store::class)
+/** Entry gates hide navigation; account pages opened from Store remain inside the store flow. */
+private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApproval::class)
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -300,21 +308,42 @@ private enum class Tab {
 }
 
 /** The tab a destination belongs to. */
-private fun activeTab(destination: NavDestination?): Tab =
+private fun activeTab(destination: NavDestination?): Tab? =
     when {
-      destination.isAny(listOf(People::class, ContactDetail::class)) -> Tab.PEOPLE
+      destination.isAny(listOf(QuickAdd::class)) -> null
+      destination.isAny(listOf(People::class, ContactDetail::class, ContactForm::class)) ->
+          Tab.PEOPLE
       destination.isAny(listOf(Activity::class)) -> Tab.ACTIVITY
-      destination.isAny(listOf(Store::class, Trash::class, Recovery::class)) -> Tab.STORE
+      destination.isAny(
+          listOf(
+              Store::class,
+              Trash::class,
+              Recovery::class,
+              AppUpdate::class,
+              Login::class,
+              PasswordChange::class,
+          )
+      ) -> Tab.STORE
       else -> Tab.HOME
     }
 
-/** A tab switch keeps one copy of each tab and its saved state, as bottom bars do. */
-private fun NavHostController.navigateTab(destination: Any) =
-    navigate(destination) {
-      popUpTo(graph.findStartDestination().id) { saveState = true }
-      launchSingleTop = true
-      restoreState = true
-    }
+/** Switching tabs restores their state; tapping the current section returns to its root. */
+private fun NavHostController.navigateTab(destination: Any) {
+  val target =
+      when (destination) {
+        Home -> Tab.HOME
+        is People -> Tab.PEOPLE
+        Activity -> Tab.ACTIVITY
+        Store -> Tab.STORE
+        else -> null
+      }
+  val sameSection = activeTab(currentDestination) == target
+  navigate(destination) {
+    popUpTo(graph.findStartDestination().id) { saveState = !sameSection }
+    launchSingleTop = true
+    restoreState = !sameSection && destination != Home
+  }
+}
 
 /**
  * الرئيسية · الأشخاص · «+» تسجيل · الحركات · المتجر, right to left (the Nav board). The chosen tab
@@ -341,7 +370,7 @@ internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) 
     TabItem(R.string.nav_people, R.drawable.ic_people, ScreenTag.NAV_PEOPLE, active == Tab.PEOPLE) {
       navController.navigateTab(People())
     }
-    RecordItem { navController.navigate(QuickAdd()) }
+    RecordItem { navController.navigate(QuickAdd()) { launchSingleTop = true } }
     TabItem(
         R.string.nav_activity,
         R.drawable.ic_activity,

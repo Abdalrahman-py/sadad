@@ -58,9 +58,9 @@
     <string name="settings_change_password">تغيير كلمة المرور</string>
     <string name="settings_pin_title">إعداد قفل التطبيق</string>
     <string name="settings_pin_message">سيُطلب الرمز عند فتح التطبيق بعد مغادرته.</string>
-    <string name="settings_pin_new">رمز جديد (4 إلى 12 رقماً)</string>
+    <string name="settings_pin_new">رمز جديد (4 أرقام)</string>
     <string name="settings_pin_confirm">تأكيد الرمز</string>
-    <string name="settings_pin_invalid">الرمز يجب أن يكون من 4 إلى 12 رقماً.</string>
+    <string name="settings_pin_invalid">الرمز يجب أن يكون 4 أرقام.</string>
     <string name="settings_pin_mismatch">الرمزان غير متطابقين</string>
 
     <!-- Data -->

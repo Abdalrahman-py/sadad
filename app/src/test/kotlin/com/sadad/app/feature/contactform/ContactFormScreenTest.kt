@@ -7,6 +7,7 @@ import android.content.pm.ResolveInfo
 import android.speech.RecognizerIntent
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -42,6 +43,107 @@ class ContactFormScreenTest {
   @get:Rule val main = MainDispatcherRule()
 
   private val context: Context = ApplicationProvider.getApplicationContext()
+
+  @Test
+  fun savingAtTheBottomBringsTheInvalidPhoneAndItsMessageIntoView() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      val model = fixture.model()
+      model.onNameChange("إبراهيم")
+      model.onPhoneChange("123")
+      model.onFirstDebtChange(true)
+      model.onDebtAmountChange("258")
+      compose.setContent { SadadTheme { ContactFormScreen(model) } }
+      repeat(2) {
+        compose
+            .onNodeWithText(context.getString(R.string.contactform_save_add))
+            .performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.waitForIdle()
+        compose.onNodeWithText(checkNotNull(model.state.value.phoneError)).assertIsDisplayed()
+        compose.onNodeWithText("123").assertIsDisplayed()
+        compose
+            .onNodeWithContentDescription(context.getString(R.string.contactform_phone))
+            .assertIsFocused()
+      }
+    }
+  }
+
+  @Test
+  fun savingAtTheBottomRevealsTheMissingName() {
+    assertSaveReveals(
+        configure = { it.onNameChange("") },
+        fieldLabel = R.string.contactform_name,
+        error = { it.nameError },
+    )
+  }
+
+  @Test
+  fun savingAtTheBottomRevealsTheInvalidDebtAmount() {
+    assertSaveReveals(
+        configure = { it.onDebtAmountChange("0") },
+        fieldLabel = R.string.contactform_debt_amount,
+        error = { it.debtError },
+    )
+  }
+
+  private fun assertSaveReveals(
+      configure: (ContactFormViewModel) -> Unit,
+      fieldLabel: Int,
+      error: (ContactFormState) -> String?,
+  ) {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      val model = fixture.model()
+      model.onNameChange("إبراهيم")
+      model.onFirstDebtChange(true)
+      model.onDebtAmountChange("258")
+      configure(model)
+      compose.setContent { SadadTheme { ContactFormScreen(model) } }
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_save_add))
+          .performScrollTo()
+          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose.waitForIdle()
+      compose.onNodeWithText(checkNotNull(error(model.state.value))).assertIsDisplayed()
+      compose.onNodeWithContentDescription(context.getString(fieldLabel)).assertIsFocused()
+      runBlocking {
+        assertTrue(checkNotNull(fixture.graph.current.value).outbox.snapshot().isEmpty())
+      }
+    }
+  }
+
+  @Test
+  fun dismissingTheDuplicateDialogReturnsToThePhoneAndItsError() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      runBlocking {
+        checkNotNull(fixture.graph.current.value)
+            .repository
+            .addContact("شخص موجود", "+970599123456", null, null, null)
+            .getOrThrow()
+      }
+      val model = fixture.model()
+      model.onNameChange("إبراهيم")
+      model.onPhoneChange("0599123456")
+      model.onFirstDebtChange(true)
+      model.onDebtAmountChange("258")
+      compose.setContent { SadadTheme { ContactFormScreen(model) } }
+      compose.waitForIdle()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_save_add))
+          .performScrollTo()
+          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_back_to_edit))
+          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose.waitForIdle()
+      compose.onNodeWithText(checkNotNull(model.state.value.phoneError)).assertIsDisplayed()
+      compose
+          .onNodeWithContentDescription(context.getString(R.string.contactform_phone))
+          .assertIsFocused()
+    }
+  }
 
   private fun TestGraph.model(): ContactFormViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }

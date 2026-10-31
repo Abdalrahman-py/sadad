@@ -54,7 +54,7 @@ class ManifestTest {
       val manifestJson = Json.parseToJsonElement(String(manifest, Charsets.UTF_8)).jsonArray
       assertEquals(2, manifestJson.size)
 
-      Recovery.setPermit(f.scope, oldInstallation, permit)
+      Recovery.setPermit(f.scope, oldInstallation, permit, manifest)
       f.server.enqueue(receiptResponse(listOf(contact, debt)))
       f.page()
 
@@ -98,17 +98,14 @@ class ManifestTest {
           )
       f.scope.outbox.append(listOf(contact, archive))
 
-      val manifest =
-          Json.parseToJsonElement(
-                  String(Recovery.manifest(f.scope, oldInstallation), Charsets.UTF_8)
-              )
-              .jsonArray
+      val manifestBytes = Recovery.manifest(f.scope, oldInstallation)
+      val manifest = Json.parseToJsonElement(String(manifestBytes, Charsets.UTF_8)).jsonArray
       assertEquals(
           listOf(LedgerJson.encodeToJsonElement(LedgerCommand.serializer(), contact)),
           manifest,
       )
 
-      Recovery.setPermit(f.scope, oldInstallation, permit)
+      Recovery.setPermit(f.scope, oldInstallation, permit, manifestBytes)
       f.server.enqueue(receiptResponse(listOf(contact)))
       f.page()
 

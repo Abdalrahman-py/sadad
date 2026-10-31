@@ -13,7 +13,7 @@ language sql stable security definer set search_path = '' as $$
   and coalesce(
     (i.permissions ->> case
       when p_kind in ('payment.create', 'payment.reverse') then 'registerPayments'
-      when p_kind in ('contact.archive', 'contact.restore') then 'deleteContacts'
+      when p_kind in ('contact.archive', 'contact.restore', 'contact.delete') then 'deleteContacts'
       when p_kind = 'debt.correct' then 'deleteRecords'
       else 'allowed'
     end)::boolean,

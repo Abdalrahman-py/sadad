@@ -4,7 +4,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** The nine command types `24_apply_one.sql` accepts, with the payload each one carries. */
+/** The command types `24_apply_one.sql` accepts, with the payload each one carries. */
 @Serializable
 enum class CommandType(
     /** May be queued under an offline lease (`LEASE_ALLOWED` in the api's mobile.ts). */
@@ -15,6 +15,7 @@ enum class CommandType(
   @SerialName("contact.update") CONTACT_UPDATE(false, ContactUpdate.serializer()),
   @SerialName("contact.archive") CONTACT_ARCHIVE(false, ContactArchive.serializer()),
   @SerialName("contact.restore") CONTACT_RESTORE(false, ContactRestore.serializer()),
+  @SerialName("contact.delete") CONTACT_DELETE(false, ContactDelete.serializer()),
   @SerialName("debt.create") DEBT_CREATE(true, DebtCreate.serializer()),
   @SerialName("debt.offset") DEBT_OFFSET(true, DebtOffset.serializer()),
   @SerialName("debt.correct") DEBT_CORRECT(false, DebtCorrect.serializer()),

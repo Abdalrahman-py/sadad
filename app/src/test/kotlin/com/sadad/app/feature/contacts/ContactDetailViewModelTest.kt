@@ -15,6 +15,7 @@ import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -41,6 +42,65 @@ class ContactDetailViewModelTest {
   private val context: Context = ApplicationProvider.getApplicationContext()
 
   @Test
+  fun aContactRejectedForTheStoreLimitDoesNotBecomeMissing() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val id =
+          store.repository
+              .addContact(
+                  "إبراهيم",
+                  null,
+                  "زبون",
+                  "ملاحظات محفوظة",
+                  com.sadad.app.data.ledger.FirstDebt(Cents(25_800), "دين محفوظ"),
+              )
+              .getOrThrow()
+      val model =
+          ContactDetailViewModel(fixture.graph, id, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      model.state.first { it.loaded && !it.missing }
+      val rows = store.outbox.snapshot()
+      store.outbox.settle(
+          rows.map { row ->
+            com.sadad.app.data.ledger.receiptOf(
+                row.command,
+                com.sadad.ledger.ReceiptStatus.REJECTED,
+                code =
+                    if (row.type == CommandType.CONTACT_CREATE) "contact_limit_reached"
+                    else "dependency_rejected",
+            )
+          }
+      )
+      val failed = model.state.first { it.missing || it.syncFailure != null }
+      assertFalse("the rejected contact must remain as a saved draft", failed.missing)
+      assertEquals("إبراهيم", failed.name)
+      assertEquals(Cents(25_800), failed.savedDebts.single().amountCents)
+      assertEquals(Cents.ZERO, failed.balance)
+      assertTrue(failed.movements.isEmpty())
+      assertFalse(failed.canDeleteContacts)
+      val people =
+          com.sadad.app.feature.people.PeopleViewModel(
+              fixture.graph,
+              androidx.lifecycle.SavedStateHandle(),
+          )
+      fixture.closeWithStore(people.viewModelScope)
+      val directory =
+          people.state.first { it.rows.any { person -> person.id == id && person.syncFailed } }
+      assertEquals(Cents.ZERO, directory.rows.single { it.id == id }.net)
+      val recreated = ContactDetailViewModel(fixture.graph, id, context)
+      fixture.closeWithStore(recreated.viewModelScope)
+      assertFalse(recreated.state.first { it.syncFailure != null }.missing)
+      val ledger =
+          store.repository.view.first {
+            it != null && it.contacts.none { person -> person.id == id }
+          }!!
+      assertEquals(Cents.ZERO, ledger.receivable)
+      assertEquals(Cents.ZERO, ledger.confirmedReceivable)
+    }
+  }
+
+  @Test
   fun theBalanceIsTheSumOfTheRemainingReceivableDebts() = runTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)
@@ -61,6 +121,41 @@ class ContactDetailViewModelTest {
       assertEquals("سامي", state.name)
       assertEquals(Direction.PAYABLE, state.movements.first { it.id == payable.entityId }.direction)
       assertEquals(Direction.RECEIVABLE, state.movements.first { it.id == paid.entityId }.direction)
+    }
+  }
+
+  @Test
+  fun onePaymentSettlingTwoDebtsIsOneMovementAndCanBeReversedTogether() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سامي", contactId(1), minute = 0)
+      val first = debt(person.entityId, amount = 10_000, minute = 1)
+      val second = debt(person.entityId, amount = 5_000, minute = 2)
+      fixture.seedCommands(listOf(person, first, second))
+      fixture.seed {
+        payContact(person.entityId, Cents(15_000), PaymentMethod.CASH, null).getOrThrow()
+      }
+      val model =
+          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      val pending = model.state.first { it.loaded && it.balance == Cents.ZERO }
+      val queued = pending.movements.single { it.kind == MovementKind.PAYMENT }
+      assertTrue(queued.pending)
+      assertFalse(queued.canReverse)
+      fixture.settleAll()
+      val state =
+          model.state.first {
+            it.loaded && it.balance == Cents.ZERO && it.movements.none { row -> row.pending }
+          }
+      val payments = state.movements.filter { it.kind == MovementKind.PAYMENT }
+      assertEquals("one 150 payment, not separate 100 and 50 rows", 1, payments.size)
+      val row = payments.single()
+      assertEquals(Cents(15_000), row.amount)
+      assertEquals(2, row.parts.size)
+      assertTrue(row.canReverse)
+      model.reverse(row.id)
+      val reversals = awaitOutbox(fixture, 2).map { it.command.payload() as PaymentReverse }
+      assertEquals(row.parts.toSet(), reversals.map { it.paymentId }.toSet())
     }
   }
 

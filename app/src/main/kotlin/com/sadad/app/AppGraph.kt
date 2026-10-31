@@ -27,6 +27,10 @@ import com.sadad.app.data.sync.SyncEngine
 import com.sadad.app.data.sync.SyncScheduler
 import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
+import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.feature.photo.PhotoKind
+import com.sadad.app.feature.photo.PhotoStore
+import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.ui.AwaitingApproval
 import com.sadad.app.ui.Home
 import com.sadad.app.ui.Login
@@ -72,11 +76,20 @@ internal constructor(
     private val bootCount: () -> Int = {
       Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
     },
+    /** Stable across a reinstall of the same signing key; see DeviceIdentity. */
+    private val deviceSeed: () -> String? = { androidId(context) },
 ) : SessionHost {
   val errorMessages: ErrorMessages by lazy { ErrorMessages(context) }
 
   val sessions: Sessions by lazy {
-    Sessions(accounts, authApi, installations, this, deviceLabel)
+    Sessions(
+        accounts,
+        authApi,
+        installations,
+        this,
+        deviceLabel,
+        installationSeed = deviceSeed,
+    )
   }
 
   private val mutableCurrent = MutableStateFlow<StoreScope?>(null)
@@ -226,6 +239,12 @@ internal constructor(
           installations.delete(account.keyAlias)
           deleteDatabase(storeUserId)
           accounts.remove(storeUserId)
+          // Everything the app kept for this store goes with it: a store added again under the
+          // same id must not inherit an old photo, hidden ids or reminders.
+          val photos = PhotoStore(context)
+          PhotoKind.entries.forEach { kind -> runCatching { photos.delete(storeUserId, kind) } }
+          TrashHidden.forget(context, storeUserId)
+          DueReminders.get(context).forget(storeUserId)
           true
         }
       }
@@ -291,3 +310,12 @@ internal constructor(
     }
   }
 }
+
+/**
+ * The device value that survives a reinstall of the same signing key. `ANDROID_ID` is stable per
+ * app-signing key + user since Android 8; a device that withholds it falls back to a random id.
+ */
+private fun androidId(context: Context): String? = runCatching {
+  Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+}
+    .getOrNull()

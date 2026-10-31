@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
@@ -101,16 +102,46 @@ object Recovery {
     return file
   }
 
+  /** How many rows the permit covered, and how many of the origin's rows it did not. */
+  data class PermitResult(val stamped: Int, val outside: Int)
+
   /**
-   * Puts the admin's [permit] on [origin]'s queued rows; sync then sends them in their own batches.
+   * Puts the admin's [permit] on the rows [manifest] named: the bytes the admin approved. Sync then
+   * sends them in their own batches. A row of [origin] that appeared after the export stays queued
+   * without a permit instead of poisoning the batch with a command the permit cannot name.
    */
-  suspend fun setPermit(scope: StoreScope, origin: String, permit: String) {
+  suspend fun setPermit(
+      scope: StoreScope,
+      origin: String,
+      permit: String,
+      manifest: ByteArray,
+  ): PermitResult {
     // The server's check is a canonical UUID; a typo stored on the rows would block the sends.
     val canonical = permit.trim().lowercase()
     require(PERMIT.matches(canonical)) { "رقم التصريح غير صالح." }
     require(origin != scope.account.installationId) { "هذا الهاتف لا يحتاج إلى تصريح لإدخالاته." }
-    scope.outbox.setPermit(origin, canonical)
+    val approved =
+        try {
+          LedgerJson.decodeFromJsonElement(
+              commands,
+              Json.parseToJsonElement(String(manifest, UTF_8)),
+          )
+        } catch (_: RuntimeException) {
+          throw IllegalArgumentException(MANIFEST_UNREADABLE)
+        }
+    require(approved.isNotEmpty()) { MANIFEST_UNREADABLE }
+    val approvedIds = approved.mapTo(HashSet()) { it.operationId }
+    val stamped = scope.outbox.setPermit(origin, canonical, approvedIds)
+    val outside =
+        scope.outbox.snapshot().count {
+          it.state == OutboxState.QUEUED &&
+              it.command.type.offline &&
+              it.command.originInstallationId == origin &&
+              it.operationId !in approvedIds
+        }
+    return PermitResult(stamped, outside)
   }
 
+  const val MANIFEST_UNREADABLE = "قائمة الاعتماد غير صالحة؛ أنشئها من جديد ثم أدخل التصريح."
   private val PERMIT = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 }

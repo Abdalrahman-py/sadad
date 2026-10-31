@@ -43,6 +43,8 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   overpayment: 409,
   offset_invalid: 409,
   contact_limit_reached: 409,
+  contact_has_balance: 409,
+  contact_not_archived: 409,
   device_limit_reached: 409,
   store_not_archived: 409,
   store_archived: 409,

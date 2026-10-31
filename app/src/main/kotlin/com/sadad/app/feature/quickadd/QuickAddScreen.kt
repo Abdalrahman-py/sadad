@@ -84,7 +84,6 @@ import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.KeypadKey
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
-import com.sadad.app.ui.components.SadadField
 import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.VoiceDraftButton
@@ -107,12 +106,6 @@ object QuickAddTags {
   const val PEOPLE = "quickadd:people"
   const val ADD_NEW = "quickadd:add-new"
   const val BLOCKED = "quickadd:blocked"
-  const val NEW_SHEET = "quickadd:new-sheet"
-  const val NEW_NAME = "quickadd:new-name"
-  const val NEW_PHONE = "quickadd:new-phone"
-  const val NEW_CONTINUE = "quickadd:new-continue"
-  const val KIND_CUSTOMER = "quickadd:kind-customer"
-  const val KIND_SUPPLIER = "quickadd:kind-supplier"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
   const val ERROR = "quickadd:error"
@@ -135,18 +128,14 @@ object QuickAddTags {
   fun key(label: String) = "quickadd:key-$label"
 }
 
-/**
- * Recording a debt or a payment, in the four steps of `QuickAdd.dc.html`: pick the person, create
- * them if they are new, type the amount on a keypad, and read the sentence that was recorded with
- * eight seconds to take it back. Opened from «+» with nothing, or from a Contact's page with that
- * person and the mode already chosen.
- */
+/** Records for a saved person; creating a new person opens the full contact form first. */
 @Composable
 fun QuickAddScreen(
     contactId: String?,
     payment: Boolean,
     onClose: () -> Unit,
     onOpenContact: (String) -> Unit,
+    onCreateContact: (String) -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
 ) {
   val state by viewModel.state.collectAsState()
@@ -155,11 +144,7 @@ fun QuickAddScreen(
 
   Box(Modifier.fillMaxSize().sadadPageBackground()) {
     when (state.step) {
-      QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose)
-      QuickAddStep.NEW_PERSON -> {
-        PickerStep(state, viewModel, onClose)
-        NewPersonSheet(state, viewModel)
-      }
+      QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose, onCreateContact)
       QuickAddStep.AMOUNT ->
           AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
@@ -221,7 +206,12 @@ private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddVie
 /* ---------------------------------------------------------------- picker */
 
 @Composable
-private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: () -> Unit) {
+private fun PickerStep(
+    state: QuickAddState,
+    model: QuickAddViewModel,
+    onClose: () -> Unit,
+    onCreateContact: (String) -> Unit,
+) {
   val p = sadadPalette
   Column(
       Modifier.fillMaxSize().imePadding().padding(horizontal = 18.dp),
@@ -278,7 +268,9 @@ private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: 
         }
       }
       if (state.query.isNotBlank()) {
-        item { AddNewRow(name = state.query.trim(), onClick = model::startNewPerson) }
+        item {
+          AddNewRow(name = state.query.trim(), onClick = { onCreateContact(state.query.trim()) })
+        }
       }
     }
   }
@@ -460,164 +452,6 @@ private fun AddNewRow(name: String, onClick: () -> Unit) {
           fontWeight = FontWeight.Bold,
           fontSize = 15.sp,
           color = link,
-      )
-    }
-  }
-}
-
-/* ------------------------------------------------------------ new person */
-
-@Composable
-private fun NewPersonSheet(state: QuickAddState, model: QuickAddViewModel) {
-  val p = sadadPalette
-  Box(Modifier.fillMaxSize().background(Scrim)) {
-    Surface(
-        color = p.card,
-        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-        modifier =
-            Modifier.fillMaxWidth().align(Alignment.BottomCenter).testTag(QuickAddTags.NEW_SHEET),
-    ) {
-      Column(
-          Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 24.dp).imePadding(),
-          verticalArrangement = Arrangement.spacedBy(14.dp),
-      ) {
-        Box(
-            Modifier.width(40.dp)
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(p.line)
-                .align(Alignment.CenterHorizontally)
-        )
-        Text(
-            stringResource(R.string.quickadd_new_title),
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Bold,
-            color = p.text,
-        )
-        SadadField(
-            label = stringResource(R.string.quickadd_name),
-            value = state.newName,
-            onValueChange = model::onNewName,
-            modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.NEW_NAME),
-        )
-        SadadField(
-            label =
-                stringResource(R.string.quickadd_phone) +
-                    " " +
-                    stringResource(R.string.quickadd_phone_hint),
-            value = state.newPhone,
-            onValueChange = model::onNewPhone,
-            placeholder = stringResource(R.string.quickadd_phone_placeholder),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.NEW_PHONE),
-        )
-        KindToggle(state, model)
-        val duplicate = state.duplicate
-        if (duplicate != null) {
-          Surface(
-              color = p.creditSoft,
-              shape = RoundedCornerShape(13.dp),
-              modifier = Modifier.fillMaxWidth(),
-          ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Text(
-                  stringResource(R.string.quickadd_duplicate),
-                  fontSize = 14.sp,
-                  lineHeight = 21.sp,
-                  color = p.text,
-              )
-              Text(
-                  duplicate,
-                  fontSize = 14.sp,
-                  lineHeight = 21.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = p.text,
-              )
-              Surface(color = p.card, shape = RoundedCornerShape(10.dp)) {
-                Text(
-                    stringResource(R.string.quickadd_use_duplicate, duplicate),
-                    color = if (p.isDark) p.accent else p.primary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .clickable(onClick = model::useDuplicate)
-                            .padding(vertical = 12.dp),
-                )
-              }
-            }
-          }
-        }
-        SadadButton(
-            text = stringResource(R.string.quickadd_continue),
-            onClick = model::createPerson,
-            enabled = state.newName.isNotBlank() && state.duplicate == null,
-            modifier = Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.NEW_CONTINUE),
-        )
-        TextButton(onClick = model::cancelNew, modifier = Modifier.fillMaxWidth()) {
-          Text(stringResource(R.string.quickadd_cancel))
-        }
-        Text(
-            stringResource(R.string.quickadd_new_footnote),
-            fontSize = 12.sp,
-            color = p.muted,
-        )
-      }
-    }
-  }
-}
-
-@Composable
-private fun KindToggle(state: QuickAddState, model: QuickAddViewModel) {
-  val p = sadadPalette
-  Surface(
-      color = p.surface,
-      shape = RoundedCornerShape(13.dp),
-      modifier = Modifier.fillMaxWidth(),
-  ) {
-    Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-      KindCell(
-          label = stringResource(R.string.quickadd_customer),
-          chosen = state.newKind == ContactKind.CUSTOMER,
-          tag = QuickAddTags.KIND_CUSTOMER,
-          onClick = { model.onNewKind(ContactKind.CUSTOMER) },
-          modifier = Modifier.weight(1f),
-      )
-      KindCell(
-          label = stringResource(R.string.quickadd_supplier),
-          chosen = state.newKind == ContactKind.SUPPLIER,
-          tag = QuickAddTags.KIND_SUPPLIER,
-          onClick = { model.onNewKind(ContactKind.SUPPLIER) },
-          modifier = Modifier.weight(1f),
-      )
-    }
-  }
-}
-
-@Composable
-private fun KindCell(
-    label: String,
-    chosen: Boolean,
-    tag: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-  val p = sadadPalette
-  Surface(
-      color = if (chosen) p.primary else Color.Transparent,
-      shape = RoundedCornerShape(10.dp),
-      modifier =
-          modifier.height(44.dp).testTag(tag).clickable(onClick = onClick).semantics {
-            role = Role.Button
-          },
-  ) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text(
-          label,
-          color = if (chosen) Color.White else p.muted,
-          fontSize = 14.sp,
-          fontWeight = FontWeight.Bold,
       )
     }
   }
@@ -1379,7 +1213,5 @@ private fun Modifier.dashedBorder(color: Color, radius: Dp, width: Dp = 1.5.dp) 
           ),
   )
 }
-
-private val Scrim = Color(0x73142C24)
 
 private val Ghost = Color(0xFF8FA89B)

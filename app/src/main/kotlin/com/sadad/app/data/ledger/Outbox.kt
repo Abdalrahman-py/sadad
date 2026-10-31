@@ -83,17 +83,23 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
   suspend fun queued(limit: Int = OperationsRequest.MAX_BATCH): List<LedgerCommand> =
       dao.queued(limit).map { commandOf(it) }
 
-  /** Puts [permit] on every queued row that [origin] added, so a recovery batch can carry them. */
-  suspend fun setPermit(origin: String, permit: String) {
+  /**
+   * Puts [permit] on the queued rows of [origin] that [operationIds] names — the commands the admin
+   * actually approved. A row added after the manifest was exported is left alone: the server would
+   * refuse the whole batch for it. Returns how many rows were stamped.
+   */
+  suspend fun setPermit(origin: String, permit: String, operationIds: Set<String>): Int {
     val ids =
         snapshot()
             .filter {
               it.state == OutboxState.QUEUED &&
                   it.command.type.offline &&
-                  it.command.originInstallationId == origin
+                  it.command.originInstallationId == origin &&
+                  it.operationId in operationIds
             }
             .map { it.operationId }
     if (ids.isNotEmpty()) for (chunk in ids.chunked(500)) dao.setRecoveryPermit(chunk, permit)
+    return ids.size
   }
 
   /** Marks the queued rows accepted or rejected in one transaction; a cancelled row stays so. */
@@ -178,9 +184,14 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
         dao.all()
             .filter {
               it.state == OutboxState.ACCEPTED.column &&
-                  (it.entityId in state.contacts ||
-                      it.entityId in state.debts ||
-                      it.entityId in state.payments) &&
+                  (if (it.type == CommandType.CONTACT_DELETE.wireName) {
+                    (commandOf(it).payload() as com.sadad.ledger.ContactDelete).contactId !in
+                        state.contacts
+                  } else {
+                    it.entityId in state.contacts ||
+                        it.entityId in state.debts ||
+                        it.entityId in state.payments
+                  }) &&
                   // The archived Contact already exists before its restore event is pulled.
                   (it.type != CommandType.CONTACT_RESTORE.wireName ||
                       checkNotNull(state.contacts[it.entityId]).version >

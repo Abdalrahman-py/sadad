@@ -158,7 +158,7 @@ class SettingsViewModelTest {
 
         model.savePin("12", "12")
         assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
-        model.savePin("483927", "483928")
+        model.savePin("4839", "4838")
         assertEquals(
             PinError.MISMATCH,
             model.state.first { it.pinError == PinError.MISMATCH }.pinError,
@@ -179,7 +179,7 @@ class SettingsViewModelTest {
         model.setLockEnabled(true)
         model.state.first { it.pending == Pending.SetPin }
 
-        model.savePin("483927", "483927")
+        model.savePin("4839", "4839")
 
         val state = model.state.first { it.pending == null && it.lockOn }
         assertTrue(kit.lock.hasPin())
@@ -192,7 +192,7 @@ class SettingsViewModelTest {
   fun turningTheLockOffKeepsThePin() = runTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
-        kit.lock.setPin("483927")
+        kit.lock.setPin("4839")
         val model = kit.viewModel()
         model.state.first { it.loaded && it.lockOn }
 
@@ -218,7 +218,7 @@ class SettingsViewModelTest {
         withSensor.setBiometric(true)
         assertEquals(Pending.SetPin, withSensor.state.first { it.pending != null }.pending)
 
-        kit.lock.setPin("483927")
+        kit.lock.setPin("4839")
         withSensor.dismiss()
         withSensor.setBiometric(true)
         withSensor.state.first { it.biometricEnabled }
@@ -284,15 +284,15 @@ class SettingsViewModelTest {
         model.requestPin()
         model.state.first { it.pending == Pending.SetPin }
 
-        for (pin in listOf("1234567890123", "12a4")) {
+        for (pin in listOf("12345", "1234567890123", "12a4")) {
           model.savePin(pin, pin)
           assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
         }
-        model.savePin("483927", "483927")
+        model.savePin("4839", "4839")
         model.state.first { it.pending == null }
 
         assertTrue(kit.lock.hasPin())
-        assertTrue(saved.keys().none { key -> saved.get<Any>(key).toString().contains("483927") })
+        assertTrue(saved.keys().none { key -> saved.get<Any>(key).toString().contains("4839") })
       }
     }
   }

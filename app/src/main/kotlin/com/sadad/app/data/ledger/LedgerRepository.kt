@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -108,12 +109,15 @@ class LedgerRepository(
   private val state = MutableStateFlow(LedgerState.EMPTY)
   private val mutex = Mutex()
 
-  val view: StateFlow<LedgerView?> =
+  val contactRecords: StateFlow<ContactRecords?> =
       combine(state, outbox.rows, session.staffName) { current, rows, staff ->
-            project(current, rows, staff)
+            contactRecords(project(current, rows, staff), rows)
           }
           .flowOn(Dispatchers.Default)
           .stateIn(scope, SharingStarted.Eagerly, null)
+
+  val view: StateFlow<LedgerView?> =
+      contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
 
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
@@ -154,7 +158,7 @@ class LedgerRepository(
     val origin = origin()
     requireOfflineAllowed()
     val at = Instant.now()
-    val contact = Commands.contactCreate(origin, at, name, phone, category, note, kind)
+    val contact = Commands.contactCreate(origin, at, name, wirePhone(phone), category, note, kind)
     val commands = mutableListOf(contact)
     if (firstDebt != null) {
       commands +=
@@ -192,7 +196,7 @@ class LedgerRepository(
                 contactId,
                 nextVersion(contactId),
                 name,
-                phone,
+                wirePhone(phone),
                 category,
                 note,
                 kind,
@@ -239,6 +243,40 @@ class LedgerRepository(
                 nextVersion(contactId),
                 reason,
                 dependsOn = contact.dependency(),
+                entityId = contactId,
+            )
+        )
+    )
+  }
+
+  /** Permanent deletion is online-only and only targets a zero-balance contact in the trash. */
+  suspend fun deleteContact(contactId: String, reason: String): Result<Unit> = guarded {
+    val origin = origin()
+    requireOnline()
+    val contact =
+        currentView().archivedContacts.firstOrNull { it.id == contactId }
+            ?: throw Refusal.Invalid("انقل الشخص إلى سلة المحذوفات أولًا.")
+    val stored = state.value
+    val rows = outbox.snapshot()
+    val visible =
+        stored
+            .copy(
+                contacts =
+                    stored.contacts.mapValues { (id, row) ->
+                      if (id == contactId) row.copy(archived = false) else row
+                    }
+            )
+            .view(pendingCommands(rows), failedOperations(rows), session.selfInstallationId, "")
+    if (visible.debts.any { it.contactId == contactId && it.remaining > Cents.ZERO })
+        throw Refusal.Invalid("سدّد الرصيد قبل الحذف النهائي.")
+    enqueue(
+        listOf(
+            Commands.contactDelete(
+                origin,
+                Instant.now(),
+                contactId,
+                contact.version,
+                reason,
                 entityId = contactId,
             )
         )
@@ -372,6 +410,15 @@ class LedgerRepository(
   private suspend fun enqueue(commands: List<LedgerCommand>) {
     outbox.append(commands)
     session.onQueued()
+  }
+
+  /** UI formatting must finish before queueing a person and any dependent financial entries. */
+  private fun wirePhone(value: String?): String? {
+    val phone = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    require(phone.matches(Regex("\\+[1-9][0-9]{7,14}"))) {
+      "راجع رقم الهاتف ومقدمته؛ يجب إرساله بصيغة دولية تبدأ بـ +."
+    }
+    return phone
   }
 
   private suspend fun <T> guarded(block: suspend () -> T): Result<T> =

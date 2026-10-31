@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -58,6 +59,10 @@ class DueReminders(produceFile: () -> File, scope: CoroutineScope) {
             .sortedByDescending { row -> row.createdAt }
       }
 
+  /** Whether this reminder was already shown; [record] is what marks it as shown. */
+  suspend fun wasShown(event: Reminder): Boolean =
+      decode(store.data.first()[key(event.storeUserId)]).any { it.id == event.id }
+
   suspend fun record(event: Reminder): Boolean {
     var added = false
     store.edit { preferences ->
@@ -101,6 +106,11 @@ class DueReminders(produceFile: () -> File, scope: CoroutineScope) {
         }
       }
     }
+  }
+
+  /** Removes this store's reminders: the owner deleted the store they belonged to. */
+  suspend fun forget(storeUserId: String) {
+    store.edit { it.remove(key(storeUserId)) }
   }
 
   companion object {

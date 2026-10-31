@@ -3,23 +3,26 @@ package com.sadad.app.feature.history
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.Events
+import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.PaymentMethod
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
-import java.time.YearMonth
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,122 +34,186 @@ import org.robolectric.annotation.Config
 class HistoryViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
-  @Test
-  fun octoberListsTheTwoContactsWithOctoberMovementsNewestFirst() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val sami = fixture.confirmedContact("سامي", at("2026-09-20T09:00:00Z"))
-      val laila = fixture.confirmedContact("ليلى", at("2026-09-21T09:00:00Z"))
-      val omar = fixture.confirmedContact("عمر", at("2026-09-22T09:00:00Z"))
-      fixture.confirmedDebt(sami, 10_000, at("2026-10-02T09:00:00Z"))
-      fixture.confirmedDebt(laila, 5_000, at("2026-10-09T09:00:00Z"))
-      fixture.confirmedDebt(omar, 7_000, at("2026-09-25T09:00:00Z"))
-      val model = HistoryViewModel(fixture.graph, SavedStateHandle(), clock)
-      fixture.closeWithStore(model.viewModelScope)
-
-      model.selectPreset(PeriodPreset.MONTH)
-      val october = model.state.first { it.loaded && it.people.size == 2 }
-      assertEquals(Period.Month(YearMonth.of(2026, 10)), october.period)
-      assertEquals(listOf("ليلى", "سامي"), october.people.map { it.name })
-
-      model.selectPreset(PeriodPreset.ALL)
-      val all = model.state.first { it.period == Period.All && it.people.size == 3 }
-
-      assertEquals(listOf("ليلى", "سامي", "عمر"), all.people.map { it.name })
-    }
-  }
-
-  @Test
-  fun theNewestMovementDecidesTheOrderAcrossContacts() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
-      fixture.confirmedContact("ليلى", at("2026-10-02T09:00:00Z")).also { laila ->
-        fixture.confirmedDebt(laila, 3_000, at("2026-10-02T09:00:00Z"))
+  private fun model(fixture: TestGraph, saved: SavedStateHandle = SavedStateHandle()) =
+      HistoryViewModel(fixture.graph, saved, clock).also {
+        fixture.closeWithStore(it.viewModelScope)
       }
-      val debt = fixture.confirmedDebt(sami, 10_000, at("2026-10-03T09:00:00Z"))
-      fixture.confirmedPayment(debt, 4_000, at("2026-10-08T09:00:00Z"))
-      val model = HistoryViewModel(fixture.graph, SavedStateHandle(), clock)
-      fixture.closeWithStore(model.viewModelScope)
-
-      model.selectPreset(PeriodPreset.MONTH)
-      val state = model.state.first { it.loaded && it.people.size == 2 }
-
-      // سامي's payment on the 8th is newer than ليلى's debt on the 2nd.
-      assertEquals(listOf("سامي", "ليلى"), state.people.map { it.name })
-      assertEquals(at("2026-10-08T09:00:00Z"), state.people.first().lastMovementAt)
-      assertEquals(Cents(6_000), state.people.first().openBalance)
-    }
-  }
 
   @Test
-  fun aPersonCarriesTheOpenBalanceAndTheLastDebt() = runTest {
+  fun everyDebtAndPaymentIsListedAcrossPeopleInBothOrders() = runTest {
     TestGraph.signedIn().use { fixture ->
       val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
-      val older = fixture.confirmedDebt(sami, 10_000, at("2026-10-02T09:00:00Z"))
-      fixture.confirmedDebt(sami, 5_000, at("2026-10-05T09:00:00Z"))
-      fixture.confirmedPayment(older, 4_000, at("2026-10-06T09:00:00Z"))
-      val model = HistoryViewModel(fixture.graph, SavedStateHandle(), clock)
-      fixture.closeWithStore(model.viewModelScope)
-
-      model.selectPreset(PeriodPreset.MONTH)
-      val person = model.state.first { it.loaded && it.people.isNotEmpty() }.people.single()
-
-      assertEquals(Cents(11_000), person.openBalance)
-      assertEquals(Cents(5_000), person.lastDebt)
-      assertEquals("سامي", person.name)
-    }
-  }
-
-  @Test
-  fun aPayableMovementDoesNotPutTheContactInTheHistory() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val supplier = fixture.confirmedContact("المورد", at("2026-10-01T09:00:00Z"))
-      fixture.confirmedDebt(
-          supplier,
-          3_000,
-          at("2026-10-02T09:00:00Z"),
-          direction = Direction.PAYABLE,
+      val laila = fixture.confirmedContact("ليلى", at("2026-10-01T10:00:00Z"))
+      val first = fixture.confirmedDebt(sami, 10000, at("2026-10-02T09:00:00Z"))
+      fixture.confirmedDebt(laila, 3000, at("2026-10-04T09:00:00Z"))
+      fixture.confirmedDebt(sami, 5000, at("2026-10-05T09:00:00Z"))
+      fixture.confirmedPayment(first, 4000, at("2026-10-06T09:00:00Z"))
+      val model = model(fixture)
+      val newest = model.state.first { it.loaded && it.movements.size == 4 }
+      assertEquals(listOf("سامي", "سامي", "ليلى", "سامي"), newest.movements.map { it.name })
+      assertEquals(listOf(4000L, 5000L, 3000L, 10000L), newest.movements.map { it.amount.value })
+      assertEquals(
+          listOf(MovementKind.PAYMENT, MovementKind.DEBT, MovementKind.DEBT, MovementKind.DEBT),
+          newest.movements.map { it.kind },
       )
-      val model = HistoryViewModel(fixture.graph, SavedStateHandle(), clock)
-      fixture.closeWithStore(model.viewModelScope)
-
-      model.selectPreset(PeriodPreset.MONTH)
-      val state = model.state.first { it.loaded }
-
-      assertEquals(emptyList<HistoryPerson>(), state.people)
+      model.setNewestFirst(false)
+      val oldest = model.state.first { !it.newestFirst && it.loaded }
+      assertEquals(newest.movements.reversed(), oldest.movements)
     }
   }
 
   @Test
-  fun theChosenTabAndPeriodSurviveARecreatedViewModel() = runTest {
+  fun dayMonthYearAllAndCustomPeriodsFilterIndividualMovements() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = fixture.confirmedContact("سامي", at("2025-01-01T09:00:00Z"))
+      for (date in listOf("2025-12-20", "2026-01-02", "2026-10-02", "2026-10-17")) {
+        fixture.confirmedDebt(sami, 1000, at(date + "T09:00:00Z"))
+      }
+      val model = model(fixture)
+      model.state.first { it.loaded && it.movements.size == 4 }
+      for ((preset, count) in
+          listOf(
+              PeriodPreset.DAY to 1,
+              PeriodPreset.MONTH to 2,
+              PeriodPreset.YEAR to 3,
+              PeriodPreset.ALL to 4,
+          )) {
+        model.selectPreset(preset)
+        val state = model.state.first { it.loaded && it.period.preset == preset }
+        assertEquals(count, state.movements.size)
+      }
+      model.selectCustom(LocalDate.of(2026, 10, 2), LocalDate.of(2026, 10, 17))
+      val custom = model.state.first { it.period is Period.Custom }
+      assertEquals(2, custom.movements.size)
+      model.selectCustom(LocalDate.of(2026, 10, 17), LocalDate.of(2026, 10, 17))
+      assertEquals(
+          1,
+          model.state
+              .first {
+                it.period == Period.Custom(LocalDate.of(2026, 10, 17), LocalDate.of(2026, 10, 17))
+              }
+              .movements
+              .size,
+      )
+    }
+  }
+
+  @Test
+  fun orderAndCustomPeriodSurviveViewModelRecreation() = runTest {
     TestGraph.signedIn().use { fixture ->
       val saved = SavedStateHandle()
-      val first = HistoryViewModel(fixture.graph, saved, clock)
-      first.selectPreset(PeriodPreset.YEAR)
-      first.onTabChange(HistoryTab.ACTIVITY)
-
-      val recreated = HistoryViewModel(fixture.graph, saved, clock)
-      val state = recreated.state.first { it.loaded }
-      fixture.closeWithStore(recreated.viewModelScope)
-
-      assertEquals(HistoryTab.ACTIVITY, state.tab)
-      assertEquals(Period.Year(2026), state.period)
+      val first = model(fixture, saved)
+      val from = LocalDate.of(2026, 10, 2)
+      val to = LocalDate.of(2026, 10, 17)
+      first.selectCustom(from, to)
+      first.setNewestFirst(false)
+      val recreated = model(fixture, saved).state.first { it.loaded }
+      assertEquals(Period.Custom(from, to), recreated.period)
+      assertFalse(recreated.newestFirst)
     }
   }
 
   @Test
-  fun aCustomRangeKeepsOnlyTheMovementsInsideIt() = runTest {
+  fun onePaymentAcrossDebtsIsOnePendingThenConfirmedRecord() = runTest {
     TestGraph.signedIn().use { fixture ->
       val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
-      fixture.confirmedDebt(sami, 10_000, at("2026-10-17T09:00:00Z"))
-      val laila = fixture.confirmedContact("ليلى", at("2026-10-01T09:00:00Z"))
-      fixture.confirmedDebt(laila, 5_000, at("2026-10-03T09:00:00Z"))
-      val model = HistoryViewModel(fixture.graph, SavedStateHandle(), clock)
-      fixture.closeWithStore(model.viewModelScope)
+      fixture.confirmedDebt(sami, 10000, at("2026-10-02T09:00:00Z"))
+      fixture.confirmedDebt(sami, 5000, at("2026-10-03T09:00:00Z"))
+      fixture.seed { payContact(sami, Cents(15000), PaymentMethod.CASH, null).getOrThrow() }
+      val model = model(fixture)
+      val pending =
+          model.state.first {
+            it.loaded && it.movements.any { row -> row.kind == MovementKind.PAYMENT }
+          }
+      assertEquals(3, pending.movements.size)
+      assertEquals(
+          Cents(15000),
+          pending.movements.single { it.kind == MovementKind.PAYMENT }.amount,
+      )
+      assertTrue(pending.movements.single { it.kind == MovementKind.PAYMENT }.pending)
+      fixture.settleAll()
+      val confirmed = model.state.first { it.loaded && it.movements.none { row -> row.pending } }
+      assertEquals(1, confirmed.movements.count { it.kind == MovementKind.PAYMENT })
+    }
+  }
 
-      model.selectCustom(LocalDate.of(2026, 10, 15), LocalDate.of(2026, 10, 17))
-      val state = model.state.first { it.loaded && it.people.size == 1 }
+  @Test
+  fun supplierDebtsAndPaymentsAreIncludedButReversedPaymentsAreNot() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val supplier = fixture.confirmedContact("المورد", at("2026-10-01T09:00:00Z"))
+      val debt =
+          fixture.confirmedDebt(supplier, 10000, at("2026-10-02T09:00:00Z"), Direction.PAYABLE)
+      val paid =
+          Commands.paymentCreate(
+              Events.origin,
+              at("2026-10-03T09:00:00Z"),
+              debt,
+              Cents(4000),
+              PaymentMethod.CASH,
+          )
+      fixture.fold(paid)
+      val model = model(fixture)
+      val state = model.state.first { it.loaded && it.movements.size == 2 }
+      assertTrue(state.movements.all { it.direction == Direction.PAYABLE })
+      fixture.fold(
+          Commands.paymentReverse(Events.origin, at("2026-10-04T09:00:00Z"), paid.entityId, "خطأ")
+      )
+      val reversed = model.state.first { it.loaded && it.movements.size == 1 }
+      assertEquals(MovementKind.DEBT, reversed.movements.single().kind)
+    }
+  }
 
-      assertEquals(listOf("سامي"), state.people.map { it.name })
+  @Test
+  fun excessCreditBelongsToTheSavedPaymentAndCreditAloneIsAlsoAPayment() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
+      val first = fixture.confirmedDebt(sami, 10000, at("2026-10-02T09:00:00Z"))
+      val second = fixture.confirmedDebt(sami, 5000, at("2026-10-03T09:00:00Z"))
+      val paidAt = at("2026-10-04T09:00:00Z")
+      fixture.confirmedPayment(first, 10000, paidAt)
+      fixture.confirmedPayment(second, 5000, paidAt)
+      fixture.fold(
+          Commands.debtCreate(
+              Events.origin,
+              paidAt,
+              sami,
+              Direction.PAYABLE,
+              Cents(5000),
+              debtOrigin = DebtOrigin.OVERPAYMENT,
+          )
+      )
+      val creditAt = at("2026-10-05T09:00:00Z")
+      fixture.fold(
+          Commands.debtCreate(
+              Events.origin,
+              creditAt,
+              sami,
+              Direction.PAYABLE,
+              Cents(1000),
+              debtOrigin = DebtOrigin.OVERPAYMENT,
+          )
+      )
+      val state = model(fixture).state.first { it.loaded && it.movements.size == 4 }
+      val payments = state.movements.filter { it.kind == MovementKind.PAYMENT }
+      assertEquals(listOf(Cents(1000), Cents(20000)), payments.map { it.amount })
+      assertEquals(2, state.movements.count { it.kind == MovementKind.DEBT })
+    }
+  }
+
+  @Test
+  fun localDayStartsInclusiveAndEndsExclusive() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
+      val day = LocalDate.of(2026, 10, 17)
+      val start = day.atStartOfDay(clock.zone).toInstant()
+      val end = day.plusDays(1).atStartOfDay(clock.zone).toInstant()
+      for (instant in listOf(start.minusMillis(1), start, end.minusMillis(1), end)) {
+        fixture.confirmedDebt(sami, 1000, instant)
+      }
+      val model = model(fixture)
+      model.selectPreset(PeriodPreset.DAY)
+      val state = model.state.first { it.loaded && it.period is Period.Day }
+      assertEquals(listOf(end.minusMillis(1), start), state.movements.map { it.createdAt })
     }
   }
 

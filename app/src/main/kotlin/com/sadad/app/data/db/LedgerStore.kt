@@ -47,6 +47,10 @@ class LedgerStore(
       created.getOrPut(event.entityId) { event.sequence }
     }
     db.withTransaction {
+      for (ids in (old.offsets.keys - new.offsets.keys).chunked(500)) offsets.delete(ids)
+      for (ids in (old.payments.keys - new.payments.keys).chunked(500)) payments.delete(ids)
+      for (ids in (old.debts.keys - new.debts.keys).chunked(500)) debts.delete(ids)
+      for (ids in (old.contacts.keys - new.contacts.keys).chunked(500)) contacts.delete(ids)
       for ((id, row) in new.contacts) {
         if (old.contacts[id] === row) continue
         val seq =

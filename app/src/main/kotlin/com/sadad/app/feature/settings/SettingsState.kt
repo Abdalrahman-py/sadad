@@ -23,6 +23,7 @@ enum class QueuedKind {
   CONTACT_EDIT,
   CONTACT_ARCHIVE,
   CONTACT_RESTORE,
+  CONTACT_DELETE,
 }
 
 /** The newest entry waiting to be sent: what it was, for whom and for how much. */
@@ -71,7 +72,7 @@ sealed interface Pending {
 }
 
 enum class PinError {
-  /** Not 4 to 12 digits. */
+  /** Not exactly 4 digits. */
   INVALID,
   MISMATCH,
 }
