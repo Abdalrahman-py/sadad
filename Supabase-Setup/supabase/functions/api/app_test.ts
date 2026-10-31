@@ -1,5 +1,5 @@
 import { buildOpenApiDocument, createApp } from "./app.ts";
-import { requireAuth, requireRole } from "./auth.ts";
+import { gateCaller } from "./auth.ts";
 import { errorMessages, fromDatabaseError } from "./errors.ts";
 import {
   assert,
@@ -36,7 +36,10 @@ Deno.test("GET /v1/health returns 200 without auth and enforces CORS allow-list"
 
 Deno.test("missing Authorization returns 401 with contract error shape", async () => {
   const app = createApp();
-  app.get("/protected", requireAuth(), (c) => c.json({ ok: true }));
+  app.get("/protected", async (c) => {
+    await gateCaller(c, ["admin"]);
+    return c.json({ ok: true });
+  });
 
   const res = await app.request("https://test.invalid/v1/protected");
   assertEqual(res.status, 401);
@@ -47,33 +50,18 @@ Deno.test("missing Authorization returns 401 with contract error shape", async (
   });
 });
 
-Deno.test("support JWT reaching an admin-only route returns 403 and storeId comes from RLS membership", async () => {
+Deno.test("support JWT reaching an admin-only route returns 403, and an unexpected error is a logged 500", async () => {
   const { pair, kid, verifyClaims } = await createTestKeyPair();
-  const lookupCalls: string[] = [];
 
   const loggedErrors: Array<{ requestId: string; error: string }> = [];
   const app = createApp({
     verifyClaims,
-    lookupStoreId: (jwt: string) => {
-      lookupCalls.push(jwt);
-      return Promise.resolve(42);
-    },
     logError: (entry) => loggedErrors.push(entry),
   });
 
-  app.get(
-    "/admin-only",
-    requireRole("admin"),
-    (c) => c.json({ ok: true, auth: c.get("auth") }),
-  );
-  app.get("/store-context", requireAuth(), (c) => {
-    const auth = c.get("auth");
-    return c.json({
-      ok: true,
-      userId: auth.userId,
-      role: auth.role,
-      storeId: auth.storeId,
-    });
+  app.get("/admin-only", async (c) => {
+    await gateCaller(c, ["admin"]);
+    return c.json({ ok: true });
   });
   app.get("/boom", () => {
     throw new Error("unexpected database crash");
@@ -95,28 +83,6 @@ Deno.test("support JWT reaching an admin-only route returns 403 and storeId come
     message: errorMessages.admin_authorization_required,
   });
 
-  const storeUserId = "33333333-3333-4333-8333-333333333333";
-  const storeJwt = await makeSignedJwt(pair.privateKey, kid, {
-    sub: storeUserId,
-    session_id: "44444444-4444-4444-8444-444444444444",
-    app_metadata: { role: "store" },
-  });
-
-  const storeRes = await app.request("https://test.invalid/v1/store-context", {
-    headers: {
-      Authorization: `Bearer ${storeJwt}`,
-      "x-store-id": "999",
-    },
-  });
-  assertEqual(storeRes.status, 200);
-  assertEqual(await storeRes.json(), {
-    ok: true,
-    userId: storeUserId,
-    role: "store",
-    storeId: 42,
-  });
-  assertEqual(lookupCalls, [storeJwt]);
-
   const boomRes = await app.request("https://test.invalid/v1/boom", {
     headers: { "x-request-id": "req-test-500" },
   });
@@ -133,27 +99,55 @@ Deno.test("support JWT reaching an admin-only route returns 403 and storeId come
   ]);
 });
 
-Deno.test("store JWT without a membership is refused with 403", async () => {
+// A mobile route and an admin route both open with gateCaller. No database is wired in: every
+// refusal below happens before the first routine call.
+Deno.test("one gate: the mobile and the admin tier refuse a wrong role and a forced password change alike", async () => {
   const { pair, kid, verifyClaims } = await createTestKeyPair();
-  const app = createApp({
-    verifyClaims,
-    lookupStoreId: () => Promise.resolve(null),
-  });
-  app.get("/store-context", requireAuth(), (c) => c.json({ ok: true }));
+  const app = createApp({ verifyClaims });
+  const jwt = (role: string, extra: Record<string, unknown> = {}) =>
+    makeSignedJwt(pair.privateKey, kid, {
+      sub: "11111111-1111-4111-8111-111111111111",
+      session_id: "22222222-2222-4222-8222-222222222222",
+      app_metadata: { role },
+      ...extra,
+    });
+  const refusal = async (path: string, token: string) => {
+    const res = await app.request(`https://test.invalid/v1${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json();
+    return { status: res.status, code: body.code };
+  };
+  const mobile = "/mobile/changes";
+  const admin = "/admin/stores";
 
-  const jwt = await makeSignedJwt(pair.privateKey, kid, {
-    sub: "55555555-5555-4555-8555-555555555555",
-    session_id: "66666666-6666-4666-8666-666666666666",
-  });
-  const res = await app.request("https://test.invalid/v1/store-context", {
-    headers: { Authorization: `Bearer ${jwt}` },
-  });
-  assertEqual(res.status, 403);
-  assertEqual(await res.json(), {
-    ok: false,
+  // The refusal names the tier the caller reached.
+  assertEqual(await refusal(mobile, await jwt("admin")), {
+    status: 403,
     code: "store_permission_denied",
-    message: errorMessages.store_permission_denied,
   });
+  assertEqual(await refusal(admin, await jwt("store")), {
+    status: 403,
+    code: "admin_authorization_required",
+  });
+
+  // A temporary password blocks both tiers with the same code.
+  const locked = (role: string) =>
+    jwt(role, { app_metadata: { role, force_password_change: true } });
+  for (
+    const [path, role] of [[mobile, "store"], [admin, "admin"]] as const
+  ) {
+    assertEqual(await refusal(path, await locked(role)), {
+      status: 403,
+      code: "password_change_required",
+    });
+  }
+
+  // Only the mobile tier binds to the session claim.
+  assertEqual(
+    await refusal(mobile, await jwt("store", { session_id: undefined })),
+    { status: 401, code: "authorization_required" },
+  );
 });
 
 Deno.test("a unique violation is not mapped to a contract code", () => {

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -22,11 +23,16 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class NotificationsScreenTest {
-  @get:Rule val compose = createComposeRule()
-  @get:Rule val temporary = TemporaryFolder()
+  private val compose = createComposeRule()
+  private val temporary = TemporaryFolder()
+
+  // JUnit does not order two @Rule fields; the folder must outlive the composition that writes it.
+  @get:Rule val rules: RuleChain = RuleChain.outerRule(temporary).around(compose)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-  @After fun close() = scope.cancel()
+  // Waits out a write still in flight, which would otherwise rename into a deleted folder and fail
+  // the test with "Unable to rename … .tmp".
+  @After fun close() = runBlocking { scope.coroutineContext.job.cancelAndJoin() }
 
   @Test
   fun emptyInboxExplainsThatThereAreNoDueReminders() {

@@ -2,17 +2,18 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AppEnv } from "../auth.ts";
 import { errorResponses } from "../errors.ts";
-import { call } from "../rpc.ts";
 import {
   adminDb,
   type AdminDeps,
+  adminRefusals,
   allow,
-  decodeCursor,
-  encodeCursor,
+  callPage,
   NextCursorSchema,
   pageQuery,
   ReasonSchema,
+  security,
   StoreIdParam,
+  tags,
 } from "./common.ts";
 
 const KINDS = ["contacts", "debts", "payments", "events"] as const;
@@ -41,8 +42,8 @@ const LedgerPageSchema = z
 const ledgerRoute = createRoute({
   method: "get",
   path: "/admin/stores/{storeId}/ledger/{kind}",
-  tags: ["admin"],
-  security: [{ Bearer: [] }],
+  tags,
+  security,
   description:
     "One page of contacts, debts or payments (newest first) or events (latest first), with the store's totals. Money is in cents. q matches part of the contact name, phone or note, or the event kind. Each read is audited with reason. admin and support.",
   middleware: [allow("admin", "support")] as const,
@@ -65,7 +66,11 @@ const ledgerRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 500),
+    ...errorResponses(
+      ...adminRefusals,
+      "invalid_input",
+      "internal_error",
+    ),
   },
 });
 
@@ -76,21 +81,15 @@ export function registerLedgerRoutes(
   app.openapi(ledgerRoute, async (c) => {
     const { storeId, kind } = c.req.valid("param");
     const { q, cursor, limit, reason } = c.req.valid("query");
-    const page = await call<
+    const ledger = await callPage<
       Omit<z.infer<typeof LedgerPageSchema>, "nextCursor"> & {
         nextCursor: unknown;
       }
-    >(adminDb(c, deps), "sadid_admin_ledger", {
+    >(adminDb(c, deps), "sadid_admin_ledger", { q, cursor, limit }, {
       p_store: storeId,
       p_kind: kind,
       p_reason: reason,
-      p_query: q ?? null,
-      p_after: decodeCursor(cursor),
-      p_limit: limit,
     });
-    return c.json({
-      ok: true as const,
-      ledger: { ...page, nextCursor: encodeCursor(page.nextCursor) },
-    }, 200);
+    return c.json({ ok: true as const, ledger }, 200);
   });
 }

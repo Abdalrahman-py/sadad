@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { createApp, DEFAULT_ALLOWED_ORIGINS } from "./app.ts";
 import { authSignInError } from "./account.ts";
-import { makeSupabaseLookupStoreId } from "./auth.ts";
 import type { LeaseSigner } from "./mobile.ts";
 
 function env(name: string): string {
@@ -100,7 +99,6 @@ async function verifyPassword(
 const app = createApp({
   allowedOrigins,
   verifyClaims: (jwt) => authClient.auth.getClaims(jwt),
-  lookupStoreId: makeSupabaseLookupStoreId(userClient),
   mobile: {
     serviceDb: serviceClient,
     userDb: userClient,

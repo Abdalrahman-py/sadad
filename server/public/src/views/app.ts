@@ -31,7 +31,7 @@ export function app(model: Model, actions: Actions) {
   const tasks = taskCount(model);
   const screen =
     model.screen === "store"
-      ? storeView(model, actions)
+      ? storeView(model, actions, actions)
       : model.screen === "create"
         ? createView(model, actions)
         : model.screen === "audit"

@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.session.StoreScope
-import com.sadad.app.ui.components.formatCents
+import com.sadad.app.ui.components.formatAmount
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
@@ -47,12 +47,14 @@ data class QuickAddDone(
     val sentence: String,
     val net: Cents,
     val secondsLeft: Int,
+    /** The device was offline when it saved: the entry waits in the outbox for the network. */
+    val offline: Boolean = false,
 )
 
 data class QuickAddState(
     val step: QuickAddStep = QuickAddStep.PICKER,
     val loaded: Boolean = false,
-    /** The device may not save now: the offline lease lapsed or the device is not approved. */
+    /** The device is not approved, so it may not write. A lapsed offline lease never blocks. */
     val blocked: Boolean = false,
     /** The installation may not register payments, so payment mode is not offered at all. */
     val restricted: Boolean = false,
@@ -332,6 +334,7 @@ class QuickAddViewModel(
                   sentence = sentence,
                   net = netAfter(current, amount),
                   secondsLeft = ticks,
+                  offline = !store.isOnline(),
               ),
       )
     }
@@ -400,7 +403,7 @@ class QuickAddViewModel(
   fun sentence(context: Context): String {
     val current = mutable.value
     val name = current.personName
-    val amount = amountLabel(current.amount)
+    val amount = typedAmountLabel(current.amount)
     val supplier = current.selected?.kind == ContactKind.SUPPLIER
     val template =
         when {
@@ -420,15 +423,15 @@ class QuickAddViewModel(
     val supplier = current.selected?.kind == ContactKind.SUPPLIER
     if (current.payment && amount > current.overBalance) {
       if (supplier) {
-        return context.getString(R.string.quickadd_preview_over, money(current.overBalance))
+        return context.getString(R.string.quickadd_preview_over, formatAmount(current.overBalance))
       }
       // A customer's excess is kept as credit: the statement says what settles and what is left.
       val owed = current.overBalance
       if (owed > Cents.ZERO) {
         return context.getString(
             R.string.quickadd_preview_overpay,
-            money(owed),
-            money(amount - owed),
+            formatAmount(owed),
+            formatAmount(amount - owed),
         )
       }
       val all =
@@ -453,13 +456,13 @@ class QuickAddViewModel(
           if (left < Cents.ZERO) {
             context.getString(
                 R.string.quickadd_preview_deduct_left,
-                money(words.deduct),
-                money(Cents(-left.value)),
+                formatAmount(words.deduct),
+                formatAmount(Cents(-left.value)),
             )
           } else {
             context.getString(
                 R.string.quickadd_preview_deduct,
-                money(words.deduct),
+                formatAmount(words.deduct),
                 after(context, left),
             )
           }
@@ -477,11 +480,10 @@ class QuickAddViewModel(
   private fun after(context: Context, after: Cents): String =
       when {
         after == Cents.ZERO -> context.getString(R.string.quickadd_preview_settled)
-        after > Cents.ZERO -> context.getString(R.string.quickadd_preview_owes, money(after))
-        else -> context.getString(R.string.quickadd_preview_credit, money(Cents(-after.value)))
+        after > Cents.ZERO -> context.getString(R.string.quickadd_preview_owes, formatAmount(after))
+        else ->
+            context.getString(R.string.quickadd_preview_credit, formatAmount(Cents(-after.value)))
       }
-
-  private fun money(value: Cents): String = formatCents(value).removeSuffix(" ₪")
 
   private fun netAfter(current: QuickAddState, amount: Cents): Cents =
       previewWords(
@@ -680,7 +682,10 @@ class QuickAddViewModel(
         }
       }
 
-  /** Whether this device may record right now: online, or holding an offline lease. */
+  /**
+   * Whether this device is barred from recording. Only an unapproved device is: the lease gates the
+   * send, which is the sync pass's call, so a save without network or lease still queues.
+   */
   private fun availability(): Flow<Boolean> =
       graph.current.flatMapLatest { scope ->
         if (scope == null) {
@@ -691,8 +696,7 @@ class QuickAddViewModel(
                 it.firstOrNull { account -> account.storeUserId == scope.account.storeUserId }
                     ?.installation
                     ?.status
-            val approved = active == null || active == "active"
-            !approved || (!scope.isOnline() && !scope.offlineAllowed())
+            active != null && active != "active"
           }
         }
       }
@@ -740,12 +744,5 @@ internal fun previewWords(
   return PreviewWords(deduct, after)
 }
 
-/** The digits of an amount with grouping and no trailing zeros: «85», «4,999.99». */
-internal fun amountLabel(amount: String): String {
-  if (amount.isEmpty()) return "0"
-  val dot = amount.indexOf('.')
-  val integer = if (dot < 0) amount else amount.substring(0, dot)
-  val fraction = if (dot < 0) "" else amount.substring(dot + 1).trimEnd('0')
-  val grouped = integer.reversed().chunked(3).joinToString(",").reversed().ifEmpty { "0" }
-  return if (fraction.isEmpty()) grouped else "$grouped.$fraction"
-}
+/** The amount typed so far as the screen shows it: «0» until it is positive, then «4,999.99». */
+internal fun typedAmountLabel(typed: String): String = parseCents(typed)?.let(::formatAmount) ?: "0"

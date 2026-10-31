@@ -141,9 +141,15 @@ export class Controller implements Actions {
     }
   }
 
+  /** The only place the model changes: every write renders, so no handler has to remember to. */
   private set(patch: Partial<Model>) {
     Object.assign(this.model, patch);
     this.render();
+  }
+
+  /** Back to the signed-out screen, dropping everything the signed-in board held. */
+  private reset(signIn: Model["signIn"] = { error: "", busy: false }) {
+    this.set({ ...initialModel(), booting: false, signIn });
   }
 
   private channel(name: string): AbortSignal {
@@ -218,8 +224,7 @@ export class Controller implements Actions {
     // Release first: the lease needs the JWT this tab still holds.
     await this.api.releaseSession().catch(() => undefined);
     await this.session.signOut();
-    this.model = { ...initialModel(), booting: false };
-    this.render();
+    this.reset();
   };
 
   /** The api refused the token (expired or ended session). */
@@ -228,12 +233,7 @@ export class Controller implements Actions {
     this.abortAll();
     this.stopHeartbeat();
     void this.session.signOut();
-    this.model = {
-      ...initialModel(),
-      booting: false,
-      signIn: { error: failure("authorization_required").message, busy: false },
-    };
-    this.render();
+    this.reset({ error: failure("authorization_required").message, busy: false });
   };
 
   /** Renews the seat while the board is open; a board left alone frees it after ten minutes. */
@@ -258,12 +258,7 @@ export class Controller implements Actions {
     this.abortAll();
     this.stopHeartbeat();
     void this.session.signOut();
-    this.model = {
-      ...initialModel(),
-      booting: false,
-      signIn: { error: failure("session_in_use").message, busy: false },
-    };
-    this.render();
+    this.reset({ error: failure("session_in_use").message, busy: false });
   };
 
   // ---- routing ----
@@ -277,8 +272,12 @@ export class Controller implements Actions {
       return;
     }
     this.leaveStore();
-    this.set({ screen: route.screen });
-    if (route.screen === "create") this.model.create = initialModel().create;
+    this.set({
+      screen: route.screen,
+      store: null,
+      secret: null,
+      ...(route.screen === "create" ? { create: initialModel().create } : {}),
+    });
     if (route.screen === "audit") this.loadAudit(this.model.audit.cursors);
   }
 
@@ -306,8 +305,7 @@ export class Controller implements Actions {
   /** Every page of the store list, so the chips and the queue can filter honestly. */
   private async loadStores() {
     const signal = this.channel("stores");
-    this.model.stores = { ...this.model.stores, loading: true, error: "" };
-    this.render();
+    this.set({ stores: { ...this.model.stores, loading: true, error: "" } });
     const q = this.model.stores.q;
     const rows: StoreRow[] = [];
     let cursor: string | undefined;
@@ -322,19 +320,20 @@ export class Controller implements Actions {
           break;
         }
       }
-      this.model.stores = { ...this.model.stores, rows, loading: false, complete };
+      this.set({ stores: { ...this.model.stores, rows, loading: false, complete } });
       this.fillStoreSummary(rows);
     } catch (error) {
       if (isAbort(error)) return;
-      this.model.stores = {
-        ...this.model.stores,
-        rows,
-        loading: false,
-        complete: false,
-        error: messageOf(error),
-      };
+      this.set({
+        stores: {
+          ...this.model.stores,
+          rows,
+          loading: false,
+          complete: false,
+          error: messageOf(error),
+        },
+      });
     }
-    this.render();
   }
 
   /** The open store's counters may have arrived with this list. */
@@ -343,14 +342,13 @@ export class Controller implements Actions {
     if (!state) return;
     const row = rows.find((store) => store.id === state.id);
     if (row && state.summary !== row.summary) {
-      this.model.store = { ...state, summary: row.summary };
+      this.set({ store: { ...state, summary: row.summary } });
     }
   }
 
   private async loadPending() {
     const signal = this.channel("pending");
-    this.model.pending = { ...this.model.pending, loading: true, error: "" };
-    this.render();
+    this.set({ pending: { ...this.model.pending, loading: true, error: "" } });
     const rows: PendingInstallation[] = [];
     let cursor: string | undefined;
     let complete = false;
@@ -364,43 +362,45 @@ export class Controller implements Actions {
           break;
         }
       }
-      this.model.pending = { rows, loading: false, complete, error: "" };
+      this.set({ pending: { rows, loading: false, complete, error: "" } });
     } catch (error) {
       if (isAbort(error)) return;
-      this.model.pending = { rows, loading: false, complete: false, error: messageOf(error) };
+      this.set({
+        pending: { rows, loading: false, complete: false, error: messageOf(error) },
+      });
     }
-    this.render();
   }
 
   private async loadAudit(cursors: (string | undefined)[]) {
     const signal = this.channel("audit");
     const { q, source } = this.model.audit;
-    const current = this.model.audit;
-    this.model.audit = { ...current, cursors, loading: true, error: "" };
-    this.render();
+    this.set({ audit: { ...this.model.audit, cursors, loading: true, error: "" } });
     try {
       const result = await this.api.audit({ source, q, cursor: cursors.at(-1) }, signal);
-      this.model.audit = {
-        ...this.model.audit,
-        rows: result.events,
-        next: result.nextCursor,
-        loading: false,
-      };
+      this.set({
+        audit: {
+          ...this.model.audit,
+          rows: result.events,
+          next: result.nextCursor,
+          loading: false,
+        },
+      });
     } catch (error) {
       if (isAbort(error)) return;
-      this.model.audit = {
-        ...this.model.audit,
-        rows: [],
-        next: null,
-        loading: false,
-        error: messageOf(error),
-      };
+      this.set({
+        audit: {
+          ...this.model.audit,
+          rows: [],
+          next: null,
+          loading: false,
+          error: messageOf(error),
+        },
+      });
     }
-    this.render();
   }
 
   searchStores = (q: string) => {
-    this.model.stores = { ...this.model.stores, q };
+    this.set({ stores: { ...this.model.stores, q } });
     void this.loadStores();
   };
 
@@ -409,12 +409,12 @@ export class Controller implements Actions {
   };
 
   searchAudit = (q: string) => {
-    this.model.audit = { ...this.model.audit, q };
+    this.set({ audit: { ...this.model.audit, q } });
     void this.loadAudit([undefined]);
   };
 
   setAuditSource = (source: AuditSource) => {
-    this.model.audit = { ...this.model.audit, source };
+    this.set({ audit: { ...this.model.audit, source } });
     void this.loadAudit([undefined]);
   };
 
@@ -485,16 +485,16 @@ export class Controller implements Actions {
       recovery: emptyRecovery(),
     };
     this.channels.get("ledger")?.abort();
-    this.model.secret = this.model.secret?.storeId === id ? this.model.secret : null;
-    this.set({ store: state });
+    this.set({
+      store: state,
+      secret: this.model.secret?.storeId === id ? this.model.secret : null,
+    });
     this.reloadStore();
     this.loadStoreAudit([undefined]);
   }
 
   private leaveStore() {
     for (const name of ["store", "ledger", "storeAudit"]) this.channels.get(name)?.abort();
-    if (this.model.store || this.model.secret) this.model.store = null;
-    this.model.secret = null;
   }
 
   private async reloadStore() {
@@ -881,47 +881,33 @@ export class Controller implements Actions {
 
   // ---- store audit ----
 
+  private patchStoreAudit(patch: Partial<StoreState["audit"]>, id: number) {
+    const audit = this.model.store?.audit;
+    if (audit) this.patchStore({ audit: { ...audit, ...patch } }, id);
+  }
+
   private async loadStoreAudit(cursors: (string | undefined)[]) {
     const state = this.model.store;
     if (!state) return;
     const id = state.id;
-    const source = state.audit.source;
     const signal = this.channel("storeAudit");
-    this.model.store = { ...state, audit: { ...state.audit, cursors, loading: true, error: "" } };
-    this.render();
+    this.patchStoreAudit({ cursors, loading: true, error: "" }, id);
     try {
-      const result = await this.api.audit({ source, storeId: id, cursor: cursors.at(-1) }, signal);
-      if (this.model.store?.id !== id) return;
-      this.model.store = {
-        ...this.model.store,
-        audit: {
-          ...this.model.store.audit,
-          rows: result.events,
-          next: result.nextCursor,
-          loading: false,
-        },
-      };
+      const result = await this.api.audit(
+        { source: state.audit.source, storeId: id, cursor: cursors.at(-1) },
+        signal,
+      );
+      this.patchStoreAudit({ rows: result.events, next: result.nextCursor, loading: false }, id);
     } catch (error) {
       if (isAbort(error)) return;
-      if (this.model.store?.id !== id) return;
-      this.model.store = {
-        ...this.model.store,
-        audit: {
-          ...this.model.store.audit,
-          rows: [],
-          next: null,
-          loading: false,
-          error: messageOf(error),
-        },
-      };
+      this.patchStoreAudit({ rows: [], next: null, loading: false, error: messageOf(error) }, id);
     }
-    this.render();
   }
 
   setStoreAuditSource = (source: AuditSource) => {
     const state = this.model.store;
     if (!state) return;
-    this.model.store = { ...state, audit: { ...state.audit, source } };
+    this.patchStoreAudit({ source }, state.id);
     void this.loadStoreAudit([undefined]);
   };
 

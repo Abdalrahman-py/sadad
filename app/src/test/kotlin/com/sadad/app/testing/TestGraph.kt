@@ -99,7 +99,8 @@ private constructor(
   ): StoreScope {
     enqueueSession(storeUserId, expiresInSeconds, forcePasswordChange, refreshToken)
     graph.sessions.signIn(username, "password-$username")
-    return graph.current.value ?: error("sign-in did not open a store")
+    // Sign-in leaves opening the store to the route; tests that seed need it open.
+    return graph.openStore(checkNotNull(graph.accounts.account(storeUserId)))
   }
 
   /**

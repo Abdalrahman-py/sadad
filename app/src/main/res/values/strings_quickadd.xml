@@ -39,8 +39,7 @@
     <string name="quickadd_result">نتيجة</string>
     <string name="quickadd_no_results">لا يوجد شخص بهذا الاسم أو الرقم. البحث يتجاهل الفرق بين أ وا وإ، وة وه، وى وي.</string>
     <string name="quickadd_blocked_title">لا يمكن الحفظ الآن</string>
-    <string name="quickadd_blocked_body">انتهى تصريح الحفظ دون اتصال. اتصل بالإنترنت ثم سجّل.</string>
-    <string name="quickadd_reconnect">إعادة الاتصال</string>
+    <string name="quickadd_blocked_body">هذا الجهاز غير معتمد للتسجيل. راجع صاحب المتجر.</string>
 
     <!-- Shared dialog action. -->
     <string name="quickadd_cancel">إلغاء</string>
@@ -63,7 +62,7 @@
     <string name="quickadd_method_wallet">محفظة</string>
     <string name="quickadd_key_delete">حذف</string>
     <string name="quickadd_key_dot">فاصلة عشرية</string>
-    <string name="quickadd_save_blocked">الحفظ متوقف حتى يعود الاتصال</string>
+    <string name="quickadd_save_blocked">الحفظ غير متاح لهذا الجهاز</string>
     <string name="quickadd_anomaly_title">مبلغ أكبر من المعتاد</string>
     <string name="quickadd_anomaly_body">راجع القيمة قبل الحفظ:</string>
     <string name="quickadd_anomaly_sentence">%1$s</string>
@@ -75,6 +74,7 @@
     <string name="quickadd_done_payment_customer">تم تسجيل الدفعة</string>
     <string name="quickadd_done_debt_supplier">تم تسجيل البضاعة</string>
     <string name="quickadd_done_payment_supplier">تم تسجيل الدفع</string>
+    <string name="quickadd_done_offline">سيُرسل عند عودة الشبكة</string>
     <string name="quickadd_undo">تراجع</string>
     <string name="quickadd_undo_seconds">· %1$d ث</string>
     <string name="quickadd_another">تسجيل آخر</string>
