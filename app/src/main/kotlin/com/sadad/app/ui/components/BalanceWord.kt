@@ -41,14 +41,12 @@ data class BalanceWordText(
 fun balanceWord(netCents: Long): BalanceWordText {
   if (netCents == 0L) return BalanceWordText("مسدد", BalanceTone.SETTLED, null, "مسدد")
   val word = if (netCents > 0) "عليه" else "له"
-  val amount = formatShekels(Cents(Math.abs(netCents)))
-  // Read as words: no «₪» symbol, no minus, trailing zero cents dropped.
-  val spokenAmount = amount.removePrefix("₪ ")
+  val size = Cents(Math.abs(netCents))
   return BalanceWordText(
       word = word,
       tone = if (netCents > 0) BalanceTone.OWES else BalanceTone.CREDIT,
-      amount = amount,
-      spoken = "$word $spokenAmount شيكل",
+      amount = formatShekels(size),
+      spoken = "$word ${spokenAmount(size)} شيكل",
   )
 }
 

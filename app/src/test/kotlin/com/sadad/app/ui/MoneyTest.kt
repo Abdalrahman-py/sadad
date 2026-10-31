@@ -1,8 +1,11 @@
 package com.sadad.app.ui
 
+import com.sadad.app.feature.quickadd.typedAmountLabel
+import com.sadad.app.ui.components.formatAmount
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.components.parseCents
+import com.sadad.app.ui.components.spokenAmount
 import com.sadad.ledger.Cents
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
@@ -79,8 +82,54 @@ class MoneyTest {
     val random = Random(43)
     repeat(1_000) {
       val cents = 1L + random.nextLong(1_000_000_000_000L)
-      val text = formatCents(Cents(cents)).removeSuffix(" ₪")
+      val text = formatAmount(Cents(cents))
       assertEquals(cents, parseCents(text)?.value)
     }
+  }
+
+  private data class Row(
+      val cents: Long,
+      val amount: String,
+      val shekels: String,
+      val spoken: String,
+  )
+
+  @Test
+  fun oneAmountReadsTheSameInEveryPlace() {
+    val table =
+        listOf(
+            Row(0, "0", "₪ 0", "0"),
+            Row(50, "0.5", "₪ 0.5", "0.5"),
+            Row(100, "1", "₪ 1", "1"),
+            Row(5_000, "50", "₪ 50", "50"),
+            Row(1_234, "12.34", "₪ 12.34", "12.34"),
+            Row(-1_234, "-12.34", "-₪ 12.34", "12.34"),
+            Row(123_450, "1,234.5", "₪ 1,234.5", "1,234.5"),
+            Row(100_000_000, "1,000,000", "₪ 1,000,000", "1,000,000"),
+        )
+    for (row in table) {
+      val cents = Cents(row.cents)
+      assertEquals(row.amount, formatAmount(cents))
+      assertEquals("${row.amount} ₪", formatCents(cents))
+      assertEquals(row.shekels, formatShekels(cents))
+      assertEquals(row.spoken, spokenAmount(cents))
+      if (row.cents > 0) assertEquals(cents, parseCents(row.amount))
+    }
+  }
+
+  @Test
+  fun aParsedArabicAmountDisplaysAsLatinDigits() {
+    assertEquals("1,234.5", formatAmount(parseCents("١٬٢٣٤٫٥")!!))
+  }
+
+  @Test
+  fun theTypedAmountShowsGroupingAndNoTrailingZeros() {
+    assertEquals("0", typedAmountLabel(""))
+    assertEquals("0", typedAmountLabel("0"))
+    assertEquals("0", typedAmountLabel("0."))
+    assertEquals("12", typedAmountLabel("12."))
+    assertEquals("5.1", typedAmountLabel("5.10"))
+    assertEquals("0.05", typedAmountLabel("0.05"))
+    assertEquals("4,999.99", typedAmountLabel("4999.99"))
   }
 }
