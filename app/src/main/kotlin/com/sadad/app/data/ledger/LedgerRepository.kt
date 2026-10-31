@@ -7,6 +7,7 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
+import com.sadad.ledger.ConfirmedLedger
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.Direction
@@ -16,6 +17,7 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -108,6 +110,11 @@ class LedgerRepository(
 ) {
   private val state = MutableStateFlow(LedgerState.EMPTY)
   private val mutex = Mutex()
+
+  // The confirmed half depends on the state and the staff name only, so a queued command, or a
+  // write's check, reuses it; a new state drops it. The writes pass no staff name, hence the map.
+  private val confirmedFor = HashMap<String, ConfirmedLedger>()
+  private var confirmedState: LedgerState? = null
 
   val contactRecords: StateFlow<ContactRecords?> =
       combine(state, outbox.rows, session.staffName) { current, rows, staff ->
@@ -374,12 +381,16 @@ class LedgerRepository(
 
   /** One projection for the flow and for a write's checks, so both see the same rules. */
   private fun project(current: LedgerState, rows: List<OutboxRow>, staff: String): LedgerView =
-      current.view(
-          pendingCommands(rows),
-          failedOperations(rows),
-          session.selfInstallationId,
-          staff,
-      )
+      confirmedOf(current, staff).view(pendingCommands(rows), failedOperations(rows))
+
+  @Synchronized
+  private fun confirmedOf(current: LedgerState, staff: String): ConfirmedLedger {
+    if (confirmedState !== current) {
+      confirmedFor.clear()
+      confirmedState = current
+    }
+    return confirmedFor.getOrPut(staff) { current.confirmed(session.selfInstallationId, staff) }
+  }
 
   /**
    * The Contact a write names, from either side of the trash; anything else is [Refusal.Unknown].

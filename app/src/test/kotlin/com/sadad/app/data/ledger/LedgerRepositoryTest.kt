@@ -11,6 +11,7 @@ import com.sadad.ledger.ReceiptStatus
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -283,6 +284,23 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertTrue(added.exceptionOrNull() is Refusal.Unknown)
     assertTrue(paid.exceptionOrNull() is Refusal.Unknown)
     assertTrue(outbox.snapshot().isEmpty())
+  }
+
+  @Test
+  fun aQueuedEntryKeepsTheConfirmedRowsItAlreadyBuilt() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand(), debtCommand())
+
+    repo.view.test {
+      val before = awaitView { it.debts.isNotEmpty() }
+      repo.payDebt(DEBT_ID, Cents(1_000), PaymentMethod.CASH, null)
+      val after = awaitView { it.payments.isNotEmpty() }
+
+      assertEquals(Cents(9_000), after.debts.single().remaining)
+      // The same object, not an equal copy: showing the entry rebuilt nothing confirmed.
+      assertSame(before.contacts.single(), after.contacts.single())
+    }
   }
 
   private suspend fun LedgerRepository.seed(vararg commands: LedgerCommand) {
