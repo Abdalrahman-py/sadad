@@ -20,6 +20,20 @@ import org.robolectric.RobolectricTestRunner
 class LedgerRepositoryTest : LedgerTestCase() {
 
   @Test
+  fun firstContactWithALocalPhoneCannotQueueAnInvalidPersonAndItsDebt() = runTest {
+    val repo = repository()
+    repo.load()
+    for (phone in listOf("0599123456", "599123456", "05991234567")) {
+      val result = repo.addContact("أول شخص", phone, null, null, FirstDebt(Cents(25_800)))
+      assertTrue(
+          "invalid wire phone must be refused before queueing either command",
+          result.isFailure,
+      )
+      assertTrue(outbox.snapshot().isEmpty())
+    }
+  }
+
+  @Test
   fun compoundSaveShowsTheContactAndTheDebtAsPending() = runTest {
     val repo = repository()
     repo.load()
