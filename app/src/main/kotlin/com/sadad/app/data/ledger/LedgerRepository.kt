@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -109,6 +110,9 @@ class LedgerRepository(
     scope: CoroutineScope,
 ) {
   private val state = MutableStateFlow(LedgerState.EMPTY)
+
+  // The view stays null until the rows are in: the empty state would read as zero balances.
+  private val loaded = MutableStateFlow(false)
   private val mutex = Mutex()
 
   // The confirmed half depends on the state and the staff name only, so a queued command, or a
@@ -117,8 +121,8 @@ class LedgerRepository(
   private var confirmedState: LedgerState? = null
 
   val contactRecords: StateFlow<ContactRecords?> =
-      combine(state, outbox.rows, session.staffName) { current, rows, staff ->
-            contactRecords(project(current, rows, staff), rows)
+      combine(state, outbox.rows, session.staffName, loaded) { current, rows, staff, ready ->
+            if (ready) contactRecords(project(current, rows, staff), rows) else null
           }
           .flowOn(Dispatchers.Default)
           .stateIn(scope, SharingStarted.Eagerly, null)
@@ -129,6 +133,12 @@ class LedgerRepository(
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
     state.value = store.load()
+    loaded.value = true
+  }
+
+  /** Returns once [load] has read the rows. */
+  suspend fun awaitLoaded() {
+    loaded.first { it }
   }
 
   /**

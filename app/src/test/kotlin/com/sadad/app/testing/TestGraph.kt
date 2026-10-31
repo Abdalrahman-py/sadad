@@ -153,7 +153,12 @@ private constructor(
 
   companion object {
     /** No store yet: for sign-in, refresh and session tests. */
-    fun unsigned(online: () -> Boolean = { true }): TestGraph {
+    fun unsigned(
+        online: () -> Boolean = { true },
+        database: (Context, String) -> LedgerDatabase = { context, id ->
+          LedgerDatabase.open(context, id)
+        },
+    ): TestGraph {
       val context = ApplicationProvider.getApplicationContext<Context>()
       val server = MockWebServer().apply { start() }
       val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -175,7 +180,7 @@ private constructor(
               authApi = AuthApi(client, base, "publishable"),
               ledgerApi = LedgerApi(client, base, "publishable"),
               installations = SoftwareInstallations(),
-              openDatabase = { LedgerDatabase.open(context, it) },
+              openDatabase = { database(context, it) },
               deleteDatabase = { context.deleteDatabase("ledger-$it.db") },
               online = online,
               deviceLabel = "Test Device",
@@ -189,8 +194,11 @@ private constructor(
         storeUserId: String = STORE_A,
         username: String = "store-$storeUserId",
         online: () -> Boolean = { true },
+        database: (Context, String) -> LedgerDatabase = { context, id ->
+          LedgerDatabase.open(context, id)
+        },
     ): TestGraph {
-      val graph = unsigned(online)
+      val graph = unsigned(online, database)
       graph.signIn(storeUserId, username)
       graph.activate(storeUserId)
       return graph
