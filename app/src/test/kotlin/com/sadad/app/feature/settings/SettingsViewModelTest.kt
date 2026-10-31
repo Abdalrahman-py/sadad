@@ -311,8 +311,8 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        val state = // Rows emit before the view is recomputed: wait for the name, not just the
-                    // count.
+        // Rows emit before the view is recomputed: wait for the name, not just the count.
+        val state =
             model.state.first {
               it.loaded && it.devices.unsent == 2 && it.devices.newest?.name?.isNotEmpty() == true
             }
@@ -340,8 +340,8 @@ class SettingsViewModelTest {
         fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
         val model = kit.viewModel()
 
-        val state = // Rows emit before the view is recomputed: wait for the name, not just the
-                    // count.
+        // Rows emit before the view is recomputed: wait for the name, not just the count.
+        val state =
             model.state.first {
               it.loaded && it.devices.unsent == 1 && it.devices.newest?.name?.isNotEmpty() == true
             }
