@@ -8,9 +8,13 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -283,6 +287,39 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertTrue(added.exceptionOrNull() is Refusal.Unknown)
     assertTrue(paid.exceptionOrNull() is Refusal.Unknown)
     assertTrue(outbox.snapshot().isEmpty())
+  }
+
+  @Test
+  fun noProjectionRunsWithoutACollector() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand())
+    repo.addDebt(CONTACT_ID, Direction.RECEIVABLE, Cents(1_000), null, null)
+    // Real time: the projection would run on Dispatchers.Default.
+    withContext(Dispatchers.Default) { delay(300) }
+    assertEquals(0, session.staffNames.subscriptionCount.value)
+
+    repo.view.test {
+      awaitView { it.debts.isNotEmpty() }
+      assertEquals(1, session.staffNames.subscriptionCount.value)
+    }
+  }
+
+  @Test
+  fun aQueuedEntryKeepsTheConfirmedRowsItAlreadyBuilt() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand(), debtCommand())
+
+    repo.view.test {
+      val before = awaitView { it.debts.isNotEmpty() }
+      repo.payDebt(DEBT_ID, Cents(1_000), PaymentMethod.CASH, null)
+      val after = awaitView { it.payments.isNotEmpty() }
+
+      assertEquals(Cents(9_000), after.debts.single().remaining)
+      // The same object, not an equal copy: showing the entry rebuilt nothing confirmed.
+      assertSame(before.contacts.single(), after.contacts.single())
+    }
   }
 
   private suspend fun LedgerRepository.seed(vararg commands: LedgerCommand) {

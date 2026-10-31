@@ -7,6 +7,7 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
+import com.sadad.ledger.ConfirmedLedger
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.Direction
@@ -16,6 +17,7 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -109,15 +111,22 @@ class LedgerRepository(
   private val state = MutableStateFlow(LedgerState.EMPTY)
   private val mutex = Mutex()
 
+  // The confirmed half depends on the state and the staff name only, so a queued command, or a
+  // write's check, reuses it; a new state drops it. The writes pass no staff name, hence the map.
+  private val confirmedFor = HashMap<String, ConfirmedLedger>()
+  private var confirmedState: LedgerState? = null
+
   val contactRecords: StateFlow<ContactRecords?> =
       combine(state, outbox.rows, session.staffName) { current, rows, staff ->
             contactRecords(project(current, rows, staff), rows)
           }
           .flowOn(Dispatchers.Default)
-          .stateIn(scope, SharingStarted.Eagerly, null)
+          .stateIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
 
   val view: StateFlow<LedgerView?> =
-      contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
+      contactRecords
+          .map { it?.ledger }
+          .stateIn(scope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
 
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
@@ -374,12 +383,16 @@ class LedgerRepository(
 
   /** One projection for the flow and for a write's checks, so both see the same rules. */
   private fun project(current: LedgerState, rows: List<OutboxRow>, staff: String): LedgerView =
-      current.view(
-          pendingCommands(rows),
-          failedOperations(rows),
-          session.selfInstallationId,
-          staff,
-      )
+      confirmedOf(current, staff).view(pendingCommands(rows), failedOperations(rows))
+
+  @Synchronized
+  private fun confirmedOf(current: LedgerState, staff: String): ConfirmedLedger {
+    if (confirmedState !== current) {
+      confirmedFor.clear()
+      confirmedState = current
+    }
+    return confirmedFor.getOrPut(staff) { current.confirmed(session.selfInstallationId, staff) }
+  }
 
   /**
    * The Contact a write names, from either side of the trash; anything else is [Refusal.Unknown].
@@ -431,6 +444,9 @@ class LedgerRepository(
       }
 
   private companion object {
+    /** Long enough that a rotation or a quick screen change does not stop the projection. */
+    const val STOP_TIMEOUT_MS = 5_000L
+
     /** Commands that advance a Contact's version on the server. */
     val EDITS =
         setOf(CommandType.CONTACT_UPDATE, CommandType.CONTACT_ARCHIVE, CommandType.CONTACT_RESTORE)
