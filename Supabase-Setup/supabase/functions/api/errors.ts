@@ -118,15 +118,9 @@ const defaultLogger: ErrorLogger = (entry) => {
 
 const ErrorRef = { $ref: "#/components/schemas/ErrorResponse" } as const;
 
-/**
- * OpenAPI responses for the contract errors a route can return, named by code so the statuses
- * come from the code map above. A bare status is still taken as is: session.ts and recovery.ts
- * keep theirs until they name codes too.
- */
-export function errorResponses(...errors: (ErrorCode | number)[]) {
-  const statuses = new Set(
-    errors.map((e) => typeof e === "number" ? e : statusForCode(e)),
-  );
+/** OpenAPI responses for the contract errors a route can return; the statuses come from the code map. */
+export function errorResponses(...codes: ErrorCode[]) {
+  const statuses = new Set(codes.map(statusForCode));
   return Object.fromEntries(
     [...statuses].map((status) => [status, {
       description: "Contract error; code is listed in contract/errors.json",

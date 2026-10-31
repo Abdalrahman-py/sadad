@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { ApiError, fromDatabaseError } from "./errors.ts";
+import { ApiError } from "./errors.ts";
 
 export type AuthRole = "admin" | "support" | "store";
 
@@ -9,13 +9,9 @@ export type ClaimsResult = {
 };
 
 export type VerifyClaims = (jwt: string) => Promise<ClaimsResult>;
-export type LookupStoreId = (
-  jwt: string,
-) => Promise<number | null | undefined>;
 
 export interface AuthDeps {
   verifyClaims: VerifyClaims;
-  lookupStoreId: LookupStoreId;
 }
 
 export interface AppVariables {
@@ -109,21 +105,4 @@ export async function gateCaller(
     throw new ApiError("password_change_required", 403);
   }
   return caller;
-}
-
-export function makeSupabaseLookupStoreId(
-  newUserClient: (jwt: string) => {
-    rpc: (
-      fn: string,
-    ) => PromiseLike<{ data: number | null; error: unknown }>;
-  },
-): LookupStoreId {
-  return async (jwt: string) => {
-    const client = newUserClient(jwt);
-    const { data, error } = await client.rpc("sadid_my_store");
-    if (error) {
-      throw fromDatabaseError(error) ?? error;
-    }
-    return data;
-  };
 }
