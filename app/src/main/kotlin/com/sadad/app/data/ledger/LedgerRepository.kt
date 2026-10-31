@@ -386,8 +386,15 @@ class LedgerRepository(
     if (!session.isOnline() && !session.offlineAllowed()) throw Refusal.OfflineNotAllowed
   }
 
-  /** The view a write checks against, with the queue included and before it changes. */
-  private suspend fun currentView(): LedgerView = project(state.value, outbox.snapshot(), "")
+  /**
+   * The view a write checks against, with the queue included and before it changes. It waits for
+   * the rows: a store the start route opened may still be reading them, and a check against the
+   * empty state would pass a duplicate phone or refuse a contact that exists.
+   */
+  private suspend fun currentView(): LedgerView {
+    awaitLoaded()
+    return project(state.value, outbox.snapshot(), "")
+  }
 
   /** One projection for the flow and for a write's checks, so both see the same rules. */
   private fun project(current: LedgerState, rows: List<OutboxRow>, staff: String): LedgerView =
