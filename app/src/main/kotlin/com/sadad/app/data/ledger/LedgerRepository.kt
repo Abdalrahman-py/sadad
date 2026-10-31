@@ -23,6 +23,7 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -107,7 +108,7 @@ class LedgerRepository(
     private val store: LedgerStore,
     private val outbox: Outbox,
     private val session: RepositorySession,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
 ) {
   private val state = MutableStateFlow(LedgerState.EMPTY)
 
@@ -136,9 +137,13 @@ class LedgerRepository(
     loaded.value = true
   }
 
-  /** Returns once [load] has read the rows. */
+  /**
+   * Returns once [load] has read the rows. Waits in the store's own scope, so a store closed before
+   * its rows came in cancels the wait instead of holding a sync pass for ever.
+   */
   suspend fun awaitLoaded() {
-    loaded.first { it }
+    if (loaded.value) return
+    scope.async { loaded.first { it } }.await()
   }
 
   /**
