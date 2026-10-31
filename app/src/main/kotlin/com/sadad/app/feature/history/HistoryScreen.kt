@@ -56,10 +56,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
@@ -442,11 +442,9 @@ private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/y
 
 @Composable
 private fun historyViewModel(): HistoryViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   return viewModel(
       factory =
-          viewModelFactory {
-            initializer { HistoryViewModel(app.graph, createSavedStateHandle()) }
-          }
+          viewModelFactory { initializer { HistoryViewModel(graph, createSavedStateHandle()) } }
   )
 }

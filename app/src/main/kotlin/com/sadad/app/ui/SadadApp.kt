@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -69,8 +70,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.sadad.app.LocalGraph
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.feature.activity.ActivityScreen
 import com.sadad.app.feature.auth.AwaitingApprovalScreen
 import com.sadad.app.feature.auth.LoginScreen
@@ -89,6 +90,7 @@ import com.sadad.app.feature.trash.TrashScreen
 import com.sadad.app.feature.updates.AppUpdateScreen
 import com.sadad.app.feature.updates.UpdateCenter
 import com.sadad.app.feature.updates.UpdateState
+import com.sadad.app.rememberGraph
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.app.ui.theme.sadadPalette
@@ -100,14 +102,23 @@ fun SadadApp(
     dark: Boolean = isSystemInDarkTheme(),
     navController: NavHostController = rememberNavController(),
 ) {
-  val graph = (LocalContext.current.applicationContext as SadadApplication).graph
+  val graph = rememberGraph()
+  if (graph == null) {
+    // The Keystore read behind the first graph runs off main; until it lands there is nothing to
+    // show but the page.
+    SadadTheme(dark = dark) { Box(Modifier.fillMaxSize().sadadPageBackground()) }
+    return
+  }
   val syncDot by remember(graph) { syncDot(graph) }.collectAsStateWithLifecycle(SyncDot.NONE)
   // One step back, or nowhere when this is the first screen.
   val back: () -> Unit = { navController.navigateUp() }
   SadadTheme(dark = dark) {
     LockGate {
       // Arabic-first, so the shell mirrors like the Java app did, whatever the device locale.
-      CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+      CompositionLocalProvider(
+          LocalLayoutDirection provides LayoutDirection.Rtl,
+          LocalGraph provides graph,
+      ) {
         SadadShell(navController, startDestination, syncDot) {
           composable<Login> {
             LoginScreen(
