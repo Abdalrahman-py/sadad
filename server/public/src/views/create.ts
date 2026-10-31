@@ -1,5 +1,5 @@
 import { html } from "lit-html";
-import { type Actions, type CreateState, canWrite, type Model } from "../model";
+import { type CreateActions, type CreateState, canWrite, type Model } from "../model";
 import { copyButton, onSubmit, permissionBoxes } from "./common";
 
 const USERNAME = /^[A-Za-z0-9._-]{3,64}$/;
@@ -8,12 +8,12 @@ const seg = (
   mode: CreateState["mode"],
   value: CreateState["mode"],
   label: string,
-  actions: Actions,
+  actions: CreateActions,
 ) => html`
   <button type="button" aria-pressed=${mode === value} @click=${() => actions.setMode(value)}>${label}</button>
 `;
 
-const doneStep = (done: NonNullable<CreateState["done"]>, actions: Actions) => html`
+const doneStep = (done: NonNullable<CreateState["done"]>, actions: CreateActions) => html`
   <div class="stack">
     <div class="secret" role="status">
       <div class="grow">
@@ -39,7 +39,7 @@ const doneStep = (done: NonNullable<CreateState["done"]>, actions: Actions) => h
   </div>
 `;
 
-export function createView(model: Model, actions: Actions) {
+export function createView(model: Model, actions: CreateActions) {
   if (!canWrite(model)) {
     return html`<main class="page">
       <a class="back-link" href="#/stores">‹ المتاجر</a>

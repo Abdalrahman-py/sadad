@@ -1,7 +1,7 @@
 import { html, nothing } from "lit-html";
 import type { PendingInstallation, StoreRow } from "../api";
 import { dateTime, fmt } from "../format";
-import { type Actions, canWrite, type Model } from "../model";
+import { canWrite, type Model, type QueueActions } from "../model";
 import { arabicCount, byUrgency, needsDecision, subscriptionState } from "../subscription";
 import { KIND_LABELS } from "./audit";
 import { empty, loadState, metric } from "./common";
@@ -19,7 +19,7 @@ const deviceCard = (
   device: PendingInstallation,
   store: StoreRow | undefined,
   write: boolean,
-  actions: Actions,
+  actions: QueueActions,
 ) => {
   const slot = slots(store);
   return html`
@@ -59,7 +59,7 @@ const deviceCard = (
     </article>`;
 };
 
-const subRow = (store: StoreRow, write: boolean, actions: Actions) => {
+const subRow = (store: StoreRow, write: boolean, actions: QueueActions) => {
   const state = subscriptionState(store);
   const ended = state.tone === "danger";
   return html`
@@ -108,7 +108,7 @@ const recentActions = (model: Model) => html`
   </section>
 `;
 
-export function tasksView(model: Model, actions: Actions) {
+export function tasksView(model: Model, actions: QueueActions) {
   const write = canWrite(model);
   const devices = model.pending.rows;
   const subs = model.stores.rows.filter(needsDecision).sort(byUrgency);

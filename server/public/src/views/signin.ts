@@ -1,9 +1,9 @@
 import { html } from "lit-html";
 import logo from "../assets/logo.jpeg";
-import type { Actions, Model } from "../model";
+import type { Model, SignInActions } from "../model";
 import { onSubmit } from "./common";
 
-export function signInView(model: Model, actions: Actions) {
+export function signInView(model: Model, actions: SignInActions) {
   return html`
     <main class="auth">
       <div class="auth-card">

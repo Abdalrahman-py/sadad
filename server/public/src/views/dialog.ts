@@ -1,13 +1,13 @@
 import { html, nothing } from "lit-html";
-import type { Actions, Dialog } from "../model";
+import type { Dialog, DialogActions } from "../model";
 import { onSubmit } from "./common";
 
-const close = (actions: Actions) => html`
+const close = (actions: DialogActions) => html`
   <button type="button" class="btn-icon" aria-label="إغلاق" @click=${actions.closeDialog}>×</button>`;
 
 const submit = (
   dialog: Dialog,
-  actions: Actions,
+  actions: DialogActions,
   label: string,
   danger = false,
   disabled = false,
@@ -20,7 +20,7 @@ const submit = (
   </div>
 `;
 
-function body(dialog: Dialog, actions: Actions) {
+function body(dialog: Dialog, actions: DialogActions) {
   switch (dialog.kind) {
     case "reason":
       return html`
@@ -82,7 +82,7 @@ function body(dialog: Dialog, actions: Actions) {
 }
 
 /** controller.ts opens it with showModal() after render; Escape and × both close it. */
-export const dialogView = (dialog: Dialog, actions: Actions) => html`
+export const dialogView = (dialog: Dialog, actions: DialogActions) => html`
   <dialog class="dialog" aria-labelledby="dlg-title" @close=${actions.closeDialog}>
     ${body(dialog, actions)}
   </dialog>
