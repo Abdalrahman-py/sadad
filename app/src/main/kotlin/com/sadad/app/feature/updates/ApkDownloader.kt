@@ -113,7 +113,7 @@ internal class ApkDownloader(
    * decide afterwards, not the read loop. A server that ignores `Range` and answers `200` sends the
    * whole file again, which this handles by starting the file over.
    */
-  private fun stream(
+  private suspend fun stream(
       part: File,
       url: String,
       manifest: UpdateManifest,
@@ -130,8 +130,8 @@ internal class ApkDownloader(
             .apply { if (have > 0) header("Range", "bytes=$have-") }
             .build()
     try {
-      client.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) return UpdateError.DOWNLOAD_FAILED
+      return updateCall(client, request) { response ->
+        if (!response.isSuccessful) return@updateCall UpdateError.DOWNLOAD_FAILED
         val resumed = have > 0 && response.code == 206
         var read = if (resumed) have else 0L
         var lastPercent = -1
@@ -141,7 +141,7 @@ internal class ApkDownloader(
             while (true) {
               val count = input.read(buffer)
               if (count < 0) break
-              if (read + count > manifest.sizeBytes) return UpdateError.DOWNLOAD_FAILED
+              if (read + count > manifest.sizeBytes) return@updateCall UpdateError.DOWNLOAD_FAILED
               output.write(buffer, 0, count)
               read += count
               val percent = ((read * 100) / manifest.sizeBytes).toInt()
@@ -152,11 +152,11 @@ internal class ApkDownloader(
             }
           }
         }
-        if (read != manifest.sizeBytes) return UpdateError.DOWNLOAD_FAILED
+        if (read != manifest.sizeBytes) return@updateCall UpdateError.DOWNLOAD_FAILED
         if (ApkVerifier.sha256(part) != manifest.sha256) {
-          return UpdateError.CHECKSUM_MISMATCH
+          return@updateCall UpdateError.CHECKSUM_MISMATCH
         }
-        return null
+        return@updateCall null
       }
     } catch (_: IOException) {
       return UpdateError.DOWNLOAD_FAILED
