@@ -20,26 +20,26 @@ internal suspend fun <T> updateCall(
     read: (Response) -> T,
 ): T =
     withContext(Dispatchers.IO) {
-        coroutineScope {
-            val call = client.newCall(request)
-            val cancellation =
-                launch(start = CoroutineStart.UNDISPATCHED) {
-                    try {
-                        awaitCancellation()
-                    } finally {
-                        call.cancel()
-                    }
-                }
-            try {
-                call.execute().use { response ->
-                    currentCoroutineContext().ensureActive()
-                    read(response)
-                }
-            } catch (failure: IOException) {
-                currentCoroutineContext().ensureActive()
-                throw failure
-            } finally {
-                cancellation.cancel()
+      coroutineScope {
+        val call = client.newCall(request)
+        val cancellation =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+              try {
+                awaitCancellation()
+              } finally {
+                call.cancel()
+              }
             }
+        try {
+          call.execute().use { response ->
+            currentCoroutineContext().ensureActive()
+            read(response)
+          }
+        } catch (failure: IOException) {
+          currentCoroutineContext().ensureActive()
+          throw failure
+        } finally {
+          cancellation.cancel()
         }
+      }
     }
