@@ -98,89 +98,44 @@ data class LedgerView(
  * skipped (the server applied it). One is excluded when a dependency failed or was excluded, when a
  * Debt's Contact is not visible, or when a Payment's Debt is not visible or the Payment exceeds
  * what is left on it, counting earlier queued Payments.
+ *
+ * A caller that projects one state many times keeps its [confirmed] half and asks that for each
+ * queue: the queue changes far more often than the state.
  */
 fun LedgerState.view(
     pending: List<LedgerCommand>,
     failed: Set<String>,
     selfInstallationId: String,
     staffName: String,
-): LedgerView {
+): LedgerView = confirmed(selfInstallationId, staffName).view(pending, failed)
+
+/**
+ * The confirmed half of a projection: a view per visible row, nothing queued on top. It depends
+ * only on the state, the installation and the staff name. Never modified once built; [view] copies
+ * what a queued command changes.
+ */
+class ConfirmedLedger
+internal constructor(
+    internal val state: LedgerState,
+    internal val selfInstallationId: String,
+    internal val staffName: String,
+    internal val confirmedContacts: Map<String, ContactView>,
+    internal val archived: List<ContactView>,
+    internal val confirmedDebts: Map<String, DebtView>,
+    internal val confirmedPayments: List<PaymentView>,
+)
+
+/** This ledger with [pending] on top; see [LedgerState.view] for the rules. */
+fun ConfirmedLedger.view(pending: List<LedgerCommand>, failed: Set<String>): LedgerView {
   fun author(origin: String) = if (origin == selfInstallationId) staffName else ""
 
-  val contactViews = LinkedHashMap<String, ContactView>()
-  val archived = mutableListOf<ContactView>()
-  for (row in contacts.values) {
-    val view =
-        ContactView(
-            row.id,
-            row.name,
-            row.phone,
-            row.kind,
-            row.category,
-            row.note,
-            row.version,
-            pending = false,
-            row.createdAt,
-            author(row.originInstallationId),
-            row.operationId,
-        )
-    if (row.archived) archived += view else contactViews[row.id] = view
-  }
-
-  val paid = HashMap<String, Cents>()
-  for (row in payments.values) {
-    if (!row.reversed) paid[row.debtId] = (paid[row.debtId] ?: Cents.ZERO) + row.amount
-  }
-  val offsetted = HashMap<String, Cents>()
-  for (row in offsets.values) {
-    offsetted[row.receivableDebtId] = (offsetted[row.receivableDebtId] ?: Cents.ZERO) + row.amount
-    offsetted[row.payableDebtId] = (offsetted[row.payableDebtId] ?: Cents.ZERO) + row.amount
-  }
-  val debtViews = LinkedHashMap<String, DebtView>()
-  for (row in debts.values) {
-    if (row.contactId !in contactViews) continue
-    val debtPaid = paid[row.id] ?: Cents.ZERO
-    val debtOffsetted = offsetted[row.id] ?: Cents.ZERO
-    val open = row.amount - debtPaid - debtOffsetted
-    debtViews[row.id] =
-        DebtView(
-            row.id,
-            row.contactId,
-            row.direction,
-            row.amount,
-            debtPaid,
-            open,
-            open,
-            row.version,
-            pending = false,
-            hasPendingPayments = false,
-            row.note,
-            row.dueDate,
-            row.createdAt,
-            author(row.originInstallationId),
-            row.operationId,
-            origin = row.origin,
-            offsetted = debtOffsetted,
-        )
-  }
-  val paymentViews = mutableListOf<PaymentView>()
-  for (row in payments.values) {
-    val debt = debtViews[row.debtId] ?: continue
-    paymentViews +=
-        PaymentView(
-            row.id,
-            row.debtId,
-            debt.contactId,
-            row.amount,
-            row.method,
-            row.note,
-            row.reversed,
-            pending = false,
-            row.createdAt,
-            author(row.originInstallationId),
-            row.operationId,
-        )
-  }
+  val contactViews = LinkedHashMap(confirmedContacts)
+  val debtViews = LinkedHashMap(confirmedDebts)
+  val paymentViews = ArrayList(confirmedPayments)
+  val contacts = state.contacts
+  val debts = state.debts
+  val payments = state.payments
+  val offsets = state.offsets
 
   val excluded = LinkedHashSet<String>()
   var pendingContacts = 0
@@ -318,5 +273,95 @@ fun LedgerState.view(
       pendingDebts = pendingDebts,
       pendingPayments = pendingPayments,
       excludedOperations = excluded,
+  )
+}
+
+/** Builds the views of every visible row of this state, without anything queued. */
+fun LedgerState.confirmed(selfInstallationId: String, staffName: String): ConfirmedLedger {
+  fun author(origin: String) = if (origin == selfInstallationId) staffName else ""
+
+  val contactViews = LinkedHashMap<String, ContactView>()
+  val archived = mutableListOf<ContactView>()
+  for (row in contacts.values) {
+    val view =
+        ContactView(
+            row.id,
+            row.name,
+            row.phone,
+            row.kind,
+            row.category,
+            row.note,
+            row.version,
+            pending = false,
+            row.createdAt,
+            author(row.originInstallationId),
+            row.operationId,
+        )
+    if (row.archived) archived += view else contactViews[row.id] = view
+  }
+
+  val paid = HashMap<String, Cents>()
+  for (row in payments.values) {
+    if (!row.reversed) paid[row.debtId] = (paid[row.debtId] ?: Cents.ZERO) + row.amount
+  }
+  val offsetted = HashMap<String, Cents>()
+  for (row in offsets.values) {
+    offsetted[row.receivableDebtId] = (offsetted[row.receivableDebtId] ?: Cents.ZERO) + row.amount
+    offsetted[row.payableDebtId] = (offsetted[row.payableDebtId] ?: Cents.ZERO) + row.amount
+  }
+  val debtViews = LinkedHashMap<String, DebtView>()
+  for (row in debts.values) {
+    if (row.contactId !in contactViews) continue
+    val debtPaid = paid[row.id] ?: Cents.ZERO
+    val debtOffsetted = offsetted[row.id] ?: Cents.ZERO
+    val open = row.amount - debtPaid - debtOffsetted
+    debtViews[row.id] =
+        DebtView(
+            row.id,
+            row.contactId,
+            row.direction,
+            row.amount,
+            debtPaid,
+            open,
+            open,
+            row.version,
+            pending = false,
+            hasPendingPayments = false,
+            row.note,
+            row.dueDate,
+            row.createdAt,
+            author(row.originInstallationId),
+            row.operationId,
+            origin = row.origin,
+            offsetted = debtOffsetted,
+        )
+  }
+  val paymentViews = mutableListOf<PaymentView>()
+  for (row in payments.values) {
+    val debt = debtViews[row.debtId] ?: continue
+    paymentViews +=
+        PaymentView(
+            row.id,
+            row.debtId,
+            debt.contactId,
+            row.amount,
+            row.method,
+            row.note,
+            row.reversed,
+            pending = false,
+            row.createdAt,
+            author(row.originInstallationId),
+            row.operationId,
+        )
+  }
+
+  return ConfirmedLedger(
+      this,
+      selfInstallationId,
+      staffName,
+      contactViews,
+      archived,
+      debtViews,
+      paymentViews,
   )
 }

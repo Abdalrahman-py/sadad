@@ -41,25 +41,31 @@ object SettingsDialogTags {
 
 /** The dialog [SettingsState.pending] asks for. */
 @Composable
-internal fun SettingsDialogs(state: SettingsState, model: SettingsViewModel) {
+internal fun SettingsDialogs(
+    state: SettingsState,
+    store: StoreModule,
+    security: SecurityModule,
+    account: AccountModule,
+    ui: SettingsUi,
+) {
   when (val pending = state.pending) {
-    is Pending.Profile -> ProfileDialog(pending, model)
-    Pending.SetPin -> PinDialog(state.pinError, model)
-    is Pending.SignOut -> SignOutDialog(pending, state.busy, model)
-    is Pending.Remove -> RemoveDialog(pending, state.busy, model)
+    is Pending.Profile -> ProfileDialog(pending, store, ui)
+    Pending.SetPin -> PinDialog(state.pinError, security, ui)
+    is Pending.SignOut -> SignOutDialog(pending, state.busy, account, ui)
+    is Pending.Remove -> RemoveDialog(pending, state.busy, account, ui)
     null -> Unit
   }
 }
 
 @Composable
-private fun ProfileDialog(draft: Pending.Profile, model: SettingsViewModel) {
+private fun ProfileDialog(draft: Pending.Profile, store: StoreModule, ui: SettingsUi) {
   // The fields own their text: a value that makes a round trip through the view model state can
   // lag behind the keyboard and move the cursor. The view model gets every change for the saved
   // state.
-  var store by remember { mutableStateOf(draft.storeName) }
+  var storeName by remember { mutableStateOf(draft.storeName) }
   var owner by remember { mutableStateOf(draft.ownerName) }
   AlertDialog(
-      onDismissRequest = model::dismiss,
+      onDismissRequest = ui::dismiss,
       title = { Text(stringResource(R.string.settings_profile_title)) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -68,10 +74,10 @@ private fun ProfileDialog(draft: Pending.Profile, model: SettingsViewModel) {
               style = MaterialTheme.typography.labelMedium,
           )
           OutlinedTextField(
-              value = store,
+              value = storeName,
               onValueChange = {
-                store = it
-                model.onProfileChange(it, owner)
+                storeName = it
+                store.onProfileChange(it, owner)
               },
               label = { Text(stringResource(R.string.settings_profile_store_label)) },
               singleLine = true,
@@ -81,7 +87,7 @@ private fun ProfileDialog(draft: Pending.Profile, model: SettingsViewModel) {
               value = owner,
               onValueChange = {
                 owner = it
-                model.onProfileChange(store, it)
+                store.onProfileChange(storeName, it)
               },
               label = { Text(stringResource(R.string.settings_profile_owner_label)) },
               singleLine = true,
@@ -91,25 +97,25 @@ private fun ProfileDialog(draft: Pending.Profile, model: SettingsViewModel) {
       },
       confirmButton = {
         TextButton(
-            onClick = model::saveProfile,
+            onClick = store::saveProfile,
             modifier = Modifier.testTag(SettingsDialogTags.PROFILE_SAVE),
         ) {
           Text(stringResource(R.string.settings_save))
         }
       },
       dismissButton = {
-        TextButton(onClick = model::dismiss) { Text(stringResource(R.string.settings_cancel)) }
+        TextButton(onClick = ui::dismiss) { Text(stringResource(R.string.settings_cancel)) }
       },
   )
 }
 
 @Composable
-private fun PinDialog(error: PinError?, model: SettingsViewModel) {
+private fun PinDialog(error: PinError?, security: SecurityModule, ui: SettingsUi) {
   // Plain state, not saveable: a PIN must never reach the saved instance state.
   var first by remember { mutableStateOf("") }
   var second by remember { mutableStateOf("") }
   AlertDialog(
-      onDismissRequest = model::dismiss,
+      onDismissRequest = ui::dismiss,
       title = { Text(stringResource(R.string.settings_pin_title)) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -142,14 +148,14 @@ private fun PinDialog(error: PinError?, model: SettingsViewModel) {
       },
       confirmButton = {
         TextButton(
-            onClick = { model.savePin(first, second) },
+            onClick = { security.savePin(first, second) },
             modifier = Modifier.testTag(SettingsDialogTags.PIN_SAVE),
         ) {
           Text(stringResource(R.string.settings_save))
         }
       },
       dismissButton = {
-        TextButton(onClick = model::dismiss) { Text(stringResource(R.string.settings_cancel)) }
+        TextButton(onClick = ui::dismiss) { Text(stringResource(R.string.settings_cancel)) }
       },
   )
 }
@@ -184,9 +190,14 @@ private fun ErrorText(message: Int) {
 }
 
 @Composable
-private fun SignOutDialog(pending: Pending.SignOut, busy: Boolean, model: SettingsViewModel) {
+private fun SignOutDialog(
+    pending: Pending.SignOut,
+    busy: Boolean,
+    account: AccountModule,
+    ui: SettingsUi,
+) {
   AlertDialog(
-      onDismissRequest = model::dismiss,
+      onDismissRequest = ui::dismiss,
       title = { Text(stringResource(R.string.settings_sign_out)) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -201,7 +212,7 @@ private fun SignOutDialog(pending: Pending.SignOut, busy: Boolean, model: Settin
       },
       confirmButton = {
         TextButton(
-            onClick = model::confirmSignOut,
+            onClick = account::confirmSignOut,
             enabled = !busy,
             modifier = Modifier.testTag(SettingsDialogTags.SIGN_OUT_CONFIRM),
         ) {
@@ -209,13 +220,18 @@ private fun SignOutDialog(pending: Pending.SignOut, busy: Boolean, model: Settin
         }
       },
       dismissButton = {
-        TextButton(onClick = model::dismiss) { Text(stringResource(R.string.settings_cancel)) }
+        TextButton(onClick = ui::dismiss) { Text(stringResource(R.string.settings_cancel)) }
       },
   )
 }
 
 @Composable
-private fun RemoveDialog(pending: Pending.Remove, busy: Boolean, model: SettingsViewModel) {
+private fun RemoveDialog(
+    pending: Pending.Remove,
+    busy: Boolean,
+    account: AccountModule,
+    ui: SettingsUi,
+) {
   // The second confirmation must be a separate, read decision: after the first one the button
   // stays off for a moment, so a double tap cannot count twice.
   var ready by remember(pending.confirmed) { mutableStateOf(pending.confirmed == 0) }
@@ -226,7 +242,7 @@ private fun RemoveDialog(pending: Pending.Remove, busy: Boolean, model: Settings
     }
   }
   AlertDialog(
-      onDismissRequest = model::dismiss,
+      onDismissRequest = ui::dismiss,
       title = { Text(stringResource(R.string.settings_remove_title)) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -241,7 +257,7 @@ private fun RemoveDialog(pending: Pending.Remove, busy: Boolean, model: Settings
       },
       confirmButton = {
         TextButton(
-            onClick = model::confirmRemove,
+            onClick = account::confirmRemove,
             enabled = ready && !busy,
             modifier = Modifier.testTag(SettingsDialogTags.REMOVE_CONFIRM),
         ) {
@@ -254,7 +270,7 @@ private fun RemoveDialog(pending: Pending.Remove, busy: Boolean, model: Settings
         }
       },
       dismissButton = {
-        TextButton(onClick = model::dismiss) { Text(stringResource(R.string.settings_cancel)) }
+        TextButton(onClick = ui::dismiss) { Text(stringResource(R.string.settings_cancel)) }
       },
   )
 }

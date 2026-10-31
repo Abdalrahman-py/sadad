@@ -82,6 +82,7 @@ import com.sadad.app.SadadApplication
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.KeypadKey
+import com.sadad.app.ui.components.SHEKEL
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadKeypad
@@ -106,6 +107,7 @@ object QuickAddTags {
   const val PEOPLE = "quickadd:people"
   const val ADD_NEW = "quickadd:add-new"
   const val BLOCKED = "quickadd:blocked"
+  const val QUEUED = "quickadd:queued"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
   const val ERROR = "quickadd:error"
@@ -355,15 +357,6 @@ private fun BlockedCard() {
             color = p.muted,
         )
       }
-      Surface(color = p.card, shape = RoundedCornerShape(10.dp)) {
-        Text(
-            stringResource(R.string.quickadd_reconnect),
-            color = if (p.isDark) p.accent else p.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        )
-      }
     }
   }
 }
@@ -534,10 +527,10 @@ private fun AmountStep(
       // The amount and the keypad read left to right, as the board draws them, inside an RTL page.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(verticalAlignment = Alignment.Bottom) {
-          Text("₪", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
+          Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
           Spacer(Modifier.width(8.dp))
           Text(
-              text = amountLabel(state.amount),
+              text = typedAmountLabel(state.amount),
               fontSize = 52.sp,
               fontWeight = FontWeight.Bold,
               color = if (state.amount.isEmpty()) Ghost else p.text,
@@ -932,6 +925,16 @@ private fun DoneStep(
           )
         }
       }
+    }
+
+    if (done.offline) {
+      Text(
+          stringResource(R.string.quickadd_done_offline),
+          fontSize = 13.sp,
+          color = p.muted,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.QUEUED),
+      )
     }
 
     // Once the entry is queued there is nothing to undo here, so the offer goes away with it.

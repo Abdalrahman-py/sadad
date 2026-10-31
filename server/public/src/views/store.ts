@@ -2,13 +2,14 @@ import { html, nothing, type TemplateResult } from "lit-html";
 import type { DetailInstallation, Store, StoreDetail } from "../api";
 import { dateTime, day, daysLeft, fmt, money } from "../format";
 import {
-  type Actions,
   canWrite,
   type Model,
   STORE_TAB_LABELS,
   STORE_TABS,
+  type StoreActions,
   type StoreState,
   type StoreTab,
+  type StoreTabActions,
 } from "../model";
 import {
   arabicCount,
@@ -108,7 +109,12 @@ const overviewTab = (detail: StoreDetail, state: StoreState, write: boolean) => 
   `;
 };
 
-const deviceCard = (phone: DetailInstallation, store: Store, write: boolean, actions: Actions) => {
+const deviceCard = (
+  phone: DetailInstallation,
+  store: Store,
+  write: boolean,
+  actions: StoreActions,
+) => {
   const tone: Tone = DEVICE_TONE[phone.status];
   const who = [phone.staffName, phone.label].filter(Boolean).join(" · ") || "جهاز";
   const meta = [
@@ -149,7 +155,7 @@ const deviceCard = (phone: DetailInstallation, store: Store, write: boolean, act
   `;
 };
 
-const devicesTab = (detail: StoreDetail, write: boolean, actions: Actions) => {
+const devicesTab = (detail: StoreDetail, write: boolean, actions: StoreActions) => {
   const store = detail.store;
   const active = detail.installations.filter((device) => device.status === "active").length;
   return html`
@@ -174,7 +180,7 @@ const devicesTab = (detail: StoreDetail, write: boolean, actions: Actions) => {
   `;
 };
 
-const subscriptionTab = (detail: StoreDetail, write: boolean, actions: Actions) => {
+const subscriptionTab = (detail: StoreDetail, write: boolean, actions: StoreActions) => {
   const store = detail.store;
   const sub = subscriptionState(store);
   const mode = store.subscriptionMode;
@@ -240,7 +246,8 @@ function body(
   detail: StoreDetail,
   state: StoreState,
   write: boolean,
-  actions: Actions,
+  actions: StoreActions,
+  tabActions: StoreTabActions,
 ): TemplateResult {
   switch (state.tab) {
     case "overview":
@@ -252,18 +259,18 @@ function body(
     case "settings":
       return settingsView(detail, write, actions);
     case "ledger":
-      return ledgerView(detail, state.ledger, actions);
+      return ledgerView(detail, state.ledger, tabActions);
     case "recovery":
-      return recoveryView(detail, state.recovery, write, actions);
+      return recoveryView(detail, state.recovery, write, tabActions);
     case "audit":
       return html`<section class="section">
-        ${sourceChips(state.audit.source, actions.setStoreAuditSource)}
-        ${auditList(state.audit, false, "صفحات سجل المتجر", actions.pageStoreAudit)}
+        ${sourceChips(state.audit.source, tabActions.setStoreAuditSource)}
+        ${auditList(state.audit, false, "صفحات سجل المتجر", tabActions.pageStoreAudit)}
       </section>`;
   }
 }
 
-export function storeView(model: Model, actions: Actions) {
+export function storeView(model: Model, actions: StoreActions, tabActions: StoreTabActions) {
   const state = model.store;
   if (!state) {
     return html`<main class="page"><p class="loading" role="status">جارٍ تحميل المتجر…</p></main>`;
@@ -333,7 +340,7 @@ export function storeView(model: Model, actions: Actions) {
 
       ${tabs(store.id, state.tab, pending)}
       ${loadState(state)}
-      ${state.error ? nothing : body(detail, state, write, actions)}
+      ${state.error ? nothing : body(detail, state, write, actions, tabActions)}
     </main>
   `;
 }

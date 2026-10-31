@@ -118,10 +118,11 @@ const defaultLogger: ErrorLogger = (entry) => {
 
 const ErrorRef = { $ref: "#/components/schemas/ErrorResponse" } as const;
 
-/** OpenAPI responses for the contract errors a route can return. */
-export function errorResponses(...statuses: number[]) {
+/** OpenAPI responses for the contract errors a route can return; the statuses come from the code map. */
+export function errorResponses(...codes: ErrorCode[]) {
+  const statuses = new Set(codes.map(statusForCode));
   return Object.fromEntries(
-    statuses.map((status) => [status, {
+    [...statuses].map((status) => [status, {
       description: "Contract error; code is listed in contract/errors.json",
       content: { "application/json": { schema: ErrorRef } },
     }]),

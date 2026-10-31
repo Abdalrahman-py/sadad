@@ -139,16 +139,22 @@ private const val GATED_CONTENT = "gated-content"
 private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
   val scope = rememberCoroutineScope()
   val biometricOn by lock.biometricEnabled.collectAsState(false)
-  val canBiometric = remember(biometricOn) { biometricOn && biometric.available() }
+  // canAuthenticate is a binder call: resolved once per setting, off the composition thread.
+  val canBiometric by
+      produceState(false, biometricOn) {
+        value = biometricOn && withContext(Dispatchers.IO) { biometric.available() }
+      }
   var pin by remember { mutableStateOf("") }
   var checking by remember { mutableStateOf(false) }
   var wrong by remember { mutableStateOf(false) }
   var remaining by remember { mutableLongStateOf(0L) }
   LaunchedEffect(Unit) { remaining = lock.lockout()?.remaining ?: 0L }
+  // The deadline is read once; the countdown runs in memory. Ending a second late is harmless, and
+  // an early end is caught by verifyPin, which answers LockedOut with the stored deadline.
   LaunchedEffect(remaining > 0L) {
     while (remaining > 0L) {
       delay(1_000)
-      remaining = lock.lockout()?.remaining ?: 0L
+      remaining = (remaining - 1_000).coerceAtLeast(0L)
     }
   }
   LaunchedEffect(canBiometric) { if (canBiometric) biometric.authenticate(lock::markUnlocked) }

@@ -1,7 +1,7 @@
 import { html, nothing, type TemplateResult } from "lit-html";
 import type { LedgerKind, StoreDetail } from "../api";
 import { dateTime, fmt, money } from "../format";
-import type { Actions, LedgerState } from "../model";
+import type { LedgerActions, LedgerState } from "../model";
 import { empty, loadState, metric, pager, searchBox } from "./common";
 
 type Row = Record<string, unknown>;
@@ -79,7 +79,7 @@ const lock = () => html`
     <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
   </svg>`;
 
-export function ledgerView(detail: StoreDetail, state: LedgerState | null, actions: Actions) {
+export function ledgerView(detail: StoreDetail, state: LedgerState | null, actions: LedgerActions) {
   if (!detail.ledgerInitialized) {
     return html`<section class="card stack">
       <h2 class="section-title">دفتر المتجر</h2>

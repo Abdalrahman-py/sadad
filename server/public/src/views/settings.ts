@@ -1,7 +1,7 @@
 import { html, nothing } from "lit-html";
 import type { StoreDetail } from "../api";
 import { fmt } from "../format";
-import type { Actions } from "../model";
+import type { StoreActions } from "../model";
 import { statusText, statusTone } from "../subscription";
 import { onSubmit, permissionBoxes, pill } from "./common";
 
@@ -10,7 +10,7 @@ interface DangerAction {
   why: string;
   button: string;
   strong: boolean;
-  run: (actions: Actions) => void;
+  run: (actions: StoreActions) => void;
 }
 
 /**
@@ -74,7 +74,7 @@ function dangerActions(detail: StoreDetail): DangerAction[] {
   return rows;
 }
 
-export function settingsView(detail: StoreDetail, write: boolean, actions: Actions) {
+export function settingsView(detail: StoreDetail, write: boolean, actions: StoreActions) {
   const store = detail.store;
   const locked = !write || store.archived;
   return html`

@@ -46,6 +46,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -128,6 +129,8 @@ internal constructor(
           }
         }
         try {
+          // A store the start route opened may still be reading its rows.
+          opened.repository.awaitLoaded()
           syncEngine.pass(opened)
         } finally {
           withContext(NonCancellable) {
@@ -162,24 +165,31 @@ internal constructor(
     if (session == null && account.sealedRefreshToken == null) return Login
     if (session?.forcePasswordChange == true) return PasswordChange
     if (account.installation?.status != "active") return AwaitingApproval
-    if (mutableCurrent.value?.account?.storeUserId != account.storeUserId) openStore(account)
+    // Home reads its rows behind the lock screen: the PIN pad must not wait for the ledger.
+    if (mutableCurrent.value?.account?.storeUserId != account.storeUserId) {
+      openStore(account, awaitRows = false)
+    }
     return Home
   }
 
-  /** Closes the open store, then opens [account]'s database, outbox and repository. */
-  suspend fun openStore(account: Account): StoreScope =
+  /**
+   * Closes the open store, then opens [account]'s database, outbox and repository. It returns with
+   * the rows read, unless [awaitRows] is false: then they load in the background and the
+   * repository's view stays null until they are in.
+   */
+  suspend fun openStore(account: Account, awaitRows: Boolean = true): StoreScope =
       withContext(Dispatchers.IO) {
         storeMutex.withLock {
           closeCurrent()
           val opened =
               stores[account.storeUserId]
-                  ?: createStore(account).also { stores[account.storeUserId] = it }
+                  ?: createStore(account, awaitRows).also { stores[account.storeUserId] = it }
           mutableCurrent.value = opened
           opened
         }
       }
 
-  private suspend fun createStore(account: Account): StoreScope {
+  private suspend fun createStore(account: Account, awaitRows: Boolean = true): StoreScope {
     val signer =
         checkNotNull(installations.load(account.keyAlias, account.installationId)) {
           "the installation key for store ${account.storeUserId} is missing"
@@ -195,15 +205,26 @@ internal constructor(
         StoreScope(account, database, store, outbox, signer, accounts, online, storeJobs, lease) {
           syncScheduler?.syncNow(account.storeUserId)
         }
+    if (!awaitRows) {
+      // A failed read still ends the app loudly, as it did on the splash, not as a Home that never
+      // fills.
+      storeJobs.launch { loadRows(storeScope) }
+      return storeScope
+    }
     try {
-      storeScope.repository.load()
-      storeScope.setEpoch(database.metaDao().get()?.epoch)
-      syncScheduler?.schedulePeriodic(account.storeUserId)
+      loadRows(storeScope)
       return storeScope
     } catch (error: Throwable) {
       withContext(NonCancellable) { storeScope.close() }
       throw error
     }
+  }
+
+  /** The epoch goes in first, so sync that waits for the rows never sees the store without it. */
+  private suspend fun loadRows(storeScope: StoreScope) {
+    storeScope.setEpoch(storeScope.database.metaDao().get()?.epoch)
+    storeScope.repository.load()
+    syncScheduler?.schedulePeriodic(storeScope.account.storeUserId)
   }
 
   suspend fun closeStore() = storeMutex.withLock { closeCurrent() }

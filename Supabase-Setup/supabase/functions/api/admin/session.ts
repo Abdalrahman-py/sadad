@@ -9,7 +9,7 @@ import type { AppEnv } from "../auth.ts";
 import { verifyCaller } from "../auth.ts";
 import { ApiError, errorResponses } from "../errors.ts";
 import { call } from "../rpc.ts";
-import { adminDb, type AdminDeps, allow } from "./common.ts";
+import { adminDb, type AdminDeps, adminRefusals, allow } from "./common.ts";
 
 const tags = ["admin"];
 const security = [{ Bearer: [] }];
@@ -56,7 +56,7 @@ const claimRoute = createRoute({
         },
       },
     },
-    ...errorResponses(401, 403, 409, 500),
+    ...errorResponses(...adminRefusals, "session_in_use", "internal_error"),
   },
 });
 
@@ -77,7 +77,7 @@ const releaseRoute = createRoute({
         },
       },
     },
-    ...errorResponses(401, 403, 500),
+    ...errorResponses(...adminRefusals, "internal_error"),
   },
 });
 

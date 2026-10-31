@@ -9,6 +9,7 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,13 +42,23 @@ class Sessions(
   private val syncAccess = ConcurrentHashMap<String, AuthSession>()
   private val mutex = Mutex()
 
-  /** Signs in, creates the store's account on first sign-in, and opens its scope. */
+  /**
+   * Signs in and creates the store's account on first sign-in. It returns once the session exists;
+   * opening the store is the next route's job (`AppGraph.startRoute`), so a slow ledger never reads
+   * as a slow password. A failed step leaves no token behind, and the previously open store is
+   * closed so the screen never shows one store under another's session.
+   */
   suspend fun signIn(username: String, password: String): AuthSession = mutex.withLock {
     val session = auth.signIn(username, password)
     val account = accounts.account(session.userId) ?: newAccount(session.userId, username)
-    storeLocked(session)
-    accounts.setActive(account.storeUserId)
-    host.open(account)
+    try {
+      storeLocked(session)
+      host.close()
+      accounts.setActive(account.storeUserId)
+    } catch (failed: Throwable) {
+      withContext(NonCancellable) { invalidateLocked(session.userId) }
+      throw failed
+    }
     session
   }
 

@@ -1,7 +1,7 @@
 import { html, nothing } from "lit-html";
 import type { AuditEvent, AuditSource } from "../api";
 import { dateTime, fmt } from "../format";
-import type { Actions, Model, Paged, PageStep } from "../model";
+import type { AuditActions, Model, Paged, PageStep } from "../model";
 import { loadState, pager, searchBox } from "./common";
 
 export const KIND_LABELS: Record<string, string> = {
@@ -64,7 +64,7 @@ export const auditList = (
   ${pager(label, page, step)}
 `;
 
-export function auditView(model: Model, actions: Actions) {
+export function auditView(model: Model, actions: AuditActions) {
   return html`
     <main class="page">
       <div class="page-head">

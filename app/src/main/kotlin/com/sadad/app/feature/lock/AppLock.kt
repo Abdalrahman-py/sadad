@@ -42,6 +42,7 @@ class AppLock(
     scope: CoroutineScope,
     private val elapsedRealtime: () -> Long,
     private val bootCount: () -> Int,
+    private val derive: (String, ByteArray) -> ByteArray = ::pbkdf2,
 ) {
   constructor(
       file: File,
@@ -56,6 +57,8 @@ class AppLock(
   private val skip = AtomicBoolean(false)
   private var leftAt: Long? = null
 
+  // Collect these once and keep the collection open. DataStore 1.2.1 can start a new collection on
+  // the old value while a write is in flight and then skip that write; an open one sees it.
   /** The lock is on and the PIN is set; Java defaulted [lockEnabled] to true. */
   val lockEnabled: Flow<Boolean> = data.data.map { it[LOCK] ?: true }
   val biometricEnabled: Flow<Boolean> = data.data.map { it[BIOMETRIC] ?: false }
@@ -119,51 +122,74 @@ class AppLock(
 
   suspend fun hasPin(): Boolean = !data.data.first()[HASH].isNullOrEmpty()
 
-  suspend fun verifyPin(pin: String): PinResult =
-      withContext(Dispatchers.IO) {
-        var result: PinResult = PinResult.Wrong(5)
-        data.edit { saved ->
-          val remaining = remaining(saved)
-          if (remaining > 0) {
-            result = PinResult.LockedOut(remaining)
-            return@edit
-          }
-          val salt = saved[SALT]
-          val expected = saved[HASH]
-          if (salt == null || expected == null) return@edit
-          if (
-              MessageDigest.isEqual(Base64Url.decode(expected), derive(pin, Base64Url.decode(salt)))
-          ) {
-            resetAttempts(saved)
-            result = PinResult.Ok
-          } else {
-            val attempts = (saved[FAILURES] ?: 0) + 1
-            if (attempts < 5) {
-              saved[FAILURES] = attempts
-              result = PinResult.Wrong(5 - attempts)
-            } else {
-              val level = ((saved[LEVEL] ?: 0) + 1).coerceAtMost(6)
-              val delay = minOf(900_000L, 30_000L shl (level - 1))
-              saved[LEVEL] = level
-              saved[FAILURES] = 0
-              saved[DELAY] = delay
-              saved[BOOT] = bootCount()
-              saved[DEADLINE] = elapsedRealtime() + delay
-              result = PinResult.LockedOut(delay)
-            }
-          }
-        }
-        result
-      }
+  suspend fun verifyPin(pin: String): PinResult = withContext(Dispatchers.IO) { verify(pin) }
 
-  suspend fun lockout(): PinResult.LockedOut? {
-    var result: PinResult.LockedOut? = null
+  /** Retries when a PIN change lands during the derivation, so the attempt meets the new PIN. */
+  private suspend fun verify(pin: String): PinResult = attempt(pin) ?: verify(pin)
+
+  /**
+   * Derives outside the write lock, then takes it once to count the attempt against the latest
+   * state: a lockout that started meanwhile wins over a correct PIN, and concurrent wrong PINs each
+   * add one failure. Null means the PIN changed while deriving.
+   */
+  private suspend fun attempt(pin: String): PinResult? {
+    lockout()?.let {
+      return it
+    }
+    val before = data.data.first()
+    val salt = before[SALT]
+    val expected = before[HASH]
+    if (salt == null || expected == null) return PinResult.Wrong(5)
+    val matches =
+        MessageDigest.isEqual(Base64Url.decode(expected), derive(pin, Base64Url.decode(salt)))
+    var result: PinResult? = null
     data.edit { saved ->
+      if (saved[SALT] != salt || saved[HASH] != expected) return@edit
       val remaining = remaining(saved)
-      if (remaining > 0) result = PinResult.LockedOut(remaining)
+      if (remaining > 0) {
+        result = PinResult.LockedOut(remaining)
+      } else if (matches) {
+        resetAttempts(saved)
+        result = PinResult.Ok
+      } else {
+        val attempts = (saved[FAILURES] ?: 0) + 1
+        if (attempts < 5) {
+          saved[FAILURES] = attempts
+          result = PinResult.Wrong(5 - attempts)
+        } else {
+          val level = ((saved[LEVEL] ?: 0) + 1).coerceAtMost(6)
+          val delay = minOf(900_000L, 30_000L shl (level - 1))
+          saved[LEVEL] = level
+          saved[FAILURES] = 0
+          saved[DELAY] = delay
+          saved[BOOT] = bootCount()
+          saved[DEADLINE] = elapsedRealtime() + delay
+          result = PinResult.LockedOut(delay)
+        }
+      }
     }
     return result
   }
+
+  /**
+   * A read: it takes the write lock only after a reboot, when the deadline must restart on the new
+   * clock. An expired deadline is left for the next [verifyPin] to clear.
+   */
+  suspend fun lockout(): PinResult.LockedOut? =
+      withContext(Dispatchers.IO) {
+        val saved = data.data.first()
+        val deadline = saved[DEADLINE] ?: return@withContext null
+        if (saved[BOOT] != bootCount()) {
+          var result: PinResult.LockedOut? = null
+          data.edit { latest ->
+            val remaining = remaining(latest)
+            if (remaining > 0) result = PinResult.LockedOut(remaining)
+          }
+          return@withContext result
+        }
+        val remaining = deadline - elapsedRealtime()
+        if (remaining > 0) PinResult.LockedOut(remaining) else null
+      }
 
   private fun remaining(saved: MutablePreferences): Long {
     val deadline = saved[DEADLINE] ?: return 0L
@@ -190,15 +216,6 @@ class AppLock(
     saved.remove(DEADLINE)
     saved.remove(DELAY)
     saved.remove(BOOT)
-  }
-
-  private fun derive(pin: String, salt: ByteArray): ByteArray {
-    val spec = PBEKeySpec(pin.toCharArray(), salt, 120_000, 256)
-    return try {
-      SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
-    } finally {
-      spec.clearPassword()
-    }
   }
 
   companion object {
@@ -235,5 +252,14 @@ class AppLock(
     private val BOOT = intPreferencesKey("pin_boot")
     private val DEADLINE = longPreferencesKey("pin_deadline")
     private val DELAY = longPreferencesKey("pin_delay")
+  }
+}
+
+private fun pbkdf2(pin: String, salt: ByteArray): ByteArray {
+  val spec = PBEKeySpec(pin.toCharArray(), salt, 120_000, 256)
+  return try {
+    SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+  } finally {
+    spec.clearPassword()
   }
 }

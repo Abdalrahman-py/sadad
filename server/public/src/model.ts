@@ -208,16 +208,25 @@ export const canWrite = (model: Model): boolean => model.caller?.role === "admin
 
 export type PageStep = "next" | "prev";
 
-/** What the views can ask for. controller.ts implements it; tests pass stubs. */
-export interface Actions {
+// What the views can ask for, one interface per view so a view cannot reach a handler it does not
+// render. controller.ts implements all of them; tests pass an object literal of the few they need.
+
+export interface SignInActions {
   signIn(email: string, password: string): void;
+}
+
+export interface ShellActions {
   signOut(): void;
   refresh(): void;
   dismissNotice(): void;
+}
 
+export interface StoresActions {
   setStoreFilter(filter: StoreFilter): void;
   searchStores(q: string): void;
+}
 
+export interface QueueActions {
   /** One tap from the queue: approve or reject with the dashboard's standard reason. */
   quickApprove(device: PendingInstallation): void;
   quickReject(device: PendingInstallation): void;
@@ -225,7 +234,10 @@ export interface Actions {
   raiseLimitAndApprove(device: PendingInstallation, store: Store): void;
   /** Adds days and reactivates a timed subscription; used by the queue and by the store page. */
   quickExtend(store: Store, days: number): void;
+}
 
+/** The store page's header and its devices, subscription and settings tabs. */
+export interface StoreActions extends Pick<QueueActions, "quickExtend"> {
   approveDevice(installationId: string, storeId: number): void;
   revokeDevice(installationId: string, storeId: number): void;
 
@@ -235,31 +247,58 @@ export interface Actions {
   resetPassword(): void;
   saveSubscription(mode: "permanent" | "timed" | "paused", days?: number): void;
   dismissSecret(): void;
+}
 
+export interface CreateActions {
   setName(value: string): void;
   setUsername(value: string): void;
   setMode(mode: CreateState["mode"]): void;
   createStore(form: FormData): void;
   restartCreate(): void;
+}
 
+export interface RecoveryActions {
   setRecovery(patch: Partial<Pick<RecoveryState, "oldId" | "newId" | "manifest" | "reason">>): void;
   loadManifestFile(file: File): void;
   approveRecovery(): void;
+}
 
+export interface LedgerActions {
   openLedger(reason: string): void;
   setLedgerKind(kind: LedgerKind): void;
   searchLedger(q: string): void;
   pageLedger(step: PageStep): void;
   downloadLedger(): void;
+}
 
+export interface AuditActions {
   searchAudit(q: string): void;
   setAuditSource(source: AuditSource): void;
   pageAudit(step: PageStep): void;
+}
+
+export interface StoreAuditActions {
   setStoreAuditSource(source: AuditSource): void;
   pageStoreAudit(step: PageStep): void;
+}
 
+/** The store page's tabs that read a list or a form of their own. */
+export type StoreTabActions = LedgerActions & RecoveryActions & StoreAuditActions;
+
+export interface DialogActions {
   dialogReason(value: string): void;
   dialogTyped(value: string): void;
   submitDialog(): void;
   closeDialog(): void;
 }
+
+/** Everything the controller implements; only app.ts, the root of the views, takes all of it. */
+export type Actions = SignInActions &
+  ShellActions &
+  StoresActions &
+  QueueActions &
+  StoreActions &
+  CreateActions &
+  StoreTabActions &
+  AuditActions &
+  DialogActions;

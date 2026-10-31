@@ -3,8 +3,51 @@ import { initialModel } from "../../src/model";
 import { callerFromJwt } from "../../src/session";
 import { auditEvent, detail, jwtFor, overview, pending, STORE_ID, storeRow } from "../data";
 
-/** Every action is a no-op. */
-export const noActions = new Proxy({}, { get: () => () => undefined }) as Actions;
+const noop = () => undefined;
+
+/** Every action is a no-op; a name the views do not have, or a missing one, fails `tsc`. */
+export const noActions: Actions = {
+  signIn: noop,
+  signOut: noop,
+  refresh: noop,
+  dismissNotice: noop,
+  setStoreFilter: noop,
+  searchStores: noop,
+  quickApprove: noop,
+  quickReject: noop,
+  raiseLimitAndApprove: noop,
+  quickExtend: noop,
+  approveDevice: noop,
+  revokeDevice: noop,
+  saveSettings: noop,
+  setStatus: noop,
+  storeAction: noop,
+  resetPassword: noop,
+  saveSubscription: noop,
+  dismissSecret: noop,
+  setName: noop,
+  setUsername: noop,
+  setMode: noop,
+  createStore: noop,
+  restartCreate: noop,
+  setRecovery: noop,
+  loadManifestFile: noop,
+  approveRecovery: noop,
+  openLedger: noop,
+  setLedgerKind: noop,
+  searchLedger: noop,
+  pageLedger: noop,
+  downloadLedger: noop,
+  searchAudit: noop,
+  setAuditSource: noop,
+  pageAudit: noop,
+  setStoreAuditSource: noop,
+  pageStoreAudit: noop,
+  dialogReason: noop,
+  dialogTyped: noop,
+  submitDialog: noop,
+  closeDialog: noop,
+};
 
 export const ledgerState = (reason = "مراجعة"): LedgerState => ({
   kind: "contacts",
