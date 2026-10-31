@@ -9,11 +9,21 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDirection
 import com.sadad.ledger.Cents
 
+/** The shekel symbol, spelled in one place. */
+const val SHEKEL = "₪"
+
+/** [formatAmount] with the symbol after it: «1,234.5 ₪». */
+fun formatCents(cents: Cents): String = "${formatAmount(cents)} $SHEKEL"
+
+/** The amount a screen reader says: [formatAmount] of the size alone, no symbol and no minus. */
+fun spokenAmount(cents: Cents): String = formatAmount(Cents(Math.abs(cents.value)))
+
 /**
- * The one money formatter. Latin digits, thousands grouping like the Java app's `money()`, 0 to 2
- * decimals with trailing zeros dropped, then ` ₪`. Exact arithmetic on `Long`; never `Double`.
+ * The one money display. Latin digits, thousands grouping like the Java app's `money()`, 0 to 2
+ * decimals with trailing zeros dropped, no symbol: «1,234.5», «-50». Exact arithmetic on `Long`;
+ * never `Double`. [formatCents] and [formatShekels] only place the symbol around it.
  */
-fun formatCents(cents: Cents): String {
+fun formatAmount(cents: Cents): String {
   val value = cents.value
   val negative = value < 0
   val magnitude = if (negative) -value else value
@@ -25,7 +35,7 @@ fun formatCents(cents: Cents): String {
         fraction % 10L == 0L -> ".${fraction / 10}"
         else -> ".${fraction.toString().padStart(2, '0')}"
       }
-  return (if (negative) "-" else "") + groupThousands(whole) + decimals + " ₪"
+  return (if (negative) "-" else "") + groupThousands(whole) + decimals
 }
 
 /**
@@ -69,10 +79,10 @@ fun parseCents(text: String): Cents? {
   return Cents(cents)
 }
 
-/** Shekel symbol first, with the same exact values and trimmed decimals as [formatCents]. */
+/** [formatAmount] with the symbol first: «₪ 1,234.5», «-₪ 50». */
 fun formatShekels(cents: Cents): String {
-  val number = formatCents(cents).removeSuffix(" ₪")
-  return if (number.startsWith('-')) "-₪ ${number.drop(1)}" else "₪ $number"
+  val number = formatAmount(cents)
+  return if (number.startsWith('-')) "-$SHEKEL ${number.drop(1)}" else "$SHEKEL $number"
 }
 
 /** [formatShekels], laid out left to right inside the Arabic page. */

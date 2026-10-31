@@ -82,6 +82,7 @@ import com.sadad.app.SadadApplication
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.KeypadKey
+import com.sadad.app.ui.components.SHEKEL
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadKeypad
@@ -526,10 +527,10 @@ private fun AmountStep(
       // The amount and the keypad read left to right, as the board draws them, inside an RTL page.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(verticalAlignment = Alignment.Bottom) {
-          Text("₪", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
+          Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
           Spacer(Modifier.width(8.dp))
           Text(
-              text = amountLabel(state.amount),
+              text = typedAmountLabel(state.amount),
               fontSize = 52.sp,
               fontWeight = FontWeight.Bold,
               color = if (state.amount.isEmpty()) Ghost else p.text,
