@@ -6,17 +6,16 @@ import { call } from "../rpc.ts";
 import {
   adminDb,
   type AdminDeps,
+  adminRefusals,
   allow,
-  decodeCursor,
-  encodeCursor,
+  callPage,
   InstallationSchema,
   NextCursorSchema,
   pageQuery,
   ReasonSchema,
+  security,
+  tags,
 } from "./common.ts";
-
-const tags = ["admin"];
-const security = [{ Bearer: [] }];
 
 const PendingSchema = InstallationSchema.extend({ storeName: z.string() });
 
@@ -48,7 +47,11 @@ const pendingRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 500),
+    ...errorResponses(
+      ...adminRefusals,
+      "invalid_input",
+      "internal_error",
+    ),
   },
 });
 
@@ -85,7 +88,13 @@ const decisionRoute = (decision: "approve" | "revoke") =>
           },
         },
       },
-      ...errorResponses(400, 401, 403, 404, 409, 500),
+      ...errorResponses(
+        ...adminRefusals,
+        "invalid_input",
+        "installation_unavailable",
+        "device_limit_reached",
+        "internal_error",
+      ),
     },
   });
 
@@ -95,18 +104,10 @@ export function registerInstallationRoutes(
 ): void {
   app.openapi(pendingRoute, async (c) => {
     const { q, cursor, limit } = c.req.valid("query");
-    const page = await call<
+    const page = await callPage<
       { installations: z.infer<typeof PendingSchema>[]; nextCursor: unknown }
-    >(adminDb(c, deps), "sadid_pending_installations", {
-      p_query: q ?? null,
-      p_after: decodeCursor(cursor),
-      p_limit: limit,
-    });
-    return c.json({
-      ok: true as const,
-      installations: page.installations,
-      nextCursor: encodeCursor(page.nextCursor),
-    }, 200);
+    >(adminDb(c, deps), "sadid_pending_installations", { q, cursor, limit });
+    return c.json({ ok: true as const, ...page }, 200);
   });
 
   for (const decision of ["approve", "revoke"] as const) {

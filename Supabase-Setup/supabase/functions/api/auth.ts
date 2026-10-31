@@ -1,14 +1,7 @@
-import type { Context, MiddlewareHandler } from "hono";
-import { createMiddleware } from "hono/factory";
+import type { Context } from "hono";
 import { ApiError, fromDatabaseError } from "./errors.ts";
 
 export type AuthRole = "admin" | "support" | "store";
-
-export interface AuthContext {
-  userId: string;
-  role: AuthRole;
-  storeId?: number;
-}
 
 export type ClaimsResult = {
   data: { claims: Record<string, unknown> } | null;
@@ -27,7 +20,6 @@ export interface AuthDeps {
 
 export interface AppVariables {
   requestId: string;
-  auth: AuthContext;
   authDeps: AuthDeps;
   /** The request body exactly as received, read before validation parses it. */
   rawBody?: string;
@@ -84,53 +76,39 @@ export async function verifyCaller(
   return { jwt, userId: claims.sub, role: resolveRole(claims), claims };
 }
 
-async function resolveAuth(c: Context<AppEnv>): Promise<AuthContext> {
-  const existing = c.get("auth") as AuthContext | undefined;
-  if (existing) {
-    return existing;
-  }
+/** True while the account holds a temporary password: every request is refused until it changes. */
+export const mustChangePassword = (claims: Record<string, unknown>): boolean =>
+  (claims.app_metadata as Record<string, unknown> | undefined)
+    ?.force_password_change === true;
 
-  const { jwt, userId, role } = await verifyCaller(c);
-  const deps = c.get("authDeps");
-
-  let storeId: number | undefined;
-  if (role === "store") {
-    const resolved = await deps.lookupStoreId(jwt);
-    if (resolved === null || resolved === undefined) {
-      throw new ApiError("store_permission_denied", 403);
-    }
-    storeId = Number(resolved);
-  }
-
-  const auth: AuthContext = {
-    userId,
-    role,
-    ...(storeId !== undefined ? { storeId } : {}),
-  };
-  c.set("auth", auth);
-  return auth;
-}
-
-export function requireAuth(): MiddlewareHandler<AppEnv> {
-  return createMiddleware<AppEnv>(async (c, next) => {
-    await resolveAuth(c);
-    await next();
-  });
-}
-
-export function requireRole(
-  ...allowed: [AuthRole, ...AuthRole[]]
-): MiddlewareHandler<AppEnv> {
-  return createMiddleware<AppEnv>(async (c, next) => {
-    const auth = await resolveAuth(c);
-    if (!allowed.includes(auth.role)) {
-      const code = allowed.includes("store")
+/**
+ * The one gate both tiers use: a verified caller whose role is listed and who owes no password
+ * change. A list holding "store" refuses with store_permission_denied, any other with
+ * admin_authorization_required. `session` also demands the JWT's session_id claim (401), which
+ * the mobile routes bind their installation to.
+ */
+export async function gateCaller(
+  c: Context<AppEnv>,
+  allowed: [AuthRole, ...AuthRole[]],
+  options: { session?: boolean } = {},
+): Promise<VerifiedCaller> {
+  const caller = await verifyCaller(c);
+  if (!allowed.includes(caller.role)) {
+    throw new ApiError(
+      allowed.includes("store")
         ? "store_permission_denied"
-        : "admin_authorization_required";
-      throw new ApiError(code, 403);
-    }
-    await next();
-  });
+        : "admin_authorization_required",
+      403,
+    );
+  }
+  const sessionId = caller.claims.session_id;
+  if (options.session && (typeof sessionId !== "string" || !sessionId)) {
+    throw new ApiError("authorization_required", 401);
+  }
+  if (mustChangePassword(caller.claims)) {
+    throw new ApiError("password_change_required", 403);
+  }
+  return caller;
 }
 
 export function makeSupabaseLookupStoreId(
