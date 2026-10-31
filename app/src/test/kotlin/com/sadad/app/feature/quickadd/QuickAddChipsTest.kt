@@ -40,7 +40,7 @@ class QuickAddChipsTest {
     fixture.use {
       var createdName: String? = null
       val model =
-          QuickAddViewModel(fixture.graph, null, false, SavedStateHandle()).also {
+          QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent {
@@ -82,9 +82,10 @@ class QuickAddChipsTest {
             .also { fixture.settleAll() }
       }
       val model =
-          QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle(), 100).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          QuickAddViewModel(fixture.graph.quickAddSource(), contact, false, SavedStateHandle(), 100)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       compose.setContent {
         SadadTheme {
           CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {

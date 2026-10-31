@@ -4,9 +4,7 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
-import com.sadad.app.data.session.StoreScope
 import com.sadad.app.ui.components.formatAmount
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
@@ -20,7 +18,6 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -28,9 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -98,12 +92,11 @@ data class QuickAddState(
 /**
  * The one flow that records anything: pick a saved person, type the amount, save with a sentence
  * that states what will be recorded, and undo for eight seconds. Nothing reaches the outbox before
- * the window ends: the commands are built here and handed to [StoreScope.outbox] on commit, so
+ * the window ends: the commands are built here and handed to [QuickAddStore.append] on commit, so
  * «تراجع» is truly a no-op.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class QuickAddViewModel(
-    private val graph: AppGraph,
+    private val source: QuickAddSource,
     private val contactId: String?,
     private val payment: Boolean,
     private val saved: SavedStateHandle,
@@ -301,7 +294,7 @@ class QuickAddViewModel(
     val sentence = sentence(context)
     // The window belongs to the store, not the screen: leaving (back, home, the lock) during it
     // must still end in the commands the done step promised.
-    val store = graph.current.value
+    val store = source.open()
     if (store == null) {
       mutable.update { it.copy(error = context.getString(R.string.quickadd_failed)) }
       return
@@ -507,8 +500,7 @@ class QuickAddViewModel(
       amount: Cents,
       creditNote: String,
   ): List<LedgerCommand> {
-    val scope = graph.current.value ?: return emptyList()
-    val origin = scope.origin() ?: return emptyList()
+    val origin = source.open()?.origin() ?: return emptyList()
     val person = current.selected ?: return emptyList()
     val at = Instant.now()
     val note = current.note.trim().ifEmpty { null }
@@ -590,15 +582,14 @@ class QuickAddViewModel(
   private fun commit(context: Context) {
     val commands = pending
     pending = emptyList()
-    val store = graph.current.value
+    val store = source.open()
     if (commands.isEmpty() || store == null) return
     // The window is over the moment it is committed, so «تراجع» goes grey at once.
     mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the done step already told the user the record was made.
     store.jobs.launch {
-      store.outbox.append(commands)
-      store.onQueued()
+      store.append(commands)
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
@@ -667,39 +658,11 @@ class QuickAddViewModel(
     return perContact
   }
 
-  private fun view(): Flow<LedgerView?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
+  private fun view(): Flow<LedgerView?> = source.view
 
-  private fun permissions(): Flow<Map<String, Boolean>> =
-      graph.current.flatMapLatest { scope ->
-        val storeUserId = scope?.account?.storeUserId
-        graph.accounts.accounts.map { accounts ->
-          accounts
-              .firstOrNull { it.storeUserId == storeUserId }
-              ?.installation
-              ?.permissions
-              .orEmpty()
-        }
-      }
+  private fun permissions(): Flow<Map<String, Boolean>> = source.permissions
 
-  /**
-   * Whether this device is barred from recording. Only an unapproved device is: the lease gates the
-   * send, which is the sync pass's call, so a save without network or lease still queues.
-   */
-  private fun availability(): Flow<Boolean> =
-      graph.current.flatMapLatest { scope ->
-        if (scope == null) {
-          flowOf(true)
-        } else {
-          graph.accounts.accounts.map {
-            val active =
-                it.firstOrNull { account -> account.storeUserId == scope.account.storeUserId }
-                    ?.installation
-                    ?.status
-            active != null && active != "active"
-          }
-        }
-      }
+  private fun availability(): Flow<Boolean> = source.blocked
 
   private fun methodOf(name: String): PaymentMethod? =
       PaymentMethod.entries.firstOrNull { it.name == name }

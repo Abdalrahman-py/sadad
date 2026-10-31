@@ -78,7 +78,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.KeypadKey
@@ -194,12 +194,17 @@ fun QuickAddScreen(
 
 @Composable
 private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   return viewModel(
       factory =
           viewModelFactory {
             initializer {
-              QuickAddViewModel(app.graph, contactId, payment, createSavedStateHandle())
+              QuickAddViewModel(
+                  graph.quickAddSource(),
+                  contactId,
+                  payment,
+                  createSavedStateHandle(),
+              )
             }
           }
   )
