@@ -103,7 +103,7 @@ internal class UpdateSource(
   private suspend fun text(url: String, accept: String): String? =
       withContext(Dispatchers.IO) {
         try {
-          client.newCall(request(url, accept)).execute().use { response ->
+          updateCall(client, request(url, accept)) { response ->
             if (response.isSuccessful) response.body.string() else null
           }
         } catch (_: IOException) {
@@ -114,7 +114,7 @@ internal class UpdateSource(
   private suspend fun read(url: String, accept: String?): ManifestResult =
       withContext(Dispatchers.IO) {
         try {
-          client.newCall(request(url, accept)).execute().use { response ->
+          updateCall(client, request(url, accept)) { response ->
             when {
               response.code == 404 -> ManifestResult.Missing
               !response.isSuccessful -> ManifestResult.Unreachable(response.code)
