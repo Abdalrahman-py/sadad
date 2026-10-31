@@ -47,12 +47,14 @@ data class QuickAddDone(
     val sentence: String,
     val net: Cents,
     val secondsLeft: Int,
+    /** The device was offline when it saved: the entry waits in the outbox for the network. */
+    val offline: Boolean = false,
 )
 
 data class QuickAddState(
     val step: QuickAddStep = QuickAddStep.PICKER,
     val loaded: Boolean = false,
-    /** The device may not save now: the offline lease lapsed or the device is not approved. */
+    /** The device is not approved, so it may not write. A lapsed offline lease never blocks. */
     val blocked: Boolean = false,
     /** The installation may not register payments, so payment mode is not offered at all. */
     val restricted: Boolean = false,
@@ -332,6 +334,7 @@ class QuickAddViewModel(
                   sentence = sentence,
                   net = netAfter(current, amount),
                   secondsLeft = ticks,
+                  offline = !store.isOnline(),
               ),
       )
     }
@@ -680,7 +683,10 @@ class QuickAddViewModel(
         }
       }
 
-  /** Whether this device may record right now: online, or holding an offline lease. */
+  /**
+   * Whether this device is barred from recording. Only an unapproved device is: the lease gates the
+   * send, which is the sync pass's call, so a save without network or lease still queues.
+   */
   private fun availability(): Flow<Boolean> =
       graph.current.flatMapLatest { scope ->
         if (scope == null) {
@@ -691,8 +697,7 @@ class QuickAddViewModel(
                 it.firstOrNull { account -> account.storeUserId == scope.account.storeUserId }
                     ?.installation
                     ?.status
-            val approved = active == null || active == "active"
-            !approved || (!scope.isOnline() && !scope.offlineAllowed())
+            active != null && active != "active"
           }
         }
       }

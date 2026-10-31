@@ -398,12 +398,48 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun withoutAnOfflineLeaseThePickerSaysSoBeforeAnyTyping() = runTest {
-    TestGraph.signedIn(online = { false }).use { fixture ->
-      val model = fixture.model()
-      val state = model.state.first { it.loaded }
+  fun withoutNetworkOrLeaseASaveStillQueuesAndTheDoneStepSaysItWaits() = runTest {
+    var online = true
+    TestGraph.signedIn(online = { online }).use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      online = false
+      assertFalse(store.offlineAllowed())
+      val model = fixture.model(undoWindowMs = 50)
+      assertFalse(
+          "a lapsed lease must not block the keypad",
+          model.state.first { it.loaded }.blocked,
+      )
+      model.pick(contact)
+      model.press("4")
+      model.press("0")
 
-      assertTrue("the picker must say the save cannot happen now", state.blocked)
+      assertTrue(model.state.value.canSave)
+      model.save(context)
+      store.awaitOutbox(1)
+
+      assertEquals(
+          Cents(4_000),
+          (store.outbox.snapshot().single().command.payload() as DebtCreate).amountCents,
+      )
+      assertTrue("the done step must say the entry waits", model.state.value.done!!.offline)
+    }
+  }
+
+  @Test
+  fun anUnapprovedDeviceStillMayNotSave() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val account = checkNotNull(fixture.graph.accounts.accounts.first().firstOrNull())
+      fixture.graph.accounts.update(account.storeUserId) {
+        it.copy(installation = StoredInstallation("revoked", 1, emptyMap()))
+      }
+      val model = fixture.model()
+      model.state.first { it.loaded && it.blocked }
+      model.pick(contact)
+      model.press("4")
+
+      assertFalse(model.state.value.canSave)
     }
   }
 
