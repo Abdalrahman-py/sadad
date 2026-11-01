@@ -63,11 +63,12 @@ class InstallerRecoveryTest {
 
   @Test
   fun rebuildingTheSystemConfirmationMustKeepItsDataUri() {
+    val app = ApplicationProvider.getApplicationContext<Context>()
     val uri = Uri.parse("content://installer/session/41")
     val confirm =
         Intent("android.content.pm.action.CONFIRM_INSTALL")
             .setDataAndType(uri, "application/vnd.android.package-archive")
-    val launch = UpdateInstallReceiver().launchable(confirm)
+    val launch = UpdateInstallReceiver().launchable(app, confirm)!!
     assertEquals("Rebuilding the confirmation must not discard its data", uri, launch.data)
   }
 
