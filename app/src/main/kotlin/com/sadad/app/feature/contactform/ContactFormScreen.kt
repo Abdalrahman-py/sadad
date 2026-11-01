@@ -40,6 +40,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.Chip
 import com.sadad.app.ui.components.ChipFlow
 import com.sadad.app.ui.components.SadadButton
@@ -393,24 +394,24 @@ private fun generalCategories(kind: ContactKind, context: android.content.Contex
         .toList()
 
 @Composable
-private fun contactFormViewModel(contactId: String?, initialName: String): ContactFormViewModel =
-    viewModel(
-        factory =
-            viewModelFactory {
-              initializer {
-                val app = this[APPLICATION_KEY] as SadadApplication
-                val store =
-                    checkNotNull(app.graph.current.value) {
-                      "the contact form needs an open store"
-                    }
-                ContactFormViewModel(
-                    store.repository,
-                    store.account.storeUserId,
-                    app,
-                    createSavedStateHandle(),
-                    contactId,
-                    initialName,
-                )
-              }
+private fun contactFormViewModel(contactId: String?, initialName: String): ContactFormViewModel {
+  val graph = requireGraph()
+  return viewModel(
+      factory =
+          viewModelFactory {
+            initializer {
+              val app = this[APPLICATION_KEY] as SadadApplication
+              val store =
+                  checkNotNull(graph.current.value) { "the contact form needs an open store" }
+              ContactFormViewModel(
+                  store.repository,
+                  store.account.storeUserId,
+                  app,
+                  createSavedStateHandle(),
+                  contactId,
+                  initialName,
+              )
             }
-    )
+          }
+  )
+}

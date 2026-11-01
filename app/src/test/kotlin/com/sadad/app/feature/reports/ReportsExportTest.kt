@@ -13,6 +13,7 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.Period
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.feature.history.bounds
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.testing.TestGraph
 import java.io.File
@@ -40,7 +41,7 @@ class ReportsExportTest {
   fun sharingWhenThePdfCannotBeWrittenShowsTheMessageAndFreesTheScreen() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       val sami =
           model.state
@@ -48,7 +49,10 @@ class ReportsExportTest {
               .people
               .first { it.name == "سامي" }
 
-      // Robolectric's PdfDocument cannot draw pages, so the real writer fails here.
+      // A file where the exports directory belongs fails the write before any PdfDocument exists.
+      // Robolectric's PdfDocument can never close (its native handle is 0), so building one here
+      // leaks a CloseGuard that StrictMode reports during some later test.
+      File(fixture.context.cacheDir, "exports").writeText("not a directory")
       model.shareStatement(fixture.context, sami.contactId)
 
       val state = model.state.first { it.error != null && !it.busy }
@@ -64,7 +68,7 @@ class ReportsExportTest {
   fun aContactThatVanishedIsRefusedWithoutLeavingTheScreenBusy() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded && it.people.isNotEmpty() }
 
@@ -83,7 +87,7 @@ class ReportsExportTest {
   @Test
   fun theNothingToExportMessageClearsWhenTheFirstContactArrives() = runTest {
     TestGraph.signedIn().use { fixture ->
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded }
       assertFalse(model.canExport(fixture.context))
@@ -100,7 +104,13 @@ class ReportsExportTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
       val model =
-          ReportsViewModel(fixture.graph, SavedStateHandle(), clock) { _, _, _, _, _, _ ->
+          ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock) {
+              _,
+              _,
+              _,
+              _,
+              _,
+              _ ->
             Uri.parse("content://com.sadad.app.files/exports/statement.pdf")
           }
       fixture.closeWithStore(model.viewModelScope)
@@ -126,7 +136,7 @@ class ReportsExportTest {
   @Test
   fun anEmptyStoreHasNothingToExport() = runTest {
     TestGraph.signedIn().use { fixture ->
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded }
 
@@ -144,7 +154,7 @@ class ReportsExportTest {
   @Test
   fun exportingBeforeTheLedgerHasLoadedShowsTheFailureMessage() = runTest {
     TestGraph.unsigned().use { fixture ->
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       assertFalse(model.canExport(fixture.context))
@@ -162,7 +172,7 @@ class ReportsExportTest {
   fun aPhoneWithoutADocumentPickerShowsTheFailureMessage() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded }
 
@@ -180,7 +190,7 @@ class ReportsExportTest {
   @Test
   fun changingThePeriodClearsTheLastExportMessage() = runTest {
     TestGraph.signedIn().use { fixture ->
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded }
       model.canExport(fixture.context)
@@ -196,7 +206,7 @@ class ReportsExportTest {
   fun savingWritesTheChosenFormatToTheDocumentAndReportsIt() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded }
       val file = File.createTempFile("report", ".xlsx", fixture.context.cacheDir)
@@ -218,7 +228,7 @@ class ReportsExportTest {
   fun aDocumentThatCannotBeOpenedShowsTheFailureMessage() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded }
 
@@ -243,8 +253,13 @@ class ReportsExportTest {
       fixture.seedOctober()
       val written = mutableListOf<Triple<String?, Instant?, Instant?>>()
       val model =
-          ReportsViewModel(fixture.graph, SavedStateHandle(), clock) { _, _, _, contactId, from, to
-            ->
+          ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock) {
+              _,
+              _,
+              _,
+              contactId,
+              from,
+              to ->
             written += Triple(contactId, from, to)
             Uri.parse("content://com.sadad.app.files/exports/statement.pdf")
           }

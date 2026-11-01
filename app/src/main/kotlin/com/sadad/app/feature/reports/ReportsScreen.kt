@@ -34,12 +34,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.history.PeriodFilter
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.feature.history.periodLabel
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.formatCents
 import java.time.LocalDate
@@ -293,9 +294,11 @@ private fun stamp(): String =
 
 @Composable
 private fun reportsViewModel(): ReportsViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   return viewModel(
       factory =
-          viewModelFactory { initializer { ReportsViewModel(app.graph, createSavedStateHandle()) } }
+          viewModelFactory {
+            initializer { ReportsViewModel(graph.statementSource(), createSavedStateHandle()) }
+          }
   )
 }

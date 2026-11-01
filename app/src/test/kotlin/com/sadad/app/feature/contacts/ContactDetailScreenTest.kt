@@ -80,7 +80,7 @@ class ContactDetailScreenTest {
         id
       }
       val model =
-          ContactDetailViewModel(fixture.graph, id, context).also {
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), id, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
@@ -125,9 +125,10 @@ class ContactDetailScreenTest {
     }
         .use { fixture ->
           val model =
-              ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-                fixture.closeWithStore(it.viewModelScope)
-              }
+              ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+                  .also {
+                    fixture.closeWithStore(it.viewModelScope)
+                  }
           compose.setContent {
             SadadTheme {
               ContactDetailScreen(
@@ -172,9 +173,10 @@ class ContactDetailScreenTest {
     }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
       compose.waitUntil(10_000) {
         model.state.value.loaded && !model.state.value.canRegisterPayments
@@ -211,9 +213,10 @@ class ContactDetailScreenTest {
     }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
       compose.waitUntil(10000) { model.state.value.loaded && model.state.value.movements.size == 3 }
       timelineRow("دفعة · نقدي").assertIsDisplayed()
@@ -235,9 +238,10 @@ class ContactDetailScreenTest {
     }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
       compose.waitUntil(10_000) { model.state.value.movements.size == 2 }
       timelineRow("دفع للمورد").assertIsDisplayed()
@@ -269,9 +273,10 @@ class ContactDetailScreenTest {
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       val lock = AppLock.get(base)
       lock.appStarted()
       lock.markUnlocked()
@@ -324,9 +329,10 @@ class ContactDetailScreenTest {
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, person.entityId, context).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       val lock = AppLock.get(base)
       lock.appStarted()
       lock.markUnlocked()

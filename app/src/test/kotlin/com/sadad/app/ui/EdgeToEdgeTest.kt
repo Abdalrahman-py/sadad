@@ -33,14 +33,17 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.sadad.app.contactRecords
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactDetailSource
 import com.sadad.app.feature.contacts.contactId
 import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryViewModel
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.feature.home.HomeContent
 import com.sadad.app.feature.home.HomeUiState
 import com.sadad.app.feature.notifications.DueReminders
@@ -121,7 +124,7 @@ class EdgeToEdgeTest {
       inShellWithStore(People()) { fixture ->
         awaiting { seedContacts(fixture) }
         val model =
-            PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+            PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
               fixture.closeWithStore(it.viewModelScope)
             }
         awaiting { model.state.first { it.registered > 0 } }
@@ -135,7 +138,7 @@ class EdgeToEdgeTest {
   fun historyClearsTheBars() =
       inShellWithStore(Activity) { fixture ->
         awaiting { seedContacts(fixture) }
-        val history = HistoryViewModel(fixture.graph, SavedStateHandle())
+        val history = HistoryViewModel(fixture.graph.statementSource(), SavedStateHandle())
         fixture.closeWithStore(history.viewModelScope)
         awaiting {
           history.state.first { it.loaded }
@@ -200,7 +203,7 @@ class EdgeToEdgeTest {
         awaiting { fixture.seedCommands(listOf(person)) }
         val model =
             ContactDetailViewModel(
-                    fixture.graph,
+                    fixture.graph.contactDetailSource(),
                     person.entityId,
                     compose.activity.applicationContext,
                 )

@@ -27,9 +27,11 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.reminderDestination
 import com.sadad.app.feature.settings.ThemePreference
 import com.sadad.app.feature.updates.updateRoute
+import com.sadad.app.ui.RecentsPrivacy
 import com.sadad.app.ui.SadadApp
 import com.sadad.app.ui.theme.SadadTheme
 import kotlinx.coroutines.Dispatchers
@@ -45,9 +47,15 @@ class MainActivity : FragmentActivity() {
     // The ledger never becomes the app-switcher snapshot: recents keeps a picture of whatever was
     // on screen when the owner left, and that picture is his customers' balances. Unlike
     // FLAG_SECURE this only covers the recents thumbnail, so the owner can still screenshot a
-    // receipt to send it (#177).
+    // receipt to send it (#177). API 33+ turns the picture off; below it RecentsPrivacy secures
+    // the window only while the app is not in front.
+    RecentsPrivacy.attach(this)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
     observeNotificationPermission()
+    lifecycleScope.launch {
+      val graph = withContext(Dispatchers.IO) { (application as SadadApplication).graph }
+      repeatOnLifecycle(Lifecycle.State.STARTED) { graph.syncWhileVisible() }
+    }
     setContent {
       var destination by remember { mutableStateOf<Any?>(null) }
       val request = launchIntent
@@ -56,7 +64,8 @@ class MainActivity : FragmentActivity() {
         destination =
             withContext(Dispatchers.IO) {
               val graph = (application as SadadApplication).graph
-              updateRoute(graph, request) ?: reminderDestination(graph, request)
+              updateRoute(graph, request)
+                  ?: reminderDestination(graph, request, DueReminders.get(applicationContext))
             }
       }
       val route = destination

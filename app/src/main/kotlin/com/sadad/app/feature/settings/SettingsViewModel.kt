@@ -3,7 +3,6 @@ package com.sadad.app.feature.settings
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.feature.lock.AppLock
@@ -17,11 +16,12 @@ import kotlinx.coroutines.flow.stateIn
 
 /**
  * The settings screen: the one place the six modules are assembled, for the app and for the tests.
- * It only calls the graph, the lock, the scheduler and the statement export: no session, lock or
- * export logic lives here. Every source is a required parameter, so no caller leans on a default.
+ * It only calls the settings source, the lock, the scheduler and the statement export: no session,
+ * lock or export logic lives here. Every source is a required parameter, so no caller leans on a
+ * default.
  */
 class SettingsViewModel(
-    graph: AppGraph,
+    source: SettingsSource,
     saved: SavedStateHandle,
     preferences: ThemePreference,
     lock: AppLock,
@@ -35,12 +35,12 @@ class SettingsViewModel(
     hiddenTrash: (String) -> Flow<Set<String>>,
 ) : ViewModel() {
   internal val ui = SettingsUi(viewModelScope, saved)
-  internal val store = StoreModule(graph, ui)
-  internal val devices = DevicesModule(graph, scheduler, syncStatus, ui)
+  internal val store = StoreModule(source, ui)
+  internal val devices = DevicesModule(source, scheduler, syncStatus, ui)
   internal val security = SecurityModule(lock, biometricAvailable, ui)
-  internal val data = DataModule(graph, preferences, reminders, hiddenTrash, clock, ui)
+  internal val data = DataModule(source, preferences, reminders, hiddenTrash, clock, ui)
   internal val appearance = AppearanceModule(preferences, ui)
-  internal val account = AccountModule(graph, ui)
+  internal val account = AccountModule(source, ui)
 
   val state: StateFlow<SettingsState> =
       combine(

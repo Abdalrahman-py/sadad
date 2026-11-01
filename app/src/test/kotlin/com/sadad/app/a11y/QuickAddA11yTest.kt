@@ -11,6 +11,7 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.quickadd.QuickAddScreen
 import com.sadad.app.feature.quickadd.QuickAddTags
 import com.sadad.app.feature.quickadd.QuickAddViewModel
+import com.sadad.app.feature.quickadd.quickAddSource
 import com.sadad.app.ui.UiTestApplication
 import kotlinx.coroutines.flow.first
 import org.junit.After
@@ -92,7 +93,7 @@ class QuickAddA11yTest {
         fixture.settleAll()
       }
     }
-    val model = QuickAddViewModel(fixture.graph, null, false, SavedStateHandle())
+    val model = QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle())
     awaiting { model.state.first { it.loaded && it.people.isNotEmpty() } }
     return model
   }

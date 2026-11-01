@@ -2,7 +2,6 @@ package com.sadad.app.feature.settings
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
@@ -109,12 +108,12 @@ internal class SettingsUi(val scope: CoroutineScope, private val saved: SavedSta
   }
 }
 
-private fun AppGraph.openStoreId(): String? = current.value?.account?.storeUserId
+private fun SettingsSource.openStoreId(): String? = current.value?.account?.storeUserId
 
 /** The store card: the open store's profile and the saved stores the switcher lists. */
-internal class StoreModule(private val graph: AppGraph, private val ui: SettingsUi) {
+internal class StoreModule(private val source: SettingsSource, private val ui: SettingsUi) {
   val state: Flow<StoreSlice> =
-      combine(graph.accounts.state, graph.current) { file, open ->
+      combine(source.accounts.state, source.current) { file, open ->
         val id = open?.account?.storeUserId
         val account = file.accounts.firstOrNull { it.storeUserId == id }
         StoreSlice(
@@ -135,9 +134,9 @@ internal class StoreModule(private val graph: AppGraph, private val ui: Settings
 
   fun saveProfile() {
     val draft = ui.state.value.pending as? Pending.Profile ?: return
-    val id = graph.openStoreId() ?: return
+    val id = source.openStoreId() ?: return
     ui.act {
-      graph.accounts.update(id) {
+      source.accounts.update(id) {
         it.copy(storeName = draft.storeName.trim(), ownerName = draft.ownerName.trim())
       }
       ui.clearProfile()
@@ -147,8 +146,8 @@ internal class StoreModule(private val graph: AppGraph, private val ui: Settings
 
   fun switchTo(storeUserId: String) {
     ui.act {
-      graph.switchStore(storeUserId)
-      if (graph.current.value?.account?.storeUserId != storeUserId) {
+      source.switchStore(storeUserId)
+      if (source.current.value?.account?.storeUserId != storeUserId) {
         ui.state.update { it.copy(outcome = SettingsOutcome.NEEDS_LOGIN) }
       }
     }
@@ -158,26 +157,33 @@ internal class StoreModule(private val graph: AppGraph, private val ui: Settings
 /** Devices and sync: what is waiting to be sent, what sync is doing, and the download. */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class DevicesModule(
-    private val graph: AppGraph,
+    private val source: SettingsSource,
     private val scheduler: SyncScheduling,
     private val syncStatus: (String) -> Flow<SyncStatus>,
     private val ui: SettingsUi,
 ) {
   val state: Flow<DevicesSlice> =
-      graph.current.flatMapLatest { open ->
+      source.current.flatMapLatest { open ->
         if (open == null) flowOf(DevicesSlice(SyncLine.SignedOut, 0, null))
         else
-            combine(syncStatus(open.account.storeUserId), open.outbox.rows, open.repository.view) {
-                status,
-                rows,
-                view ->
+            combine(
+                syncStatus(open.account.storeUserId),
+                open.outbox.rows,
+                open.repository.view,
+                source.accounts.accounts,
+            ) { status, rows, view, accounts ->
               val waiting = rows.filter { it.state == OutboxState.QUEUED }
-              DevicesSlice(line(status), waiting.size, newest(waiting, view))
+              DevicesSlice(
+                  line(status),
+                  waiting.size,
+                  newest(waiting, view),
+                  accounts.firstOrNull { it.storeUserId == open.account.storeUserId }?.lastSyncAt,
+              )
             }
       }
 
   fun downloadLatest() {
-    val id = graph.openStoreId() ?: return
+    val id = source.openStoreId() ?: return
     ui.act { scheduler.syncNow(id) }
   }
 
@@ -263,7 +269,7 @@ internal class DevicesModule(
         SyncStatus.Suspended -> SyncLine.Suspended
         SyncStatus.PasswordChangeRequired -> SyncLine.PasswordChangeRequired
         SyncStatus.Retry -> SyncLine.Retry
-        is SyncStatus.Failed -> SyncLine.Failed(graph.errorMessages.text(status.code))
+        is SyncStatus.Failed -> SyncLine.Failed(source.errorText(status.code))
       }
 }
 
@@ -340,7 +346,7 @@ internal class SecurityModule(
 /** The trash and the statement export: what the data section lists and the period it exports. */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class DataModule(
-    private val graph: AppGraph,
+    private val source: SettingsSource,
     private val preferences: ThemePreference,
     /** The dismissed due reminders the trash lists. */
     reminders: (String) -> Flow<List<Reminder>>,
@@ -375,7 +381,7 @@ internal class DataModule(
   fun shareStatement(activity: Context, exportPeriod: ExportPeriod) {
     if (ui.state.value.busy) return
     val context = activity.applicationContext
-    val scope = graph.current.value
+    val scope = source.current.value
     val view = scope?.repository?.view?.value
     if (scope == null || view == null) {
       ui.state.update { it.copy(error = SettingsError.SHARE_FAILED) }
@@ -409,9 +415,9 @@ internal class DataModule(
 
   /** What this device may do, from the installation's `permissions` map (never the staff role). */
   private fun permissions(): Flow<Map<String, Boolean>> =
-      graph.current.flatMapLatest { open ->
+      source.current.flatMapLatest { open ->
         val id = open?.account?.storeUserId
-        graph.accounts.accounts.map { accounts ->
+        source.accounts.accounts.map { accounts ->
           accounts.firstOrNull { it.storeUserId == id }?.installation?.permissions.orEmpty()
         }
       }
@@ -421,7 +427,7 @@ internal class DataModule(
       reminders: (String) -> Flow<List<Reminder>>,
       hiddenTrash: (String) -> Flow<Set<String>>,
   ): Flow<Int> =
-      graph.current.flatMapLatest { open ->
+      source.current.flatMapLatest { open ->
         if (open == null) flowOf(0)
         else
             combine(
@@ -446,12 +452,12 @@ internal class AppearanceModule(
 }
 
 /** Sign-out, store removal and their confirmations. Busy and the error line are the shared UI. */
-internal class AccountModule(private val graph: AppGraph, private val ui: SettingsUi) {
+internal class AccountModule(private val source: SettingsSource, private val ui: SettingsUi) {
   /** Counts the unsent entries of the open store, then asks the screen to warn first. */
   fun requestSignOut() {
-    val id = graph.openStoreId() ?: return
+    val id = source.openStoreId() ?: return
     ui.act {
-      val unsent = graph.unsentCount(id)
+      val unsent = source.unsentCount(id)
       ui.state.update { it.copy(pending = Pending.SignOut(id, unsent)) }
     }
   }
@@ -459,7 +465,7 @@ internal class AccountModule(private val graph: AppGraph, private val ui: Settin
   fun confirmSignOut() {
     val pending = ui.state.value.pending as? Pending.SignOut ?: return
     if (ui.state.value.busy) return
-    if (graph.openStoreId() != pending.storeUserId) {
+    if (source.openStoreId() != pending.storeUserId) {
       // Another store is open now than the one the warning counted: ask again.
       ui.dismiss()
       return
@@ -467,7 +473,7 @@ internal class AccountModule(private val graph: AppGraph, private val ui: Settin
     ui.state.update { it.copy(busy = true) }
     ui.act {
       // Back-navigation must not cancel the sign-out half way.
-      withContext(NonCancellable) { graph.sessions.signOut() }
+      withContext(NonCancellable) { source.signOut() }
       ui.state.update {
         it.copy(pending = null, busy = false, outcome = SettingsOutcome.NEEDS_LOGIN)
       }
@@ -475,9 +481,9 @@ internal class AccountModule(private val graph: AppGraph, private val ui: Settin
   }
 
   fun requestRemove() {
-    val id = graph.openStoreId() ?: return
+    val id = source.openStoreId() ?: return
     ui.act {
-      val unsent = graph.unsentCount(id)
+      val unsent = source.unsentCount(id)
       ui.state.update {
         it.copy(
             pending = Pending.Remove(id, unsent, confirmed = 0, needed = if (unsent > 0) 2 else 1)
@@ -490,7 +496,7 @@ internal class AccountModule(private val graph: AppGraph, private val ui: Settin
   fun confirmRemove() {
     val pending = ui.state.value.pending as? Pending.Remove ?: return
     if (ui.state.value.busy) return
-    if (graph.openStoreId() != pending.storeUserId) {
+    if (source.openStoreId() != pending.storeUserId) {
       ui.dismiss()
       return
     }
@@ -503,7 +509,7 @@ internal class AccountModule(private val graph: AppGraph, private val ui: Settin
     ui.act {
       val removed =
           withContext(NonCancellable) {
-            graph.removeStore(pending.storeUserId, confirmedTwice = pending.needed > 1)
+            source.removeStore(pending.storeUserId, confirmedTwice = pending.needed > 1)
           }
       if (removed) {
         ui.state.update {

@@ -92,6 +92,9 @@ jobs:
       # git-ignored local.properties is not needed here.
       - name: Run Android tests and builds
         run: ./tools/check.sh android
+        env:
+          # A pull request builds debug only; the release build and APK budget run when it lands.
+          SADAD_SKIP_RELEASE_BUILD: ${{ github.event_name == 'pull_request' }}
 
       # This step exists because the first CI run caught a real one: a device set to UTC produced a
       # different createdAt shape ("Z") than a device at +03:00, and only the runner's zone exposed

@@ -37,6 +37,7 @@ import com.sadad.app.feature.photo.PhotoEditor
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.feature.updates.UpdateCenter
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.ui.components.ScreenHeader
 import java.time.Clock
@@ -204,20 +205,21 @@ fun StoreScreen(
 @Composable
 private fun storeViewModel(): SettingsViewModel {
   val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   val biometric = rememberActivityBiometric()
   return viewModel(
       factory =
           viewModelFactory {
             initializer {
               SettingsViewModel(
-                  graph = app.graph,
+                  source = graph.settingsSource(),
                   saved = createSavedStateHandle(),
                   preferences = ThemePreference.get(app),
                   lock = AppLock.get(app),
                   scheduler = SyncScheduler(app),
                   clock = Clock.systemDefaultZone(),
                   biometricAvailable = biometric::available,
-                  syncStatus = app.graph::syncStatus,
+                  syncStatus = graph::syncStatus,
                   reminders = DueReminders.get(app)::dismissed,
                   hiddenTrash = { storeUserId -> TrashHidden.get(app, storeUserId).ids },
               )

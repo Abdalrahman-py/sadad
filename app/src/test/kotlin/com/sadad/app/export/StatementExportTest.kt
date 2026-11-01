@@ -41,6 +41,29 @@ class StatementExportTest {
   }
 
   @Test
+  fun aNewStatementRemovesThePreviousOneAndClearExportsEmptiesTheDirectory() = runBlocking {
+    // Robolectric cannot render a real PDF (see ReportsExportTest), so the real write fails; the
+    // clearing step inside writePdf still runs and must take the predecessor with it.
+    val directory =
+        File(context.cacheDir, "exports").apply {
+          mkdirs()
+          File(this, "statement-previous.pdf").writeBytes(byteArrayOf(1))
+        }
+    runCatching { StatementExport.writePdf(context, header, view, null, null, null) }
+    assertTrue(
+        "a new statement must leave no predecessor behind",
+        directory.listFiles()!!.isEmpty(),
+    )
+
+    File(directory, "statement-a.pdf").writeBytes(byteArrayOf(1))
+    File(directory, "statement-b.pdf").writeBytes(byteArrayOf(1))
+
+    StatementExport.clearExports(context)
+
+    assertEquals(0, directory.listFiles()!!.size)
+  }
+
+  @Test
   fun refusesMissingContactBeforeTruncatingADocument() = runBlocking {
     val file = File.createTempFile("statement-unchanged", ".xlsx", context.cacheDir)
     try {

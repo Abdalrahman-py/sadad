@@ -128,8 +128,6 @@ constructor(
         Intent(context, MainActivity::class.java)
             .setData(Uri.parse("sadad://reminder/${Uri.encode(event.id)}"))
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(EXTRA_STORE, event.storeUserId)
-            .putExtra(EXTRA_CONTACT, event.contactId)
     val pending =
         PendingIntent.getActivity(
             context,
@@ -137,6 +135,13 @@ constructor(
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    // The full text stays in the shade after unlocking; the lock screen shows a generic line.
+    val public =
+        NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.reminder_public))
+            .setContentText(context.getString(R.string.reminder_public))
+            .build()
     val notification =
         NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -144,6 +149,8 @@ constructor(
             .setContentText(reminderText(context, event))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
             .build()
     manager.notify(event.id, 0, notification)
     return true
@@ -151,8 +158,6 @@ constructor(
 
   companion object {
     const val CHANNEL_ID = "sadad_due_dates"
-    const val EXTRA_STORE = "storeUserId"
-    const val EXTRA_CONTACT = "contactId"
 
     fun schedule(context: Context, now: ZonedDateTime = ZonedDateTime.now()) {
       val request =

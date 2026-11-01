@@ -3,7 +3,7 @@ package com.sadad.app.feature.people
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
+import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
@@ -26,8 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -297,7 +295,7 @@ private fun compareByArabicName(): Comparator<PeopleRow> {
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PeopleViewModel(
-    private val graph: AppGraph,
+    private val records: Flow<ContactRecords?>,
     private val saved: SavedStateHandle,
     private val clock: Clock? = null,
 ) : ViewModel() {
@@ -322,7 +320,7 @@ class PeopleViewModel(
 
   init {
     viewModelScope.launch {
-      combine(view(), query, filter, sort, day) { records, text, chip, order, current ->
+      combine(records, query, filter, sort, day) { records, text, chip, order, current ->
             val view = records?.directory
             if (view == null) {
               PeopleState(
@@ -398,9 +396,6 @@ class PeopleViewModel(
   private fun savedSort(): PeopleSort =
       saved.get<String>(SORT)?.let { name -> PeopleSort.entries.firstOrNull { it.name == name } }
           ?: PeopleSort.RECENT
-
-  private fun view(): Flow<com.sadad.app.data.ledger.ContactRecords?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.contactRecords ?: flowOf(null) }
 }
 
 private const val CHIP = "people:chip"

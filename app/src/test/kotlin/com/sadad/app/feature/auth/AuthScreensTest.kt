@@ -40,7 +40,7 @@ class AuthScreensTest {
               .build()
       )
       var navigated: Any? = null
-      val model = LoginViewModel(fixture.graph, SavedStateHandle(), context)
+      val model = LoginViewModel(fixture.graph.authSource(), SavedStateHandle(), context)
       compose.setContent {
         LoginScreen(viewModel = model, onNavigate = { navigated = it })
       }

@@ -44,6 +44,14 @@ class SyncEngine(
   fun status(storeUserId: String): StateFlow<SyncStatus> =
       progress(storeUserId).status.asStateFlow()
 
+  /**
+   * A pass that died outside [pass]'s own catches leaves the status on `Running`, which the visible
+   * poll reads as "do not ask again". Clear it so the next poll retries.
+   */
+  fun aborted(storeUserId: String) {
+    progress(storeUserId).status.compareAndSet(SyncStatus.Running, SyncStatus.Retry)
+  }
+
   suspend fun pass(scope: StoreScope): SyncStatus = scope.runWhileOpen {
     val id = scope.account.storeUserId
     val progress = progress(id)

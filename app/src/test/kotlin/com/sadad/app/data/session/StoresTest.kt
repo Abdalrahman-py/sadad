@@ -195,6 +195,27 @@ class StoresTest {
   }
 
   @Test
+  fun aRemovedStoreAndAClosedStoreLeaveNoExportsBehind() = runTest {
+    fun exportsDir(context: Context): File =
+        File(context.cacheDir, "exports").apply {
+          mkdirs()
+          File(this, "statement-old.pdf").writeBytes(byteArrayOf(1))
+        }
+
+    TestGraph.signedIn(STORE_A).use { fixture ->
+      val dir = exportsDir(fixture.context)
+      assertTrue(fixture.graph.removeStore(STORE_A))
+      assertTrue("the store's exports must go with the store", dir.listFiles()!!.isEmpty())
+    }
+
+    TestGraph.signedIn(STORE_A).use { fixture ->
+      val dir = exportsDir(fixture.context)
+      fixture.graph.closeStore()
+      assertTrue("closing the open store must clear its exports", dir.listFiles()!!.isEmpty())
+    }
+  }
+
+  @Test
   fun removingAStoreWithQueuedRowsNeedsTwoConfirmations() = runTest {
     TestGraph.signedIn(STORE_A).use { fixture ->
       fixture.seed { addContact("سامي", null, null, null, null) }

@@ -32,6 +32,23 @@ class SettingsViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
   @Test
+  fun lastSuccessfulSyncStaysVisibleWhileOfflineAndAfterReopeningSettings() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        val status = MutableStateFlow<SyncStatus>(SyncStatus.Offline)
+        val model = kit.viewModel(syncStatus = { status })
+        model.state.first { it.loaded }
+        val time = 1_793_534_400_000L
+        fixture.graph.accounts.update(STORE_A) { it.copy(lastSyncAt = time) }
+        val state = model.state.first { it.devices.lastSyncAt == time }
+        assertEquals(SyncLine.Offline, state.devices.sync)
+        val reopened = kit.viewModel(syncStatus = { status })
+        assertEquals(time, reopened.state.first { it.loaded }.devices.lastSyncAt)
+      }
+    }
+  }
+
+  @Test
   fun savingTheStoreNameUpdatesTheAccountAndSurvivesANewViewModel() = runTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->

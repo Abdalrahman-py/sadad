@@ -3,7 +3,6 @@ package com.sadad.app.feature.contacts
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.data.ledger.paymentGroups
@@ -26,13 +25,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -98,7 +94,7 @@ data class ContactDetailState(
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ContactDetailViewModel(
-    private val graph: AppGraph,
+    private val source: ContactDetailSource,
     private val contactId: String,
     private val appContext: Context,
     /** The Java banner's five seconds; tests shorten it. */
@@ -131,7 +127,7 @@ class ContactDetailViewModel(
 
   init {
     viewModelScope.launch {
-      combine(view(), dialogs, permissions()) { records, ui, allowed ->
+      combine(source.records, dialogs, source.permissions) { records, ui, allowed ->
             currentView = records?.ledger
             val draft = records?.failed?.firstOrNull { it.contact.id == contactId }
             if (draft == null) project(records?.ledger, ui, allowed)
@@ -142,7 +138,7 @@ class ContactDetailViewModel(
                     phone = draft.contact.phone,
                     category = draft.contact.category,
                     note = draft.contact.note,
-                    syncFailure = graph.errorMessages.text(draft.code),
+                    syncFailure = source.refusalText(draft.code),
                     savedDebts = draft.debts,
                     canRegisterPayments = false,
                     canDeleteContacts = false,
@@ -201,8 +197,8 @@ class ContactDetailViewModel(
     undoJob = null
     if (dialogs.value.undoName == null) return
     dialogs.update { it.copy(undoName = null) }
-    val repository = graph.current.value?.repository
-    if (repository == null) {
+    val store = source.open()
+    if (store == null) {
       dialogs.update {
         it.copy(undoName = null, error = appContext.getString(R.string.contacts_session_closed))
       }
@@ -211,8 +207,8 @@ class ContactDetailViewModel(
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the dialog the user confirmed already promised it.
     undoScope.launch {
-      repository
-          .archiveContact(contactId, ARCHIVE_REASON)
+      store
+          .archive(contactId, ARCHIVE_REASON)
           .fold(
               onSuccess = {
                 dialogs.update { current -> current.copy(undoName = null, done = true) }
@@ -235,7 +231,7 @@ class ContactDetailViewModel(
   fun reverse(movementId: String) {
     val movement = mutable.value.movements.firstOrNull { it.id == movementId } ?: return
     if (movement.kind != MovementKind.PAYMENT || !movement.canReverse) return
-    val scope = graph.current.value ?: return
+    val scope = source.open() ?: return
     if (!scope.isOnline()) {
       dialogs.update { it.copy(error = appContext.getString(R.string.contacts_reverse_offline)) }
       return
@@ -264,8 +260,7 @@ class ContactDetailViewModel(
             )
     // One short write, like the archive: the user already confirmed it, so it outlives the screen.
     undoScope.launch {
-      scope.outbox.append(commands)
-      scope.onQueued()
+      scope.append(commands)
     }
   }
 
@@ -280,7 +275,7 @@ class ContactDetailViewModel(
 
   suspend fun share(context: Context) {
     val view = currentView ?: return
-    val account = graph.current.value?.account
+    val account = source.account()
     val header =
         StatementHeader(
             store =
@@ -299,9 +294,6 @@ class ContactDetailViewModel(
           }
         }
   }
-
-  private fun view(): Flow<com.sadad.app.data.ledger.ContactRecords?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.contactRecords ?: flowOf(null) }
 
   /** One row per saved payment, including its allocations and any excess kept as credit. */
   private fun paymentRows(
@@ -337,18 +329,6 @@ class ContactDetailViewModel(
             if (spent) appContext.getString(R.string.contacts_reverse_credit_used) else null,
     )
   }
-
-  private fun permissions(): Flow<Map<String, Boolean>> =
-      graph.current.flatMapLatest { scope ->
-        val storeUserId = scope?.account?.storeUserId
-        graph.accounts.accounts.map { accounts ->
-          accounts
-              .firstOrNull { it.storeUserId == storeUserId }
-              ?.installation
-              ?.permissions
-              .orEmpty()
-        }
-      }
 
   private fun project(
       view: LedgerView?,

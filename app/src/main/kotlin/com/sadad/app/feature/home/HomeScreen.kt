@@ -62,16 +62,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.sadad.app.LocalGraph
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.components.sadadPageBackground
@@ -140,7 +140,7 @@ fun HomeScreen(
 private fun unreadReminders(): Int {
   val context = LocalContext.current
   // The screen tests run under UiTestApplication, which has no graph; they pass their own count.
-  val graph = (context.applicationContext as? SadadApplication)?.graph ?: return 0
+  val graph = LocalGraph.current ?: return 0
   val reminders = remember(context) { DueReminders.get(context) }
   val unread by
       remember(graph, reminders) {
@@ -153,13 +153,10 @@ private fun unreadReminders(): Int {
 }
 
 @Composable
-private fun homeViewModel(): HomeViewModel =
-    viewModel(
-        factory =
-            viewModelFactory {
-              initializer { HomeViewModel((this[APPLICATION_KEY] as SadadApplication).graph) }
-            }
-    )
+private fun homeViewModel(): HomeViewModel {
+  val graph = requireGraph()
+  return viewModel(factory = viewModelFactory { initializer { HomeViewModel(graph.homeSource()) } })
+}
 
 @Composable
 fun HomeContent(

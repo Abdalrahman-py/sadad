@@ -36,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -60,7 +59,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
+import com.sadad.app.contactRecords
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
@@ -455,11 +455,11 @@ private fun filterLabel(filter: PeopleFilter): String =
 
 @Composable
 private fun peopleViewModel(): PeopleViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   return viewModel(
       factory =
           viewModelFactory {
-            initializer { PeopleViewModel(app.graph, createSavedStateHandle()) }
+            initializer { PeopleViewModel(graph.contactRecords(), createSavedStateHandle()) }
           }
   )
 }

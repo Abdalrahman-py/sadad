@@ -21,7 +21,8 @@ class PasswordChangeViewModelTest {
 
   private val context: Context = ApplicationProvider.getApplicationContext()
 
-  private fun viewModel(fixture: TestGraph) = PasswordChangeViewModel(fixture.graph, context)
+  private fun viewModel(fixture: TestGraph) =
+      PasswordChangeViewModel(fixture.graph.authSource(), context)
 
   @Test
   fun aNewPasswordOfElevenCharactersIsRefusedWithoutARequest() = runTest {
