@@ -155,7 +155,7 @@ private fun unreadReminders(): Int {
 @Composable
 private fun homeViewModel(): HomeViewModel {
   val graph = requireGraph()
-  return viewModel(factory = viewModelFactory { initializer { HomeViewModel(graph) } })
+  return viewModel(factory = viewModelFactory { initializer { HomeViewModel(graph.homeSource()) } })
 }
 
 @Composable

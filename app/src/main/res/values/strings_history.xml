@@ -54,16 +54,4 @@
     <string name="history_unaccepted_unsendable">لا يمكن إرسالها من هذا الجهاز — تجاهلها</string>
     <string name="history_unaccepted_blocked">لا يمكن التجاهل قبل %1$s</string>
     <string name="history_dismiss">تجاهل</string>
-
-    <!-- Action names, as the Java ledger log printed them -->
-    <string name="history_action_contact_create">إضافة شخص</string>
-    <string name="history_action_contact_update">تعديل شخص</string>
-    <string name="history_action_contact_archive">أرشفة شخص</string>
-    <string name="history_action_contact_restore">استعادة شخص</string>
-    <string name="history_action_debt_create">تسجيل دين</string>
-    <string name="history_action_debt_correct">تصحيح دين</string>
-    <string name="history_action_debt_offset">خصم من الرصيد</string>
-    <string name="history_action_payment_create">تسجيل دفعة</string>
-    <string name="history_action_payment_reverse">عكس دفعة</string>
-    <string name="history_action_other">عملية دفتر</string>
 </resources>

@@ -2,7 +2,6 @@ package com.sadad.app.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.ledger.Cents
@@ -156,7 +155,7 @@ fun homeUiState(
 const val FOLLOW_UP_ROWS: Int = 5
 
 /** Follows the open store: its [LedgerView], the queue, the connection, and the store's name. */
-class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewModel() {
+class HomeViewModel(source: HomeSource, private val clock: Clock? = null) : ViewModel() {
   private data class Period(val month: YearMonth, val zone: ZoneId, val today: LocalDate)
 
   private fun clockNow(): Clock = clock ?: Clock.systemDefaultZone()
@@ -193,7 +192,7 @@ class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewMod
   )
 
   private val inputs: Flow<Inputs> =
-      combine(graph.current, graph.accounts.accounts, period) { scope, accounts, period ->
+      combine(source.current, source.accounts, period) { scope, accounts, period ->
             Triple(scope, accounts, period)
           }
           .flatMapLatest { (scope, accounts, period) ->
@@ -208,7 +207,7 @@ class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewMod
               combine(
                   scope.repository.view,
                   scope.outbox.rows,
-                  graph.syncStatus(scope.account.storeUserId),
+                  source.syncStatus(scope.account.storeUserId),
               ) { view, rows, status ->
                 Inputs(
                     view = view,
@@ -216,7 +215,7 @@ class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewMod
                     period = period,
                     queued = rows.count { it.state == OutboxState.QUEUED },
                     offline = status == SyncStatus.Offline || !scope.isOnline(),
-                    leaseEndsAt = graph.offlineUntil(scope.account)?.let(Instant::ofEpochMilli),
+                    leaseEndsAt = source.offlineUntil(scope.account)?.let(Instant::ofEpochMilli),
                 )
               }
             }
