@@ -581,7 +581,7 @@ private fun recoveryViewModel(): RecoveryViewModel =
             viewModelFactory {
               initializer {
                 val app = this[APPLICATION_KEY] as SadadApplication
-                RecoveryViewModel(app.graph, app)
+                RecoveryViewModel(app.graph.recoverySource(), app)
               }
             }
     )

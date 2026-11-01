@@ -3,7 +3,6 @@ package com.sadad.app.feature.recovery
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.recovery.Recovery
 import com.sadad.app.data.session.StoreScope
@@ -18,15 +17,15 @@ import kotlinx.coroutines.launch
 data class RecoveryState(val status: String? = null, val message: String? = null)
 
 /** Recovery actions are one-shot, so only their outcome and the installation status are state. */
-class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewModel() {
+class RecoveryViewModel(private val source: RecoverySource, context: Context) : ViewModel() {
   private val appContext = context.applicationContext
   private val mutable = MutableStateFlow(RecoveryState())
   val state: StateFlow<RecoveryState> = mutable.asStateFlow()
 
   init {
     viewModelScope.launch {
-      graph.accounts.state.collect { file ->
-        val storeUserId = graph.current.value?.account?.storeUserId ?: file.activeStoreUserId
+      source.accounts.collect { file ->
+        val storeUserId = source.current.value?.account?.storeUserId ?: file.activeStoreUserId
         val status =
             file.accounts.firstOrNull { it.storeUserId == storeUserId }?.installation?.status
         mutable.update { it.copy(status = status) }
@@ -76,7 +75,7 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
                     result.outside,
                 )
         showMessage(message)
-        runCatching { graph.syncStore(scope().account.storeUserId) }
+        runCatching { source.syncStore(scope().account.storeUserId) }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (error: IllegalArgumentException) {
@@ -90,7 +89,7 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
   fun registerAgain() {
     viewModelScope.launch {
       try {
-        val registered = graph.sessions.registerAgain(scope())
+        val registered = source.registerAgain(scope())
         showMessage(
             appContext.getString(
                 if (registered) R.string.recovery_registered else R.string.recovery_register_failed
@@ -106,7 +105,7 @@ class RecoveryViewModel(private val graph: AppGraph, context: Context) : ViewMod
 
   fun showMessage(text: String?) = mutable.update { it.copy(message = text) }
 
-  private fun scope(): StoreScope = checkNotNull(graph.current.value) { "no open store" }
+  private fun scope(): StoreScope = checkNotNull(source.current.value) { "no open store" }
 
   private suspend fun <T> guarded(block: suspend () -> T): T? =
       try {
