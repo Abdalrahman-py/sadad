@@ -83,6 +83,8 @@ internal constructor(
     private val bootCount: () -> Int = {
       Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
     },
+    /** The wall clock offline leases are checked against; a test moves it. */
+    private val now: () -> Long = System::currentTimeMillis,
     /** Stable across a reinstall of the same signing key; see DeviceIdentity. */
     private val deviceSeed: () -> String? = { androidId(context) },
 ) : SessionHost {
@@ -105,7 +107,7 @@ internal constructor(
   private val syncUsers = mutableMapOf<StoreScope, Int>()
   private val leaseDirectory = leaseDirectory ?: File(context.cacheDir, "sync-${UUID.randomUUID()}")
   private val leases = ConcurrentHashMap<String, LeaseStore>()
-  private val syncEngine by lazy { SyncEngine(accounts, sessions, ledgerApi, ::leaseFor) }
+  internal val syncEngine by lazy { SyncEngine(accounts, sessions, ledgerApi, ::leaseFor) }
 
   fun syncStatus(storeUserId: String): StateFlow<SyncStatus> = syncEngine.status(storeUserId)
 
@@ -115,13 +117,14 @@ internal constructor(
    */
   fun offlineUntil(account: Account): Long? = leaseFor(account.storeUserId).expiresAt(account)
 
-  private fun leaseFor(storeUserId: String): LeaseStore =
+  internal fun leaseFor(storeUserId: String): LeaseStore =
       leases.computeIfAbsent(storeUserId) {
         LeaseStore(
             File(leaseDirectory, "lease-$it.preferences_pb"),
             scope,
             leaseVerifier,
             bootCount,
+            now,
         )
       }
 
