@@ -64,6 +64,7 @@ class AutomaticSyncGraphTest {
               receiver.scope.repository.view.first { view ->
                 view != null && view.debts.size == 1 && view.payments.size == 1
               }
+              receiver.test.graph.accounts.accounts.first { it.first().lastSyncAt != null }
             }
           }
           assertTrue(sender.scope.outbox.snapshot().all { it.state == OutboxState.ACCEPTED })
