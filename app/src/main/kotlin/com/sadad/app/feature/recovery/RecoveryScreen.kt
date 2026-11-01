@@ -64,6 +64,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
@@ -575,16 +576,17 @@ private fun PassphraseDialog(
 }
 
 @Composable
-private fun recoveryViewModel(): RecoveryViewModel =
-    viewModel(
-        factory =
-            viewModelFactory {
-              initializer {
-                val app = this[APPLICATION_KEY] as SadadApplication
-                RecoveryViewModel(app.graph.recoverySource(), app)
-              }
+private fun recoveryViewModel(): RecoveryViewModel {
+  val graph = requireGraph()
+  return viewModel(
+      factory =
+          viewModelFactory {
+            initializer {
+              RecoveryViewModel(graph.recoverySource(), this[APPLICATION_KEY] as SadadApplication)
             }
-    )
+          }
+  )
+}
 
 private fun write(context: Context, uri: Uri, bytes: ByteArray): Boolean =
     try {
