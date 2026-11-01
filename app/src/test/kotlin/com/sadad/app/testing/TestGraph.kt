@@ -3,6 +3,7 @@ package com.sadad.app.testing
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.AppGraph
+import com.sadad.app.BuildConfig
 import com.sadad.app.data.crypto.Base64Url
 import com.sadad.app.data.crypto.DataKey
 import com.sadad.app.data.crypto.InstallationSigner
@@ -14,6 +15,7 @@ import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.ledger.receiptOf
 import com.sadad.app.data.net.AuthApi
+import com.sadad.app.data.net.LeaseVerifier
 import com.sadad.app.data.net.LedgerApi
 import com.sadad.app.data.session.Account
 import com.sadad.app.data.session.Accounts
@@ -158,6 +160,7 @@ private constructor(
         database: (Context, String) -> LedgerDatabase = { context, id ->
           LedgerDatabase.open(context, id)
         },
+        sync: SyncSettings = SyncSettings(),
     ): TestGraph {
       val context = ApplicationProvider.getApplicationContext<Context>()
       val server = MockWebServer().apply { start() }
@@ -169,7 +172,7 @@ private constructor(
           }
       val dataKey =
           DataKey(SecretKeySpec(ByteArray(32).also { SecureRandom().nextBytes(it) }, "AES"))
-      val client = OkHttpClient()
+      val client = sync.client
       val base = server.url("/").toString()
       val graph =
           AppGraph(
@@ -185,6 +188,9 @@ private constructor(
               online = online,
               deviceLabel = "Test Device",
               scope = graphScope,
+              leaseVerifier = sync.leaseVerifier,
+              bootCount = sync.bootCount,
+              now = sync.now,
           )
       return TestGraph(graph, server, accountsFile, graphScope, dataStoreScope)
     }
@@ -197,14 +203,24 @@ private constructor(
         database: (Context, String) -> LedgerDatabase = { context, id ->
           LedgerDatabase.open(context, id)
         },
+        sync: SyncSettings = SyncSettings(),
     ): TestGraph {
-      val graph = unsigned(online, database)
+      val graph = unsigned(online, database, sync)
       graph.signIn(storeUserId, username)
       graph.activate(storeUserId)
       return graph
     }
   }
 }
+
+/** What the sync engine sees: the HTTP client, the lease key, the boot count and the clock. */
+data class SyncSettings(
+    val client: OkHttpClient = OkHttpClient(),
+    val leaseVerifier: LeaseVerifier =
+        LeaseVerifier(BuildConfig.LEASE_PUBLIC_KEY_X, BuildConfig.LEASE_PUBLIC_KEY_Y),
+    val bootCount: () -> Int = { -1 },
+    val now: () -> Long = System::currentTimeMillis,
+)
 
 /**
  * The Keystore stand-in: keeps each alias's software key pair in memory for the test's lifetime.
