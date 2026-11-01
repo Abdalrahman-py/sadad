@@ -17,8 +17,9 @@ class UpdateInstallReceiver : BroadcastReceiver() {
     when (status) {
       // The system needs one tap in its own sheet; carry on into it.
       PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-        val confirm = confirmation(intent) ?: return
-        runCatching { context.startActivity(launchable(confirm)) }
+        val confirm = confirmation(intent)
+        if (confirm == null) center.installFailed(UpdateError.INSTALL_FAILED)
+        else center.confirmInstallation(context, launchable(confirm))
       }
       PackageInstaller.STATUS_SUCCESS -> center.installed()
       PackageInstaller.STATUS_FAILURE_ABORTED -> center.installFailed(UpdateError.INSTALL_CANCELLED)
@@ -48,8 +49,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
       Intent(confirm.action).apply {
         setPackage(confirm.`package`)
         component = confirm.component
-        data = confirm.data
-        type = confirm.type
+        setDataAndType(confirm.data, confirm.type)
         confirm.categories?.forEach { addCategory(it) }
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         confirm.extras?.let { source ->
