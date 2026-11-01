@@ -48,6 +48,10 @@ class MainActivity : FragmentActivity() {
     // receipt to send it (#177).
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
     observeNotificationPermission()
+    lifecycleScope.launch {
+      val graph = withContext(Dispatchers.IO) { (application as SadadApplication).graph }
+      repeatOnLifecycle(Lifecycle.State.STARTED) { graph.syncWhileVisible() }
+    }
     setContent {
       var destination by remember { mutableStateOf<Any?>(null) }
       val request = launchIntent

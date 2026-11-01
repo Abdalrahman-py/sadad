@@ -104,6 +104,7 @@ data class DevicesSlice(
     val unsent: Int = 0,
     /** The newest of those entries, for the status row's second line. */
     val newest: QueuedEntry? = null,
+    val lastSyncAt: Long? = null,
 )
 
 data class SecuritySlice(

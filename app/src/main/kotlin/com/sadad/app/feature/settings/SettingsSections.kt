@@ -75,6 +75,10 @@ import com.sadad.app.feature.photo.PhotoStore
 import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.theme.sadadPalette
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -325,6 +329,20 @@ internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: Set
             syncDetail(devices)?.let { detail ->
               Text(detail, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
             }
+            val lastSync = devices.lastSyncAt
+            Text(
+                if (lastSync == null) stringResource(R.string.settings_sync_never)
+                else
+                    stringResource(
+                        R.string.settings_sync_last,
+                        DateTimeFormatter.ofPattern("dd/MM/yyyy · HH:mm:ss", Locale.US)
+                            .withZone(ZoneId.systemDefault())
+                            .format(Instant.ofEpochMilli(lastSync)),
+                    ),
+                color = p.muted,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+            )
           }
           Surface(
               onClick = navigation.onSyncNow,

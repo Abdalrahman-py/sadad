@@ -4,6 +4,7 @@ import com.sadad.app.data.crypto.SoftwareSigner
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.receiptOf
 import com.sadad.app.data.net.LeaseVerifier
+import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.SyncSettings
 import com.sadad.app.testing.TestGraph
 import com.sadad.ledger.Changes
@@ -63,7 +64,12 @@ private constructor(val test: TestGraph, val signer: SoftwareSigner, private val
   }
 
   companion object {
-    suspend fun create(fresh: Boolean = true): SyncFixture {
+    suspend fun create(
+        fresh: Boolean = true,
+        scheduler: SyncScheduling? = null,
+        online: () -> Boolean = { true },
+        storeUserId: String = STORE_A,
+    ): SyncFixture {
       val signer = SoftwareSigner("lease-server")
       val clock = Clock()
       val client =
@@ -77,8 +83,10 @@ private constructor(val test: TestGraph, val signer: SoftwareSigner, private val
               LeaseVerifier(signer.publicKey.x, signer.publicKey.y),
               { clock.boot },
               { clock.now },
+              scheduler,
           )
-      val fixture = SyncFixture(TestGraph.signedIn(sync = sync), signer, clock)
+      val fixture =
+          SyncFixture(TestGraph.signedIn(storeUserId, online = online, sync = sync), signer, clock)
       fixture.server.takeRequest()
       if (fresh) fixture.freshLease()
       return fixture
@@ -91,13 +99,17 @@ internal fun pageResponse(page: Changes): MockResponse =
         .body("""{"changes":${LedgerJson.encodeToString(Changes.serializer(), page)}}""")
         .build()
 
-internal fun receiptResponse(commands: List<LedgerCommand>, reject: Int = -1): MockResponse {
+internal fun receiptResponse(
+    commands: List<LedgerCommand>,
+    reject: Int = -1,
+    sequenceOffset: Long = 0,
+): MockResponse {
   val receipts = commands.mapIndexed { index, command ->
     receiptOf(
         command,
         if (index == reject) ReceiptStatus.REJECTED else ReceiptStatus.ACCEPTED,
         if (index == reject) "store_permission_denied" else null,
-        index + 1L,
+        sequenceOffset + index + 1L,
     )
   }
   return MockResponse.Builder()
