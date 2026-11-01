@@ -29,6 +29,7 @@ import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.data.sync.connectivity
 import com.sadad.app.data.sync.internetAvailable
+import com.sadad.app.export.StatementExport
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.photo.PhotoStore
@@ -251,7 +252,12 @@ internal constructor(
     syncScheduler?.schedulePeriodic(storeScope.account.storeUserId)
   }
 
-  suspend fun closeStore() = storeMutex.withLock { closeCurrent() }
+  suspend fun closeStore() = storeMutex.withLock {
+    closeCurrent()
+    // The statements of the store that just closed hold its balances; sign-out and a switch land
+    // here, so they leave no exports behind.
+    StatementExport.clearExports(context)
+  }
 
   private suspend fun closeCurrent() {
     val open = mutableCurrent.value ?: return
@@ -291,6 +297,7 @@ internal constructor(
           PhotoKind.entries.forEach { kind -> runCatching { photos.delete(storeUserId, kind) } }
           TrashHidden.forget(context, storeUserId)
           DueReminders.get(context).forget(storeUserId)
+          StatementExport.clearExports(context)
           true
         }
       }

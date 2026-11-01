@@ -59,7 +59,9 @@ class AutomaticSyncGraphTest {
           online = true
           connected.value = true
           withContext(Dispatchers.Default) {
-            withTimeout(15_000) {
+            // The receiver's first pull can land before the sender's, so it needs one 10 s poll;
+            // the bound leaves slow runners several polls of slack.
+            withTimeout(45_000) {
               sender.test.graph.accounts.accounts.first { it.first().lastSyncAt != null }
               receiver.scope.repository.view.first { view ->
                 view != null && view.debts.size == 1 && view.payments.size == 1

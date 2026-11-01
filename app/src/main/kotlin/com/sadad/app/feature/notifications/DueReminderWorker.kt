@@ -135,6 +135,13 @@ constructor(
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    // The full text stays in the shade after unlocking; the lock screen shows a generic line.
+    val public =
+        NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.reminder_public))
+            .setContentText(context.getString(R.string.reminder_public))
+            .build()
     val notification =
         NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -142,6 +149,8 @@ constructor(
             .setContentText(reminderText(context, event))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
             .build()
     manager.notify(event.id, 0, notification)
     return true
