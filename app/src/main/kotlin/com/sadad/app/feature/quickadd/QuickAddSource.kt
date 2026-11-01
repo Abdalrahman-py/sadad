@@ -36,6 +36,9 @@ interface QuickAddStore {
   /** Where new commands say they come from; null while the installation may not write. */
   fun origin(): Origin?
 
+  /** Whether the device has a network now; a save without one waits in the outbox. */
+  fun isOnline(): Boolean
+
   /** Queues [commands] in the outbox and asks for a sync. */
   suspend fun append(commands: List<LedgerCommand>)
 }
@@ -84,6 +87,8 @@ fun AppGraph.quickAddSource(): QuickAddSource {
             override val jobs = scope.jobs
 
             override fun origin() = scope.origin()
+
+            override fun isOnline() = scope.isOnline()
 
             override suspend fun append(commands: List<LedgerCommand>) {
               scope.outbox.append(commands)

@@ -63,6 +63,8 @@ class QuickAddFakeSourceTest {
 
           override fun origin() = Origin("installation", 1, "epoch")
 
+          override fun isOnline() = true
+
           override suspend fun append(commands: List<LedgerCommand>) {
             appended.complete(commands)
           }
