@@ -28,7 +28,7 @@ class LoginViewModelTest {
   private val context: Context = ApplicationProvider.getApplicationContext()
 
   private fun viewModel(graph: TestGraph, saved: SavedStateHandle = SavedStateHandle()) =
-      LoginViewModel(graph.graph, saved, context)
+      LoginViewModel(graph.graph.authSource(), saved, context)
 
   @Test
   fun aWrongPasswordShowsTheInvalidCredentialsTextAndCreatesNoAccount() = runTest {
