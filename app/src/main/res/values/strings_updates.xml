@@ -25,6 +25,7 @@
     <string name="updates_retry">إعادة المحاولة</string>
     <string name="updates_downloading">جارٍ التنزيل… %1$d%%</string>
     <string name="updates_installing">أكمل التثبيت من نافذة النظام…</string>
+    <string name="updates_open_installer">فتح نافذة تثبيت التحديث</string>
     <string name="updates_ready">تم تنزيل التحديث والتحقق من بصمته وتوقيعه. جاهز للتثبيت.</string>
     <string name="updates_up_to_date">أنت على أحدث إصدار.</string>
     <string name="updates_checking">جارٍ التحقق من الإصدارات…</string>
@@ -40,7 +41,7 @@
     <string name="updates_error_checksum">الملف المنزَّل لا يطابق بصمة الإصدار. حُذف ولم يُثبَّت.</string>
     <string name="updates_error_signature">هذا التحديث موقّع بمفتاح غير مفتاح نسختك، فلن يقبله أندرويد. يحدث ذلك مع نسخة تطوير محلية؛ ثبّت بناء الفريق أو الإصدار الرسمي.</string>
     <string name="updates_error_permission">اسمح لسدد بتثبيت التطبيقات من هذا المصدر، ثم أعد المحاولة.</string>
-    <string name="updates_error_install">فشل التثبيت. أعد المحاولة.</string>
+    <string name="updates_error_install">تعذر فتح مثبّت النظام أو إكمال التثبيت. أعد المحاولة؛ ملف التحديث محفوظ ولا يحتاج تنزيلًا جديدًا.</string>
     <string name="updates_error_cancelled">أُلغي التثبيت.</string>
 
     <!-- The prompt at app start; «لاحقاً» silences it for a week, never the settings row. -->

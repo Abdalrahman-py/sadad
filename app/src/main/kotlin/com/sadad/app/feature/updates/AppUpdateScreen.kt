@@ -202,7 +202,7 @@ private fun Status(state: UpdateState) {
 }
 
 @Composable
-private fun Actions(
+internal fun Actions(
     state: UpdateState,
     center: UpdateCenter,
     context: Context,
@@ -217,7 +217,10 @@ private fun Actions(
     val primary: Pair<Int, () -> Unit>? =
         when (state.phase) {
           UpdateState.Phase.AVAILABLE -> R.string.updates_download to center::download
-          UpdateState.Phase.READY -> R.string.updates_install to center::install
+          UpdateState.Phase.READY ->
+              R.string.updates_install to { center.retryInstallation(context) }
+          UpdateState.Phase.INSTALLING ->
+              R.string.updates_open_installer to { center.openInstaller(context) }
           UpdateState.Phase.FAILED ->
               if (state.manifest != null) R.string.updates_retry to center::download
               else R.string.updates_check_again to center::checkNow
@@ -225,7 +228,7 @@ private fun Actions(
           UpdateState.Phase.IDLE -> R.string.updates_check_again to center::checkNow
           else -> null
         }
-    val busy = state.phase in setOf(UpdateState.Phase.CHECKING, UpdateState.Phase.INSTALLING)
+    val busy = state.phase == UpdateState.Phase.CHECKING
     if (primary != null) {
       SadadButton(
           text = stringResource(primary.first),

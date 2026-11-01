@@ -1,6 +1,7 @@
 package com.sadad.app.feature.updates
 
 import android.content.Context
+import android.content.Intent
 import com.sadad.app.BuildConfig
 import com.sadad.app.data.net.ApiHttpClient
 import java.io.File
@@ -41,6 +42,38 @@ internal class UpdateCenter(
 
   private val checkMutex = Mutex()
   private var downloadJob: Job? = null
+  @Volatile private var confirmation: Intent? = null
+
+  /** Keep the system's sheet available if an OEM blocks the receiver's activity launch. */
+  fun confirmInstallation(context: Context, intent: Intent) {
+    confirmation = intent
+    openInstaller(context)
+  }
+
+  fun openInstaller(context: Context) {
+    val intent = confirmation
+    if (intent == null) {
+      installFailed(UpdateError.INSTALL_FAILED)
+      return
+    }
+    _state.update { it.copy(phase = UpdateState.Phase.INSTALLING, error = null) }
+    try {
+      context.startActivity(intent)
+    } catch (_: android.content.ActivityNotFoundException) {
+      installerUnavailable()
+    } catch (_: SecurityException) {
+      installerUnavailable()
+    }
+  }
+
+  private fun installerUnavailable() {
+    _state.update { it.copy(phase = UpdateState.Phase.READY, error = UpdateError.INSTALL_FAILED) }
+  }
+
+  /** A blocked launch reopens the same session; never download or commit a second copy. */
+  fun retryInstallation(context: Context) {
+    if (confirmation != null) openInstaller(context) else install()
+  }
 
   /**
    * Loads the last result and the snooze. On the next launch the settings row still shows a release
@@ -199,6 +232,9 @@ internal class UpdateCenter(
    */
   fun install() {
     val manifest = _state.value.manifest ?: return
+    if (_state.value.phase == UpdateState.Phase.INSTALLING) return
+    confirmation = null
+    _state.update { it.copy(phase = UpdateState.Phase.INSTALLING, error = null) }
     scope.launch {
       try {
         start(manifest)
@@ -249,9 +285,7 @@ internal class UpdateCenter(
       }
       return
     }
-    if (UpdateInstaller.start(context, apk)) {
-      _state.update { it.copy(phase = UpdateState.Phase.INSTALLING, error = null) }
-    } else {
+    if (!UpdateInstaller.start(context, apk)) {
       _state.update {
         it.copy(phase = UpdateState.Phase.READY, error = UpdateError.INSTALL_FAILED)
       }
@@ -276,6 +310,7 @@ internal class UpdateCenter(
 
   /** The system installer says the new build is in place; this process is about to be replaced. */
   fun installed() {
+    confirmation = null
     _state.update { UpdateState(phase = UpdateState.Phase.UP_TO_DATE) }
     scope.launch {
       preferences.clear()
@@ -285,6 +320,7 @@ internal class UpdateCenter(
   }
 
   fun installFailed(error: UpdateError) {
+    confirmation = null
     _state.update { it.copy(phase = UpdateState.Phase.READY, error = error) }
   }
 
