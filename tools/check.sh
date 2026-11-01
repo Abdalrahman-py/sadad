@@ -89,6 +89,12 @@ run_android() {
   echo "== android =="
   # No bytecode cache: __pycache__ is not git-ignored and a `git add -A` would commit it.
   PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools/test_apk_budget.py
+  # Pull-request CI skips the release and benchmark builds, and the APK budget that reads the
+  # release APK; every push to dev or main, each v* tag and a local run still build them.
+  if [[ ${SADAD_SKIP_RELEASE_BUILD:-} == true ]]; then
+    ./gradlew :ledger-core:test testDebugUnitTest assembleDebug --console=plain
+    return
+  fi
   ./gradlew :ledger-core:test testDebugUnitTest assembleDebug assembleRelease :benchmark:assemble --console=plain
   # Signed when the release key is set, unsigned otherwise: either way the only APK in the folder.
   local apks=(app/build/outputs/apk/release/*.apk)
