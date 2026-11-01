@@ -110,7 +110,9 @@ internal constructor(
   private val leases = ConcurrentHashMap<String, LeaseStore>()
   internal val syncEngine by lazy { SyncEngine(accounts, sessions, ledgerApi, ::leaseFor) }
   private val automaticSync by lazy {
-    AutomaticSync(scope, online, { syncStatus(it).value }) { syncStore(it) }
+    AutomaticSync(scope, online, { syncStatus(it).value }, { syncEngine.aborted(it) }) {
+      syncStore(it)
+    }
   }
 
   suspend fun syncWhileVisible(connection: Flow<Boolean> = connectivity(context)) {

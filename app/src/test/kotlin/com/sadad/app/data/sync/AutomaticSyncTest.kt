@@ -5,6 +5,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -76,5 +77,51 @@ class AutomaticSyncTest {
     advanceTimeBy(30_001)
     runCurrent()
     assertEquals(0, calls)
+  }
+
+  @Test
+  fun aPassThatDiesUnexpectedlyIsClearedAndRetriedInsteadOfCrashing() = runTest {
+    var calls = 0
+    var cleared = 0
+    val sync =
+        AutomaticSync(
+            backgroundScope,
+            { true },
+            { SyncStatus.Failed("temporary_service_failure") },
+            { cleared++ },
+        ) {
+          calls++
+          throw IllegalStateException("store scope is closed")
+        }
+    backgroundScope.launch { sync.whileVisible(MutableStateFlow("a"), MutableStateFlow(true)) }
+    runCurrent()
+    assertEquals(1, calls)
+    assertEquals("a stuck Running status must be cleared", 1, cleared)
+    advanceTimeBy(10_001)
+    runCurrent()
+    assertEquals(2, calls)
+  }
+
+  @Test
+  fun aRetryableRefusalBacksOffInsteadOfPollingEveryTenSeconds() = runTest {
+    val calls = mutableListOf<Long>()
+    val sync =
+        AutomaticSync(
+            backgroundScope,
+            { true },
+            { SyncStatus.Failed("temporary_service_failure") },
+        ) {
+          calls += currentTime
+        }
+    backgroundScope.launch { sync.whileVisible(MutableStateFlow("a"), MutableStateFlow(true)) }
+    runCurrent()
+    advanceTimeBy(10_001)
+    runCurrent()
+    advanceTimeBy(10_001)
+    runCurrent()
+    assertEquals("10s, then 20s, not 10s again", listOf(0L, 10_000L), calls)
+    advanceTimeBy(10_001)
+    runCurrent()
+    assertEquals(listOf(0L, 10_000L, 30_000L), calls)
   }
 }
