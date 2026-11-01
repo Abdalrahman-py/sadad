@@ -27,6 +27,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.reminderDestination
 import com.sadad.app.feature.settings.ThemePreference
 import com.sadad.app.feature.updates.updateRoute
@@ -63,7 +64,8 @@ class MainActivity : FragmentActivity() {
         destination =
             withContext(Dispatchers.IO) {
               val graph = (application as SadadApplication).graph
-              updateRoute(graph, request) ?: reminderDestination(graph, request)
+              updateRoute(graph, request)
+                  ?: reminderDestination(graph, request, DueReminders.get(applicationContext))
             }
       }
       val route = destination

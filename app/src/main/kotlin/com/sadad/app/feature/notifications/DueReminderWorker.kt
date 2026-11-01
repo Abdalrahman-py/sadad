@@ -128,8 +128,6 @@ constructor(
         Intent(context, MainActivity::class.java)
             .setData(Uri.parse("sadad://reminder/${Uri.encode(event.id)}"))
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(EXTRA_STORE, event.storeUserId)
-            .putExtra(EXTRA_CONTACT, event.contactId)
     val pending =
         PendingIntent.getActivity(
             context,
@@ -160,8 +158,6 @@ constructor(
 
   companion object {
     const val CHANNEL_ID = "sadad_due_dates"
-    const val EXTRA_STORE = "storeUserId"
-    const val EXTRA_CONTACT = "contactId"
 
     fun schedule(context: Context, now: ZonedDateTime = ZonedDateTime.now()) {
       val request =
