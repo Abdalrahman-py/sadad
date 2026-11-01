@@ -66,7 +66,7 @@ internal class SettingsKit(private val fixture: TestGraph) : AutoCloseable {
   ): SettingsViewModel {
     val model =
         SettingsViewModel(
-            graph = fixture.graph,
+            source = fixture.graph.settingsSource(),
             saved = saved,
             preferences = preferences,
             lock = lock,
