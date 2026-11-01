@@ -56,7 +56,8 @@ class QuickAddViewModelTest {
       form.save()
       form.confirm()
       val id = checkNotNull(form.state.first { it.savedContactId != null }.savedContactId)
-      val model = QuickAddViewModel(fixture.graph, id, false, SavedStateHandle(), 100)
+      val model =
+          QuickAddViewModel(fixture.graph.quickAddSource(), id, false, SavedStateHandle(), 100)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.selected?.id == id }
       model.press("2")
@@ -152,9 +153,10 @@ class QuickAddViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
       val model =
-          QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle()).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          QuickAddViewModel(fixture.graph.quickAddSource(), contact, false, SavedStateHandle())
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       val state = model.state.first { it.loaded }
 
       assertEquals(contact, state.selected?.id)
@@ -679,9 +681,10 @@ class QuickAddViewModelTest {
    * screen's scope is registered with the fixture so no collector outlives the database.
    */
   private fun TestGraph.model(undoWindowMs: Long = 300): QuickAddViewModel =
-      QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs).also {
-        closeWithStore(it.viewModelScope)
-      }
+      QuickAddViewModel(graph.quickAddSource(), null, false, SavedStateHandle(), undoWindowMs)
+          .also {
+            closeWithStore(it.viewModelScope)
+          }
 
   /** The outbox is written from another coroutine; polling keeps the assertion about the row. */
   private suspend fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {

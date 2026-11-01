@@ -8,6 +8,7 @@ import android.provider.Settings
 import com.sadad.app.data.crypto.DataKey
 import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.db.LedgerStore
+import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.data.ledger.Outbox
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.net.ApiHttpClient
@@ -40,12 +41,17 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -340,3 +346,18 @@ private fun androidId(context: Context): String? = runCatching {
   Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
 }
     .getOrNull()
+
+/** The open store's contact records; null while no store is open. */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun AppGraph.contactRecords(): Flow<ContactRecords?> = current.flatMapLatest { scope ->
+  scope?.repository?.contactRecords ?: flowOf(null)
+}
+
+/** The open installation's permissions by name; empty while no store is open. */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun AppGraph.permissions(): Flow<Map<String, Boolean>> = current.flatMapLatest { scope ->
+  val storeUserId = scope?.account?.storeUserId
+  accounts.accounts.map { accounts ->
+    accounts.firstOrNull { it.storeUserId == storeUserId }?.installation?.permissions.orEmpty()
+  }
+}

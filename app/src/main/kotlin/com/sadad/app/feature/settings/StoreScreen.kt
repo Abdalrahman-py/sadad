@@ -210,7 +210,7 @@ private fun storeViewModel(): SettingsViewModel {
           viewModelFactory {
             initializer {
               SettingsViewModel(
-                  graph = app.graph,
+                  source = app.graph.settingsSource(),
                   saved = createSavedStateHandle(),
                   preferences = ThemePreference.get(app),
                   lock = AppLock.get(app),

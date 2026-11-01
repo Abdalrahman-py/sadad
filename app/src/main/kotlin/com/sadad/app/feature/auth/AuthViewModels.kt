@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.net.ApiException
 import com.sadad.app.data.sync.SyncStatus
@@ -25,7 +24,7 @@ data class LoginState(
 )
 
 class LoginViewModel(
-    private val graph: AppGraph,
+    private val source: AuthSource,
     private val saved: SavedStateHandle,
     private val context: Context,
 ) : ViewModel() {
@@ -49,28 +48,28 @@ class LoginViewModel(
       mutable.update { it.copy(busy = true, error = null) }
       try {
         // A pasted or autocorrected space at either end is never part of the credential.
-        graph.sessions.signIn(current.username.trim(), current.password.trim())
+        source.signIn(current.username.trim(), current.password.trim())
         // Only the route that shows the ledger (Home) opens the store here; approval and the
         // password change navigate on the token alone.
-        mutable.update { it.copy(busy = false, destination = graph.startRoute()) }
+        mutable.update { it.copy(busy = false, destination = source.startRoute()) }
       } catch (refused: ApiException) {
         val text =
             if (refused.code == "invalid_credentials") {
               context.getString(R.string.error_invalid_credentials)
             } else {
-              graph.errorMessages.text(refused.code)
+              source.errorText(refused.code)
             }
         mutable.update { it.copy(busy = false, error = text) }
       } catch (_: IOException) {
         mutable.update {
-          it.copy(busy = false, error = graph.errorMessages.text("temporary_service_failure"))
+          it.copy(busy = false, error = source.errorText("temporary_service_failure"))
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
         // The session is stored and only opening the store failed: signing in again retries.
         mutable.update {
-          it.copy(busy = false, error = graph.errorMessages.text("temporary_service_failure"))
+          it.copy(busy = false, error = source.errorText("temporary_service_failure"))
         }
       }
     }
@@ -91,7 +90,7 @@ data class PasswordChangeState(
 )
 
 class PasswordChangeViewModel(
-    private val graph: AppGraph,
+    private val source: AuthSource,
     private val context: Context,
 ) : ViewModel() {
   private val mutable = MutableStateFlow(PasswordChangeState())
@@ -121,13 +120,13 @@ class PasswordChangeViewModel(
     viewModelScope.launch {
       mutable.update { it.copy(busy = true, error = null) }
       try {
-        graph.sessions.changePassword(current.current, current.new)
-        mutable.update { it.copy(busy = false, destination = graph.startRoute()) }
+        source.changePassword(current.current, current.new)
+        mutable.update { it.copy(busy = false, destination = source.startRoute()) }
       } catch (refused: ApiException) {
-        mutable.update { it.copy(busy = false, error = graph.errorMessages.text(refused.code)) }
+        mutable.update { it.copy(busy = false, error = source.errorText(refused.code)) }
       } catch (_: IOException) {
         mutable.update {
-          it.copy(busy = false, error = graph.errorMessages.text("temporary_service_failure"))
+          it.copy(busy = false, error = source.errorText("temporary_service_failure"))
         }
       }
     }
@@ -153,10 +152,10 @@ data class AwaitingApprovalState(
 )
 
 class AwaitingApprovalViewModel(
-    private val graph: AppGraph,
+    private val source: AuthSource,
     private val context: Context,
-    private val statusFor: (String) -> StateFlow<SyncStatus> = graph::syncStatus,
-    private val sync: suspend (String) -> Unit = { graph.syncStore(it) },
+    private val statusFor: (String) -> StateFlow<SyncStatus> = source::syncStatus,
+    private val sync: suspend (String) -> Unit = { source.syncStore(it) },
 ) : ViewModel() {
   private val mutable = MutableStateFlow(AwaitingApprovalState())
   val state: StateFlow<AwaitingApprovalState> = mutable.asStateFlow()
@@ -165,14 +164,14 @@ class AwaitingApprovalViewModel(
   init {
     viewModelScope.launch {
       val id =
-          graph.current.value?.account?.storeUserId
-              ?: graph.accounts.file().activeStoreUserId
+          source.openStoreUserId()
+              ?: source.accounts.file().activeStoreUserId
               ?: run {
                 mutable.update { it.copy(loading = false) }
                 return@launch
               }
       storeUserId = id
-      val account = graph.accounts.account(id)
+      val account = source.accounts.account(id)
       mutable.update {
         it.copy(
             loading = false,
@@ -210,7 +209,7 @@ class AwaitingApprovalViewModel(
     val id = storeUserId ?: return
     viewModelScope.launch {
       mutable.update { it.copy(busy = true, error = null) }
-      graph.accounts.update(id) { it.copy(staffName = staff, label = label) }
+      source.accounts.update(id) { it.copy(staffName = staff, label = label) }
       val synced = runSync(id)
       mutable.update { it.copy(busy = false, needsDetails = !synced) }
     }
@@ -233,7 +232,7 @@ class AwaitingApprovalViewModel(
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
-        mutable.update { it.copy(error = graph.errorMessages.text("temporary_service_failure")) }
+        mutable.update { it.copy(error = source.errorText("temporary_service_failure")) }
         false
       }
 
@@ -241,8 +240,8 @@ class AwaitingApprovalViewModel(
     mutable.update { it.copy(status = status, statusText = statusMessage(status)) }
     if (status != SyncStatus.Idle || mutable.value.destination != null) return
     val id = storeUserId ?: return
-    if (graph.accounts.account(id)?.installation?.status == "active") {
-      mutable.update { it.copy(destination = graph.startRoute()) }
+    if (source.accounts.account(id)?.installation?.status == "active") {
+      mutable.update { it.copy(destination = source.startRoute()) }
     }
   }
 
@@ -253,11 +252,11 @@ class AwaitingApprovalViewModel(
         SyncStatus.AwaitingApproval -> context.getString(R.string.approval_awaiting)
         SyncStatus.Offline -> context.getString(R.string.approval_offline)
         SyncStatus.Retry -> context.getString(R.string.approval_retry)
-        SyncStatus.Revoked -> graph.errorMessages.text("installation_or_session_revoked")
-        SyncStatus.Suspended -> graph.errorMessages.text("store_suspended")
-        SyncStatus.SignedOut -> graph.errorMessages.text("authorization_required")
-        SyncStatus.PasswordChangeRequired -> graph.errorMessages.text("password_change_required")
-        is SyncStatus.Failed -> graph.errorMessages.text(status.code)
+        SyncStatus.Revoked -> source.errorText("installation_or_session_revoked")
+        SyncStatus.Suspended -> source.errorText("store_suspended")
+        SyncStatus.SignedOut -> source.errorText("authorization_required")
+        SyncStatus.PasswordChangeRequired -> source.errorText("password_change_required")
+        is SyncStatus.Failed -> source.errorText(status.code)
       }
 
   private companion object {

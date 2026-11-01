@@ -29,7 +29,7 @@ class AwaitingApprovalViewModelTest {
       var syncs = 0
       val model =
           AwaitingApprovalViewModel(
-              fixture.graph,
+              fixture.graph.authSource(),
               context,
               statusFor = { MutableStateFlow(SyncStatus.AwaitingApproval) },
               sync = { syncs++ },
@@ -51,7 +51,7 @@ class AwaitingApprovalViewModelTest {
       fixture.signIn(STORE_A)
       val model =
           AwaitingApprovalViewModel(
-              fixture.graph,
+              fixture.graph.authSource(),
               context,
               statusFor = { MutableStateFlow(SyncStatus.AwaitingApproval) },
               sync = {},
@@ -73,7 +73,7 @@ class AwaitingApprovalViewModelTest {
       var syncs = 0
       val model =
           AwaitingApprovalViewModel(
-              fixture.graph,
+              fixture.graph.authSource(),
               context,
               statusFor = { MutableStateFlow(SyncStatus.AwaitingApproval) },
               sync = { syncs++ },
@@ -99,7 +99,7 @@ class AwaitingApprovalViewModelTest {
       val statuses = MutableStateFlow<SyncStatus>(SyncStatus.AwaitingApproval)
       val model =
           AwaitingApprovalViewModel(
-              fixture.graph,
+              fixture.graph.authSource(),
               context,
               statusFor = { statuses },
               sync = {},
@@ -131,7 +131,7 @@ class AwaitingApprovalViewModelTest {
       val statuses = MutableStateFlow<SyncStatus>(SyncStatus.AwaitingApproval)
       val model =
           AwaitingApprovalViewModel(
-              fixture.graph,
+              fixture.graph.authSource(),
               context,
               statusFor = { statuses },
               sync = {},

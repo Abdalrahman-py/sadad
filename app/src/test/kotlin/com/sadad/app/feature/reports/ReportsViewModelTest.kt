@@ -7,6 +7,7 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.Period
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.feature.history.bounds
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.testing.TestGraph
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
@@ -31,7 +32,7 @@ class ReportsViewModelTest {
   fun octoberTotalsCountTheDebtsAndTheLivePaymentsOfTheMonth() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       model.selectPreset(PeriodPreset.MONTH)
@@ -52,7 +53,7 @@ class ReportsViewModelTest {
   fun theTotalsEqualTheStatementTotalsForTheSamePeriod() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       for (period in
@@ -94,7 +95,7 @@ class ReportsViewModelTest {
       // Midnight of 1 November in Asia/Gaza is the end of October and the start of November.
       val boundary = LocalDate.of(2026, 11, 1).atStartOfDay(zone).toInstant()
       fixture.confirmedDebt(sami, 4_000, boundary)
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       model.select(Period.Month(OCTOBER))
@@ -114,7 +115,7 @@ class ReportsViewModelTest {
       for (name in listOf("سامي", "سالم", "مساء", "ليلى", "عمر")) {
         fixture.confirmedContact(name, at("2026-10-01T09:00:00Z"))
       }
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded && it.people.size == 5 }
 
@@ -130,7 +131,7 @@ class ReportsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"), phone = "+970599123456")
       fixture.confirmedContact("ليلى", at("2026-10-01T09:00:00Z"), phone = "0568000111")
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
       model.state.first { it.loaded && it.people.size == 2 }
 
@@ -145,7 +146,7 @@ class ReportsViewModelTest {
   fun aChosenPeriodListsOnlyTheContactsWithMovementsInIt() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.seedOctober()
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       model.select(Period.All)
@@ -162,12 +163,12 @@ class ReportsViewModelTest {
   fun thePeriodAndTheSearchSurviveARecreatedViewModel() = runTest {
     TestGraph.signedIn().use { fixture ->
       val saved = SavedStateHandle()
-      val first = ReportsViewModel(fixture.graph, saved, clock)
+      val first = ReportsViewModel(fixture.graph.statementSource(), saved, clock)
       fixture.closeWithStore(first.viewModelScope)
       first.selectPreset(PeriodPreset.YEAR)
       first.onQueryChange("سا")
 
-      val recreated = ReportsViewModel(fixture.graph, saved, clock)
+      val recreated = ReportsViewModel(fixture.graph.statementSource(), saved, clock)
       val state = recreated.state.first { it.loaded }
       fixture.closeWithStore(recreated.viewModelScope)
 
@@ -180,7 +181,7 @@ class ReportsViewModelTest {
   @Test
   fun aCustomRangeThatEndsBeforeItStartsIsRefused() = runTest {
     TestGraph.signedIn().use { fixture ->
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       val failure = runCatching {
@@ -209,7 +210,7 @@ class ReportsViewModelTest {
       val omar = fixture.view().contacts.first { it.name == "عمر" }
       val septemberDebt = fixture.view().debts.first { it.contactId == omar.id }
       fixture.confirmedPayment(septemberDebt.id, 2_000, at("2026-10-15T09:00:00Z"))
-      val model = ReportsViewModel(fixture.graph, SavedStateHandle(), clock)
+      val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)
 
       model.select(Period.Month(OCTOBER))

@@ -65,9 +65,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.Appear
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.ConfirmDialog
@@ -851,11 +851,12 @@ private fun methodLabel(method: PaymentMethod): String =
 
 @Composable
 private fun contactDetailViewModel(contactId: String): ContactDetailViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
+  val context = LocalContext.current.applicationContext
   return viewModel(
       factory =
           viewModelFactory {
-            initializer { ContactDetailViewModel(app.graph, contactId, app.applicationContext) }
+            initializer { ContactDetailViewModel(graph.contactDetailSource(), contactId, context) }
           }
   )
 }
