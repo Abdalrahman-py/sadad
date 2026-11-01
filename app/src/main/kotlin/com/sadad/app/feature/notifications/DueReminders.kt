@@ -63,6 +63,12 @@ class DueReminders(produceFile: () -> File, scope: CoroutineScope) {
   suspend fun wasShown(event: Reminder): Boolean =
       decode(store.data.first()[key(event.storeUserId)]).any { it.id == event.id }
 
+  /** The reminder whose id a store recorded; a notification tap resolves through this. */
+  suspend fun find(id: String): Reminder? =
+      store.data.first().asMap().values.firstNotNullOfOrNull { text ->
+        (text as? String)?.let(::decode)?.firstOrNull { it.id == id }
+      }
+
   suspend fun record(event: Reminder): Boolean {
     var added = false
     store.edit { preferences ->
