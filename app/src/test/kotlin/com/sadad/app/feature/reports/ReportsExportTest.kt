@@ -49,7 +49,10 @@ class ReportsExportTest {
               .people
               .first { it.name == "سامي" }
 
-      // Robolectric's PdfDocument cannot draw pages, so the real writer fails here.
+      // A file where the exports directory belongs fails the write before any PdfDocument exists.
+      // Robolectric's PdfDocument can never close (its native handle is 0), so building one here
+      // leaks a CloseGuard that StrictMode reports during some later test.
+      File(fixture.context.cacheDir, "exports").writeText("not a directory")
       model.shareStatement(fixture.context, sami.contactId)
 
       val state = model.state.first { it.error != null && !it.busy }
