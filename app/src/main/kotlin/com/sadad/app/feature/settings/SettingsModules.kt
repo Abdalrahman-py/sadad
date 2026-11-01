@@ -166,12 +166,19 @@ internal class DevicesModule(
       source.current.flatMapLatest { open ->
         if (open == null) flowOf(DevicesSlice(SyncLine.SignedOut, 0, null))
         else
-            combine(syncStatus(open.account.storeUserId), open.outbox.rows, open.repository.view) {
-                status,
-                rows,
-                view ->
+            combine(
+                syncStatus(open.account.storeUserId),
+                open.outbox.rows,
+                open.repository.view,
+                source.accounts.accounts,
+            ) { status, rows, view, accounts ->
               val waiting = rows.filter { it.state == OutboxState.QUEUED }
-              DevicesSlice(line(status), waiting.size, newest(waiting, view))
+              DevicesSlice(
+                  line(status),
+                  waiting.size,
+                  newest(waiting, view),
+                  accounts.firstOrNull { it.storeUserId == open.account.storeUserId }?.lastSyncAt,
+              )
             }
       }
 

@@ -29,6 +29,8 @@
     <string name="settings_sync_password_change">يجب تغيير كلمة المرور للمتابعة.</string>
     <string name="settings_sync_retry">ستُعاد المحاولة تلقائياً.</string>
     <string name="settings_sync_now">مزامنة الآن</string>
+    <string name="settings_sync_last">آخر مزامنة ناجحة: %1$s</string>
+    <string name="settings_sync_never">لم تتم مزامنة ناجحة بعد</string>
     <string name="settings_sync_started">جارٍ المزامنة…</string>
     <string name="settings_sync_done">تمت المزامنة بنجاح.</string>
     <string name="settings_activity_log">سجل عمليات الدفتر</string>

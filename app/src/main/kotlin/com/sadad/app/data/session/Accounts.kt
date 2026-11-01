@@ -38,6 +38,8 @@ data class Account(
     val ownerName: String = "",
     val installation: StoredInstallation? = null,
     val sealedRefreshToken: String? = null,
+    /** Last complete successful round trip on this device, in epoch millis. */
+    val lastSyncAt: Long? = null,
 )
 
 /** The one JSON value in `accounts.preferences_pb`. */

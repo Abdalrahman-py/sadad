@@ -33,8 +33,8 @@ class SyncScheduler(context: Context) : SyncScheduling {
             .setConstraints(connected)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
-    // REPLACE, not APPEND: new work must not queue behind a chain that ended in a terminal refusal.
-    work.enqueueUniqueWork("sync-$storeUserId", ExistingWorkPolicy.REPLACE, request)
+    // Preserve a running send; start a fresh chain if an earlier one ended in refusal.
+    work.enqueueUniqueWork("sync-$storeUserId", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
   }
 
   override fun schedulePeriodic(storeUserId: String) {

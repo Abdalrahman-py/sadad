@@ -22,6 +22,7 @@ import com.sadad.app.data.session.Accounts
 import com.sadad.app.data.session.Installations
 import com.sadad.app.data.session.StoreScope
 import com.sadad.app.data.session.StoredInstallation
+import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.ledger.ReceiptStatus
 import java.io.File
 import java.security.KeyPair
@@ -191,6 +192,7 @@ private constructor(
               leaseVerifier = sync.leaseVerifier,
               bootCount = sync.bootCount,
               now = sync.now,
+              syncScheduler = sync.scheduler,
           )
       return TestGraph(graph, server, accountsFile, graphScope, dataStoreScope)
     }
@@ -220,6 +222,7 @@ data class SyncSettings(
         LeaseVerifier(BuildConfig.LEASE_PUBLIC_KEY_X, BuildConfig.LEASE_PUBLIC_KEY_Y),
     val bootCount: () -> Int = { -1 },
     val now: () -> Long = System::currentTimeMillis,
+    val scheduler: SyncScheduling? = null,
 )
 
 /**
