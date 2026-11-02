@@ -78,7 +78,12 @@ class LeaseStore(
    * When the cached lease for [account] ends, or `null` when the cached lease belongs to another
    * installation. Read-only: the screen names the time the store may keep recording offline.
    */
-  fun expiresAt(account: Account): Long? {
+  fun expiresAt(account: Account): Long? = payloadFor(account)?.expiresAt
+
+  /** The store's person limit from the verified lease for [account], or `null` without one. */
+  fun contactLimit(account: Account): Int? = payloadFor(account)?.contactLimit
+
+  private fun payloadFor(account: Account): LeasePayload? {
     val payload = verified?.lease?.payload ?: return null
     val installation = account.installation ?: return null
     val mine =
@@ -86,7 +91,7 @@ class LeaseStore(
             payload.installationId == account.installationId &&
             payload.generation == installation.generation &&
             installation.status == "active"
-    return if (mine) payload.expiresAt else null
+    return if (mine) payload else null
   }
 
   @Serializable private data class Record(val lease: Lease, val boot: Int)

@@ -109,7 +109,7 @@ export function createView(model: Model, actions: CreateActions) {
                     <input name="allowedDevices" inputmode="numeric" value="1" required>
                   </label>
                   <label class="field">حد الأشخاص النشطين
-                    <input name="debtorLimit" inputmode="numeric" value="5000" required>
+                    <input name="debtorLimit" inputmode="numeric" value="200" required>
                   </label>
                 </div>
 

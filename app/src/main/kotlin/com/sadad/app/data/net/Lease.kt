@@ -10,6 +10,8 @@ data class LeasePayload(
     val userId: String,
     val installationId: String,
     val generation: Int,
+    /** The store's cap on active contacts when the lease was issued. */
+    val contactLimit: Int,
     val issuedAt: Long,
     val expiresAt: Long,
     val allowed: List<String>,

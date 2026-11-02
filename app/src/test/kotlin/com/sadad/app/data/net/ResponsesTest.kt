@@ -17,7 +17,7 @@ class ResponsesTest {
     MockWebServer().use { server ->
       server.start()
       val payload =
-          """{"schemaVersion":1,"projectRef":"example","storeId":7,"userId":"user-a","installationId":"$INSTALLATION_ID","generation":1,"issuedAt":1800000000000,"expiresAt":1800604800000,"allowed":["contact.create","debt.create","payment.create"]}"""
+          """{"schemaVersion":1,"projectRef":"example","storeId":7,"userId":"user-a","installationId":"$INSTALLATION_ID","generation":1,"contactLimit":200,"issuedAt":1800000000000,"expiresAt":1800604800000,"allowed":["contact.create","debt.create","payment.create"]}"""
       val raw = Base64Url.encode(payload.toByteArray())
       server.enqueue(
           MockResponse.Builder()
@@ -32,6 +32,7 @@ class ResponsesTest {
       assertEquals(raw, lease.raw)
       assertEquals("server-signature", lease.signature)
       assertEquals(7L, lease.payload.storeId)
+      assertEquals(200, lease.payload.contactLimit)
       assertEquals(1800000000000L, lease.payload.issuedAt)
       assertEquals(1800604800000L, lease.payload.expiresAt)
       assertEquals(listOf("contact.create", "debt.create", "payment.create"), lease.payload.allowed)
