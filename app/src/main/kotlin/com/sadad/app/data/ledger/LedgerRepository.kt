@@ -166,6 +166,17 @@ class LedgerRepository(
             )
         )
       }
+      // An idle poll's page carries nothing: skip the fold, the persist, the publish and the
+      // compact, so a pass that found nothing new costs no ledger work.
+      if (
+          old.storeId != null &&
+              page.storeId == old.storeId &&
+              page.epoch == old.epoch &&
+              page.events.isEmpty() &&
+              page.nextCursor == old.cursor
+      ) {
+        return
+      }
       val next = old.apply(page)
       store.persist(old, next, page)
       state.value = next

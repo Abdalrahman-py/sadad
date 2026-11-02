@@ -17,6 +17,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.SecretKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 /** The outbox row states; [column] is the text Room stores. */
@@ -68,7 +69,8 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
   // if the queue ever outgrows the process.
   private val decoded = ConcurrentHashMap<String, LedgerCommand>()
 
-  val rows: Flow<List<OutboxRow>> = dao.observe().map { stored -> stored.map { it.toRow() } }
+  val rows: Flow<List<OutboxRow>> =
+      dao.observe().map { stored -> stored.map { it.toRow() } }.distinctUntilChanged()
 
   /** The rows as they are now, for a write that has to check the queue before appending. */
   suspend fun snapshot(): List<OutboxRow> = dao.all().map { it.toRow() }
