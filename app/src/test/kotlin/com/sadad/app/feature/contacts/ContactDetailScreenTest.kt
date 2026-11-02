@@ -310,7 +310,7 @@ class ContactDetailScreenTest {
 
   private fun leaveAndReturn(lock: AppLock) {
     lock.appStopped()
-    ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+    ShadowSystemClock.advanceBy(Duration.ofSeconds(61))
     lock.appStarted()
   }
 
@@ -346,7 +346,7 @@ class ContactDetailScreenTest {
       compose.onNodeWithText(if (share) "مشاركة الكشف PDF" else "تذكير على واتساب").performClick()
       compose.waitUntil(10_000) { model.state.value.error != null }
       lock.appStopped()
-      ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+      ShadowSystemClock.advanceBy(Duration.ofSeconds(61))
       lock.appStarted()
       assertTrue("A failed external action must not bypass the next PIN", lock.locked.value)
     }
