@@ -136,7 +136,7 @@ class PeopleScreenTest {
   fun aRowSaysThePhoneTheActivityAndTheBalanceWord() {
     // The restyle prints the number itself rather than its tail, so the row is asserted on the
     // number the contact carries.
-    val phone = "+970****3456"
+    val phone = "05****3456"
     val person = contact("سامي", contactId(1), phone = phone)
     val fixture = runBlocking {
       TestGraph.signedIn().also {

@@ -529,11 +529,55 @@ try {
 
     await db.exec('reset role; begin');
     try {
-      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '+٩٩٩ ١٢٣٤٥٦٧٨٩' });
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '٠٥٩٩ ١٢٣ ٤٥٦' });
       assert.equal((await apply(a)).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '0599123456' }))).code, 'duplicate_phone');
       assert.equal((await apply(command('contact.archive', { contactId: a.entityId, reason: 'تحقق' }, { expectedVersion: 1 }))).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '0599123456' }))).code, 'duplicate_phone');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
+  await check('Contact phone is 05 plus 8 digits and the WhatsApp code is its own field', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const codeOf = async (id) =>
+        (await db.query('select phone, whatsapp_code from public.sadid_contacts where id = $1', [id])).rows[0];
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف محلي', phone: '0599123456' });
+      assert.equal((await apply(a)).status, 'accepted');
+      await db.exec('reset role');
+      assert.deepEqual(await codeOf(a.entityId), { phone: '0599123456', whatsapp_code: '970' });
+      for (const phone of ['+970599123456', '0299123456', '059912345', '05991234567']) {
+        assert.equal(
+          (await apply(command('contact.create', { kind: 'customer', name: `رفض ${phone}`, phone }))).code,
+          'invalid_phone',
+          phone,
+        );
+      }
+      const cleaned = command('contact.create', { kind: 'customer', name: 'أرقام عربية', phone: '٠٥٦٩ (١٢٣) ٤٥-٦', whatsappCode: '972' });
+      assert.equal((await apply(cleaned)).status, 'accepted');
+      await db.exec('reset role');
+      assert.deepEqual(await codeOf(cleaned.entityId), { phone: '0569123456', whatsapp_code: '972' });
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'customer', name: 'مكرر رمز آخر', phone: '0599123456', whatsappCode: '972' }))).code,
+        'duplicate_phone',
+      );
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'customer', name: 'رمز غريب', phone: '0591111111', whatsappCode: '971' }))).code,
+        'invalid_input',
+      );
+      const edit = { contactId: a.entityId, name: 'هاتف محلي', phone: '0599123456', kind: 'customer' };
+      assert.equal((await apply(command('contact.update', { ...edit, whatsappCode: '972' }, { expectedVersion: 1 }))).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal((await codeOf(a.entityId)).whatsapp_code, '972');
+      assert.equal((await apply(command('contact.update', edit, { expectedVersion: 2 }))).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal((await codeOf(a.entityId)).whatsapp_code, '972', 'an absent whatsappCode leaves it unchanged');
+      assert.equal(
+        (await apply(command('contact.update', { ...edit, whatsappCode: '971' }, { expectedVersion: 3 }))).code,
+        'invalid_input',
+      );
     } finally {
       await db.exec('rollback; reset role');
     }
@@ -550,7 +594,7 @@ try {
       }
       const edit = command(
         'contact.update',
-        { contactId: contact.entityId, name: 'اسم جديد', phone: '+٩٧٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
+        { contactId: contact.entityId, name: 'اسم جديد', phone: '٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
         { expectedVersion: 1 },
       );
       assert.equal((await apply(edit)).status, 'accepted');
@@ -654,7 +698,7 @@ try {
   await check('Trash preserves paid history until explicit final deletion and refuses open balances', async () => {
     await db.exec('reset role; begin');
     try {
-      const c = command('contact.create', { kind: 'customer', name: 'سلة', phone: '+999654321000' });
+      const c = command('contact.create', { kind: 'customer', name: 'سلة', phone: '0569654321' });
       assert.equal((await apply(c)).status, 'accepted');
       const d = command('debt.create', { contactId: c.entityId, direction: 'receivable', amountCents: 100 });
       assert.equal((await apply(d)).status, 'accepted');
@@ -680,7 +724,7 @@ try {
       assert.equal((await apply(command('contact.restore', {contactId:c.entityId,reason:'ممنوع'}, {expectedVersion:5}))).code,'entity_version_changed');
       assert.equal((await apply(command('payment.reverse', {paymentId:p.entityId,reason:'ممنوع'}))).code,'payment_unavailable');
       assert.equal((await apply(command('debt.correct', {debtId:d.entityId,amountCents:200,reason:'ممنوع'}, {expectedVersion:1}))).code,'debt_unavailable');
-      assert.equal((await apply(command('contact.create', {kind:'customer', name:'جديد', phone:'+999654321000'}))).status,'accepted');
+      assert.equal((await apply(command('contact.create', {kind:'customer', name:'جديد', phone:'0569654321'}))).status,'accepted');
     } finally { await db.exec('rollback; reset role'); }
   });
 
@@ -1214,6 +1258,39 @@ try {
       'the revoked device is still listed, so its old events still resolve',
     );
     assert.equal(byId[otherStoreDevice], undefined, "another store's devices are absent");
+  });
+
+  await check('Person limit: nothing left below 200 and the lease capability reads the store limit', async () => {
+    await db.exec('reset role; set role service_role');
+    // A store at 200 keeps its value and a store above 200 is never lowered by the
+    // migration's own update clause (replayed here exactly as the migration carries it).
+    await db.query('update public.stores set debtor_limit = 200 where id = 1');
+    await db.query('update public.stores set debtor_limit = 300 where id = 2');
+    await db.exec('update public.stores set debtor_limit = 200 where debtor_limit < 200');
+    assert.deepEqual(
+      (await db.query('select id, debtor_limit from public.stores order by id')).rows.map((r) => [r.id, r.debtor_limit]),
+      [[1, 200], [2, 300]],
+    );
+
+    // A store that had fallen behind 200 is raised to the new floor.
+    await db.query('update public.stores set debtor_limit = 100 where id = 1');
+    await db.exec('update public.stores set debtor_limit = 200 where debtor_limit < 200');
+    assert.equal((await db.query('select debtor_limit from public.stores where id = 1')).rows[0].debtor_limit, 200);
+
+    // A store created without a limit gets the new 200 default.
+    await db.query("insert into public.stores(id, name, username) values (3, 'متجر ثالث', 'third-store')");
+    assert.equal((await db.query('select debtor_limit from public.stores where id = 3')).rows[0].debtor_limit, 200);
+
+    // The lease capability reads its store's limit; another scope and no capability are refused.
+    await capability('lease');
+    assert.equal((await db.query('select public.sadid_lease_limit() as limit')).rows[0].limit, 200);
+    await capability('read');
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required/);
+    await asStore();
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required/);
+    await db.exec('reset role');
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required|permission denied/);
+    await db.exec('reset role');
   });
 
   console.log(JSON.stringify({ engine: (await db.query('select version()')).rows[0].version, tests }, null, 2));

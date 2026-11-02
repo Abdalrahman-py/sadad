@@ -244,7 +244,7 @@ const LeaseSchema = z
   .object({
     payload: z.string().openapi({
       description:
-        "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, issuedAt, expiresAt, allowed",
+        "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, contactLimit, issuedAt, expiresAt, allowed",
     }),
     signature: z.string().openapi({
       description: "ECDSA P-256 SHA-256 over the payload bytes, raw r||s",
@@ -441,6 +441,11 @@ export function registerMobileRoutes(
   app.openapi(leaseRoute, async (c) => {
     if (!deps.lease) throw new ApiError("temporary_service_failure");
     const signed = await signedRequest(c, deps, "lease");
+    const contactLimit = await call<number>(
+      deps.userDb(signed.caller.jwt, signed.capability),
+      "sadid_lease_limit",
+      {},
+    );
     const issuedAt = Date.now();
     const payload = encoder.encode(JSON.stringify({
       schemaVersion: 1,
@@ -449,6 +454,7 @@ export function registerMobileRoutes(
       userId: signed.caller.userId,
       installationId: signed.installationId,
       generation: signed.installation.generation,
+      contactLimit,
       issuedAt,
       expiresAt: issuedAt + LEASE_DAYS * 86_400_000,
       allowed: LEASE_ALLOWED,

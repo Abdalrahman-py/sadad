@@ -13,6 +13,8 @@ data class ContactCreate(
     val name: String,
     val kind: ContactKind = ContactKind.CUSTOMER,
     val phone: String? = null,
+    /** `970` or `972`; absent on create stores `970`, absent on update keeps the stored code. */
+    val whatsappCode: String? = null,
     val category: String? = null,
     val note: String? = null,
 ) : CommandPayload
@@ -23,6 +25,8 @@ data class ContactUpdate(
     val name: String,
     val kind: ContactKind = ContactKind.CUSTOMER,
     val phone: String? = null,
+    /** `970` or `972`; absent on create stores `970`, absent on update keeps the stored code. */
+    val whatsappCode: String? = null,
     val category: String? = null,
     val note: String? = null,
 ) : CommandPayload

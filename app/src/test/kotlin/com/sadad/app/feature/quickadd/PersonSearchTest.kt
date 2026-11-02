@@ -48,13 +48,13 @@ class PersonSearchTest {
 
   @Test
   fun arabicIndicDigitsFindTheLastDigitsOfAPhone() {
-    val people = listOf(person("خالد يوسف", phone = "+970599123482"))
+    val people = listOf(person("خالد يوسف", phone = "0599123482"))
     assertEquals(listOf("خالد يوسف"), PersonSearch.search(people, "٠٥٩٩").map { it.name })
   }
 
   @Test
   fun twoDigitsAreEnoughToMatchAPhoneAndOneIsNot() {
-    val people = listOf(person("خالد يوسف", phone = "+970599123482"))
+    val people = listOf(person("خالد يوسف", phone = "0599123482"))
     assertEquals(1, PersonSearch.search(people, "59").size)
     assertEquals(0, PersonSearch.search(people, "5").size)
   }
@@ -94,7 +94,7 @@ class PersonSearchTest {
   fun aThousandPeopleAreSearchedInUnderFiftyMilliseconds() {
     val people =
         (1..1_000).map { index ->
-          person("زبون رقم $index", phone = "+9705${10000000 + index}", net = index.toLong())
+          person("زبون رقم $index", phone = "05${10000000 + index}", net = index.toLong())
         }
     // One warm-up pass: the assertion is about the search, not about JIT.
     PersonSearch.search(people, "زبون رقم 999")

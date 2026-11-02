@@ -64,7 +64,7 @@ class TrashViewModelTest {
 
   private suspend fun TestGraph.archiveOne(name: String = "سامي"): String {
     var id: String? = null
-    seed { id = addContact(name, "+970599123456", "عميل", null, null).getOrThrow() }
+    seed { id = addContact(name, "0599123456", "عميل", null, null).getOrThrow() }
     settleAll()
     seed {
       addDebt(id!!, com.sadad.ledger.Direction.RECEIVABLE, Cents(100), "دين محفوظ", null)

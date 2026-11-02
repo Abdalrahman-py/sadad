@@ -176,11 +176,22 @@ class LedgerRepository(
       note: String?,
       firstDebt: FirstDebt?,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
   ): Result<String> = guarded {
     val origin = origin()
     requireOfflineAllowed()
     val at = Instant.now()
-    val contact = Commands.contactCreate(origin, at, name, wirePhone(phone), category, note, kind)
+    val contact =
+        Commands.contactCreate(
+            origin,
+            at,
+            name,
+            wirePhone(phone),
+            category,
+            note,
+            kind,
+            whatsappCode,
+        )
     val commands = mutableListOf(contact)
     if (firstDebt != null) {
       commands +=
@@ -206,6 +217,7 @@ class LedgerRepository(
       category: String?,
       note: String?,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
   ): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
@@ -222,6 +234,7 @@ class LedgerRepository(
                 category,
                 note,
                 kind,
+                whatsappCode,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
             )
@@ -448,8 +461,8 @@ class LedgerRepository(
   /** UI formatting must finish before queueing a person and any dependent financial entries. */
   private fun wirePhone(value: String?): String? {
     val phone = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    require(phone.matches(Regex("\\+[1-9][0-9]{7,14}"))) {
-      "راجع رقم الهاتف ومقدمته؛ يجب إرساله بصيغة دولية تبدأ بـ +."
+    require(phone.matches(Regex("05[0-9]{8}"))) {
+      "راجع رقم الهاتف؛ يجب أن يكون رقم جوال من 10 أرقام يبدأ بـ05."
     }
     return phone
   }

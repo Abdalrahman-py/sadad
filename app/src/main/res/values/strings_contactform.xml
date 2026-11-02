@@ -11,6 +11,8 @@
     <string name="contactform_prefix_972">إسرائيل (+972)</string>
     <string name="contactform_phone">رقم الواتساب</string>
     <string name="contactform_phone_hint">رقم الواتساب، مثال 0599123456</string>
+    <string name="contactform_phone_invalid">أدخل رقم جوال من 10 أرقام يبدأ بـ05.</string>
+    <string name="contactform_phone_prefix_mismatch">مقدمة الرقم لا تطابق الاختيار.</string>
     <string name="contactform_kind">النوع</string>
     <string name="contactform_kind_customer">زبون</string>
     <string name="contactform_kind_supplier">مورد</string>

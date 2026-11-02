@@ -20,7 +20,7 @@ data class QuickAddPerson(
 /**
  * Who «تسجيل لمن؟» offers for what the user typed. The writer types the name the way they say it,
  * so the comparison folds the letters Arabic writers swap freely (أ/إ/آ/ا, ة/ه, ى/ي) and drops the
- * diacritics; digits are compared on the phone number, so «٠٥٩٩» finds `+970599…`. Nothing here
+ * diacritics; digits are compared on the phone number, so «٠٥٩٩» finds `0599…`. Nothing here
  * touches the ledger: it is a pure function of the people list and the query, which is what makes
  * the 1,000-person case measurable in a JVM test.
  */

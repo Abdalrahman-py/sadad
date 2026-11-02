@@ -88,7 +88,7 @@ class QuickAddA11yTest {
       awaiting {
         checkNotNull(fixture.graph.current.value)
             .repository
-            .addContact("خالد يوسف", "+970599123482", null, null, null)
+            .addContact("خالد يوسف", "0599123482", null, null, null)
             .getOrThrow()
         fixture.settleAll()
       }

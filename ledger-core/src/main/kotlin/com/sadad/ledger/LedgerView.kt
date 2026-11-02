@@ -17,6 +17,8 @@ data class ContactView(
     /** The staff name when this installation created it; "" otherwise. */
     val createdBy: String,
     val operationId: String,
+    /** The WhatsApp country code: `970` or `972`. */
+    val whatsappCode: String = "970",
 )
 
 data class DebtView(
@@ -166,6 +168,7 @@ fun ConfirmedLedger.view(pending: List<LedgerCommand>, failed: Set<String>): Led
                 at,
                 by,
                 command.operationId,
+                payload.whatsappCode ?: "970",
             )
         pendingContacts++
       }
@@ -296,6 +299,7 @@ fun LedgerState.confirmed(selfInstallationId: String, staffName: String): Confir
             row.createdAt,
             author(row.originInstallationId),
             row.operationId,
+            row.whatsappCode,
         )
     if (row.archived) archived += view else contactViews[row.id] = view
   }

@@ -10,37 +10,40 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class LeaseVerifierTest {
+  private fun payload() = buildJsonObject {
+    put("schemaVersion", 1)
+    put("projectRef", URI(BuildConfig.SUPABASE_URL).host.substringBefore('.'))
+    put("storeId", 7)
+    put("userId", "user-a")
+    put("installationId", INSTALLATION_ID)
+    put("generation", 1)
+    put("issuedAt", 1800000000000L)
+    put("expiresAt", 1800604800000L)
+    put("contactLimit", 200)
+    put(
+        "allowed",
+        buildJsonArray {
+          add("contact.create")
+          add("debt.create")
+          add("payment.create")
+        },
+    )
+  }
+
+  private fun signed(server: SoftwareSigner, json: JsonObject): Lease {
+    val bytes = json.toString().toByteArray()
+    return Lease(
+        LedgerJson.decodeFromJsonElement(LeasePayload.serializer(), json),
+        Base64Url.encode(bytes),
+        Base64Url.encode(server.sign(bytes)),
+    )
+  }
+
   @Test
   fun acceptsOnlyThePinnedSignatureMatchingIdentityProjectAndSevenDayDuration() {
     val server = SoftwareSigner("server")
     val verifier = LeaseVerifier(server.publicKey.x, server.publicKey.y)
-    val payload = buildJsonObject {
-      put("schemaVersion", 1)
-      put("projectRef", URI(BuildConfig.SUPABASE_URL).host.substringBefore('.'))
-      put("storeId", 7)
-      put("userId", "user-a")
-      put("installationId", INSTALLATION_ID)
-      put("generation", 1)
-      put("issuedAt", 1800000000000L)
-      put("expiresAt", 1800604800000L)
-      put(
-          "allowed",
-          buildJsonArray {
-            add("contact.create")
-            add("debt.create")
-            add("payment.create")
-          },
-      )
-    }
-    fun signed(json: JsonObject): Lease {
-      val bytes = json.toString().toByteArray()
-      return Lease(
-          LedgerJson.decodeFromJsonElement(LeasePayload.serializer(), json),
-          Base64Url.encode(bytes),
-          Base64Url.encode(server.sign(bytes)),
-      )
-    }
-    val valid = signed(payload)
+    val valid = signed(server, payload())
     assertTrue(verifier.verify(valid, INSTALLATION_ID, "user-a"))
     val other = SoftwareSigner("other-server")
     assertFalse(
@@ -59,7 +62,7 @@ class LeaseVerifierTest {
       assertFalse(
           field,
           verifier.verify(
-              signed(JsonObject(payload + (field to value))),
+              signed(server, JsonObject(payload() + (field to value))),
               INSTALLATION_ID,
               "user-a",
           ),
@@ -83,5 +86,23 @@ class LeaseVerifierTest {
             "user-a",
         )
     )
+  }
+
+  @Test
+  fun aLeaseWithoutContactLimitIsRefused() {
+    val server = SoftwareSigner("server")
+    val verifier = LeaseVerifier(server.publicKey.x, server.publicKey.y)
+    val raw = Base64Url.encode(JsonObject(payload() - "contactLimit").toString().toByteArray())
+    // The shell carries the field-less bytes, so verification must fail on them.
+    val lease =
+        Lease(
+            LedgerJson.decodeFromString(
+                LeasePayload.serializer(),
+                JsonObject(payload()).toString(),
+            ),
+            raw,
+            Base64Url.encode(server.sign(Base64Url.decode(raw))),
+        )
+    assertFalse(verifier.verify(lease, INSTALLATION_ID, "user-a"))
   }
 }

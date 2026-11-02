@@ -44,7 +44,8 @@ class LedgerCommandTest {
             origin,
             Instant.parse(contact.text("createdAt")),
             name = "أبو خالد",
-            phone = "+970599123456",
+            phone = "0599123456",
+            whatsappCode = "970",
             entityId = contact.text("entityId"),
             operationId = contact.text("operationId"),
         ),
@@ -104,7 +105,7 @@ class LedgerCommandTest {
   fun fixtureCommandsRoundTripThroughTypedPayloads() {
     val expected =
         listOf(
-            ContactCreate(name = "أبو خالد", phone = "+970599123456"),
+            ContactCreate(name = "أبو خالد", phone = "0599123456", whatsappCode = "970"),
             DebtCreate(
                 contactId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
                 direction = Direction.RECEIVABLE,
@@ -147,7 +148,8 @@ class LedgerCommandTest {
             contactId,
             1,
             name = "سامي",
-            phone = " +970599000000 ",
+            phone = " 0599000000 ",
+            whatsappCode = "972",
             note = " زبون ",
         )
     assertEquals(
@@ -156,7 +158,8 @@ class LedgerCommandTest {
                 "contactId" to JsonPrimitive(contactId),
                 "name" to JsonPrimitive("سامي"),
                 "kind" to JsonPrimitive("customer"),
-                "phone" to JsonPrimitive("+970599000000"),
+                "phone" to JsonPrimitive("0599000000"),
+                "whatsappCode" to JsonPrimitive("972"),
                 "note" to JsonPrimitive("زبون"),
             )
         ),

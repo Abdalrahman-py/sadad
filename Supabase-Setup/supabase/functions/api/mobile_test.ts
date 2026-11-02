@@ -542,6 +542,10 @@ dbTest(
   "lease returns a server-signed seven-day payload for this installation",
   async () => {
     const { store, device } = await activeStore();
+    await database.query(
+      "update public.stores set debtor_limit = 250 where id = $1",
+      [store.storeId],
+    );
     const before = Date.now();
     const res = await send(store.jwt, device, "POST", "/v1/mobile/lease");
     assertEqual(res.status, 200);
@@ -583,6 +587,7 @@ dbTest(
       "userId",
       "installationId",
       "generation",
+      "contactLimit",
       "issuedAt",
       "expiresAt",
       "allowed",
@@ -593,6 +598,15 @@ dbTest(
     assertEqual(payload.userId, store.userId);
     assertEqual(payload.installationId, device.installationId);
     assertEqual(payload.generation, 1);
+    assertEqual(
+      payload.contactLimit,
+      (
+        await database.query<{ debtor_limit: number }>(
+          "select debtor_limit from public.stores where id = $1",
+          [store.storeId],
+        )
+      )[0].debtor_limit,
+    );
     assert(payload.issuedAt >= before, "issuedAt is now");
     assertEqual(payload.expiresAt - payload.issuedAt, 7 * 86_400_000);
     assertEqual(payload.allowed, [

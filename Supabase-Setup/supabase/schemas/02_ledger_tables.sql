@@ -12,6 +12,7 @@ create table public.sadid_contacts (
   id uuid not null,
   name text not null check (length(trim(name)) between 1 and 120),
   phone text not null default '',
+  whatsapp_code text not null default '970' check (whatsapp_code in ('970', '972')),
   kind text not null default 'customer' check (kind in ('customer', 'supplier')),
   category text not null default '',
   note text not null default '',

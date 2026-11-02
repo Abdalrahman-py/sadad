@@ -113,18 +113,19 @@ begin
            or coalesce(payload ->> 'kind', '') not in ('customer', 'supplier')
            or length(coalesce(payload ->> 'note', '')) > 2000
            or length(coalesce(payload ->> 'category', '')) > 80
-           or length(coalesce(payload ->> 'externalReference', '')) > 120 then
+           or length(coalesce(payload ->> 'externalReference', '')) > 120
+           or coalesce(payload ->> 'whatsappCode', '970') not in ('970', '972') then
           raise exception 'invalid_input';
         end if;
         v_phone := regexp_replace(coalesce(payload ->> 'phone', ''), '[[:space:]()\-]', '', 'g');
         v_phone := translate(v_phone, '٠١٢٣٤٥٦٧٨٩', '0123456789');
-        if v_phone <> '' and v_phone !~ '^\+[1-9][0-9]{7,14}$' then raise exception 'invalid_phone'; end if;
+        if v_phone <> '' and v_phone !~ '^05[0-9]{8}$' then raise exception 'invalid_phone'; end if;
         if v_phone <> '' and exists (select 1 from public.sadid_contacts where store_id = c.store_id and sadid_contacts.phone = v_phone and not purged) then
           raise exception 'duplicate_phone';
         end if;
-        insert into public.sadid_contacts(store_id, id, name, phone, kind, category, note, external_reference, operation_id, created_at)
+        insert into public.sadid_contacts(store_id, id, name, phone, whatsapp_code, kind, category, note, external_reference, operation_id, created_at)
         values (
-          c.store_id, entity, trim(payload ->> 'name'), v_phone,
+          c.store_id, entity, trim(payload ->> 'name'), v_phone, coalesce(payload ->> 'whatsappCode', '970'),
           payload ->> 'kind', coalesce(payload ->> 'category', ''), coalesce(payload ->> 'note', ''), coalesce(payload ->> 'externalReference', ''),
           op, occurred
         );
@@ -134,12 +135,13 @@ begin
         if length(trim(coalesce(payload ->> 'name', ''))) not between 1 and 120
            or coalesce(payload ->> 'kind', '') not in ('customer', 'supplier')
            or length(coalesce(payload ->> 'note', '')) > 2000
-           or length(coalesce(payload ->> 'category', '')) > 80 then
+           or length(coalesce(payload ->> 'category', '')) > 80
+           or (payload ? 'whatsappCode' and coalesce(payload ->> 'whatsappCode', '') not in ('970', '972')) then
           raise exception 'invalid_input';
         end if;
         v_phone := regexp_replace(coalesce(payload ->> 'phone', ''), '[[:space:]()\-]', '', 'g');
         v_phone := translate(v_phone, '٠١٢٣٤٥٦٧٨٩', '0123456789');
-        if v_phone <> '' and v_phone !~ '^\+[1-9][0-9]{7,14}$' then raise exception 'invalid_phone'; end if;
+        if v_phone <> '' and v_phone !~ '^05[0-9]{8}$' then raise exception 'invalid_phone'; end if;
         if v_phone <> '' and exists (
           select 1 from public.sadid_contacts
           where store_id = c.store_id and sadid_contacts.phone = v_phone and sadid_contacts.id <> contact and not purged
@@ -149,6 +151,7 @@ begin
         update public.sadid_contacts
         set name = trim(payload ->> 'name'),
             phone = v_phone,
+            whatsapp_code = coalesce(payload ->> 'whatsappCode', whatsapp_code),
             kind = payload ->> 'kind',
             category = coalesce(payload ->> 'category', ''),
             note = coalesce(payload ->> 'note', ''),
