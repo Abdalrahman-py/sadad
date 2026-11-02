@@ -9,6 +9,7 @@ import com.sadad.app.data.ledger.FirstDebt
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.data.ledger.WhatsAppPhone
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
@@ -55,6 +56,10 @@ data class ContactFormState(
     val message: String? = null,
     /** Set once the Contact is queued, so the screen opens its record. */
     val savedContactId: String? = null,
+    /** A picked contact that already lives in the store: the screen opens its page. */
+    val openContactId: String? = null,
+    /** A picked contact of the archive: the screen opens the trash. */
+    val openTrash: Boolean = false,
 )
 
 /**
@@ -164,6 +169,29 @@ class ContactFormViewModel(
   fun dismissDuplicate() = mutable.update { it.copy(duplicate = null) }
 
   fun dismissReview() = mutable.update { it.copy(review = null) }
+
+  /**
+   * What the contacts picker handed back: a new person fills name, phone and code; a person the
+   * store already keeps, or one of the archive, is routed by the screen's own outcome state.
+   */
+  fun onPicked(picked: PickedContact) {
+    when (picked) {
+      is PickedContact.New -> {
+        edit(NAME, picked.name) { copy(name = picked.name, nameError = null) }
+        edit(PREFIX, picked.code) { copy(prefix = picked.code, phoneError = null) }
+        edit(PHONE, picked.phone.orEmpty()) {
+          copy(phone = picked.phone.orEmpty(), phoneError = null, duplicate = null)
+        }
+      }
+      is PickedContact.Existing ->
+          mutable.update { it.copy(openContactId = picked.contactId, openTrash = false) }
+      is PickedContact.Archived ->
+          mutable.update { it.copy(openTrash = true, openContactId = null) }
+    }
+  }
+
+  /** The screen has opened the picked person's page or the trash. */
+  fun onPageHandled() = mutable.update { it.copy(openContactId = null, openTrash = false) }
 
   /** Validates, then shows the review dialog; nothing is queued yet. */
   fun save() {

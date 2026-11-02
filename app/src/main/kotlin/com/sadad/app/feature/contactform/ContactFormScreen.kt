@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.Chip
@@ -66,8 +67,22 @@ fun ContactFormScreen(
     onBack: () -> Unit = {},
     onOpenContact: (String) -> Unit = {},
     initialName: String = "",
+    onOpenPicker: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
+    /** The picker's result the route handed back; the form consumes it once. */
+    picked: PickedContact? = null,
+    onPickDelivered: () -> Unit = {},
 ) {
-  ContactFormScreen(contactFormViewModel(contactId, initialName), modifier, onBack, onOpenContact)
+  ContactFormScreen(
+      contactFormViewModel(contactId, initialName),
+      modifier,
+      onBack,
+      onOpenContact,
+      onOpenPicker,
+      onOpenTrash,
+      picked,
+      onPickDelivered,
+  )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,6 +92,10 @@ fun ContactFormScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onOpenContact: (String) -> Unit = {},
+    onOpenPicker: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
+    picked: PickedContact? = null,
+    onPickDelivered: () -> Unit = {},
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
@@ -101,6 +120,22 @@ fun ContactFormScreen(
   }
   // Saved: the form is replaced by the person's page, so back from there is the list again.
   LaunchedEffect(state.savedContactId) { state.savedContactId?.let(onOpenContact) }
+  // The picker's result: a new person fills the fields; an archive hit opens the trash.
+  LaunchedEffect(picked) {
+    val result = picked
+    if (result != null) {
+      viewModel.onPicked(result)
+      onPickDelivered()
+    }
+  }
+  // The picked person already lives in the store; the archive hit opens the trash screen.
+  LaunchedEffect(state.openContactId) { state.openContactId?.let { onOpenContact(it) } }
+  LaunchedEffect(state.openTrash) {
+    if (state.openTrash) onOpenTrash()
+  }
+  LaunchedEffect(state.openContactId, state.openTrash) {
+    if (state.openContactId != null || state.openTrash) viewModel.onPageHandled()
+  }
 
   Column(
       modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),
@@ -114,6 +149,16 @@ fun ContactFormScreen(
         subtitle = stringResource(R.string.contactform_subtitle),
         onBack = onBack,
     )
+    // The device's contacts, add mode only: edit mode never replaces another editor's data.
+    if (!state.edit) {
+      SadadButton(
+          text = stringResource(R.string.contactform_pick_contacts),
+          style = SadadButtonStyle.SURFACE,
+          onClick = onOpenPicker,
+          enabled = !state.busy,
+          modifier = Modifier.fillMaxWidth(),
+      )
+    }
     SadadField(
         value = state.name,
         onValueChange = viewModel::onNameChange,

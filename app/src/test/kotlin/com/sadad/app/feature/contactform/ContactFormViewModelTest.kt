@@ -7,6 +7,7 @@ import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
@@ -23,6 +24,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -443,6 +445,58 @@ class ContactFormViewModelTest {
 
       val contact = fixture.rows().single { it.type == CommandType.CONTACT_CREATE }
       assertEquals(ContactKind.CUSTOMER, (contact.command.payload() as ContactCreate).kind)
+    }
+  }
+
+  @Test
+  fun aPickedContactFillsTheNamePhoneAndCode() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+
+      model.onPicked(PickedContact.New("سامي", "0599123456", "972"))
+
+      val state = model.state.value
+      assertEquals("سامي", state.name)
+      assertEquals("0599123456", state.phone)
+      assertEquals("972", state.prefix)
+      assertNull(state.openContactId)
+      assertFalse(state.openTrash)
+    }
+  }
+
+  @Test
+  fun aPickedNameOnlyContactLeavesThePhoneEmptyOnTheDefaultCode() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+
+      model.onPicked(PickedContact.New("نمر", null, "970"))
+
+      val state = model.state.value
+      assertEquals("نمر", state.name)
+      assertEquals("", state.phone)
+      assertEquals("970", state.prefix)
+      assertNull(state.phoneError)
+    }
+  }
+
+  @Test
+  fun anExistingPickOpensThatPersonAndAnArchivedPickOpensTheTrash() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+
+      model.onPicked(PickedContact.Existing("c9"))
+      assertEquals("c9", model.state.value.openContactId)
+      assertFalse(model.state.value.openTrash)
+
+      model.onPageHandled()
+      assertNull(model.state.value.openContactId)
+
+      model.onPicked(PickedContact.Archived("t1"))
+      assertTrue(model.state.value.openTrash)
+      assertNull(model.state.value.openContactId)
+
+      model.onPageHandled()
+      assertFalse(model.state.value.openTrash)
     }
   }
 }
