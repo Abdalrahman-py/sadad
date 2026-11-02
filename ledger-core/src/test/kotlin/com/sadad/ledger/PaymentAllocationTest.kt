@@ -32,6 +32,31 @@ class PaymentAllocationTest {
   }
 
   @Test
+  fun aContactsDebtsInterleavedWithAnothersGiveTheSameBalanceAndParts() {
+    val other = Commands.contactCreate(origin, at(0), "غيره")
+    fun othersDebt(cents: Long, minute: Int) =
+        Commands.debtCreate(origin, at(minute), other.entityId, Direction.RECEIVABLE, Cents(cents))
+    val view =
+        Events.stateOf(contact, other, othersDebt(700, 0), older, othersDebt(800, 1), newer)
+            .viewWith()
+
+    assertEquals(
+        Cents(15000),
+        PaymentAllocation.openBalance(view, contact.entityId, Direction.RECEIVABLE),
+    )
+    assertEquals(
+        Cents(1500),
+        PaymentAllocation.openBalance(view, other.entityId, Direction.RECEIVABLE),
+    )
+    val parts =
+        PaymentAllocation.allocate(view, contact.entityId, Cents(12000), Direction.RECEIVABLE)
+    assertEquals(
+        listOf(older.entityId to Cents(10000), newer.entityId to Cents(2000)),
+        parts.map { it.debtId to it.amount },
+    )
+  }
+
+  @Test
   fun refusesOverpaymentAndNonPositiveAmounts() {
     val view = Events.stateOf(contact, older, newer).viewWith()
     for (amount in listOf(Cents(15001), Cents(0), Cents(-1))) {

@@ -123,7 +123,11 @@ class LedgerRepository(
 
   val contactRecords: StateFlow<ContactRecords?> =
       combine(state, outbox.rows, session.staffName, loaded) { current, rows, staff, ready ->
-            if (ready) contactRecords(project(current, rows, staff), rows) else null
+            if (ready) {
+              traced("ledger_project") { contactRecords(project(current, rows, staff), rows) }
+            } else {
+              null
+            }
           }
           .flowOn(Dispatchers.Default)
           .stateIn(scope, SharingStarted.Eagerly, null)
@@ -133,7 +137,7 @@ class LedgerRepository(
 
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
-    state.value = store.load()
+    state.value = traced("ledger_load") { store.load() }
     loaded.value = true
   }
 
