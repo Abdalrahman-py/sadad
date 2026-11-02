@@ -64,7 +64,9 @@ class AppLock(
   val biometricEnabled: Flow<Boolean> = data.data.map { it[BIOMETRIC] ?: false }
   val pinSet: Flow<Boolean> = data.data.map { !it[HASH].isNullOrEmpty() }
 
-  /** True from process start until the first unlock, and again after a long absence. */
+  /**
+   * True from process start until the first unlock, and again after an absence of over a minute.
+   */
   val locked: StateFlow<Boolean> = mutableLocked.asStateFlow()
 
   fun markUnlocked() {
@@ -83,6 +85,11 @@ class AppLock(
     leftAt = null
     val skipped = skip.getAndSet(false)
     if (!skipped && left != null && elapsedRealtime() - left > AWAY_MS) mutableLocked.value = true
+  }
+
+  /** Locks at once: the owner closed the app (or the process), not merely stepped away. */
+  fun lockNow() {
+    mutableLocked.value = true
   }
 
   suspend fun setLockEnabled(on: Boolean) {
@@ -219,7 +226,8 @@ class AppLock(
   }
 
   companion object {
-    private const val AWAY_MS = 1_200L
+    /** Measured from ON_STOP with `elapsedRealtime`: screen-off time counts as time away. */
+    private const val AWAY_MS = 60_000L
 
     @Volatile private var instance: AppLock? = null
 

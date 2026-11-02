@@ -1,11 +1,15 @@
 package com.sadad.app.feature.lock
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,10 +17,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -93,19 +102,83 @@ class LockGateTest {
   private fun waitFor(text: String) = compose.waitUntil(5_000) { shown(text) }
 
   @Test
-  fun stoppingForTwoSecondsLocksButOneSecondDoesNot() {
+  fun stoppingForAMinuteLocksButFiftyNineSecondsDoesNot() {
     val lock = lockWithPin().also { it.markUnlocked() }
     show(lock)
     compose.onNodeWithText(CONTENT).assertIsDisplayed()
 
-    leaveFor(1_000)
+    leaveFor(59_000)
     compose.waitForIdle()
     compose.onNodeWithText(CONTENT).assertIsDisplayed()
     assertFalse(shown(LOCKED))
 
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(LOCKED)
     assertFalse(shown(CONTENT))
+  }
+
+  @Test
+  fun aPauseWithoutAStopNeverLocks() {
+    val lock = lockWithPin().also { it.markUnlocked() }
+    show(lock)
+    compose.onNodeWithText(CONTENT).assertIsDisplayed()
+
+    compose.runOnUiThread {
+      owner.send(Lifecycle.Event.ON_PAUSE)
+      now += 600_000 // ten minutes under a system dialog or the notification shade
+      owner.send(Lifecycle.Event.ON_RESUME)
+    }
+    compose.waitForIdle()
+    compose.onNodeWithText(CONTENT).assertIsDisplayed()
+    assertFalse(shown(LOCKED))
+  }
+
+  @Test
+  fun aHalfTypedEntrySurvivesTheLock() {
+    val lock = lockWithPin().also { it.markUnlocked() }
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+          LockGate(lock, hasSession = true, biometric = NoBiometric) {
+            val nav = rememberNavController()
+            NavHost(nav, startDestination = HOME) {
+              composable(HOME) {
+                Text(HOME)
+                Text(GO, modifier = Modifier.clickable { nav.navigate(CONTACT) })
+              }
+              composable(CONTACT) {
+                val entry: HalfTypedViewModel =
+                    viewModel<HalfTypedViewModel>(
+                        factory =
+                            viewModelFactory {
+                              initializer { HalfTypedViewModel(createSavedStateHandle()) }
+                            }
+                    )
+                Column {
+                  Text(CONTACT)
+                  TextField(
+                      value = entry.amount(),
+                      onValueChange = { entry.onAmount(it.filter(Char::isDigit)) },
+                      label = { Text("المبلغ") },
+                      singleLine = true,
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    waitFor(HOME)
+    compose.onNodeWithText(GO).performClick()
+    waitFor(CONTACT)
+    compose.onNode(hasSetTextAction()).performTextInput("65")
+
+    leaveFor(60_001)
+    waitFor(LOCKED)
+    lock.markUnlocked()
+    waitFor(CONTACT)
+    compose.onNode(hasSetTextAction()).assertTextEquals("المبلغ", "65", includeEditableText = true)
   }
 
   @Test
@@ -113,7 +186,7 @@ class LockGateTest {
     val lock = lockWithPin().also { it.markUnlocked() }
     runBlocking { lock.setLockEnabled(false) }
     show(lock)
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(CONTENT)
     assertFalse(shown(LOCKED))
   }
@@ -130,11 +203,11 @@ class LockGateTest {
     val lock = lockWithPin().also { it.markUnlocked() }
     show(lock)
     lock.skipNextLock()
-    leaveFor(2_000)
+    leaveFor(60_001)
     compose.waitForIdle()
     compose.onNodeWithText(CONTENT).assertIsDisplayed()
 
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(LOCKED)
   }
 
@@ -256,7 +329,7 @@ class LockGateTest {
     compose.onNodeWithText(GO).performClick()
     waitFor(CONTACT)
 
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(LOCKED)
     assertFalse(shown(CONTACT))
 
@@ -264,6 +337,16 @@ class LockGateTest {
 
     waitFor(CONTACT)
     assertFalse(shown(HOME))
+  }
+
+  /** The SavedStateHandle shape a half-typed entry keeps across the lock's removal from screen. */
+  internal class HalfTypedViewModel(private val saved: androidx.lifecycle.SavedStateHandle) :
+      androidx.lifecycle.ViewModel() {
+    fun amount(): String = saved.get<String>("amount").orEmpty()
+
+    fun onAmount(value: String) {
+      saved["amount"] = value.take(4)
+    }
   }
 
   private object NoBiometric : BiometricAuth {
