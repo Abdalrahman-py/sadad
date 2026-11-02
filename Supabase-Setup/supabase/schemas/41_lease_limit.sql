@@ -1,5 +1,5 @@
 -- The store's cap on active contacts, read by /v1/mobile/lease for the signed lease. Owned by
--- sadid_auth_reader in sadid_private: on the cloud no internal role may own objects in public.
+-- sadid_auth_reader like contact_limit(); the public wrapper below stays with the migration role.
 create function sadid_private.lease_limit() returns integer
 language plpgsql stable security definer set search_path = '' as $$
 declare
