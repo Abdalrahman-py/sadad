@@ -218,7 +218,11 @@ internal constructor(
         }
       }
 
-  private data class Banner(val storeName: String, val offline: HomeOffline?, val refreshing: Boolean)
+  private data class Banner(
+      val storeName: String,
+      val offline: HomeOffline?,
+      val refreshing: Boolean,
+  )
 
   private val banner: Flow<Banner> =
       combine(source.current, source.accounts) { scope, accounts -> scope to accounts }

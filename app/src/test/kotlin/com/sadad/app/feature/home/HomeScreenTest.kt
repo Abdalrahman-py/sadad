@@ -1,6 +1,7 @@
 package com.sadad.app.feature.home
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -11,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.ui.UiTestApplication
