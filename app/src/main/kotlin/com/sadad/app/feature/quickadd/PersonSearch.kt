@@ -15,7 +15,14 @@ data class QuickAddPerson(
     val net: Cents,
     /** When the store last recorded anything with them; null for a person with no entries yet. */
     val lastActivity: Instant?,
-)
+) {
+  /** The folded name, computed once when the person is built. Outside the constructor, so it is
+   * not part of `equals`, `copy` or any call site. */
+  val nameKey: String = PersonSearch.normalize(name)
+
+  /** The phone's digits, taken once when the person is built: what the phone search compares. */
+  val phoneDigits: String = phone.filter { it.isDigit() }
+}
 
 /**
  * Who «تسجيل لمن؟» offers for what the user typed. The writer types the name the way they say it,
@@ -64,16 +71,16 @@ internal object PersonSearch {
           people
         } else {
           people.filter { person ->
-            normalize(person.name).contains(folded) ||
+            person.nameKey.contains(folded) ||
                 (digits.length >= DIGITS_TO_MATCH &&
-                    person.phone.filter { it.isDigit() }.contains(digits))
+                    person.phoneDigits.contains(digits))
           }
         }
     return matched
         .sortedWith(
             compareBy<QuickAddPerson> { it.lastActivity == null }
                 .thenByDescending { it.lastActivity ?: Instant.EPOCH }
-                .thenBy { normalize(it.name) }
+                .thenBy { it.nameKey }
                 .thenBy { it.id }
         )
         .take(limit)

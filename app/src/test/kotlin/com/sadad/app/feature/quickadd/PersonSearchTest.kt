@@ -24,6 +24,68 @@ class PersonSearchTest {
           lastActivity = last,
       )
 
+  /**
+   * The keys ([QuickAddPerson.nameKey], [QuickAddPerson.phoneDigits]) live outside the primary
+   * constructor, so separately built people with the same fields stay equal.
+   */
+  @Test
+  fun twoPeopleBuiltSeparatelyWithTheSameFieldsAreEqual() {
+    val first = person("أحمد سالم", phone = "0599", last = Instant.parse("2026-10-01T09:00:00Z"))
+    val second = person("أحمد سالم", phone = "0599", last = Instant.parse("2026-10-01T09:00:00Z"))
+    assertEquals(first, second)
+  }
+
+  /**
+   * A copy of the search as it was on origin/main 72b3abf: folding on every comparison. The new
+   * key-based search must give exactly the same matches and order as this reference for the
+   * queries below. Pins behavior; green before and after the change.
+   */
+  private fun referenceSearch(
+      people: List<QuickAddPerson>,
+      query: String,
+      limit: Int = PersonSearch.RECENT_LIMIT,
+  ): List<QuickAddPerson> {
+    val folded = PersonSearch.normalize(query)
+    val digits = folded.filter { it.isDigit() }
+    val matched =
+        if (folded.isEmpty()) {
+          people
+        } else {
+          people.filter { person ->
+            PersonSearch.normalize(person.name).contains(folded) ||
+                (digits.length >= 2 && person.phone.filter { it.isDigit() }.contains(digits))
+          }
+        }
+    return matched
+        .sortedWith(
+            compareBy<QuickAddPerson> { it.lastActivity == null }
+                .thenByDescending { it.lastActivity ?: Instant.EPOCH }
+                .thenBy { PersonSearch.normalize(it.name) }
+                .thenBy { it.id }
+        )
+        .take(limit)
+  }
+
+  @Test
+  fun theKeysGiveTheSameMatchesAndOrderAsFoldingOnEveryCall() {
+    val base = Instant.parse("2026-10-01T09:00:00Z")
+    // Every fold the search does, as separate spellings of the same names, plus diacritics.
+    val spellings = listOf("أحمد", "احمد", "إبراهيم", "ابراهيم", "فاطمة", "فاطمه", "مصطفى", "مصطفي", "مُحمَّد", "محمد")
+    val people =
+        (0 until 5_000).map { index ->
+          person(
+              "${spellings[index % spellings.size]} $index",
+              phone = "05991234${(index % 100).toString().padStart(2, '1')}",
+              last = if (index % 3 == 0) null else base.plusSeconds((index % 97) * 3_600L),
+          )
+        }
+    val queries =
+        listOf("", "احمد", "أحمد", "فاطمه", "مصطفي", "محمد", "59", "0599", "ززز")
+    queries.forEach { query ->
+      assertEquals(referenceSearch(people, query), PersonSearch.search(people, query))
+    }
+  }
+
   @Test
   fun aPlainAlifFindsANameWrittenWithHamza() {
     val people = listOf(person("أحمد سالم"))
