@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -129,6 +131,60 @@ class LeaseStoreTest {
   }
 
   @Test
+  fun exposesTheContactLimitAndCachesNothingWithoutIt() = runTest {
+    val job = SupervisorJob()
+    val now = 1800000000000L
+    try {
+      val store =
+          LeaseStore(
+              temporary.newFolder().resolve("lease.preferences_pb"),
+              CoroutineScope(job + Dispatchers.IO),
+              LeaseVerifier(signer.publicKey.x, signer.publicKey.y),
+              { 1 },
+              { now },
+          )
+      assertEquals(null, store.contactLimit(account))
+      store.save(account, signedLease(signer, account, now))
+      assertEquals(200, store.contactLimit(account))
+      assertEquals(null, store.contactLimit(account.copy(storeUserId = "other")))
+      store.clear()
+      assertEquals(null, store.contactLimit(account))
+
+      // A signed payload without the field is refused and never cached.
+      val signed = signedLease(signer, account, now).payload
+      val fieldless =
+          JsonObject(
+              LedgerJson.encodeToJsonElement(LeasePayload.serializer(), signed).jsonObject -
+                  "contactLimit"
+          )
+      val shell =
+          Lease(
+              LeasePayload(
+                  1,
+                  URI(BuildConfig.SUPABASE_URL).host.substringBefore('.'),
+                  42L,
+                  account.storeUserId,
+                  account.installationId,
+                  account.installation?.generation ?: 1,
+                  0,
+                  now,
+                  now + 7 * DAY,
+                  listOf("contact.create", "debt.create", "payment.create"),
+              ),
+              Base64Url.encode(fieldless.toString().toByteArray()),
+              Base64Url.encode(
+                  signer.sign(fieldless.toString().toByteArray()),
+              ),
+          )
+      store.save(account, shell)
+      assertFalse(store.allows(account))
+      assertEquals(null, store.contactLimit(account))
+    } finally {
+      job.cancelAndJoin()
+    }
+  }
+
+  @Test
   fun reopensTheSavedLeaseAndVerifiesItAgain() = runTest {
     val file = temporary.newFolder().resolve("lease.preferences_pb")
     val now = 1800000000000L
@@ -166,6 +222,7 @@ internal fun signedLease(signer: SoftwareSigner, account: Account, issuedAt: Lon
           account.storeUserId,
           account.installationId,
           account.installation?.generation ?: 1,
+          200,
           issuedAt,
           issuedAt + 7 * DAY,
           listOf("contact.create", "debt.create", "payment.create"),
