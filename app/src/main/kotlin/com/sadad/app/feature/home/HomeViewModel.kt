@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** One person on «تحتاج متابعة»: what they owe, and how late — `null` means due today. */
@@ -156,8 +155,19 @@ fun homeUiState(
 /** At most this many rows on «تحتاج متابعة»; the rest are behind «عرض الكل». */
 const val FOLLOW_UP_ROWS: Int = 5
 
-/** Follows the open store: its [LedgerView], the queue, the connection, and the store's name. */
-class HomeViewModel(source: HomeSource, private val clock: Clock? = null) : ViewModel() {
+/**
+ * Follows the open store: its [LedgerView], the queue, the connection, and the store's name. The
+ * totals are derived once per view and day; the rest only changes the banner. Off screen it stops.
+ */
+class HomeViewModel
+internal constructor(
+    source: HomeSource,
+    private val clock: Clock? = null,
+    private val derive: (LedgerView, YearMonth, ZoneId, LocalDate) -> HomeUiState =
+        { view, month, zone, today ->
+          homeUiState(view = view, month = month, zone = zone, today = today)
+        },
+) : ViewModel() {
   private data class Period(val month: YearMonth, val zone: ZoneId, val today: LocalDate)
 
   private fun clockNow(): Clock = clock ?: Clock.systemDefaultZone()
@@ -184,68 +194,57 @@ class HomeViewModel(source: HomeSource, private val clock: Clock? = null) : View
     }
   }
 
-  private data class Inputs(
-      val view: LedgerView?,
-      val storeName: String,
-      val period: Period,
-      val queued: Int,
-      val offline: Boolean,
-      val leaseEndsAt: Instant?,
-  )
+  /** The derivation, kept while its view and day stay the same: a resubscription reuses it. */
+  private class Derived(val view: LedgerView, val period: Period, val state: HomeUiState)
 
-  private val inputs: Flow<Inputs> =
-      combine(source.current, source.accounts, period) { scope, accounts, period ->
-            Triple(scope, accounts, period)
-          }
-          .flatMapLatest { (scope, accounts, period) ->
+  @Volatile private var derived: Derived? = null
+
+  // The heavy part reads only the view and the day; a sync status flip or a queued row never
+  // reaches it.
+  private val totals: Flow<HomeUiState> =
+      combine(source.current.flatMapLatest { it?.repository?.view ?: flowOf(null) }, period) {
+          view,
+          period ->
+        if (view == null) return@combine HomeUiState(month = period.month, loaded = false)
+        val last = derived
+        if (last != null && last.view === view && last.period == period) return@combine last.state
+        derive(view, period.month, period.zone, period.today).also {
+          derived = Derived(view, period, it)
+        }
+      }
+
+  private data class Banner(val storeName: String, val offline: HomeOffline?)
+
+  private val banner: Flow<Banner> =
+      combine(source.current, source.accounts) { scope, accounts -> scope to accounts }
+          .flatMapLatest { (scope, accounts) ->
             val name =
                 accounts
                     .firstOrNull { it.storeUserId == scope?.account?.storeUserId }
                     ?.storeName
                     .orEmpty()
             if (scope == null) {
-              flowOf(Inputs(null, name, period, 0, false, null))
+              flowOf(Banner(name, null))
             } else {
-              combine(
-                  scope.repository.view,
-                  scope.outbox.rows,
-                  source.syncStatus(scope.account.storeUserId),
-              ) { view, rows, status ->
-                Inputs(
-                    view = view,
-                    storeName = name,
-                    period = period,
-                    queued = rows.count { it.state == OutboxState.QUEUED },
-                    offline = status == SyncStatus.Offline || !scope.isOnline(),
-                    leaseEndsAt = source.offlineUntil(scope.account)?.let(Instant::ofEpochMilli),
-                )
+              combine(scope.outbox.rows, source.syncStatus(scope.account.storeUserId)) {
+                  rows,
+                  status ->
+                val queued = rows.count { it.state == OutboxState.QUEUED }
+                val offline = status == SyncStatus.Offline || !scope.isOnline()
+                val leaseEndsAt = source.offlineUntil(scope.account)?.let(Instant::ofEpochMilli)
+                Banner(name, if (offline && queued > 0) HomeOffline(queued, leaseEndsAt) else null)
               }
             }
           }
 
   val state: StateFlow<HomeUiState> =
-      inputs
-          .map { inputs ->
-            val view = inputs.view
-            if (view == null) {
-              HomeUiState(storeName = inputs.storeName, month = inputs.period.month, loaded = false)
-            } else {
-              homeUiState(
-                  view = view,
-                  month = inputs.period.month,
-                  zone = inputs.period.zone,
-                  storeName = inputs.storeName,
-                  today = inputs.period.today,
-                  queued = inputs.queued,
-                  offline = inputs.offline,
-                  leaseEndsAt = inputs.leaseEndsAt,
-              )
-            }
+      combine(totals, banner) { totals, banner ->
+            totals.copy(storeName = banner.storeName, offline = banner.offline)
           }
           .flowOn(Dispatchers.Default)
           .stateIn(
               viewModelScope,
-              SharingStarted.Eagerly,
+              SharingStarted.WhileSubscribed(5_000),
               HomeUiState(month = period.value.month, loaded = false),
           )
 }
