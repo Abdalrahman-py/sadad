@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
 import com.sadad.app.data.ledger.Refusal
+import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.data.ledger.paymentGroups
 import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementExport
@@ -69,6 +70,8 @@ data class ContactDetailState(
     val savedDebts: List<com.sadad.ledger.DebtCreate> = emptyList(),
     val name: String = "",
     val phone: String = "",
+    /** The WhatsApp country code: `970` or `972`. */
+    val whatsappCode: String = "970",
     val category: String = "",
     val note: String = "",
     val balance: Cents = Cents.ZERO,
@@ -136,6 +139,7 @@ class ContactDetailViewModel(
                     loaded = true,
                     name = draft.contact.name,
                     phone = draft.contact.phone,
+                    whatsappCode = draft.contact.whatsappCode,
                     category = draft.contact.category,
                     note = draft.contact.note,
                     syncFailure = source.refusalText(draft.code),
@@ -267,11 +271,14 @@ class ContactDetailViewModel(
   fun reportError(text: String) = dialogs.update { it.copy(error = text) }
 
   /**
-   * The digits WhatsApp needs, or null when the Contact's phone is not a full international number;
-   * opening `wa.me` with a partial number sends the message nowhere.
+   * The digits `wa.me` needs: the WhatsApp code, then the phone without its 0; null without one.
    */
   fun whatsAppNumber(): String? =
-      mutable.value.phone.filter(Char::isDigit).takeIf { it.length in 7..15 }
+      mutable.value.phone
+          .takeIf { it.isNotBlank() }
+          ?.let {
+            WhatsAppPhone.waNumber(it, mutable.value.whatsappCode)
+          }
 
   suspend fun share(context: Context) {
     val view = currentView ?: return
@@ -398,6 +405,7 @@ class ContactDetailViewModel(
         loaded = true,
         name = contact.name,
         phone = contact.phone,
+        whatsappCode = contact.whatsappCode,
         category = contact.category,
         note = contact.note,
         balance = balance,

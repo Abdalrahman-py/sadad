@@ -71,7 +71,7 @@ class QuickAddViewModelTest {
           rows.map { it.type },
       )
       assertEquals(
-          "+970599123456",
+          "0599123456",
           (rows.first().command.payload() as com.sadad.ledger.ContactCreate).phone,
       )
       assertEquals(listOf(rows.first().operationId), rows.last().command.dependsOn)

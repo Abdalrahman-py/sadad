@@ -149,7 +149,7 @@ export function buildCommands(seed: string, origin: Origin): SeedCommand[] {
         name: `زبون ${String(index + 1).padStart(4, "0")}`,
         // apply_one requires kind on every contact; the store this seeds is all customers.
         kind: "customer",
-        phone: `+970599${String(index + 1).padStart(6, "0")}`,
+        phone: `0599${String(index + 1).padStart(6, "0")}`,
       },
     });
   }

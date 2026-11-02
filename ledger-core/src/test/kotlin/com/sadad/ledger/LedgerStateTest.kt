@@ -19,7 +19,7 @@ class LedgerStateTest {
   private fun LedgerState.plain() = view(emptyList(), emptySet(), Fixtures.INSTALLATION_ID, "أحمد")
 
   // One contact with one receivable debt of 15000, as in operations.json but built locally.
-  private val contact = Commands.contactCreate(origin, at(0), "سامي", phone = "+970599000000")
+  private val contact = Commands.contactCreate(origin, at(0), "سامي", phone = "0599000000")
   private val debt =
       Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(15000))
   private val payment =
@@ -160,6 +160,25 @@ class LedgerStateTest {
         )
     assertEquals(5L, after.cursor)
     assertEquals(state.copy(cursor = 5), after)
+  }
+
+  @Test
+  fun whatsappCodeReplaysDefaultsTo970AndAnAbsentUpdateKeepsIt() {
+    assertEquals("970", Events.stateOf(contact).contacts.getValue(contact.entityId).whatsappCode)
+    val other = Commands.contactCreate(origin, at(1), "رامي", "0569000000", whatsappCode = "972")
+    val keep = Commands.contactUpdate(origin, at(2), other.entityId, 1, "رامي", "0569000000")
+    val change =
+        Commands.contactUpdate(origin, at(3), other.entityId, 2, "رامي", whatsappCode = "970")
+    assertEquals("972", Events.stateOf(other).contacts.getValue(other.entityId).whatsappCode)
+    assertEquals("972", Events.stateOf(other, keep).contacts.getValue(other.entityId).whatsappCode)
+    val changed = Events.stateOf(other, keep, change)
+    assertEquals("970", changed.contacts.getValue(other.entityId).whatsappCode)
+    assertEquals("", changed.contacts.getValue(other.entityId).phone)
+    assertEquals("970", changed.plain().contacts.single { it.id == other.entityId }.whatsappCode)
+    assertEquals(
+        "972",
+        Events.stateOf(other).plain().contacts.single { it.id == other.entityId }.whatsappCode,
+    )
   }
 
   @Test

@@ -27,7 +27,7 @@ await seedLedger(h.database, store.storeId, {
     {
       id: sami,
       name: "سامي",
-      phone: "+970599000001",
+      phone: "0599000001",
       at: "2026-10-01T10:00:00Z",
     },
     { id: huda, name: "هدى", at: "2026-10-02T10:00:00Z" },

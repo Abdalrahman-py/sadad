@@ -35,6 +35,7 @@ data class ContactFormState(
     val edit: Boolean = false,
     val validationAttempt: Int = 0,
     val name: String = "",
+    /** The WhatsApp country code the chips choose: `970` or `972`. */
     val prefix: String = "970",
     val phone: String = "",
     /** The Contact's type, chosen in the full form. */
@@ -108,7 +109,8 @@ class ContactFormViewModel(
           if (contact != null) {
             prefilled = true
             saved[PREFILLED] = true
-            val (prefix, number) = localPhone(contact.phone)
+            val prefix = contact.whatsappCode
+            val number = contact.phone
             val category =
                 contact.category.ifBlank {
                   appContext.getString(R.string.contactform_default_category)
@@ -190,6 +192,7 @@ class ContactFormViewModel(
                 draft.note,
                 draft.amount?.let { FirstDebt(it, draft.debtNote, draft.due) },
                 kind = draft.kind,
+                whatsappCode = draft.whatsappCode,
             )
           } else {
             repository
@@ -200,6 +203,7 @@ class ContactFormViewModel(
                     draft.category,
                     draft.note,
                     draft.kind,
+                    draft.whatsappCode,
                 )
                 .map { editing }
           }
@@ -231,13 +235,21 @@ class ContactFormViewModel(
     val rawPhone = current.phone.trim()
     val phone =
         if (rawPhone.isEmpty()) null
-        else
-            try {
-              WhatsAppPhone.normalize(rawPhone, current.prefix)
-            } catch (invalid: IllegalArgumentException) {
-              mutable.update { it.copy(phoneError = invalid.message) }
-              return null
-            }
+        else {
+          val parsed = WhatsAppPhone.parse(rawPhone)
+          val error =
+              when {
+                parsed == null -> R.string.contactform_phone_invalid
+                parsed.code != null && parsed.code != current.prefix ->
+                    R.string.contactform_phone_prefix_mismatch
+                else -> null
+              }
+          if (error != null) {
+            mutable.update { it.copy(phoneError = appContext.getString(error)) }
+            return null
+          }
+          checkNotNull(parsed).phone
+        }
     val duplicate = phone?.let { value ->
       view?.contacts?.firstOrNull { it.id != contactId && it.phone == value }
     }
@@ -272,6 +284,7 @@ class ContactFormViewModel(
     return Draft(
         name = name,
         phone = phone,
+        whatsappCode = current.prefix,
         kind = current.kind,
         category =
             current.category.trim().ifEmpty {
@@ -307,6 +320,7 @@ class ContactFormViewModel(
   private data class Draft(
       val name: String,
       val phone: String?,
+      val whatsappCode: String,
       val kind: ContactKind,
       val category: String,
       val note: String?,
@@ -328,16 +342,6 @@ class ContactFormViewModel(
     const val DEBT_DUE = "debtDue"
     const val DEBT_NOTE = "debtNote"
     const val PREFILLED = "prefilled"
-
-    /** `+970599123456` back to the prefix and the local number the form edits. */
-    fun localPhone(phone: String): Pair<String, String> {
-      val digits = phone.removePrefix("+")
-      return when {
-        digits.startsWith("972") -> "972" to digits.removePrefix("972")
-        digits.startsWith("970") -> "970" to digits.removePrefix("970")
-        else -> "970" to phone
-      }
-    }
 
     /** An amount text that is a number but nothing but zeros, e.g. `0` or `0.00`. */
     fun onlyZeroDigits(text: String): Boolean {

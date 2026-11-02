@@ -44,6 +44,7 @@ internal fun contactRecords(view: LedgerView, rows: List<OutboxRow>): ContactRec
                 createdAt = row.createdAt,
                 createdBy = "",
                 operationId = row.operationId,
+                whatsappCode = payload.whatsappCode ?: "970",
             ),
         code = row.code ?: "temporary_service_failure",
         debts = debts[row.entityId].orEmpty(),
