@@ -15,6 +15,9 @@ interface HomeSource {
 
   /** When the store's offline lease ends, in epoch millis; null without one. */
   fun offlineUntil(account: Account): Long?
+
+  /** The pull to refresh on Home starts one pass for the open store. */
+  fun refresh()
 }
 
 fun AppGraph.homeSource(): HomeSource {
@@ -26,5 +29,9 @@ fun AppGraph.homeSource(): HomeSource {
     override fun syncStatus(storeUserId: String) = graph.syncStatus(storeUserId)
 
     override fun offlineUntil(account: Account) = graph.offlineUntil(account)
+
+    override fun refresh() {
+      graph.current.value?.account?.storeUserId?.let(graph::refresh)
+    }
   }
 }

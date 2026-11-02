@@ -251,6 +251,43 @@ class HomeViewModelTest {
     assertNull(online.offline)
   }
 
+  @Test
+  fun refreshAsksTheSourceOnceAndRefreshingFollowsRunningToIdle() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val status = MutableSharedFlow<SyncStatus>(replay = 1).apply { tryEmit(SyncStatus.Idle) }
+      val refreshed = AtomicInteger()
+      val source =
+          object : HomeSource {
+            override val current = fixture.graph.current
+            override val accounts = fixture.graph.accounts.accounts
+
+            override fun syncStatus(storeUserId: String) = status
+
+            override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
+
+            override fun refresh() {
+              refreshed.incrementAndGet()
+            }
+          }
+      val model =
+          HomeViewModel(source) { view, month, zone, today ->
+                homeUiState(view = view, month = month, zone = zone, today = today)
+              }
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      model.state.first { it.loaded }
+
+      model.refresh()
+      assertEquals("one pull, one pass", 1, refreshed.get())
+      assertFalse(model.state.value.refreshing)
+
+      status.emit(SyncStatus.Running)
+      model.state.first { it.refreshing }
+      status.emit(SyncStatus.Idle)
+      assertFalse(model.state.first { !it.refreshing }.refreshing)
+    }
+  }
+
   /* ------------------------------------------------------------------ builders */
 
   @Test
@@ -263,6 +300,8 @@ class HomeViewModelTest {
           override fun syncStatus(storeUserId: String) = flowOf<SyncStatus>(SyncStatus.Idle)
 
           override fun offlineUntil(account: Account): Long? = null
+
+          override fun refresh() {}
         }
     assertFalse(HomeViewModel(source).state.value.loaded)
 
@@ -345,6 +384,8 @@ class HomeViewModelTest {
           override fun syncStatus(storeUserId: String) = status
 
           override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
+
+          override fun refresh() {}
         }
     return HomeViewModel(source, clock) { view, month, zone, today ->
           calls.incrementAndGet()

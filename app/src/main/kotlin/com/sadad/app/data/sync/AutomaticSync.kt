@@ -4,7 +4,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -61,38 +60,18 @@ internal class AutomaticSync(
     }
   }
 
+  /** One pass per visible value: the app opening, a store switch, or the network returning. */
   suspend fun whileVisible(stores: Flow<String?>, connectivity: Flow<Boolean>) {
     combine(stores, connectivity) { id, connected -> id.takeIf { connected } }
         .collectLatest { id ->
           if (id == null) return@collectLatest
-          var wait = POLL_MS
-          while (true) {
-            when (val current = status(id)) {
-              SyncStatus.Idle,
-              SyncStatus.Offline,
-              SyncStatus.Retry -> request(id)
-              is SyncStatus.Failed -> if (current.retryable) request(id)
-              else -> Unit
-            }
-            delay(wait)
-            // A refusal that could pass later backs off as WorkManager does, so a struggling
-            // server is not asked every ten seconds; a healthy pass returns to the base interval.
-            wait = if (retryable(status(id))) (wait * 2).coerceAtMost(MAX_POLL_MS) else POLL_MS
+          when (val current = status(id)) {
+            SyncStatus.Idle,
+            SyncStatus.Offline,
+            SyncStatus.Retry -> request(id)
+            is SyncStatus.Failed -> if (current.retryable) request(id)
+            else -> Unit
           }
         }
-  }
-
-  private fun retryable(status: SyncStatus): Boolean =
-      when (status) {
-        SyncStatus.Retry -> true
-        is SyncStatus.Failed -> status.retryable
-        else -> false
-      }
-
-  private companion object {
-    const val POLL_MS = 10_000L
-
-    /** The longest wait between polls while the server keeps refusing. */
-    const val MAX_POLL_MS = 60_000L
   }
 }

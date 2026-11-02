@@ -54,6 +54,8 @@ data class HomeUiState(
     val followUpCount: Int = 0,
     val empty: Boolean = false,
     val offline: HomeOffline? = null,
+    /** True while the open store's sync pass is running: the pull to refresh indicator. */
+    val refreshing: Boolean = false,
     /** False only before the store's ledger is read, when the zeros above mean nothing yet. */
     val loaded: Boolean = true,
 )
@@ -161,7 +163,7 @@ const val FOLLOW_UP_ROWS: Int = 5
  */
 class HomeViewModel
 internal constructor(
-    source: HomeSource,
+    private val source: HomeSource,
     private val clock: Clock? = null,
     private val derive: (LedgerView, YearMonth, ZoneId, LocalDate) -> HomeUiState =
         { view, month, zone, today ->
@@ -194,6 +196,9 @@ internal constructor(
     }
   }
 
+  /** The pull to refresh on Home starts one pass for the open store; offline it ends at once. */
+  fun refresh() = source.refresh()
+
   /** The derivation, kept while its view and day stay the same: a resubscription reuses it. */
   private class Derived(val view: LedgerView, val period: Period, val state: HomeUiState)
 
@@ -213,7 +218,11 @@ internal constructor(
         }
       }
 
-  private data class Banner(val storeName: String, val offline: HomeOffline?)
+  private data class Banner(
+      val storeName: String,
+      val offline: HomeOffline?,
+      val refreshing: Boolean,
+  )
 
   private val banner: Flow<Banner> =
       combine(source.current, source.accounts) { scope, accounts -> scope to accounts }
@@ -224,7 +233,7 @@ internal constructor(
                     ?.storeName
                     .orEmpty()
             if (scope == null) {
-              flowOf(Banner(name, null))
+              flowOf(Banner(name, null, false))
             } else {
               combine(scope.outbox.rows, source.syncStatus(scope.account.storeUserId)) {
                   rows,
@@ -232,14 +241,23 @@ internal constructor(
                 val queued = rows.count { it.state == OutboxState.QUEUED }
                 val offline = status == SyncStatus.Offline || !scope.isOnline()
                 val leaseEndsAt = source.offlineUntil(scope.account)?.let(Instant::ofEpochMilli)
-                Banner(name, if (offline && queued > 0) HomeOffline(queued, leaseEndsAt) else null)
+                Banner(
+                    storeName = name,
+                    offline = if (offline && queued > 0) HomeOffline(queued, leaseEndsAt) else null,
+                    // The pull spinner is the running pass itself; offline never enters it.
+                    refreshing = status == SyncStatus.Running,
+                )
               }
             }
           }
 
   val state: StateFlow<HomeUiState> =
       combine(totals, banner) { totals, banner ->
-            totals.copy(storeName = banner.storeName, offline = banner.offline)
+            totals.copy(
+                storeName = banner.storeName,
+                offline = banner.offline,
+                refreshing = banner.refreshing,
+            )
           }
           .flowOn(Dispatchers.Default)
           .stateIn(

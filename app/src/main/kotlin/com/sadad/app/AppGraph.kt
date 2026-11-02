@@ -123,6 +123,9 @@ internal constructor(
     automaticSync.whileVisible(current.map { it?.account?.storeUserId }, connection)
   }
 
+  /** The pull to refresh on Home starts one pass for this store; it no-ops while offline. */
+  fun refresh(storeUserId: String) = automaticSync.request(storeUserId)
+
   /** The device's contacts for the contact picker; it is device-level, built from this app. */
   fun deviceContacts(): DeviceContacts = contactSource(context.contentResolver)
 
