@@ -16,8 +16,10 @@ data class QuickAddPerson(
     /** When the store last recorded anything with them; null for a person with no entries yet. */
     val lastActivity: Instant?,
 ) {
-  /** The folded name, computed once when the person is built. Outside the constructor, so it is
-   * not part of `equals`, `copy` or any call site. */
+  /**
+   * The folded name, computed once when the person is built. Outside the constructor, so it is not
+   * part of `equals`, `copy` or any call site.
+   */
   val nameKey: String = PersonSearch.normalize(name)
 
   /** The phone's digits, taken once when the person is built: what the phone search compares. */
@@ -72,8 +74,7 @@ internal object PersonSearch {
         } else {
           people.filter { person ->
             person.nameKey.contains(folded) ||
-                (digits.length >= DIGITS_TO_MATCH &&
-                    person.phoneDigits.contains(digits))
+                (digits.length >= DIGITS_TO_MATCH && person.phoneDigits.contains(digits))
           }
         }
     return matched

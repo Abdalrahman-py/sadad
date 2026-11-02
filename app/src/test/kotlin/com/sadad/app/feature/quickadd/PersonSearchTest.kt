@@ -37,8 +37,8 @@ class PersonSearchTest {
 
   /**
    * A copy of the search as it was on origin/main 72b3abf: folding on every comparison. The new
-   * key-based search must give exactly the same matches and order as this reference for the
-   * queries below. Pins behavior; green before and after the change.
+   * key-based search must give exactly the same matches and order as this reference for the queries
+   * below. Pins behavior; green before and after the change.
    */
   private fun referenceSearch(
       people: List<QuickAddPerson>,
@@ -70,7 +70,19 @@ class PersonSearchTest {
   fun theKeysGiveTheSameMatchesAndOrderAsFoldingOnEveryCall() {
     val base = Instant.parse("2026-10-01T09:00:00Z")
     // Every fold the search does, as separate spellings of the same names, plus diacritics.
-    val spellings = listOf("أحمد", "احمد", "إبراهيم", "ابراهيم", "فاطمة", "فاطمه", "مصطفى", "مصطفي", "مُحمَّد", "محمد")
+    val spellings =
+        listOf(
+            "أحمد",
+            "احمد",
+            "إبراهيم",
+            "ابراهيم",
+            "فاطمة",
+            "فاطمه",
+            "مصطفى",
+            "مصطفي",
+            "مُحمَّد",
+            "محمد",
+        )
     val people =
         (0 until 5_000).map { index ->
           person(
@@ -79,8 +91,7 @@ class PersonSearchTest {
               last = if (index % 3 == 0) null else base.plusSeconds((index % 97) * 3_600L),
           )
         }
-    val queries =
-        listOf("", "احمد", "أحمد", "فاطمه", "مصطفي", "محمد", "59", "0599", "ززز")
+    val queries = listOf("", "احمد", "أحمد", "فاطمه", "مصطفي", "محمد", "59", "0599", "ززز")
     queries.forEach { query ->
       assertEquals(referenceSearch(people, query), PersonSearch.search(people, query))
     }
