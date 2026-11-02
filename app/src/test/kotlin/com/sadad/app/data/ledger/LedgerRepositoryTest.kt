@@ -210,11 +210,12 @@ class LedgerRepositoryTest : LedgerTestCase() {
     val repo = repositoryCountingPersist(persists)
     repo.load()
     repo.seed(contactCommand())
-    val records = repo.contactRecords.value
     val afterSeed = persists.get()
 
+    var records: ContactRecords? = null
     repo.contactRecords.test {
-      awaitItem()
+      // The projection runs on Default: wait for the seeded records, or they land mid-check.
+      while (records?.ledger?.contacts.isNullOrEmpty()) records = awaitItem()
       repo.applyPage(Events.page(emptyList(), cursor = 1, nextCursor = 1))
       // Real time: give the idle pass somewhere to (wrongly) emit into.
       withContext(Dispatchers.Default) { delay(300) }
