@@ -84,8 +84,9 @@ internal interface BiometricAuth {
 
 /**
  * Keeps [content] out of composition behind the PIN or biometric unlock while the lock applies: a
- * store session exists, a PIN is set and the lock is on. Locked from process start and after the
- * app was stopped for more than 1.2 s.
+ * store session exists, a PIN is set and the lock is on. Locked from process start, when the app
+ * closes, and after being stopped for over a minute; a short leave (ON_PAUSE or under the minute)
+ * keeps the owner where he was, and an unlock restores his screen and his half-typed entry.
  */
 @Composable
 fun LockGate(content: @Composable () -> Unit) {

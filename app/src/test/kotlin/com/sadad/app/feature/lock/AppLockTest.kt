@@ -244,7 +244,7 @@ class AppLockTest {
   }
 
   @Test
-  fun lockedAtStartAndAfterMoreThan1200MsAwayAndSkipNextLockSuppressesOne() {
+  fun lockedAtStartAndAfterMoreThanAMinuteAwayAndSkipNextLockSuppressesOne() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     try {
       var now = 5_000L
@@ -252,11 +252,11 @@ class AppLockTest {
       assertTrue(lock.locked.value)
       lock.markUnlocked()
       lock.appStopped()
-      now += 1_200
+      now += 59_999
       lock.appStarted()
       assertFalse(lock.locked.value)
       lock.appStopped()
-      now += 1_201
+      now += 60_001
       lock.appStarted()
       assertTrue(lock.locked.value)
       lock.markUnlocked()
@@ -266,8 +266,24 @@ class AppLockTest {
       lock.appStarted()
       assertFalse(lock.locked.value)
       lock.appStopped()
-      now += 2_000
+      now += 60_001
       lock.appStarted()
+      assertTrue(lock.locked.value)
+    } finally {
+      scope.cancel()
+    }
+  }
+
+  @Test
+  fun lockNowLocksAtOnce() {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    try {
+      val lock = AppLock(File(temporary.root, "now.preferences_pb"), scope, { 0L }, { 1 })
+      lock.markUnlocked()
+      assertFalse(lock.locked.value)
+
+      lock.lockNow()
+
       assertTrue(lock.locked.value)
     } finally {
       scope.cancel()

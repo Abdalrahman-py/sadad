@@ -245,7 +245,7 @@ class ContactFormScreenTest {
 
   private fun leaveAndReturn(lock: AppLock) {
     lock.appStopped()
-    ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+    ShadowSystemClock.advanceBy(Duration.ofSeconds(61))
     lock.appStarted()
   }
 }
