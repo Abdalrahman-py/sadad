@@ -126,11 +126,47 @@ class ContactFormViewModelTest {
 
       model.save()
 
-      assertEquals("+970599123456", model.state.value.review?.phone)
+      assertEquals("0599123456", model.state.value.review?.phone)
       model.confirm()
       model.state.first { it.savedContactId != null }
       val contact = fixture.rows().single { it.type == CommandType.CONTACT_CREATE }
-      assertEquals("+970599123456", (contact.command.payload() as ContactCreate).phone)
+      assertEquals("0599123456", (contact.command.payload() as ContactCreate).phone)
+      assertEquals("970", (contact.command.payload() as ContactCreate).whatsappCode)
+    }
+  }
+
+  @Test
+  fun theChosenCodeIsSentApartFromTheTenDigits() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+      model.onNameChange("سامي")
+      model.onPrefixChange("972")
+      model.onPhoneChange("+972 599 123 456")
+
+      model.save()
+      model.confirm()
+      model.state.first { it.savedContactId != null }
+
+      val payload =
+          fixture.rows().single { it.type == CommandType.CONTACT_CREATE }.command.payload()
+              as ContactCreate
+      assertEquals("0599123456", payload.phone)
+      assertEquals("972", payload.whatsappCode)
+    }
+  }
+
+  @Test
+  fun aTypedCodeThatDisagreesWithTheChipIsRefused() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+      model.onNameChange("سامي")
+      model.onPhoneChange("+972599123456")
+
+      model.save()
+
+      assertEquals("مقدمة الرقم لا تطابق الاختيار.", model.state.value.phoneError)
+      assertNull(model.state.value.review)
+      assertTrue(fixture.rows().isEmpty())
     }
   }
 
@@ -144,7 +180,7 @@ class ContactFormViewModelTest {
       model.save()
 
       assertEquals(
-          "أدخل رقم الجوال من 9 أرقام بعد المقدمة، أو 10 أرقام تبدأ بصفر.",
+          "أدخل رقم جوال من 10 أرقام يبدأ بـ05.",
           model.state.value.phoneError,
       )
       assertNull(model.state.value.review)
@@ -223,7 +259,7 @@ class ContactFormViewModelTest {
     TestGraph.signedIn().use { fixture ->
       var existing: String? = null
       fixture.seed {
-        existing = addContact("سامي", "+970599123456", "عميل", null, null).getOrThrow()
+        existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow()
       }
       val repository = checkNotNull(fixture.graph.current.value).repository
       repository.view.first { view -> view?.contacts?.any { it.id == existing } == true }
@@ -275,7 +311,8 @@ class ContactFormViewModelTest {
     TestGraph.signedIn().use { fixture ->
       var existing: String? = null
       fixture.seed {
-        existing = addContact("سامي", "+970599123456", "عميل", null, null).getOrThrow()
+        existing =
+            addContact("سامي", "0599123456", "عميل", null, null, whatsappCode = "972").getOrThrow()
       }
       fixture.settleAll()
       val repository = checkNotNull(fixture.graph.current.value).repository
@@ -287,7 +324,8 @@ class ContactFormViewModelTest {
 
       val model = fixture.model(contactId = existing)
       model.state.first { it.name == "سامي" }
-      assertEquals("599123456", model.state.value.phone)
+      assertEquals("0599123456", model.state.value.phone)
+      assertEquals("972", model.state.value.prefix)
       model.onNameChange("سامي الجديد")
       model.save()
       assertTrue(model.state.value.review != null)
@@ -299,6 +337,8 @@ class ContactFormViewModelTest {
       val update = rows.single { it.type == CommandType.CONTACT_UPDATE }
       assertEquals(contact.version, update.command.expectedVersion)
       assertEquals("سامي الجديد", (update.command.payload() as ContactUpdate).name)
+      assertEquals("0599123456", (update.command.payload() as ContactUpdate).phone)
+      assertEquals("972", (update.command.payload() as ContactUpdate).whatsappCode)
     }
   }
 
@@ -307,7 +347,7 @@ class ContactFormViewModelTest {
     TestGraph.signedIn().use { fixture ->
       var existing: String? = null
       fixture.seed {
-        existing = addContact("سامي", "+970599123456", "عميل", null, null).getOrThrow()
+        existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow()
       }
       fixture.settleAll()
       val saved = SavedStateHandle()
@@ -318,7 +358,7 @@ class ContactFormViewModelTest {
       val second = fixture.model(contactId = existing, saved = saved)
 
       assertEquals("سامي الجديد", second.state.value.name)
-      assertEquals("599123456", second.state.value.phone)
+      assertEquals("0599123456", second.state.value.phone)
     }
   }
 

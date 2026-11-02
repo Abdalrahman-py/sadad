@@ -120,7 +120,7 @@ class ContactFormScreenTest {
       runBlocking {
         checkNotNull(fixture.graph.current.value)
             .repository
-            .addContact("شخص موجود", "+970599123456", null, null, null)
+            .addContact("شخص موجود", "0599123456", null, null, null)
             .getOrThrow()
       }
       val model = fixture.model()

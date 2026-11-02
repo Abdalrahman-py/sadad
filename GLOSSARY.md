@@ -20,6 +20,10 @@ folded into `LedgerState` and projected with the outbox into `LedgerView`.
 Its `kind` (`زبون` / `مورد`, `ContactKind`) is required and decides a Debt's direction
 (`ContactKind.debtDirection`); it is editable and existing Debts keep their direction. Balances are
 derived, never stored: `LedgerView.net` is open receivable minus open payable for the person.
+Its phone is optional and stored as owners write it: a 10-digit mobile number, `05` plus 8 digits
+(`WhatsAppPhone.parse` reads anything typed or imported into that form). Its WhatsApp code
+(`whatsappCode`, `970` or `972`, default `970`) is a separate field; the `wa.me` link is the code
+plus the number without its leading 0.
 
 **Debt** (`دين`) — an amount owed in one direction (`Direction.RECEIVABLE` / `receivable` = the
 contact owes the store, `Direction.PAYABLE` / `payable` = the store owes the contact; `sadid_debts`,

@@ -127,6 +127,29 @@ class ContactDetailViewModelTest {
   }
 
   @Test
+  fun theWhatsAppNumberIsTheCodeThenThePhoneWithoutItsZero() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val palestine = contact("سامي", contactId(1), phone = "0599123456")
+      val israel = contact("هدى", contactId(2), phone = "0599123457", whatsappCode = "972")
+      val none = contact("رامي", contactId(3))
+      fixture.seedCommands(listOf(palestine, israel, none))
+
+      suspend fun numberOf(id: String): String? {
+        val model =
+            ContactDetailViewModel(fixture.graph.contactDetailSource(), id, context).also {
+              fixture.closeWithStore(it.viewModelScope)
+            }
+        model.state.first { it.loaded }
+        return model.whatsAppNumber()
+      }
+
+      assertEquals("970599123456", numberOf(palestine.entityId))
+      assertEquals("972599123457", numberOf(israel.entityId))
+      assertNull(numberOf(none.entityId))
+    }
+  }
+
+  @Test
   fun onePaymentSettlingTwoDebtsIsOneMovementAndCanBeReversedTogether() = runTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سامي", contactId(1), minute = 0)

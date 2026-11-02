@@ -64,7 +64,7 @@ internal suspend fun seedContacts(fixture: TestGraph) {
 internal fun graphWithDebt(): Pair<TestGraph, String> = awaiting {
   val fixture = TestGraph.signedIn()
   val repository = checkNotNull(fixture.graph.current.value).repository
-  val contact = repository.addContact("سامي", "+970599123456", null, null, null).getOrThrow()
+  val contact = repository.addContact("سامي", "0599123456", null, null, null).getOrThrow()
   fixture.settleAll()
   for (amount in listOf(10_000L, 5_000L)) {
     repository.addDebt(contact, Direction.RECEIVABLE, Cents(amount), null, null).getOrThrow()

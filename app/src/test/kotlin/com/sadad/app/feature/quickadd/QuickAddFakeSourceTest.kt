@@ -120,7 +120,7 @@ class QuickAddFakeSourceTest {
       ContactView(
           id = id,
           name = name,
-          phone = "+970599000000",
+          phone = "0599000000",
           category = "",
           note = "",
           version = 1,

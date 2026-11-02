@@ -529,11 +529,55 @@ try {
 
     await db.exec('reset role; begin');
     try {
-      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '+٩٩٩ ١٢٣٤٥٦٧٨٩' });
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '٠٥٩٩ ١٢٣ ٤٥٦' });
       assert.equal((await apply(a)).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '0599123456' }))).code, 'duplicate_phone');
       assert.equal((await apply(command('contact.archive', { contactId: a.entityId, reason: 'تحقق' }, { expectedVersion: 1 }))).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '0599123456' }))).code, 'duplicate_phone');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
+  await check('Contact phone is 05 plus 8 digits and the WhatsApp code is its own field', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const codeOf = async (id) =>
+        (await db.query('select phone, whatsapp_code from public.sadid_contacts where id = $1', [id])).rows[0];
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف محلي', phone: '0599123456' });
+      assert.equal((await apply(a)).status, 'accepted');
+      await db.exec('reset role');
+      assert.deepEqual(await codeOf(a.entityId), { phone: '0599123456', whatsapp_code: '970' });
+      for (const phone of ['+970599123456', '0299123456', '059912345', '05991234567']) {
+        assert.equal(
+          (await apply(command('contact.create', { kind: 'customer', name: `رفض ${phone}`, phone }))).code,
+          'invalid_phone',
+          phone,
+        );
+      }
+      const cleaned = command('contact.create', { kind: 'customer', name: 'أرقام عربية', phone: '٠٥٦٩ (١٢٣) ٤٥-٦', whatsappCode: '972' });
+      assert.equal((await apply(cleaned)).status, 'accepted');
+      await db.exec('reset role');
+      assert.deepEqual(await codeOf(cleaned.entityId), { phone: '0569123456', whatsapp_code: '972' });
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'customer', name: 'مكرر رمز آخر', phone: '0599123456', whatsappCode: '972' }))).code,
+        'duplicate_phone',
+      );
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'customer', name: 'رمز غريب', phone: '0591111111', whatsappCode: '971' }))).code,
+        'invalid_input',
+      );
+      const edit = { contactId: a.entityId, name: 'هاتف محلي', phone: '0599123456', kind: 'customer' };
+      assert.equal((await apply(command('contact.update', { ...edit, whatsappCode: '972' }, { expectedVersion: 1 }))).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal((await codeOf(a.entityId)).whatsapp_code, '972');
+      assert.equal((await apply(command('contact.update', edit, { expectedVersion: 2 }))).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal((await codeOf(a.entityId)).whatsapp_code, '972', 'an absent whatsappCode leaves it unchanged');
+      assert.equal(
+        (await apply(command('contact.update', { ...edit, whatsappCode: '971' }, { expectedVersion: 3 }))).code,
+        'invalid_input',
+      );
     } finally {
       await db.exec('rollback; reset role');
     }
@@ -550,7 +594,7 @@ try {
       }
       const edit = command(
         'contact.update',
-        { contactId: contact.entityId, name: 'اسم جديد', phone: '+٩٧٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
+        { contactId: contact.entityId, name: 'اسم جديد', phone: '٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
         { expectedVersion: 1 },
       );
       assert.equal((await apply(edit)).status, 'accepted');
@@ -654,7 +698,7 @@ try {
   await check('Trash preserves paid history until explicit final deletion and refuses open balances', async () => {
     await db.exec('reset role; begin');
     try {
-      const c = command('contact.create', { kind: 'customer', name: 'سلة', phone: '+999654321000' });
+      const c = command('contact.create', { kind: 'customer', name: 'سلة', phone: '0569654321' });
       assert.equal((await apply(c)).status, 'accepted');
       const d = command('debt.create', { contactId: c.entityId, direction: 'receivable', amountCents: 100 });
       assert.equal((await apply(d)).status, 'accepted');
@@ -680,7 +724,7 @@ try {
       assert.equal((await apply(command('contact.restore', {contactId:c.entityId,reason:'ممنوع'}, {expectedVersion:5}))).code,'entity_version_changed');
       assert.equal((await apply(command('payment.reverse', {paymentId:p.entityId,reason:'ممنوع'}))).code,'payment_unavailable');
       assert.equal((await apply(command('debt.correct', {debtId:d.entityId,amountCents:200,reason:'ممنوع'}, {expectedVersion:1}))).code,'debt_unavailable');
-      assert.equal((await apply(command('contact.create', {kind:'customer', name:'جديد', phone:'+999654321000'}))).status,'accepted');
+      assert.equal((await apply(command('contact.create', {kind:'customer', name:'جديد', phone:'0569654321'}))).status,'accepted');
     } finally { await db.exec('rollback; reset role'); }
   });
 

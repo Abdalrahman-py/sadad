@@ -26,12 +26,14 @@ internal fun contact(
     phone: String? = null,
     minute: Int = 0,
     operationId: String = UUID.randomUUID().toString(),
+    whatsappCode: String? = null,
 ): LedgerCommand =
     Commands.contactCreate(
         Events.origin,
         Events.at(minute),
         name = name,
         phone = phone,
+        whatsappCode = whatsappCode,
         entityId = id,
         operationId = operationId,
     )

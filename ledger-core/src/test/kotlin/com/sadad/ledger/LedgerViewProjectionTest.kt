@@ -232,6 +232,7 @@ private fun LedgerState.referenceView(
             row.createdAt,
             author(row.originInstallationId),
             row.operationId,
+            row.whatsappCode,
         )
     if (row.archived) archived += view else contactViews[row.id] = view
   }
@@ -320,6 +321,7 @@ private fun LedgerState.referenceView(
                 at,
                 by,
                 command.operationId,
+                payload.whatsappCode ?: "970",
             )
         pendingContacts++
       }
