@@ -1216,6 +1216,39 @@ try {
     assert.equal(byId[otherStoreDevice], undefined, "another store's devices are absent");
   });
 
+  await check('Person limit: nothing left below 200 and the lease capability reads the store limit', async () => {
+    await db.exec('reset role; set role service_role');
+    // A store at 200 keeps its value and a store above 200 is never lowered by the
+    // migration's own update clause (replayed here exactly as the migration carries it).
+    await db.query('update public.stores set debtor_limit = 200 where id = 1');
+    await db.query('update public.stores set debtor_limit = 300 where id = 2');
+    await db.exec('update public.stores set debtor_limit = 200 where debtor_limit < 200');
+    assert.deepEqual(
+      (await db.query('select id, debtor_limit from public.stores order by id')).rows.map((r) => [r.id, r.debtor_limit]),
+      [[1, 200], [2, 300]],
+    );
+
+    // A store that had fallen behind 200 is raised to the new floor.
+    await db.query('update public.stores set debtor_limit = 100 where id = 1');
+    await db.exec('update public.stores set debtor_limit = 200 where debtor_limit < 200');
+    assert.equal((await db.query('select debtor_limit from public.stores where id = 1')).rows[0].debtor_limit, 200);
+
+    // A store created without a limit gets the new 200 default.
+    await db.query("insert into public.stores(id, name, username) values (3, 'متجر ثالث', 'third-store')");
+    assert.equal((await db.query('select debtor_limit from public.stores where id = 3')).rows[0].debtor_limit, 200);
+
+    // The lease capability reads its store's limit; another scope and no capability are refused.
+    await capability('lease');
+    assert.equal((await db.query('select public.sadid_lease_limit() as limit')).rows[0].limit, 200);
+    await capability('read');
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required/);
+    await asStore();
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required/);
+    await db.exec('reset role');
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required|permission denied/);
+    await db.exec('reset role');
+  });
+
   console.log(JSON.stringify({ engine: (await db.query('select version()')).rows[0].version, tests }, null, 2));
 } catch (error) {
   console.error(JSON.stringify({ message: error.message, code: error.code, where: error.where, tests }, null, 2));

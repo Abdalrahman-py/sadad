@@ -202,7 +202,7 @@
         "properties": {
           "payload": {
             "type": "string",
-            "description": "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, issuedAt, expiresAt, allowed"
+            "description": "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, contactLimit, issuedAt, expiresAt, allowed"
           },
           "signature": {
             "type": "string",

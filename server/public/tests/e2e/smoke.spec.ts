@@ -140,6 +140,8 @@ test("sign in, create a store, open it and approve its device", async ({ page })
 
   // Create the store from contract/fixtures/admin/create-store.json.
   await page.getByRole("link", { name: "إنشاء حساب متجر" }).click();
+  // New stores default to the schema floor of 200; the field stays editable.
+  await expect(page.getByLabel(/حد الأشخاص النشطين/)).toHaveValue("200");
   await page.getByLabel("اسم المتجر").fill(createStore.request.name);
   await page.getByLabel(/اسم الدخول/).fill(createStore.request.username);
   await page.getByLabel(/المدة/).fill(String(createStore.request.subscriptionDays));

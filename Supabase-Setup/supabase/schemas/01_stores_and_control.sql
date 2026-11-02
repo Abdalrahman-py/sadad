@@ -36,7 +36,7 @@ create table public.stores (
   status text not null default 'active' check (status in ('active', 'suspended', 'deleted')),
   suspend_until bigint,
   verified boolean not null default false,
-  debtor_limit integer not null default 100 check (debtor_limit >= 0),
+  debtor_limit integer not null default 200 check (debtor_limit >= 0),
   subscription_mode text not null default 'permanent' check (subscription_mode in ('permanent', 'timed', 'paused')),
   subscription_started_at bigint,
   subscription_expires_at bigint,
