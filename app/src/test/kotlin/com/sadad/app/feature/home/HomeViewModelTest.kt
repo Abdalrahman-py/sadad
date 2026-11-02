@@ -237,7 +237,7 @@ class HomeViewModelTest {
       ContactView(
           id = id,
           name = name,
-          phone = "+970****0000",
+          phone = "05****0000",
           category = "",
           note = "",
           version = 1,

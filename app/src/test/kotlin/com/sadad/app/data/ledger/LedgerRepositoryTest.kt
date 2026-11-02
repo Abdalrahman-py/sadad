@@ -44,10 +44,10 @@ class LedgerRepositoryTest : LedgerTestCase() {
   }
 
   @Test
-  fun firstContactWithALocalPhoneCannotQueueAnInvalidPersonAndItsDebt() = runTest {
+  fun firstContactWithAnInvalidPhoneCannotQueueThePersonOrItsDebt() = runTest {
     val repo = repository()
     repo.load()
-    for (phone in listOf("0599123456", "599123456", "05991234567")) {
+    for (phone in listOf("+970599123456", "599123456", "05991234567", "0299123456")) {
       val result = repo.addContact("أول شخص", phone, null, null, FirstDebt(Cents(25_800)))
       assertTrue(
           "invalid wire phone must be refused before queueing either command",
@@ -66,7 +66,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
       val saved =
           repo.addContact(
               name = "سامي",
-              phone = "+970599123456",
+              phone = "0599123456",
               category = "family",
               note = "قريب",
               firstDebt = FirstDebt(Cents(10_000)),

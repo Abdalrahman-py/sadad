@@ -129,7 +129,7 @@ class ReportsViewModelTest {
   @Test
   fun searchingArabicIndicPhoneDigitsMatchesTheStoredPhone() = runTest {
     TestGraph.signedIn().use { fixture ->
-      fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"), phone = "+970599123456")
+      fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"), phone = "0599123456")
       fixture.confirmedContact("ليلى", at("2026-10-01T09:00:00Z"), phone = "0568000111")
       val model = ReportsViewModel(fixture.graph.statementSource(), SavedStateHandle(), clock)
       fixture.closeWithStore(model.viewModelScope)

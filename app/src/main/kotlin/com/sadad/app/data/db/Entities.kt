@@ -38,6 +38,8 @@ data class ContactEntity(
     val createdAt: Instant,
     val originInstallationId: String,
     val createdSeq: Long,
+    // Added in schema 5, with the default Room needs for the NOT NULL column.
+    @ColumnInfo(defaultValue = "970") val whatsappCode: String = "970",
 )
 
 fun ContactEntity.toRow(): ContactRow =
@@ -53,6 +55,7 @@ fun ContactEntity.toRow(): ContactRow =
         operationId,
         createdAt,
         originInstallationId,
+        whatsappCode,
     )
 
 fun ContactRow.toEntity(createdSeq: Long): ContactEntity =
@@ -69,6 +72,7 @@ fun ContactRow.toEntity(createdSeq: Long): ContactEntity =
         createdAt,
         originInstallationId,
         createdSeq,
+        whatsappCode,
     )
 
 @Entity(tableName = "debts", indices = [Index("contactId")])

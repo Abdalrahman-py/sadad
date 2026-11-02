@@ -1,32 +1,39 @@
 package com.sadad.app.data.ledger
 
 /**
- * The phone the WhatsApp update or share link needs: Arabic-Indic digits, `00`, a leading `0` and
- * either `970`/`972` prefix are all read, and the result is `+<prefix><9 digits>`. A number that
- * already carries the other prefix is refused rather than rewritten, as the Java app did.
+ * The one reader of typed or imported phone numbers. A Contact's phone is the mobile number owners
+ * write, `05` plus 8 digits; the WhatsApp country code is stored apart from it.
  */
 object WhatsAppPhone {
-  fun normalize(value: String, prefix: String): String {
-    require(prefix == "970" || prefix == "972") { "اختر مقدمة فلسطين أو إسرائيل." }
+  /** [code] is `970` or `972` when the number carried one, else null. */
+  data class Parsed(val phone: String, val code: String?)
+
+  private val MOBILE = Regex("05[0-9]{8}")
+
+  /**
+   * Drops `+`, `-`, parentheses and whitespace, reads Arabic-Indic digits, drops a leading `00`,
+   * and reads a leading `970`/`972` as the code (restoring the leading `0` of the rest). Null when
+   * the result is not a mobile number.
+   */
+  fun parse(raw: String): Parsed? {
     val digits = StringBuilder()
-    for (character in value.trim()) {
+    for (character in raw) {
       val digit = Character.digit(character, 10)
       when {
         digit >= 0 -> digits.append(digit)
-        character in "+-() " || character.isWhitespace() -> Unit
-        else -> throw IllegalArgumentException("أدخل رقم واتساب صحيحًا.")
+        character in "+-()" || character.isWhitespace() -> Unit
+        else -> return null
       }
     }
-    var number = digits.toString()
-    if (number.startsWith("00")) number = number.substring(2)
+    var number = digits.toString().removePrefix("00")
+    var code: String? = null
     if (number.startsWith("970") || number.startsWith("972")) {
-      require(number.startsWith(prefix)) { "مقدمة الرقم لا تطابق الاختيار." }
-      number = number.substring(3)
+      code = number.take(3)
+      number = "0" + number.drop(3).removePrefix("0")
     }
-    if (number.startsWith("0")) number = number.substring(1)
-    require(number.matches(Regex("[1-9][0-9]{8}"))) {
-      "أدخل رقم الجوال من 9 أرقام بعد المقدمة، أو 10 أرقام تبدأ بصفر."
-    }
-    return "+$prefix$number"
+    return if (MOBILE.matches(number)) Parsed(number, code) else null
   }
+
+  /** The `wa.me` number: the code, then the phone without its leading 0. */
+  fun waNumber(phone: String, code: String): String = code + phone.removePrefix("0")
 }

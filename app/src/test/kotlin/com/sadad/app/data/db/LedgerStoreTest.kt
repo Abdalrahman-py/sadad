@@ -45,7 +45,7 @@ class LedgerStoreTest {
                         Events.origin,
                         Events.at(0),
                         name = "أبو خالد",
-                        phone = "+970599123456",
+                        phone = "0599123456",
                         category = "family",
                         note = "قريب",
                         entityId = CONTACT_ID,

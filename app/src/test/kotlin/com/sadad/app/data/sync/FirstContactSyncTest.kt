@@ -56,7 +56,7 @@ class FirstContactSyncTest {
       val commands = store.outbox.queued()
       assertEquals(2, commands.size)
       assertEquals(
-          if (phone == null) null else "+970599123456",
+          if (phone == null) null else "0599123456",
           (commands.first().payload() as com.sadad.ledger.ContactCreate).phone,
       )
       f.server.enqueue(receiptResponse(commands))

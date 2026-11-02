@@ -20,7 +20,7 @@ class ContactRecordsTest : LedgerTestCase() {
         repo
             .addContact(
                 "إبراهيم",
-                "+970599123456",
+                "0599123456",
                 "عميل",
                 "ملاحظة",
                 FirstDebt(Cents(25_800), "دين", "2026-12-01"),
@@ -40,7 +40,7 @@ class ContactRecordsTest : LedgerTestCase() {
     val records = checkNotNull(repo.contactRecords.first { it?.failed?.isNotEmpty() == true })
     val draft = records.failed.single()
     assertEquals(id, draft.contact.id)
-    assertEquals("+970599123456", draft.contact.phone)
+    assertEquals("0599123456", draft.contact.phone)
     assertEquals("ملاحظة", draft.contact.note)
     assertEquals("contact_limit_reached", draft.code)
     assertEquals(Cents(25_800), draft.debts.single().amountCents)

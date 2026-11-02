@@ -25,6 +25,7 @@ object Commands {
       category: String? = null,
       note: String? = null,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -37,7 +38,14 @@ object Commands {
           operationId,
           dependsOn,
           ContactCreate.serializer(),
-          ContactCreate(name(name), kind, optional(phone), optional(category), optional(note)),
+          ContactCreate(
+              name(name),
+              kind,
+              optional(phone),
+              whatsappCode,
+              optional(category),
+              optional(note),
+          ),
       )
 
   fun contactUpdate(
@@ -50,6 +58,7 @@ object Commands {
       category: String? = null,
       note: String? = null,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -67,6 +76,7 @@ object Commands {
               name(name),
               kind,
               optional(phone),
+              whatsappCode,
               optional(category),
               optional(note),
           ),

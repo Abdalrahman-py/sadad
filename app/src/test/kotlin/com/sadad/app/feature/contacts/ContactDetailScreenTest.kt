@@ -269,7 +269,7 @@ class ContactDetailScreenTest {
             launched = intent
           }
         }
-    val person = contact("سامي", contactId(1), phone = "+970599123456")
+    val person = contact("سامي", contactId(1), phone = "0599123456")
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val model =
@@ -325,7 +325,7 @@ class ContactDetailScreenTest {
             throw ActivityNotFoundException("No external app")
           }
         }
-    val person = contact("سامي", contactId(1), phone = "+970599123456")
+    val person = contact("سامي", contactId(1), phone = "0599123456")
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val model =

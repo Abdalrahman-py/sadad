@@ -17,6 +17,8 @@ data class ContactRow(
     val operationId: String,
     val createdAt: Instant,
     val originInstallationId: String,
+    /** The WhatsApp country code: `970` or `972`. */
+    val whatsappCode: String = "970",
 )
 
 data class DebtRow(
@@ -161,6 +163,7 @@ private class Fold(
                 command.operationId,
                 at,
                 origin,
+                payload.whatsappCode ?: "970",
             )
       }
       is ContactUpdate -> {
@@ -169,6 +172,7 @@ private class Fold(
             row.copy(
                 name = payload.name,
                 phone = payload.phone.orEmpty(),
+                whatsappCode = payload.whatsappCode ?: row.whatsappCode,
                 kind = payload.kind,
                 category = payload.category.orEmpty(),
                 note = payload.note.orEmpty(),
