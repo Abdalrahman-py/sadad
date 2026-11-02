@@ -66,6 +66,14 @@ data class ContactPickerState(
     val rows: List<ContactRow> = emptyList(),
     /** The contact whose several numbers ask which one; a dialog on the screen. */
     val chooser: ContactRow? = null,
+    /** The device read is running; the screen shows a spinner, not an empty list. */
+    val loading: Boolean = false,
+    /**
+     * What picking decided, until the screen hands it to its caller. Held in the state, not in a
+     * callback: the view model outlives an Activity recreation, and a callback would point at the
+     * gone controller.
+     */
+    val picked: PickedContact? = null,
 )
 
 /**
@@ -74,39 +82,50 @@ data class ContactPickerState(
  * active people first, then the archived ones. Search folds Arabic the way the quick-add list does.
  */
 internal object ContactPickerRows {
-  fun build(
-      device: List<DeviceContact>,
-      people: SadadPeople,
-      query: String,
-  ): List<ContactRow> {
-    val folded = PersonSearch.normalize(query)
-    val digits = folded.filter(Char::isDigit)
+  /**
+   * Every contact with a number; parsing and statuses happen here, once per read or people change.
+   */
+  fun build(device: List<DeviceContact>, people: SadadPeople): List<ContactRow> {
     val active = people.active.associateBy(ContactView::phone, ContactView::id)
     val archived = people.archived.associateBy(ContactView::phone, ContactView::id)
     return device
         .mapNotNull { contact ->
           val numbers = contact.numbers.filter(String::isNotBlank)
           if (numbers.isEmpty()) return@mapNotNull null
-          val rows = numbers.map { raw ->
-            val parsed = WhatsAppPhone.parse(raw)
-            val status =
-                when {
-                  parsed == null -> NumberStatus.Invalid
-                  else ->
-                      active[parsed.phone]?.let(NumberStatus::InLedger)
-                          ?: archived[parsed.phone]?.let(NumberStatus::InArchive)
-                          ?: NumberStatus.Importable
-                }
-            ContactNumberRow(raw, parsed?.phone, parsed?.code, status)
-          }
-          val matches =
-              folded.isEmpty() ||
-                  PersonSearch.normalize(contact.name).contains(folded) ||
-                  (digits.length >= DIGITS_TO_MATCH &&
-                      rows.any { it.phone?.contains(digits) == true })
-          if (matches) ContactRow(contact.name, rows) else null
+          ContactRow(
+              contact.name,
+              numbers.mapIndexed { _, raw ->
+                val parsed = WhatsAppPhone.parse(raw)
+                val status =
+                    when {
+                      parsed == null -> NumberStatus.Invalid
+                      else ->
+                          active[parsed.phone]?.let(NumberStatus::InLedger)
+                              ?: archived[parsed.phone]?.let(NumberStatus::InArchive)
+                              ?: NumberStatus.Importable
+                    }
+                ContactNumberRow(raw, parsed?.phone, parsed?.code, status)
+              },
+          )
         }
         .sortedBy { PersonSearch.normalize(it.name) }
+  }
+
+  /**
+   * The rows the query leaves in: the Arabic-folded name, or the query's digits inside any raw
+   * number's digits, so a landline is findable by its digits too.
+   */
+  fun search(rows: List<ContactRow>, query: String): List<ContactRow> {
+    val folded = PersonSearch.normalize(query)
+    val digits = folded.filter(Char::isDigit)
+    if (folded.isEmpty()) return rows
+    return rows.filter { row ->
+      PersonSearch.normalize(row.name).contains(folded) ||
+          (digits.length >= DIGITS_TO_MATCH &&
+              row.numbers.any {
+                PersonSearch.normalize(it.raw).filter(Char::isDigit).contains(digits)
+              })
+    }
   }
 
   /** A query shorter than this in digits is not a phone search, or every number matches. */
@@ -115,15 +134,14 @@ internal object ContactPickerRows {
 
 /**
  * The contacts list the form's «من جهات الاتصال» button opens. The device's contacts are read once
- * permission is granted, and picking one reports one [PickedContact] through [onResult] — the view
- * model never saves or uploads anything.
+ * permission is granted, and picking one sets [ContactPickerState.picked] — the screen hands it to
+ * its caller. Nothing here is saved, uploaded or logged.
  */
 class ContactPickerViewModel(
     private val device: DeviceContacts,
     people: Flow<SadadPeople>,
     /** Whether the permission is granted before this picker opens; the screen checks it. */
     private val grantedNow: () -> Boolean,
-    private val onResult: (PickedContact) -> Unit,
 ) : ViewModel() {
   private val mutable = MutableStateFlow(ContactPickerState())
   val state: StateFlow<ContactPickerState> = mutable.asStateFlow()
@@ -131,6 +149,9 @@ class ContactPickerViewModel(
   /** The last device list read; empty until the permission is granted. */
   private var loaded: List<DeviceContact> = emptyList()
   private var sadad = SadadPeople(emptyList(), emptyList())
+
+  /** The parsed rows of [loaded] with their statuses; the query only filters these. */
+  private var parsedRows: List<ContactRow> = emptyList()
 
   init {
     viewModelScope.launch {
@@ -140,14 +161,15 @@ class ContactPickerViewModel(
       }
       people.collect { next ->
         sadad = next
-        refresh()
+        parse()
       }
     }
   }
 
   fun onQueryChange(value: String) {
+    // The rows are parsed already; a keystroke only filters them.
     mutable.update { it.copy(query = value) }
-    refresh()
+    refreshRows()
   }
 
   /**
@@ -189,16 +211,29 @@ class ContactPickerViewModel(
           is NumberStatus.Importable ->
               PickedContact.New(row.name, checkNotNull(number.phone), number.code ?: "970")
         }
-    onResult(result)
+    // Held in the state for the Screen; the screen consumes it into its caller's callback.
+    mutable.update { it.copy(picked = result) }
   }
+
+  /** The screen has handed the pick to its caller; it is a one-shot value. */
+  fun pickDelivered() = mutable.update { it.copy(picked = null) }
 
   private fun read() = viewModelScope.launch {
+    mutable.update { it.copy(loading = true) }
     loaded = device.list()
-    refresh()
+    mutable.update { it.copy(loading = false) }
+    parse()
   }
 
-  private fun refresh() {
+  /** Parses the loaded list against [sadad]; runs after each read or people change. */
+  private fun parse() {
+    parsedRows = ContactPickerRows.build(loaded, sadad)
+    refreshRows()
+  }
+
+  /** The rows are already parsed; this only applies the query's filter. */
+  private fun refreshRows() {
     if (mutable.value.permission != ContactPermission.Granted) return
-    mutable.update { it.copy(rows = ContactPickerRows.build(loaded, sadad, it.query)) }
+    mutable.update { it.copy(rows = ContactPickerRows.search(parsedRows, it.query)) }
   }
 }

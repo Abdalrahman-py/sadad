@@ -42,9 +42,7 @@ class ContactPickerScreenTest {
           FakeDeviceContacts(*contacts),
           people,
           grantedNow = { granted },
-      ) {
-        results.add(it)
-      }
+      )
 
   private val CONTACTS =
       arrayOf(
@@ -56,7 +54,10 @@ class ContactPickerScreenTest {
 
   private fun screen(model: ContactPickerViewModel) {
     compose.setContent {
-      SadadTheme { ContactPickerScreen(model, onResult = {}, onBack = { closed = true }) }
+      // The screen-level callback is what a route supplies; the pick state is consumed into it.
+      SadadTheme {
+        ContactPickerScreen(model, onResult = { results.add(it) }, onBack = { closed = true })
+      }
     }
     compose.waitForIdle()
   }
@@ -125,6 +126,16 @@ class ContactPickerScreenTest {
   }
 
   @Test
+  fun anEmptySearchShowsTheEmptyLineNotASpinner() = runTest {
+    val model = model(*CONTACTS, granted = true)
+    screen(model)
+
+    compose.onNodeWithTag(ContactPickerTags.SEARCH).performTextInput("99999999")
+
+    compose.onNodeWithText("لا نتائج.").assertIsDisplayed()
+  }
+
+  @Test
   fun theChooserShowsTheNumbersTheOwnerWroteAndReturnsThePick() = runTest {
     val model = model(*CONTACTS, granted = true)
     screen(model)
@@ -136,6 +147,7 @@ class ContactPickerScreenTest {
     compose.onNodeWithTag(ContactPickerTags.number("0299123450")).assertIsDisplayed()
 
     compose.onNodeWithTag(ContactPickerTags.number("+970599123457")).performClick()
+    compose.waitForIdle()
 
     assertEquals(listOf(PickedContact.New("هبة", "0599123457", "970")), results)
   }

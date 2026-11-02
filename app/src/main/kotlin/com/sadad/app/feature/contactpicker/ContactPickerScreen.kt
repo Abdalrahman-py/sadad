@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -127,25 +128,35 @@ fun ContactPickerScreen(
             singleLine = true,
             fieldModifier = Modifier.fillMaxWidth().testTag(ContactPickerTags.SEARCH),
         )
-        if (state.rows.isEmpty()) {
-          // The single read the permission granted; it is over in one query loop.
-          CircularProgressIndicator(Modifier.size(28.dp).align(Alignment.CenterHorizontally))
-        }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-        ) {
-          items(state.rows) { row ->
-            Column(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .clickable { viewModel.onPick(row) }
-                        .padding(12.dp)
-                        .testTag(ContactPickerTags.row(row.name)),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+        when {
+          state.loading ->
+              // The single read the permission granted; it is over in one query loop.
+              CircularProgressIndicator(Modifier.size(28.dp).align(Alignment.CenterHorizontally))
+          state.rows.isEmpty() ->
+              Text(
+                  stringResource(R.string.contactpicker_empty),
+                  style = MaterialTheme.typography.bodyLarge,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  modifier = Modifier.align(Alignment.CenterHorizontally),
+              )
+          else -> {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
-              Text(row.name, style = MaterialTheme.typography.bodyLarge)
-              row.numbers.forEach { number -> NumberLine(number) }
+              items(state.rows) { row ->
+                Column(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .clickable { viewModel.onPick(row) }
+                            .padding(12.dp)
+                            .testTag(ContactPickerTags.row(row.name)),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                  Text(row.name, style = MaterialTheme.typography.bodyLarge)
+                  row.numbers.forEach { number -> NumberLine(number) }
+                }
+              }
             }
           }
         }
@@ -167,6 +178,15 @@ fun ContactPickerScreen(
           }
         },
     )
+  }
+
+  // One pick, delivered once: a calling callback would outlive an Activity recreation.
+  LaunchedEffect(state.picked) {
+    val pick = state.picked
+    if (pick != null) {
+      onResult(pick)
+      viewModel.pickDelivered()
+    }
   }
 }
 
@@ -243,7 +263,6 @@ fun ContactPickerScreen(
                                 Manifest.permission.READ_CONTACTS,
                             ) == PackageManager.PERMISSION_GRANTED
                           },
-                          onResult = onResult,
                       )
                     }
                   },

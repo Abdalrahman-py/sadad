@@ -48,7 +48,7 @@ class ContactPickerA11yTest {
           FakeDeviceContacts(*contacts),
           MutableStateFlow(SadadPeople(emptyList(), emptyList())),
           grantedNow = { true },
-      ) {}
+      )
 
   @Test
   fun theRowListSitsAtTheNormalFont() = runTest {

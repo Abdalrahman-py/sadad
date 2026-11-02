@@ -12,4 +12,5 @@
     <string name="contactpicker_in_archive">في الأرشيف</string>
     <string name="contactpicker_invalid">غير صالح للواتساب</string>
     <string name="contactpicker_cancel">إلغاء</string>
+    <string name="contactpicker_empty">لا نتائج.</string>
 </resources>
