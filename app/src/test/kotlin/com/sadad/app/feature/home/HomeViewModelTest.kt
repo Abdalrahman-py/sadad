@@ -1,5 +1,9 @@
 package com.sadad.app.feature.home
 
+import com.sadad.app.data.session.Account
+import com.sadad.app.data.session.StoreScope
+import com.sadad.app.data.sync.SyncStatus
+import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
@@ -12,9 +16,12 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -24,6 +31,7 @@ import org.junit.Test
  * the two states that replace the page: an empty store and an offline queue.
  */
 class HomeViewModelTest {
+  @get:Rule val main = MainDispatcherRule()
   private val zone: ZoneId = ZoneId.of("Asia/Jerusalem")
   private val october: YearMonth = YearMonth.of(2026, 10)
   private val today: LocalDate = LocalDate.of(2026, 10, 25)
@@ -225,6 +233,30 @@ class HomeViewModelTest {
   }
 
   /* ------------------------------------------------------------------ builders */
+
+  @Test
+  fun beforeTheLedgerIsReadTheStateIsNotLoadedAndAfterItIs() {
+    val source =
+        object : HomeSource {
+          override val current = flowOf<StoreScope?>(null)
+          override val accounts = flowOf(emptyList<Account>())
+
+          override fun syncStatus(storeUserId: String) = flowOf<SyncStatus>(SyncStatus.Idle)
+
+          override fun offlineUntil(account: Account): Long? = null
+        }
+    assertFalse(HomeViewModel(source).state.value.loaded)
+
+    val state =
+        homeUiState(
+            ledger(debts = listOf(debt("d1", "c1", 5_000, at(2026, 10, 2)))),
+            october,
+            zone,
+            today = today,
+        )
+    assertTrue(state.loaded)
+    assertEquals(Cents(5_000), state.owedToStore)
+  }
 
   private fun at(year: Int, month: Int, day: Int): Instant =
       LocalDate.of(year, month, day).atTime(12, 0).atZone(zone).toInstant()

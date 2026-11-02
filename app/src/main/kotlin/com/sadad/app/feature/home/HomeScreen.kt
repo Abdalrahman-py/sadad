@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -171,6 +172,13 @@ fun HomeContent(
   val storeName = state.storeName.ifBlank { stringResource(R.string.home_default_store) }
   Column(Modifier.fillMaxSize().sadadPageBackground().testTag(HomeTags.SCREEN)) {
     HomeHeader(storeName = storeName, unread = unread, onOpenNotifications = onOpenNotifications)
+    if (!state.loaded) {
+      val loading = stringResource(R.string.home_loading)
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(Modifier.semantics { contentDescription = loading })
+      }
+      return@Column
+    }
     Column(
         Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())

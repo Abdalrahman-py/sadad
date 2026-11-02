@@ -55,6 +55,8 @@ data class HomeUiState(
     val followUpCount: Int = 0,
     val empty: Boolean = false,
     val offline: HomeOffline? = null,
+    /** False only before the store's ledger is read, when the zeros above mean nothing yet. */
+    val loaded: Boolean = true,
 )
 
 /**
@@ -106,8 +108,8 @@ fun homeUiState(
       if (net <= Cents.ZERO) continue
       var late: Int? = null
       var dueToday = false
-      for (debt in receivable) {
-        if (debt.contactId != contact.id || debt.remaining <= Cents.ZERO) continue
+      for (debt in view.debtsOf(contact.id)) {
+        if (debt.direction != Direction.RECEIVABLE || debt.remaining <= Cents.ZERO) continue
         val due = debt.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (due == null) continue
         val days = ChronoUnit.DAYS.between(due, today).toInt()
@@ -226,7 +228,7 @@ class HomeViewModel(source: HomeSource, private val clock: Clock? = null) : View
           .map { inputs ->
             val view = inputs.view
             if (view == null) {
-              HomeUiState(storeName = inputs.storeName, month = inputs.period.month)
+              HomeUiState(storeName = inputs.storeName, month = inputs.period.month, loaded = false)
             } else {
               homeUiState(
                   view = view,
@@ -244,6 +246,6 @@ class HomeViewModel(source: HomeSource, private val clock: Clock? = null) : View
           .stateIn(
               viewModelScope,
               SharingStarted.Eagerly,
-              HomeUiState(month = period.value.month),
+              HomeUiState(month = period.value.month, loaded = false),
           )
 }

@@ -136,6 +136,22 @@ class HomeScreenTest {
   }
 
   @Test
+  fun beforeTheLedgerIsReadHomeShowsLoadingNotZeros() {
+    show(
+        HomeUiState(
+            storeName = "متجر النور",
+            month = YearMonth.of(2026, 10),
+            empty = true,
+            loaded = false,
+        )
+    )
+
+    compose.onNodeWithContentDescription("جارٍ تحميل الحسابات").assertIsDisplayed()
+    assertTrue("no amount yet", compose.onAllNodesWithTagAbsent(HomeTags.OWED))
+    assertTrue("no empty-store card yet", compose.onAllNodesWithTagAbsent(HomeTags.EMPTY_CTA))
+  }
+
+  @Test
   fun theOfflineBannerCountsWhatWaits() {
     val offline =
         state.copy(
