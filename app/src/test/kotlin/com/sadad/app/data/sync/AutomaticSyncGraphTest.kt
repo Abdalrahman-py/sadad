@@ -12,6 +12,7 @@ import com.sadad.ledger.OperationsRequest
 import com.sadad.ledger.PaymentMethod
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -42,10 +43,7 @@ class AutomaticSyncGraphTest {
             backgroundScope.launch(Dispatchers.Default) {
               sender.test.graph.syncWhileVisible(connected)
             }
-        val receiving =
-            backgroundScope.launch(Dispatchers.Default) {
-              receiver.test.graph.syncWhileVisible(connected)
-            }
+        var receiving: Job? = null
         try {
           val repository = sender.scope.repository
           val person = repository.addContact("إبراهيم", null, null, null, null).getOrThrow()
@@ -59,10 +57,19 @@ class AutomaticSyncGraphTest {
           online = true
           connected.value = true
           withContext(Dispatchers.Default) {
-            // The receiver's first pull can land before the sender's, so it needs one 10 s poll;
-            // the bound leaves slow runners several polls of slack.
             withTimeout(45_000) {
+              // The sender's one pass on the network return pushes the offline queue.
               sender.test.graph.accounts.accounts.first { it.first().lastSyncAt != null }
+            }
+          }
+          // The receiver comes to the foreground only after the sender's work is accepted: its
+          // visibility start is a trigger and one pass delivers the data. There is no poll.
+          receiving =
+              backgroundScope.launch(Dispatchers.Default) {
+                receiver.test.graph.syncWhileVisible(connected)
+              }
+          withContext(Dispatchers.Default) {
+            withTimeout(45_000) {
               receiver.scope.repository.view.first { view ->
                 view != null && view.debts.size == 1 && view.payments.size == 1
               }
@@ -74,7 +81,7 @@ class AutomaticSyncGraphTest {
           assertNotNull(receiver.test.graph.accounts.account(STORE_B)!!.lastSyncAt)
         } finally {
           sending.cancelAndJoin()
-          receiving.cancelAndJoin()
+          receiving?.cancelAndJoin()
         }
       }
     }

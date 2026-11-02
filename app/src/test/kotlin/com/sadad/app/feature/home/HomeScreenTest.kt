@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.ui.UiTestApplication
@@ -41,6 +43,7 @@ class HomeScreenTest {
   private var recorded = 0
   private var openedActivity = 0
   private var openedNotifications = 0
+  private var refreshed = 0
 
   private val state =
       HomeUiState(
@@ -172,6 +175,19 @@ class HomeScreenTest {
     assertEquals(1, openedActivity)
   }
 
+  @Test
+  fun aSwipeDownOnHomeStartsARefresh() {
+    show(state)
+
+    compose.onNodeWithTag(HomeTags.MONTH_LINE).performTouchInput {
+      down(center)
+      moveBy(Offset(0f, 300f))
+      up()
+    }
+
+    assertEquals(1, refreshed)
+  }
+
   private fun show(state: HomeUiState, unread: Int = 0) {
     compose.setContent {
       SadadTheme {
@@ -184,6 +200,7 @@ class HomeScreenTest {
               onOpenNotifications = { openedNotifications++ },
               onRecord = { recorded++ },
               onOpenActivity = { openedActivity++ },
+              onRefresh = { refreshed++ },
           )
         }
       }
