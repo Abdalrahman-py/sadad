@@ -81,6 +81,8 @@ import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.PasswordChangeScreen
 import com.sadad.app.feature.auth.navigateAuth
 import com.sadad.app.feature.contactform.ContactFormScreen
+import com.sadad.app.feature.contactpicker.ContactPickerScreen
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.home.HomeScreen
 import com.sadad.app.feature.lock.LockGate
@@ -168,12 +170,16 @@ fun SadadApp(
                 onEdit = { navController.navigate(ContactForm(contactId)) },
             )
           }
-          composable<ContactForm> {
-            val editing = it.toRoute<ContactForm>().contactId
+          composable<ContactForm> { entry ->
+            val editing = entry.toRoute<ContactForm>().contactId
             ContactFormScreen(
                 contactId = editing,
-                initialName = it.toRoute<ContactForm>().initialName,
+                initialName = entry.toRoute<ContactForm>().initialName,
+                // The contacts picker's result comes back through the form's own entry.
+                picked = entry.savedStateHandle.get<PickedContact>(PICKED),
+                onPickDelivered = { entry.savedStateHandle.remove<PickedContact>(PICKED) },
                 onBack = back,
+                onOpenPicker = { navController.navigate(ContactPicker) },
                 onOpenContact = { id ->
                   if (editing != null) {
                     // Editing came from that person's page: saving goes back to it.
@@ -186,6 +192,22 @@ fun SadadApp(
                     }
                   }
                 },
+                // The picked number belongs to someone in the archive: the trash lists them.
+                onOpenTrash = {
+                  navController.navigate(Trash) {
+                    popUpTo<ContactForm> { inclusive = true }
+                  }
+                },
+            )
+          }
+          composable<ContactPicker> {
+            ContactPickerScreen(
+                onResult = { result ->
+                  // Back to the form with the result in its entry; it never re-enters the form.
+                  navController.previousBackStackEntry?.savedStateHandle?.set(PICKED, result)
+                  navController.popBackStack()
+                },
+                onBack = back,
             )
           }
           composable<QuickAdd> {
@@ -536,3 +558,6 @@ private val PILL = RoundedCornerShape(percent = 50)
 private val RECORD_SHADOW = Color(0x59064B42)
 private val PENDING_AMBER = Color(0xFFE0A23A)
 private val OFFLINE_RED = Color(0xFFC13634)
+
+/** The back-stack key the contacts picker stores its [PickedContact] result under. */
+private const val PICKED = "pickedContact"
