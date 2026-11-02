@@ -10,6 +10,8 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import java.lang.reflect.Proxy
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,8 +23,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.lang.reflect.Proxy
-import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,7 +38,10 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
   private val countedScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-  /** Runs before the fixture's teardown ([LedgerTestCase.closeDatabase]), so Room sees no collectors. */
+  /**
+   * Runs before the fixture's teardown ([LedgerTestCase.closeDatabase]), so Room sees no
+   * collectors.
+   */
   @After
   fun joinCountedScope() {
     runBlocking { countedScope.coroutineContext[Job]?.cancelAndJoin() }
@@ -198,8 +201,8 @@ class LedgerRepositoryTest : LedgerTestCase() {
   /**
    * An idle poll's page (no events, cursor unmoved) must do no work at all. A persist is counted
    * through the store's DAO hook: [LedgerStore] takes its DAOs as parameters so a test can count
-   * writes, and [LedgerMetaDao.put] runs once per persist. A new equal `LedgerState` instance
-   * would be conflated by the state flow, so only the persist count proves the skip.
+   * writes, and [LedgerMetaDao.put] runs once per persist. A new equal `LedgerState` instance would
+   * be conflated by the state flow, so only the persist count proves the skip.
    */
   @Test
   fun anIdlePageEmitsNothingPersistsNothingAndKeepsTheCursor() = runTest {
