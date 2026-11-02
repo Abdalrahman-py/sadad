@@ -2,18 +2,28 @@ package com.sadad.app.data.ledger
 
 import app.cash.turbine.test
 import com.sadad.app.data.db.Events
+import com.sadad.app.data.db.LedgerMetaDao
+import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.lang.reflect.Proxy
+import java.util.concurrent.atomic.AtomicInteger
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -25,6 +35,14 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class LedgerRepositoryTest : LedgerTestCase() {
+
+  private val countedScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+  /** Runs before the fixture's teardown ([LedgerTestCase.closeDatabase]), so Room sees no collectors. */
+  @After
+  fun joinCountedScope() {
+    runBlocking { countedScope.coroutineContext[Job]?.cancelAndJoin() }
+  }
 
   @Test
   fun theViewStaysNullUntilTheRowsAreLoaded() = runTest {
@@ -177,6 +195,63 @@ class LedgerRepositoryTest : LedgerTestCase() {
     }
   }
 
+  /**
+   * An idle poll's page (no events, cursor unmoved) must do no work at all. A persist is counted
+   * through the store's DAO hook: [LedgerStore] takes its DAOs as parameters so a test can count
+   * writes, and [LedgerMetaDao.put] runs once per persist. A new equal `LedgerState` instance
+   * would be conflated by the state flow, so only the persist count proves the skip.
+   */
+  @Test
+  fun anIdlePageEmitsNothingPersistsNothingAndKeepsTheCursor() = runTest {
+    val persists = AtomicInteger()
+    val repo = repositoryCountingPersist(persists)
+    repo.load()
+    repo.seed(contactCommand())
+    val records = repo.contactRecords.value
+    val afterSeed = persists.get()
+
+    repo.contactRecords.test {
+      awaitItem()
+      repo.applyPage(Events.page(emptyList(), cursor = 1, nextCursor = 1))
+      // Real time: give the idle pass somewhere to (wrongly) emit into.
+      withContext(Dispatchers.Default) { delay(300) }
+      expectNoEvents()
+    }
+
+    assertEquals("an idle page must not persist", afterSeed, persists.get())
+    assertTrue("an idle page must not republish the records", records === repo.contactRecords.value)
+    assertEquals(1L, db.metaDao().get()!!.cursor)
+  }
+
+  /**
+   * The server may trim rejected-only events, so an empty page that moves the cursor is not busy
+   * work: it must still fold into the state and persist the new cursor.
+   */
+  @Test
+  fun anEmptyPageThatMovesTheCursorStillPersistsIt() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand())
+
+    repo.applyPage(Events.page(emptyList(), cursor = 2, nextCursor = 2))
+
+    assertEquals(2L, db.metaDao().get()!!.cursor)
+  }
+
+  /** The no-op skip never hides a reset: epoch is checked before the idle-page return. */
+  @Test
+  fun anIdlePageOfAnotherEpochStillResetsTheState() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand())
+
+    val otherEpoch = Events.page(emptyList()).copy(epoch = "11111111-2222-4333-8444-555555555555")
+    val failure = runCatching { repo.applyPage(otherEpoch) }.exceptionOrNull()
+
+    assertTrue(failure is LedgerReset)
+    assertNull(db.metaDao().get())
+  }
+
   @Test
   fun refusingBeforeQueueingWritesNothing() = runTest {
     val repo = repository()
@@ -324,6 +399,20 @@ class LedgerRepositoryTest : LedgerTestCase() {
       // The same object, not an equal copy: showing the entry rebuilt nothing confirmed.
       assertSame(before.contacts.single(), after.contacts.single())
     }
+  }
+
+  /** Builds the repository with a `persist`-counting meta DAO, per the [LedgerStore] hook. */
+  private fun repositoryCountingPersist(persists: AtomicInteger): LedgerRepository {
+    val real = db.metaDao()
+    val counted =
+        Proxy.newProxyInstance(
+            LedgerMetaDao::class.java.classLoader,
+            arrayOf(LedgerMetaDao::class.java),
+        ) { _, method, args ->
+          if (method.name == "put") persists.incrementAndGet()
+          method.invoke(real, *(args ?: emptyArray()))
+        } as LedgerMetaDao
+    return LedgerRepository(LedgerStore(db, meta = counted), outbox, session, countedScope)
   }
 
   private suspend fun LedgerRepository.seed(vararg commands: LedgerCommand) {
