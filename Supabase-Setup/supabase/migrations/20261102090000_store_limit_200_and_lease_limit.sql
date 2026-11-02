@@ -3,9 +3,9 @@
 alter table public.stores alter column debtor_limit set default 200;
 update public.stores set debtor_limit = 200 where debtor_limit < 200;
 
--- Identical to Supabase-Setup/supabase/schemas/41_lease_limit.sql: please edit that file.
+-- Same as Supabase-Setup/supabase/schemas/41_lease_limit.sql, plus the CREATE grant around the owner change.
 -- The store's cap on active contacts, read by /v1/mobile/lease for the signed lease. Owned by
--- sadid_auth_reader in sadid_private: on the cloud no internal role may own objects in public.
+-- sadid_auth_reader like contact_limit(); the public wrapper below stays with the migration role.
 create function sadid_private.lease_limit() returns integer
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -18,7 +18,10 @@ begin
   return (select debtor_limit from public.stores where id = cap.store_id);
 end
 $$;
+-- A new owner needs CREATE on the schema; schemas/99_revoke_create.sql takes it back the same way.
+grant create on schema sadid_private to sadid_auth_reader;
 alter function sadid_private.lease_limit() owner to sadid_auth_reader;
+revoke create on schema sadid_private from sadid_auth_reader;
 revoke all on function sadid_private.lease_limit() from public, anon, service_role;
 grant execute on function sadid_private.lease_limit() to authenticated;
 
