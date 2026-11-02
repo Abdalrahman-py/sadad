@@ -3,11 +3,20 @@ package com.sadad.app.ui
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -241,6 +250,70 @@ class EdgeToEdgeTest {
         }
       }
 
+  /**
+   * Ticket 139: with the keyboard open, the shell hides the bottom bar and pads the NavHost above
+   * it, so the stub form's save button is never under the keyboard. The stub mirrors a form
+   * destination: a scrolling column of text fields ending in a save button.
+   */
+  @Test
+  fun imeHidesTheBarAndPadsTheContent() =
+      inShell(
+          Home,
+          check = {
+            compose.runOnUiThread {
+              val ime =
+                  WindowInsetsCompat.Builder()
+                      .setInsets(
+                          WindowInsetsCompat.Type.ime(),
+                          Insets.of(0, 0, 0, (IME_DP * density).toInt()),
+                      )
+                      .setVisible(WindowInsetsCompat.Type.ime(), true)
+                      .build()
+              ViewCompat.dispatchApplyWindowInsets(
+                  compose.activity.findViewById<View>(android.R.id.content),
+                  ime,
+              )
+            }
+            compose.waitForIdle()
+            assertEquals("the bottom bar hides while the keyboard is open", 0, barItems())
+            val height = compose.onRoot().fetchSemanticsNode().size.height
+            val imeTop = height - (IME_DP * density).toInt()
+            val save = compose.onNodeWithTag(FORM_SAVE).fetchSemanticsNode().boundsInWindow.bottom
+            assertTrue(
+                "the save button is under the keyboard (button $save, keyboard top $imeTop)",
+                save <= imeTop + 0.5f,
+            )
+            // The insets clear: the bar comes back.
+            applyBars()
+            assertEquals("the bottom bar returns when the keyboard closes", 5, barItems())
+          },
+      ) {
+        composable<Home> { KeyboardStubDestination() }
+      }
+
+  /** A form destination: text fields the keyboard could cover, ending in the save button. */
+  @Composable
+  private fun KeyboardStubDestination() {
+    Column(Modifier.fillMaxSize()) {
+      Column(
+          Modifier.weight(1f).verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        repeat(6) { TextField(value = "حقل $it", onValueChange = {}) }
+      }
+      Button(
+          onClick = {},
+          modifier =
+              Modifier.fillMaxWidth()
+                  .padding(horizontal = 18.dp, vertical = 12.dp)
+                  .testTag(FORM_SAVE),
+      ) {
+        Text("حفظ")
+      }
+    }
+  }
+
   private suspend fun seedContacts(fixture: TestGraph) {
     val repository = checkNotNull(fixture.graph.current.value).repository
     (1..12).forEach { repository.addContact("شخص $it", null, null, null, null).getOrThrow() }
@@ -357,5 +430,7 @@ class EdgeToEdgeTest {
 
     const val OUTER = "outer-top"
     const val INNER = "inner-top"
+    const val FORM_SAVE = "form-save"
+    const val IME_DP = 300
   }
 }

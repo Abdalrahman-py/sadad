@@ -9,6 +9,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -276,6 +279,7 @@ private fun UpdatePrompt(onOpen: () -> Unit) {
  * content as padding; no screen handles them itself. `internal` so the shell and inset tests can
  * render real or stub destinations in the real shell.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SadadShell(
     navController: NavHostController,
@@ -285,8 +289,10 @@ internal fun SadadShell(
 ) {
   val destination = navController.currentBackStackEntryAsState().value?.destination
   val fromStore = navController.previousBackStackEntry?.destination?.hasRoute<Store>() == true
+  // The keyboard covers the bottom bar, so it hides while the keyboard is visible.
   val showNavigation =
-      destination != null &&
+      !WindowInsets.isImeVisible &&
+          destination != null &&
           (!destination.isAny(AUTH_GATES) ||
               (fromStore && !destination.hasRoute<AwaitingApproval>()))
   Scaffold(
@@ -299,7 +305,9 @@ internal fun SadadShell(
         navController = navController,
         startDestination = startDestination,
         // Consumed, so a destination with its own Scaffold does not add the bar insets again.
-        modifier = Modifier.padding(insets).consumeWindowInsets(insets),
+        // imePadding after consume adds only the keyboard part the bar insets have not covered,
+        // so every destination clears the keyboard without handling it itself.
+        modifier = Modifier.padding(insets).consumeWindowInsets(insets).imePadding(),
         builder = destinations,
     )
   }
