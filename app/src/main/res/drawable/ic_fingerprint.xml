@@ -1,5 +1,8 @@
+<!-- Material Symbols Rounded «fingerprint». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#00000000" android:strokeColor="#FF000000" android:strokeWidth="1.7"
-        android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M12,11v3a8,8 0,0 1,-1.5 4.7M8.5,8.6A4,4 0,0 1,16 11v1.5M16,16c-0.2,1.4 -0.6,2.7 -1.2,3.9M5,15.5V11a7,7 0,0 1,11.6 -5.3M19,11v2" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 481 -781 q 106 0 200 45.5 T 838 -604 q 7 9 4.5 16 t -8.5 12 q -6 5 -14 4.5 t -14 -8.5 q -55 -78 -141.5 -119.5 T 481 -741 q -97 0 -182 41.5 T 158 -580 q -6 9 -14 10 t -14 -4 q -7 -5 -8.5 -12.5 T 126 -602 q 62 -85 155.5 -132 T 481 -781 Z m 0 94 q 135 0 232 90 t 97 223 q 0 50 -35.5 83.5 T 688 -257 q -51 0 -87.5 -33.5 T 564 -374 q 0 -33 -24.5 -55.5 T 481 -452 q -34 0 -58.5 22.5 T 398 -374 q 0 97 57.5 162 T 604 -121 q 9 3 12 10 t 1 15 q -2 7 -8 12 t -15 3 q -104 -26 -170 -103.5 T 358 -374 q 0 -50 36 -84 t 87 -34 q 51 0 87 34 t 36 84 q 0 33 25 55.5 t 59 22.5 q 34 0 58 -22.5 t 24 -55.5 q 0 -116 -85 -195 t -203 -79 q -118 0 -203 79 t -85 194 q 0 24 4.5 60 t 21.5 84 q 3 9 -.5 16 T 208 -205 q -8 3 -15.5 -.5 T 182 -217 q -15 -39 -21.5 -77.5 T 154 -374 q 0 -133 96.5 -223 T 481 -687 Z m 0 -192 q 64 0 125 15.5 T 724 -819 q 9 5 10.5 12 t -1.5 14 q -3 7 -10 11 t -17 -1 q -53 -27 -109.5 -41.5 T 481 -839 q -58 0 -114 13.5 T 260 -783 q -8 5 -16 2.5 T 232 -791 q -4 -8 -2 -14.5 t 10 -11.5 q 56 -30 117 -46 t 124 -16 Z m 0 289 q 93 0 160 62.5 T 708 -374 q 0 9 -5.5 14.5 T 688 -354 q -8 0 -14 -5.5 t -6 -14.5 q 0 -75 -55.5 -125.5 T 481 -550 q -76 0 -130.5 50.5 T 296 -374 q 0 81 28 137.5 T 406 -123 q 6 6 6 14 t -6 14 q -6 6 -14 6 t -14 -6 q -59 -62 -90.5 -126.5 T 256 -374 q 0 -91 66 -153.5 T 481 -590 Z m -1 196 q 9 0 14.5 6 t 5.5 14 q 0 75 54 123 t 126 48 q 6 0 17 -1 t 23 -3 q 9 -2 15.5 2.5 T 744 -191 q 2 8 -3 14 t -13 8 q -18 5 -31.5 5.5 t -16.5 .5 q -89 0 -154.5 -60 T 460 -374 q 0 -8 5.5 -14 t 14.5 -6 Z" />
+    </group>
 </vector>

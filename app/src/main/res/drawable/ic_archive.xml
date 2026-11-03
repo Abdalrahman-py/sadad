@@ -1,5 +1,8 @@
+<!-- Material Symbols Rounded «delete». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#00000000" android:strokeColor="#FF000000" android:strokeWidth="1.9"
-        android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M3,7h18v4H3zM5,11v9h14v-9M10,15h4" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 280 -120 q -33 0 -56.5 -23.5 T 200 -200 v -520 q -17 0 -28.5 -11.5 T 160 -760 q 0 -17 11.5 -28.5 T 200 -800 h 160 q 0 -17 11.5 -28.5 T 400 -840 h 160 q 17 0 28.5 11.5 T 600 -800 h 160 q 17 0 28.5 11.5 T 800 -760 q 0 17 -11.5 28.5 T 760 -720 v 520 q 0 33 -23.5 56.5 T 680 -120 H 280 Z m 400 -600 H 280 v 520 h 400 v -520 Z M 428.5 -291.5 Q 440 -303 440 -320 v -280 q 0 -17 -11.5 -28.5 T 400 -640 q -17 0 -28.5 11.5 T 360 -600 v 280 q 0 17 11.5 28.5 T 400 -280 q 17 0 28.5 -11.5 Z m 160 0 Q 600 -303 600 -320 v -280 q 0 -17 -11.5 -28.5 T 560 -640 q -17 0 -28.5 11.5 T 520 -600 v 280 q 0 17 11.5 28.5 T 560 -280 q 17 0 28.5 -11.5 Z M 280 -720 v 520 -520 Z" />
+    </group>
 </vector>

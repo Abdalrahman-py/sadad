@@ -1,6 +1,8 @@
-<!-- Points right: back in a right-to-left layout. -->
+<!-- Material Symbols Rounded «arrow_back». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round"
-        android:strokeLineJoin="round" android:pathData="M9,6l6,6 -6,6" />
+    android:width="24dp" android:height="24dp" android:autoMirrored="true"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="m 313 -440 196 196 q 12 12 11.5 28 T 508 -188 q -12 11 -28 11.5 T 452 -188 L 188 -452 q -6 -6 -8.5 -13 t -2.5 -15 q 0 -8 2.5 -15 t 8.5 -13 l 264 -264 q 11 -11 27.5 -11 t 28.5 11 q 12 12 12 28.5 T 508 -715 L 313 -520 h 447 q 17 0 28.5 11.5 T 800 -480 q 0 17 -11.5 28.5 T 760 -440 H 313 Z" />
+    </group>
 </vector>

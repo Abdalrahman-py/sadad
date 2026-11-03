@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,14 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -618,7 +611,12 @@ private fun FollowUpRow(
             },
         contentAlignment = Alignment.Center,
     ) {
-      WhatsAppGlyph(link)
+      Icon(
+          painterResource(R.drawable.ic_whatsapp),
+          contentDescription = null,
+          tint = link,
+          modifier = Modifier.size(22.dp),
+      )
     }
   }
 }
@@ -645,7 +643,12 @@ private fun EmptyStart(onRecord: () -> Unit) {
             Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).background(p.soft),
             contentAlignment = Alignment.Center,
         ) {
-          LedgerGlyph(link)
+          Icon(
+              painterResource(R.drawable.ic_ledger),
+              contentDescription = null,
+              tint = link,
+              modifier = Modifier.size(34.dp),
+          )
         }
         Text(
             stringResource(R.string.home_empty_card_title),
@@ -713,63 +716,6 @@ private fun AfterRow(number: Int, text: String) {
       Text("$number", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = link)
     }
     Text(text, fontSize = 14.sp, lineHeight = 21.sp, color = p.text)
-  }
-}
-
-/* ---------------------------------------------------------------- glyphs */
-
-@Composable
-private fun WhatsAppGlyph(color: Color) {
-  Canvas(Modifier.size(20.dp)) {
-    val stroke = size.minDimension * 0.09f
-    drawCircle(
-        color = color,
-        radius = size.minDimension * 0.38f,
-        center = Offset(size.width * 0.5f, size.height * 0.46f),
-        style = Stroke(width = stroke),
-    )
-    val tail =
-        Path().apply {
-          moveTo(size.width * 0.32f, size.height * 0.72f)
-          lineTo(size.width * 0.22f, size.height * 0.86f)
-          lineTo(size.width * 0.46f, size.height * 0.78f)
-          close()
-        }
-    drawPath(tail, color)
-  }
-}
-
-@Composable
-private fun LedgerGlyph(color: Color) {
-  Canvas(Modifier.size(34.dp)) {
-    val stroke = size.minDimension * 0.08f
-    drawRoundRect(
-        color = color,
-        topLeft = Offset(size.width * 0.16f, size.height * 0.12f),
-        size = Size(size.width * 0.68f, size.height * 0.76f),
-        cornerRadius = CornerRadius(size.width * 0.1f),
-        style = Stroke(width = stroke),
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.32f, size.height * 0.12f),
-        Offset(size.width * 0.32f, size.height * 0.88f),
-        stroke,
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.44f, size.height * 0.38f),
-        Offset(size.width * 0.7f, size.height * 0.38f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.44f, size.height * 0.58f),
-        Offset(size.width * 0.7f, size.height * 0.58f),
-        stroke,
-        StrokeCap.Round,
-    )
   }
 }
 

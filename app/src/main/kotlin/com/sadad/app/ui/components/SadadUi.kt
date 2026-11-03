@@ -52,7 +52,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -62,7 +61,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadad.app.R
@@ -444,13 +442,11 @@ fun SadadPageHeading(
                     .semantics { contentDescription = back },
             contentAlignment = Alignment.Center,
         ) {
-          // The arrow points to the start of a right-to-left page, as the Java app drew it.
-          val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
           Icon(
-              painterResource(R.drawable.ic_back_whatsapp),
+              painterResource(R.drawable.ic_back),
               contentDescription = null,
               tint = p.text,
-              modifier = Modifier.size(24.dp).scale(scaleX = if (rtl) 1f else -1f, scaleY = 1f),
+              modifier = Modifier.size(24.dp),
           )
         }
         Spacer(Modifier.width(10.dp))
