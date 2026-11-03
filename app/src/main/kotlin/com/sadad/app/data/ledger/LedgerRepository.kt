@@ -8,6 +8,7 @@ import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ConfirmedLedger
+import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.Direction
@@ -297,6 +298,26 @@ class LedgerRepository(
             )
         )
     )
+  }
+
+  /**
+   * Drops a new person the server refused, with the debts saved alongside them: the debts' outbox
+   * rows first (they depend on the person), then the person's. An accepted person is never touched.
+   */
+  suspend fun discardDraft(contactId: String): Result<Unit> = guarded {
+    val known = state.value.contacts.containsKey(contactId)
+    val rows = outbox.snapshot()
+    val draft = rows.firstOrNull {
+      it.entityId == contactId &&
+          it.command.payload() is ContactCreate &&
+          (it.state == OutboxState.REJECTED || it.state == OutboxState.UNSENDABLE)
+    }
+    if (known || draft == null) throw Refusal.Unknown
+    val dependents = rows.filter { draft.operationId in it.command.dependsOn }
+    for (row in dependents + draft) {
+      val result = outbox.dismiss(row.operationId)
+      if (result != DismissResult.Dismissed) throw Refusal.Invalid(result.toString())
+    }
   }
 
   /** Permanent deletion is online-only and only targets a zero-balance contact in the trash. */

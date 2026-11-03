@@ -376,6 +376,46 @@ class LedgerRepositoryTest : LedgerTestCase() {
   }
 
   @Test
+  fun discardingARejectedDraftDismissesItsDebtThenThePerson() = runTest {
+    val repo = repository()
+    repo.load()
+    val id = repo.addContact("منى", "0599123456", null, null, FirstDebt(Cents(4_000))).getOrThrow()
+    outbox.settle(
+        outbox.snapshot().map {
+          receiptOf(
+              it.command,
+              ReceiptStatus.REJECTED,
+              if (it.type == CommandType.CONTACT_CREATE) "contact_limit_reached"
+              else "dependency_rejected",
+          )
+        }
+    )
+    repo.contactRecords.first { it?.failed?.isNotEmpty() == true }
+
+    assertTrue(repo.discardDraft(id).isSuccess)
+
+    assertTrue(outbox.snapshot().isEmpty())
+    assertTrue(
+        checkNotNull(repo.contactRecords.first { it?.failed?.isEmpty() == true }).failed.isEmpty()
+    )
+  }
+
+  @Test
+  fun discardingAQueuedOrAcceptedPersonIsRefused() = runTest {
+    val repo = repository()
+    repo.load()
+    val queued = repo.addContact("منى", null, null, null, null).getOrThrow()
+    assertTrue(repo.discardDraft(queued).exceptionOrNull() is Refusal.Unknown)
+    assertEquals(1, outbox.snapshot().size)
+
+    val command = outbox.snapshot().single().command
+    repo.applyPage(
+        com.sadad.app.data.db.Events.page(listOf(com.sadad.app.data.db.Events.accepted(command, 1)))
+    )
+    assertTrue(repo.discardDraft(queued).exceptionOrNull() is Refusal.Unknown)
+  }
+
+  @Test
   fun anIdOutsideTheViewIsUnknown() = runTest {
     val repo = repository()
     repo.load()

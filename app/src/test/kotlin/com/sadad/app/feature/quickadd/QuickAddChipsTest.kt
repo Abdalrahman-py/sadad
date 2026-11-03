@@ -35,10 +35,9 @@ class QuickAddChipsTest {
   @get:Rule val main = MainDispatcherRule()
 
   @Test
-  fun newPersonDoesNotUseTheUnvalidatedInlineForm() {
+  fun theAddNewRowOpensTheNewPersonStepNotTheContactForm() {
     val fixture = runBlocking { TestGraph.signedIn() }
     fixture.use {
-      var createdName: String? = null
       val model =
           QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
@@ -50,7 +49,7 @@ class QuickAddChipsTest {
               false,
               {},
               {},
-              onCreateContact = { createdName = it },
+              onOpenTrash = {},
               viewModel = model,
           )
         }
@@ -62,8 +61,9 @@ class QuickAddChipsTest {
       compose.onNodeWithTag(QuickAddTags.ADD_NEW).performSemanticsAction(SemanticsActions.OnClick) {
         it()
       }
-      org.junit.Assert.assertEquals("إبراهيم", createdName)
-      org.junit.Assert.assertEquals(QuickAddStep.PICKER, model.state.value.step)
+      org.junit.Assert.assertEquals(QuickAddStep.NEW_PERSON, model.state.value.step)
+      org.junit.Assert.assertEquals("إبراهيم", model.state.value.newPerson?.name)
+      compose.onNodeWithTag(QuickAddNewPersonTags.STEP).assertExists()
       runBlocking {
         assertTrue(checkNotNull(fixture.graph.current.value).outbox.snapshot().isEmpty())
       }
@@ -94,7 +94,7 @@ class QuickAddChipsTest {
                 payment = false,
                 onClose = {},
                 onOpenContact = {},
-                onCreateContact = {},
+                onOpenTrash = {},
                 viewModel = model,
             )
           }

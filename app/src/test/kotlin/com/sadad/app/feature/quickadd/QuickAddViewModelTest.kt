@@ -135,6 +135,8 @@ class QuickAddViewModelTest {
       model.state.first { it.loaded && it.people.size == 3 }
 
       model.onQueryChange("سار")
+      // The rows are found off the main thread; wait for the query's own result.
+      model.state.first { it.people.size == 1 }
 
       assertEquals(listOf("سارة"), model.state.value.people.map { it.name })
       assertEquals(
@@ -144,7 +146,7 @@ class QuickAddViewModelTest {
       )
 
       model.clearQuery()
-      assertEquals(3, model.state.value.people.size)
+      assertEquals(3, model.state.first { it.people.size == 3 }.people.size)
     }
   }
 

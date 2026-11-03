@@ -83,6 +83,8 @@ data class ContactDetailState(
     /** The amount to settle before deleting, when deleting is refused. */
     val settleFirst: Cents? = null,
     val confirmDelete: Boolean = false,
+    /** «حذف المسودة» waits for its confirm dialog. */
+    val confirmDiscard: Boolean = false,
     /** The Contact waiting in the undo banner; nothing is queued until the banner expires. */
     val undoName: String? = null,
     val error: String? = null,
@@ -115,6 +117,7 @@ class ContactDetailViewModel(
       val newestFirst: Boolean = true,
       val settleFirst: Cents? = null,
       val confirmDelete: Boolean = false,
+      val confirmDiscard: Boolean = false,
       val undoName: String? = null,
       val error: String? = null,
       val done: Boolean = false,
@@ -146,6 +149,9 @@ class ContactDetailViewModel(
                     savedDebts = draft.debts,
                     canRegisterPayments = false,
                     canDeleteContacts = false,
+                    confirmDiscard = ui.confirmDiscard,
+                    error = ui.error,
+                    done = ui.done,
                 )
           }
           .flowOn(Dispatchers.Default)
@@ -154,6 +160,25 @@ class ContactDetailViewModel(
   }
 
   fun toggleOrder() = dialogs.update { it.copy(newestFirst = !it.newestFirst) }
+
+  /** «حذف المسودة» on a refused new person's page: asks first. */
+  fun askDiscard() = dialogs.update { it.copy(confirmDiscard = true) }
+
+  fun dismissDiscard() = dialogs.update { it.copy(confirmDiscard = false) }
+
+  /** Deletes the draft's outbox rows; the person leaves the list and the page closes. */
+  fun confirmDiscard() {
+    if (!dialogs.value.confirmDiscard) return
+    dialogs.update { it.copy(confirmDiscard = false) }
+    val store = source.open() ?: return
+    viewModelScope.launch {
+      val result = store.discardDraft(contactId)
+      dialogs.update {
+        if (result.isSuccess) it.copy(done = true)
+        else it.copy(error = appContext.getString(R.string.contacts_discard_draft_failed))
+      }
+    }
+  }
 
   fun requestDelete() {
     val current = mutable.value

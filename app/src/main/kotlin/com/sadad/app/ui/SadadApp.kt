@@ -215,10 +215,9 @@ fun SadadApp(
                 contactId = route.contactId,
                 payment = route.payment,
                 onClose = back,
-                onCreateContact = { name ->
-                  navController.navigate(ContactForm(initialName = name)) {
-                    popUpTo<QuickAdd> { inclusive = true }
-                  }
+                // A picked number of someone in the archive: they are restored from the trash.
+                onOpenTrash = {
+                  navController.navigate(Trash) { popUpTo<QuickAdd> { inclusive = true } }
                 },
                 onOpenContact = { id ->
                   // Single top: quick add opened from this contact returns to it, not a second

@@ -31,6 +31,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,6 +74,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -130,27 +132,36 @@ object QuickAddTags {
   fun key(label: String) = "quickadd:key-$label"
 }
 
-/** Records for a saved person; creating a new person opens the full contact form first. */
+/** Records for a saved person, or for a new one created inside the flow with their first debt. */
 @Composable
 fun QuickAddScreen(
     contactId: String?,
     payment: Boolean,
     onClose: () -> Unit,
     onOpenContact: (String) -> Unit,
-    onCreateContact: (String) -> Unit,
+    onOpenTrash: () -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
   val p = sadadPalette
+  // A picked phone number of someone in the archive: they are restored from the trash, not here.
+  LaunchedEffect(state.openTrash) {
+    if (state.openTrash) {
+      viewModel.onTrashHandled()
+      onOpenTrash()
+    }
+  }
 
   Box(Modifier.fillMaxSize().sadadPageBackground()) {
     when (state.step) {
-      QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose, onCreateContact)
+      QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose)
+      QuickAddStep.NEW_PERSON -> NewPersonStep(state, viewModel)
       QuickAddStep.AMOUNT ->
           AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
+    PhoneNumberChooser(state, viewModel)
     val anomaly = state.anomaly
     if (anomaly != null) {
       AlertDialog(
@@ -200,7 +211,7 @@ private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddVie
           viewModelFactory {
             initializer {
               QuickAddViewModel(
-                  graph.quickAddSource(),
+                  graph.quickAddSource(this[APPLICATION_KEY]),
                   contactId,
                   payment,
                   createSavedStateHandle(),
@@ -217,7 +228,6 @@ private fun PickerStep(
     state: QuickAddState,
     model: QuickAddViewModel,
     onClose: () -> Unit,
-    onCreateContact: (String) -> Unit,
 ) {
   val p = sadadPalette
   Column(
@@ -247,6 +257,13 @@ private fun PickerStep(
         onClear = model::clearQuery,
     )
     if (state.blocked) BlockedCard()
+    state.error?.let {
+      Text(
+          it,
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.testTag(QuickAddTags.ERROR),
+      )
+    }
 
     Text(
         text = listLabelText(state),
@@ -274,10 +291,10 @@ private fun PickerStep(
           )
         }
       }
-      if (state.query.isNotBlank()) {
-        item {
-          AddNewRow(name = state.query.trim(), onClick = { onCreateContact(state.query.trim()) })
-        }
+      // A new person is someone to record a debt for; the payment flow has nobody new to pay.
+      if (state.query.isNotBlank() && !state.payment) {
+        item { AddNewRow(name = state.query.trim(), onClick = model::addNewPerson) }
+        phoneContacts(state, model)
       }
     }
   }
@@ -289,6 +306,11 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
   val hint = stringResource(R.string.quickadd_search_hint)
   val focus = remember { FocusRequester() }
   val keyboard = LocalSoftwareKeyboardController.current
+  // The field owns its text: a value that comes back through the view model's flow arrives a frame
+  // late, and the cursor jumps while the owner types. Only a reset to empty (clear, «تسجيل آخر»)
+  // flows back in.
+  var text by rememberSaveable { mutableStateOf(query) }
+  LaunchedEffect(query) { if (query.isEmpty()) text = "" }
   LaunchedEffect(Unit) {
     focus.requestFocus()
     keyboard?.show()
@@ -306,8 +328,11 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
     ) {
       SearchGlyph(p.muted)
       BasicTextField(
-          value = query,
-          onValueChange = onQuery,
+          value = text,
+          onValueChange = {
+            text = it
+            onQuery(it)
+          },
           singleLine = true,
           textStyle = LocalTextStyle.current.copy(fontSize = 15.sp, color = p.text),
           cursorBrush = SolidColor(p.primary),
@@ -318,17 +343,20 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
               },
           decorationBox = { inner ->
             Box(Modifier.fillMaxWidth()) {
-              if (query.isEmpty()) Text(hint, color = p.muted, fontSize = 15.sp)
+              if (text.isEmpty()) Text(hint, color = p.muted, fontSize = 15.sp)
               inner()
             }
           },
       )
-      if (query.isNotEmpty()) {
+      if (text.isNotEmpty()) {
         RoundIconButton(
             description = stringResource(R.string.quickadd_clear_search),
             size = 40,
             tag = QuickAddTags.CLEAR,
-            onClick = onClear,
+            onClick = {
+              text = ""
+              onClear()
+            },
         ) {
           XGlyph(p.muted, size = 18)
         }
@@ -664,7 +692,8 @@ private fun ModeToggle(state: QuickAddState, model: QuickAddViewModel, supplier:
           onClick = model::toDebt,
           modifier = Modifier.weight(1f),
       )
-      if (!state.restricted) {
+      // A person created in this flow has nothing to pay yet.
+      if (!state.restricted && state.newPerson == null) {
         ModeCell(
             label =
                 stringResource(

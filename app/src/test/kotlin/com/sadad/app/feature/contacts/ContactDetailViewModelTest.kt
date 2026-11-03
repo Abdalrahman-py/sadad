@@ -43,6 +43,47 @@ class ContactDetailViewModelTest {
   private val context: Context = ApplicationProvider.getApplicationContext()
 
   @Test
+  fun discardingARejectedDraftRemovesItAndClosesThePage() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val id =
+          store.repository
+              .addContact(
+                  "منى",
+                  null,
+                  null,
+                  null,
+                  com.sadad.app.data.ledger.FirstDebt(Cents(4_000)),
+              )
+              .getOrThrow()
+      store.outbox.settle(
+          store.outbox.snapshot().map { row ->
+            com.sadad.app.data.ledger.receiptOf(
+                row.command,
+                com.sadad.ledger.ReceiptStatus.REJECTED,
+                code =
+                    if (row.type == CommandType.CONTACT_CREATE) "contact_limit_reached"
+                    else "dependency_rejected",
+            )
+          }
+      )
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), id, context).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+      model.state.first { it.syncFailure != null }
+
+      model.askDiscard()
+      assertTrue(model.state.first { it.confirmDiscard }.confirmDiscard)
+      model.confirmDiscard()
+
+      assertTrue(model.state.first { it.done }.done)
+      assertTrue(store.outbox.snapshot().isEmpty())
+      store.repository.contactRecords.first { it?.failed?.isEmpty() == true }
+    }
+  }
+
+  @Test
   fun aContactRejectedForTheStoreLimitDoesNotBecomeMissing() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
