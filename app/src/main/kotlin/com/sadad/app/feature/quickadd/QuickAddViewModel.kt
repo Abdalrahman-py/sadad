@@ -177,16 +177,28 @@ class QuickAddViewModel(
     viewModelScope.launch {
       queries
           .mapLatest { query ->
-            query to
-                (PersonSearch.search(allPeople, query) to
-                    ContactPickerRows.search(parsedRows, query))
+            val searched = allPeople
+            val parsed = parsedRows
+            SearchResult(
+                query,
+                searched,
+                parsed,
+                PersonSearch.search(searched, query),
+                ContactPickerRows.search(parsed, query),
+            )
           }
           .flowOn(Dispatchers.Default)
-          .collect { (query, rows) ->
+          .collect { found ->
             mutable.update { current ->
-              // A newer keystroke already moved on; its own search replaces this one.
-              if (current.query != query) current
-              else current.copy(people = members(rows.first, current), contactRows = rows.second)
+              // A newer keystroke, or a newer store projection, already replaced this result: the
+              // first search runs before the people are loaded and must not blank the list after.
+              if (current.query != found.query ||
+                  found.searched !== allPeople ||
+                  found.parsed !== parsedRows) {
+                current
+              } else {
+                current.copy(people = members(found.people, current), contactRows = found.contacts)
+              }
             }
           }
     }
@@ -804,6 +816,15 @@ class QuickAddViewModel(
     val selected = current.selected ?: return people
     return if (people.any { it.id == selected.id }) people else people + selected
   }
+
+  /** A search and the lists it ran over, so a result from lists since replaced can be dropped. */
+  private class SearchResult(
+      val query: String,
+      val searched: List<QuickAddPerson>,
+      val parsed: List<ContactRow>,
+      val people: List<QuickAddPerson>,
+      val contacts: List<ContactRow>,
+  )
 
   private data class Facts(
       val loaded: Boolean = false,
