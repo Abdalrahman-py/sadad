@@ -83,6 +83,10 @@ data class PeopleRow(
     val category: String = "",
     val syncFailed: Boolean = false,
 ) {
+  /** The folded name and the phone's digits, folded once per row instead of per keystroke. */
+  internal val nameKey: String = searchText(name)
+  internal val phoneDigits: String = searchText(phone).filter(Char::isDigit)
+
   /** The last three digits the row shows after «…»; "" when the person has no number. */
   val phoneTail: String
     get() = if (phone.isBlank()) "" else phone.filter(Char::isDigit).takeLast(3)
@@ -131,7 +135,20 @@ fun peopleUiState(
     query: String = "",
     filter: PeopleFilter = PeopleFilter.ALL,
     sort: PeopleSort = PeopleSort.RECENT,
-): PeopleState {
+): PeopleState =
+    peopleUiState(
+        sortRows(peopleRows(view, zone, today), sort),
+        view.contacts.size,
+        query,
+        filter,
+        sort,
+    )
+
+/**
+ * Every person's row: the one pass over the whole ledger. It depends only on the view and the day,
+ * so the screen runs it when those change, never per keystroke.
+ */
+internal fun peopleRows(view: LedgerView, zone: ZoneId, today: LocalDate): List<PeopleRow> {
   val nets = HashMap<String, Long>(view.contacts.size * 2)
   val debts = view.debts.groupBy { it.contactId }
   val payments = view.payments.groupBy { it.contactId }
@@ -173,26 +190,39 @@ fun peopleUiState(
         )
   }
 
-  val searched = everyone.filter { matches(it, query) }
+  return everyone
+}
+
+/** [rows] in [sort]'s order; run when the rows or the order change, so a search only filters. */
+internal fun sortRows(rows: List<PeopleRow>, sort: PeopleSort): List<PeopleRow> =
+    when (sort) {
+      PeopleSort.RECENT ->
+          rows.sortedWith(
+              compareByDescending<PeopleRow> { it.lastActiveAt }.then(compareByArabicName())
+          )
+      PeopleSort.BALANCE ->
+          rows.sortedWith(
+              compareByDescending<PeopleRow> { Math.abs(it.net.value) }.then(compareByArabicName())
+          )
+      PeopleSort.NAME -> rows.sortedWith(compareByArabicName())
+    }
+
+/** The per-keystroke part: [sorted] (already in [sort]'s order) narrowed by the search and chip. */
+internal fun peopleUiState(
+    sorted: List<PeopleRow>,
+    registered: Int,
+    query: String,
+    filter: PeopleFilter,
+    sort: PeopleSort,
+): PeopleState {
+  val needle = searchText(query)
+  val searched = if (needle.isEmpty()) sorted else sorted.filter { matches(it, needle) }
   val counts = PeopleFilter.entries.associateWith { chip -> searched.count(chip::keeps) }
   val shown = searched.filter(filter::keeps)
-  val ordered =
-      when (sort) {
-        PeopleSort.RECENT ->
-            shown.sortedWith(
-                compareByDescending<PeopleRow> { it.lastActiveAt }.then(compareByArabicName())
-            )
-        PeopleSort.BALANCE ->
-            shown.sortedWith(
-                compareByDescending<PeopleRow> { Math.abs(it.net.value) }
-                    .then(compareByArabicName())
-            )
-        PeopleSort.NAME -> shown.sortedWith(compareByArabicName())
-      }
   return PeopleState(
       loaded = true,
-      rows = ordered,
-      registered = view.contacts.size,
+      rows = shown,
+      registered = registered,
       counts = counts,
       totalLine = if (filter == PeopleFilter.ALL) null else totalLine(filter, shown),
       query = query,
@@ -224,16 +254,14 @@ private fun totalLine(filter: PeopleFilter, rows: List<PeopleRow>): String {
   return "$label ${formatShekels(Cents(sum))}"
 }
 
-/** The search: the normalised name contains it, or its digits are in the phone. */
-private fun matches(row: PeopleRow, query: String): Boolean {
-  val needle = searchText(query)
-  if (needle.isEmpty()) return true
-  if (searchText(row.name).contains(needle)) return true
+/** The search ([needle] already folded): the name contains it, or its digits are in the phone. */
+private fun matches(row: PeopleRow, needle: String): Boolean {
+  if (row.nameKey.contains(needle)) return true
   // A query with a letter is a name, never a number: «9123» finds a phone, «9123ح» does not.
   if (needle.any(Char::isLetter)) return false
   val digits = needle.filter(Char::isDigit)
   if (digits.isEmpty()) return false
-  return searchText(row.phone).filter(Char::isDigit).contains(digits)
+  return row.phoneDigits.contains(digits)
 }
 
 /**
@@ -318,35 +346,52 @@ class PeopleViewModel(
       )
   val state: StateFlow<PeopleState> = mutable.asStateFlow()
 
+  /** Everyone's rows, rebuilt only when the ledger or the day changes. */
+  private class Rows(val all: List<PeopleRow>, val registered: Int, val incomplete: Int)
+
+  private class Sorted(val rows: Rows, val order: PeopleSort, val list: List<PeopleRow>)
+
   init {
-    viewModelScope.launch {
-      combine(records, query, filter, sort, day) { records, text, chip, order, current ->
-            val view = records?.directory
-            if (view == null) {
-              PeopleState(
-                  query = text,
-                  filter = chip,
-                  sort = order,
-                  queryInput = text,
-                  filterChoice = chip,
-                  sortChoice = order,
+    val rows =
+        combine(records, day) { records, current ->
+              val view = records?.directory ?: return@combine null
+              val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
+              Rows(
+                  peopleRows(view, current.zone, current.today).map {
+                    if (it.id in failedIds) it.copy(syncFailed = true) else it
+                  },
+                  records.ledger.contacts.size,
+                  records.failed.size,
               )
+            }
+            .flowOn(Dispatchers.Default)
+    // Sorting is the costly comparison (an Arabic collator), so it runs per order, not per letter.
+    val sorted =
+        combine(rows, sort) { rows, order ->
+              rows?.let { Sorted(it, order, sortRows(it.all, order)) }
+            }
+            .flowOn(Dispatchers.Default)
+    viewModelScope.launch {
+      combine(sorted, query, filter) { sorted, text, chip ->
+            if (sorted == null) {
+              PeopleState(query = text, filter = chip, sort = sort.value)
             } else {
-              peopleUiState(view, current.zone, current.today, text, chip, order).let { state ->
-                val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
-                state.copy(
-                    rows = state.rows.map { it.copy(syncFailed = it.id in failedIds) },
-                    registered = records.ledger.contacts.size,
-                    incomplete = records.failed.size,
-                    queryInput = text,
-                    filterChoice = chip,
-                    sortChoice = order,
-                )
-              }
+              peopleUiState(sorted.list, sorted.rows.registered, text, chip, sorted.order)
+                  .copy(incomplete = sorted.rows.incomplete)
             }
           }
           .flowOn(Dispatchers.Default)
-          .collect { mutable.value = it }
+          .collect { next ->
+            // What the field, the chips and the sort button show is the latest tap's, never an
+            // older projection's: a stale query here moved the cursor while the owner typed.
+            mutable.update {
+              next.copy(
+                  queryInput = it.queryInput,
+                  filterChoice = it.filterChoice,
+                  sortChoice = it.sortChoice,
+              )
+            }
+          }
     }
   }
 

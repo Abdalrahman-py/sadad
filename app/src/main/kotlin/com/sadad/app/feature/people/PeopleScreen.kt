@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
@@ -31,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -225,6 +227,10 @@ private fun PeopleActions(state: PeopleState, onAdd: () -> Unit, onFilter: (Peop
 private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
   val p = sadadPalette
   val hint = stringResource(R.string.people_search)
+  // The field owns its text: a value that comes back through the view model's flow arrives late,
+  // and the cursor jumps while the owner types. Only a reset to empty flows back in.
+  var text by rememberSaveable { mutableStateOf(value) }
+  LaunchedEffect(value) { if (value.isEmpty()) text = "" }
   Row(
       Modifier.fillMaxWidth()
           .height(48.dp)
@@ -243,8 +249,11 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
     )
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
       BasicTextField(
-          value = value,
-          onValueChange = onValueChange,
+          value = text,
+          onValueChange = {
+            text = it
+            onValueChange(it)
+          },
           singleLine = true,
           textStyle = TextStyle(fontSize = 15.sp, color = p.text),
           cursorBrush = SolidColor(p.accent),
@@ -253,7 +262,7 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
                 contentDescription = hint
               },
           decorationBox = { field ->
-            if (value.isEmpty()) {
+            if (text.isEmpty()) {
               Text(hint, fontSize = 15.sp, color = p.muted, maxLines = 1)
             }
             field()
@@ -267,7 +276,12 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
 
 @Composable
 private fun PeopleList(state: PeopleState, onOpenContact: (String) -> Unit) {
+  val list = rememberLazyListState()
+  // A keyed list keeps the first visible person in place when the rows change, so clearing a search
+  // would leave everyone above them out of view; a new search, chip or order starts at the top.
+  LaunchedEffect(state.query, state.filter, state.sort) { list.scrollToItem(0) }
   LazyColumn(
+      state = list,
       modifier = Modifier.fillMaxSize().testTag(PeopleTags.LIST),
       contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 20.dp),
       verticalArrangement = Arrangement.spacedBy(6.dp),
