@@ -681,7 +681,8 @@ private fun ModeToggle(state: QuickAddState, model: QuickAddViewModel, supplier:
           onClick = model::toDebt,
           modifier = Modifier.weight(1f),
       )
-      if (!state.restricted) {
+      // A person created in this flow has nothing to pay yet.
+      if (!state.restricted && state.newPerson == null) {
         ModeCell(
             label =
                 stringResource(
