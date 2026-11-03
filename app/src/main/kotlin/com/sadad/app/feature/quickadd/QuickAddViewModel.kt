@@ -192,9 +192,11 @@ class QuickAddViewModel(
             mutable.update { current ->
               // A newer keystroke, or a newer store projection, already replaced this result: the
               // first search runs before the people are loaded and must not blank the list after.
-              if (current.query != found.query ||
-                  found.searched !== allPeople ||
-                  found.parsed !== parsedRows) {
+              if (
+                  current.query != found.query ||
+                      found.searched !== allPeople ||
+                      found.parsed !== parsedRows
+              ) {
                 current
               } else {
                 current.copy(people = members(found.people, current), contactRows = found.contacts)
