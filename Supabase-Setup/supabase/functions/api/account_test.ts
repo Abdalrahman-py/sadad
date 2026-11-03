@@ -123,11 +123,11 @@ dbTest("a wrong current password is refused and nothing changes", async () => {
 });
 
 dbTest(
-  "a new password of 11 or 129 characters, or equal to the current one, is refused before any check",
+  "a new password of 7 or 129 characters, or equal to the current one, is refused before any check",
   async () => {
     const store = await flaggedStore();
     for (
-      const newPassword of ["a".repeat(11), "a".repeat(129), CURRENT.repeat(2)]
+      const newPassword of ["a".repeat(7), "a".repeat(129), CURRENT.repeat(2)]
     ) {
       const currentPassword = newPassword === CURRENT.repeat(2)
         ? newPassword

@@ -53,14 +53,14 @@ const passwordRoute = createRoute({
   tags: ["account"],
   security: [{ Bearer: [] }],
   description:
-    "Proves the current password, sets a new one (12 to 128 characters, not the current one) and clears app_metadata.force_password_change. Every role; the Auth JWT only, no device proof. The caller's JWT keeps its old claims until it expires: after a 200 the client must refresh its session, and the refreshed JWT carries the cleared flag.",
+    "Proves the current password, sets a new one (8 to 128 characters, not the current one) and clears app_metadata.force_password_change. Every role; the Auth JWT only, no device proof. The caller's JWT keeps its old claims until it expires: after a 200 the client must refresh its session, and the refreshed JWT carries the cleared flag.",
   request: {
     body: {
       required: true,
       ...json(
         z.strictObject({
           currentPassword: z.string().min(1).max(128),
-          newPassword: z.string().min(12).max(128),
+          newPassword: z.string().min(8).max(128),
         }).refine((b) => b.currentPassword !== b.newPassword),
       ),
     },

@@ -25,7 +25,7 @@
     <string name="password_confirm">أعد كتابتها</string>
     <string name="password_show_all">إظهار كلمات المرور</string>
     <string name="password_rules">شروط كلمة المرور</string>
-    <string name="password_rule_length">من 12 إلى 128 حرفًا</string>
+    <string name="password_rule_length">8 أحرف على الأقل</string>
     <string name="password_rule_different">تختلف عن كلمة المرور المؤقتة</string>
     <string name="password_rule_match">التأكيد مطابق</string>
     <string name="password_rule_met">متحقق</string>
@@ -53,7 +53,7 @@
     <string name="approval_retry">تعذر الآن؛ حاول مجددًا بعد قليل.</string>
 
     <string name="error_invalid_credentials">اسم المستخدم أو كلمة المرور غير صحيحة.</string>
-    <string name="error_password_length">استخدم 12 إلى 128 خانة لكلمة المرور.</string>
+    <string name="error_password_length">استخدم 8 أحرف على الأقل لكلمة المرور.</string>
     <string name="error_password_mismatch">كلمتا المرور غير متطابقتين.</string>
     <string name="error_password_same">كلمة المرور الجديدة مطابقة للحالية.</string>
     <string name="error_staff_name_required">اكتب اسم الشخص على هذا الجهاز.</string>

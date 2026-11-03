@@ -134,7 +134,7 @@ class PasswordChangeViewModel(
 
   // Internal so the screen's live checklist reads the same limits the save checks.
   internal companion object {
-    const val PASSWORD_MIN = 12
+    const val PASSWORD_MIN = 8
     const val PASSWORD_MAX = 128
   }
 }
