@@ -123,7 +123,11 @@ class LedgerRepository(
 
   val contactRecords: StateFlow<ContactRecords?> =
       combine(state, outbox.rows, session.staffName, loaded) { current, rows, staff, ready ->
-            if (ready) contactRecords(project(current, rows, staff), rows) else null
+            if (ready) {
+              traced("ledger_project") { contactRecords(project(current, rows, staff), rows) }
+            } else {
+              null
+            }
           }
           .flowOn(Dispatchers.Default)
           .stateIn(scope, SharingStarted.Eagerly, null)
@@ -133,7 +137,7 @@ class LedgerRepository(
 
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
-    state.value = store.load()
+    state.value = traced("ledger_load") { store.load() }
     loaded.value = true
   }
 
@@ -161,6 +165,17 @@ class LedgerRepository(
                 "page is for store ${page.storeId} epoch ${page.epoch}, not ${old.storeId} ${old.epoch}"
             )
         )
+      }
+      // An idle poll's page carries nothing: skip the fold, the persist, the publish and the
+      // compact, so a pass that found nothing new costs no ledger work.
+      if (
+          old.storeId != null &&
+              page.storeId == old.storeId &&
+              page.epoch == old.epoch &&
+              page.events.isEmpty() &&
+              page.nextCursor == old.cursor
+      ) {
+        return
       }
       val next = old.apply(page)
       store.persist(old, next, page)

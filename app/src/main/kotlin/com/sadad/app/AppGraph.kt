@@ -30,6 +30,9 @@ import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.data.sync.connectivity
 import com.sadad.app.data.sync.internetAvailable
 import com.sadad.app.export.StatementExport
+import com.sadad.app.feature.contactpicker.DeviceContacts
+import com.sadad.app.feature.contactpicker.SadadPeople
+import com.sadad.app.feature.contactpicker.contactSource
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.photo.PhotoStore
@@ -119,6 +122,12 @@ internal constructor(
   suspend fun syncWhileVisible(connection: Flow<Boolean> = connectivity(context)) {
     automaticSync.whileVisible(current.map { it?.account?.storeUserId }, connection)
   }
+
+  /** The pull to refresh on Home starts one pass for this store; it no-ops while offline. */
+  fun refresh(storeUserId: String) = automaticSync.request(storeUserId)
+
+  /** The device's contacts for the contact picker; it is device-level, built from this app. */
+  fun deviceContacts(): DeviceContacts = contactSource(context.contentResolver)
 
   fun syncStatus(storeUserId: String): StateFlow<SyncStatus> = syncEngine.status(storeUserId)
 
@@ -370,6 +379,12 @@ private fun androidId(context: Context): String? = runCatching {
 fun AppGraph.contactRecords(): Flow<ContactRecords?> = current.flatMapLatest { scope ->
   scope?.repository?.contactRecords ?: flowOf(null)
 }
+
+/** The store's own people a pick is compared against; the open store's ledger view. */
+fun AppGraph.contactPeople(): Flow<SadadPeople?> =
+    contactRecords().map { records ->
+      records?.let { SadadPeople(it.directory.contacts, it.ledger.archivedContacts) }
+    }
 
 /** The open installation's permissions by name; empty while no store is open. */
 @OptIn(ExperimentalCoroutinesApi::class)

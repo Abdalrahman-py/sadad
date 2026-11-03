@@ -19,6 +19,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.R
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
@@ -26,7 +27,9 @@ import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import java.time.Duration
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -145,9 +148,9 @@ class ContactFormScreenTest {
     }
   }
 
-  private fun TestGraph.model(): ContactFormViewModel {
+  private fun TestGraph.model(contactId: String? = null): ContactFormViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return ContactFormViewModel(scope.repository, STORE_A, context, SavedStateHandle(), null)
+    return ContactFormViewModel(scope.repository, STORE_A, context, SavedStateHandle(), contactId)
   }
 
   @Test
@@ -243,9 +246,86 @@ class ContactFormScreenTest {
     }
   }
 
+  @Test
+  fun aPickedExistingPersonOpensItsPage() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      var opened: String? = null
+      var trashed = false
+      var delivered = 0
+      compose.setContent {
+        SadadTheme {
+          ContactFormScreen(
+              fixture.model(),
+              picked = PickedContact.Existing("p5"),
+              onPickDelivered = { delivered += 1 },
+              onOpenContact = { opened = it },
+              onOpenTrash = { trashed = true },
+          )
+        }
+      }
+      compose.waitUntil(timeoutMillis = 10_000) { opened != null && delivered == 1 }
+      assertEquals("p5", opened)
+      assertFalse(trashed)
+    }
+  }
+
+  @Test
+  fun aPickedArchivedPersonOpensTheTrash() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      var opened: String? = null
+      var trashed = false
+      compose.setContent {
+        SadadTheme {
+          ContactFormScreen(
+              fixture.model(),
+              picked = PickedContact.Archived("p9"),
+              onPickDelivered = {},
+              onOpenContact = { opened = it },
+              onOpenTrash = { trashed = true },
+          )
+        }
+      }
+      compose.waitUntil(timeoutMillis = 10_000) { trashed }
+      assertTrue(trashed)
+      assertNull(opened)
+    }
+  }
+
   private fun leaveAndReturn(lock: AppLock) {
     lock.appStopped()
-    ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+    ShadowSystemClock.advanceBy(Duration.ofSeconds(61))
     lock.appStarted()
+  }
+
+  @Test
+  fun theContactsButtonShowsOnAdd() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      val model = fixture.model()
+      compose.setContent { SadadTheme { ContactFormScreen(model) } }
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_pick_contacts))
+          .assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun theContactsButtonIsAbsentOnEdit() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      var existing: String? = null
+      runBlocking {
+        fixture.seed { existing = addContact("نمر", null, null, null, null).getOrThrow() }
+        fixture.settleAll()
+      }
+
+      val model = fixture.model(contactId = existing)
+      compose.setContent { SadadTheme { ContactFormScreen(model) } }
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_pick_contacts))
+          .assertDoesNotExist()
+    }
   }
 }

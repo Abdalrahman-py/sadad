@@ -18,6 +18,7 @@ import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentCreate
+import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -603,6 +604,62 @@ class QuickAddViewModelTest {
           listOf(rows.first().operationId),
           rows.last().command.dependsOn,
       )
+    }
+  }
+
+  @Test
+  fun aPersonsLastActivityIsTheirLatestPaymentWhenNewerThanTheirLatestDebt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = Commands.contactCreate(Events.origin, Events.at(0), name = "سامي")
+      val huda = Commands.contactCreate(Events.origin, Events.at(0), name = "هدى")
+      val samiDebt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              sami.entityId,
+              Direction.RECEIVABLE,
+              Cents(10_000),
+          )
+      val hudaDebt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(2),
+              huda.entityId,
+              Direction.RECEIVABLE,
+              Cents(5_000),
+          )
+      val samiPayment =
+          Commands.paymentCreate(
+              Events.origin,
+              Events.at(3),
+              samiDebt.entityId,
+              Cents(4_000),
+              PaymentMethod.CASH,
+          )
+      val hudaLater =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(4),
+              huda.entityId,
+              Direction.RECEIVABLE,
+              Cents(1_000),
+          )
+      fixture.seed {
+        applyPage(
+            Events.page(
+                listOf(sami, huda, samiDebt, hudaDebt, samiPayment, hudaLater).mapIndexed { i, c ->
+                  Events.accepted(c, i + 1L)
+                }
+            )
+        )
+      }
+      val model = fixture.model()
+
+      val people = model.state.first { it.loaded && it.people.size == 2 }.people
+      val last = people.associate { it.id to it.lastActivity }
+
+      assertEquals(Events.at(3), last[sami.entityId])
+      assertEquals(Events.at(4), last[huda.entityId])
     }
   }
 

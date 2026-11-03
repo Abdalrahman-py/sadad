@@ -27,6 +27,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.reminderDestination
 import com.sadad.app.feature.settings.ThemePreference
@@ -90,6 +91,12 @@ class MainActivity : FragmentActivity() {
     super.onNewIntent(intent)
     setIntent(intent)
     launchIntent = intent
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    // A finished activity is a closed app: the lock is armed at once, even inside the same process.
+    if (isFinishing) AppLock.get(this).lockNow()
   }
 
   private fun observeNotificationPermission() {

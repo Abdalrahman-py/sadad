@@ -1,5 +1,12 @@
 package com.sadad.app.feature.home
 
+import androidx.lifecycle.viewModelScope
+import com.sadad.app.data.session.Account
+import com.sadad.app.data.session.StoreScope
+import com.sadad.app.data.sync.SyncStatus
+import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.testing.TestGraph
+import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
@@ -8,14 +15,31 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentView
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * What Home says about the store. The two hero figures must not be the same number computed twice:
@@ -23,7 +47,10 @@ import org.junit.Test
  * absolute), and a supplier's balance belongs to the second. Then the month, the follow-up list and
  * the two states that replace the page: an empty store and an offline queue.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = UiTestApplication::class)
 class HomeViewModelTest {
+  @get:Rule val main = MainDispatcherRule()
   private val zone: ZoneId = ZoneId.of("Asia/Jerusalem")
   private val october: YearMonth = YearMonth.of(2026, 10)
   private val today: LocalDate = LocalDate.of(2026, 10, 25)
@@ -224,7 +251,163 @@ class HomeViewModelTest {
     assertNull(online.offline)
   }
 
+  @Test
+  fun refreshAsksTheSourceOnceAndRefreshingFollowsRunningToIdle() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val status = MutableSharedFlow<SyncStatus>(replay = 1).apply { tryEmit(SyncStatus.Idle) }
+      val refreshed = AtomicInteger()
+      val source =
+          object : HomeSource {
+            override val current = fixture.graph.current
+            override val accounts = fixture.graph.accounts.accounts
+
+            override fun syncStatus(storeUserId: String) = status
+
+            override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
+
+            override fun refresh() {
+              refreshed.incrementAndGet()
+            }
+          }
+      val model =
+          HomeViewModel(source) { view, month, zone, today ->
+                homeUiState(view = view, month = month, zone = zone, today = today)
+              }
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      model.state.first { it.loaded }
+
+      model.refresh()
+      assertEquals("one pull, one pass", 1, refreshed.get())
+      assertFalse(model.state.value.refreshing)
+
+      status.emit(SyncStatus.Running)
+      model.state.first { it.refreshing }
+      status.emit(SyncStatus.Idle)
+      assertFalse(model.state.first { !it.refreshing }.refreshing)
+    }
+  }
+
   /* ------------------------------------------------------------------ builders */
+
+  @Test
+  fun beforeTheLedgerIsReadTheStateIsNotLoadedAndAfterItIs() {
+    val source =
+        object : HomeSource {
+          override val current = flowOf<StoreScope?>(null)
+          override val accounts = flowOf(emptyList<Account>())
+
+          override fun syncStatus(storeUserId: String) = flowOf<SyncStatus>(SyncStatus.Idle)
+
+          override fun offlineUntil(account: Account): Long? = null
+
+          override fun refresh() {}
+        }
+    assertFalse(HomeViewModel(source).state.value.loaded)
+
+    val state =
+        homeUiState(
+            ledger(debts = listOf(debt("d1", "c1", 5_000, at(2026, 10, 2)))),
+            october,
+            zone,
+            today = today,
+        )
+    assertTrue(state.loaded)
+    assertEquals(Cents(5_000), state.owedToStore)
+  }
+
+  @Test
+  fun aSyncStatusFlipOrAQueuedRowOnlyChangesTheBannerNotTheTotals() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val status = MutableSharedFlow<SyncStatus>(replay = 1).apply { tryEmit(SyncStatus.Idle) }
+      val calls = AtomicInteger()
+      val model = fixture.home(status, calls)
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      val contact =
+          store.repository
+              .addContact("سامي", null, null, null, null, ContactKind.CUSTOMER)
+              .getOrThrow()
+      store.repository.addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+      model.state.first { it.owedToStore == Cents(5_000) }
+      val derived = calls.get()
+
+      repeat(3) {
+        status.emit(SyncStatus.Running)
+        status.emit(SyncStatus.Idle)
+      }
+      status.emit(SyncStatus.Offline)
+      assertEquals(HomeOffline(2, LEASE_END), model.state.first { it.offline != null }.offline)
+      status.emit(SyncStatus.Idle)
+      model.state.first { it.offline == null }
+
+      assertEquals("only the banner moved", derived, calls.get())
+      assertEquals(Cents(5_000), model.state.value.owedToStore)
+    }
+  }
+
+  @Test
+  fun aNewViewOrANewDayDerivesTheTotalsAgain() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val clock = MovableClock(Instant.parse("2026-10-25T08:00:00Z"), zone)
+      val calls = AtomicInteger()
+      val model = fixture.home(MutableStateFlow(SyncStatus.Idle), calls, clock)
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      model.state.first { it.loaded }
+      val first = calls.get()
+
+      store.repository.addContact("هدى", null, null, null, null, ContactKind.CUSTOMER).getOrThrow()
+      model.state.first { !it.empty }
+      val afterView = calls.get()
+      assertTrue("a new view derives again", afterView > first)
+
+      clock.now = clock.now.plus(Duration.ofDays(1))
+      val follow = launch { model.followMonth() }
+      runCurrent()
+      follow.cancel()
+      awaitCalls(calls, afterView + 1)
+    }
+  }
+
+  private fun TestGraph.home(
+      status: Flow<SyncStatus>,
+      calls: AtomicInteger,
+      clock: Clock? = null,
+  ): HomeViewModel {
+    val graph = graph
+    val source =
+        object : HomeSource {
+          override val current = graph.current
+          override val accounts = graph.accounts.accounts
+
+          override fun syncStatus(storeUserId: String) = status
+
+          override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
+
+          override fun refresh() {}
+        }
+    return HomeViewModel(source, clock) { view, month, zone, today ->
+          calls.incrementAndGet()
+          homeUiState(view = view, month = month, zone = zone, today = today)
+        }
+        .also { closeWithStore(it.viewModelScope) }
+  }
+
+  /** The derivation runs on another thread; polling keeps the assertion about the count. */
+  private fun awaitCalls(calls: AtomicInteger, count: Int) {
+    val deadline = System.currentTimeMillis() + 5_000
+    while (calls.get() < count && System.currentTimeMillis() < deadline) Thread.sleep(10)
+    assertEquals(count, calls.get())
+  }
+
+  private class MovableClock(@Volatile var now: Instant, private val zone: ZoneId) : Clock() {
+    override fun getZone(): ZoneId = zone
+
+    override fun withZone(zone: ZoneId): Clock = MovableClock(now, zone)
+
+    override fun instant(): Instant = now
+  }
 
   private fun at(year: Int, month: Int, day: Int): Instant =
       LocalDate.of(year, month, day).atTime(12, 0).atZone(zone).toInstant()
@@ -317,4 +500,8 @@ class HomeViewModelTest {
           pendingPayments = 0,
           excludedOperations = emptySet(),
       )
+
+  private companion object {
+    val LEASE_END: Instant = Instant.parse("2026-10-25T17:00:00Z")
+  }
 }

@@ -19,6 +19,9 @@ import kotlinx.serialization.Serializable
 /** A null [contactId] opens the form empty, to add a customer or a supplier. */
 @Serializable data class ContactForm(val contactId: String? = null, val initialName: String = "")
 
+/** The device's contacts the form's «من جهات الاتصال» opens; its result returns to the form. */
+@Serializable data object ContactPicker
+
 @Serializable data class QuickAdd(val contactId: String? = null, val payment: Boolean = false)
 
 @Serializable data object Activity

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="contactpicker_title">جهات الاتصال</string>
+    <string name="contactpicker_explain">نقرأ جهات الاتصال على جهازك لتختار منها، ولا نرفعها.</string>
+    <string name="contactpicker_continue">متابعة</string>
+    <string name="contactpicker_not_now">ليس الآن</string>
+    <string name="contactpicker_denied">لم يُسمح بقراءة جهات الاتصال. يمكنك إضافة الشخص يدويًا أو تفعيلها من الإعدادات.</string>
+    <string name="contactpicker_open_settings">فتح الإعدادات</string>
+    <string name="contactpicker_search">ابحث بالاسم أو الرقم</string>
+    <string name="contactpicker_chooser_title">اختر رقماً</string>
+    <string name="contactpicker_in_ledger">موجود</string>
+    <string name="contactpicker_in_archive">في الأرشيف</string>
+    <string name="contactpicker_invalid">غير صالح للواتساب</string>
+    <string name="contactpicker_cancel">إلغاء</string>
+    <string name="contactpicker_empty">لا نتائج.</string>
+</resources>

@@ -18,6 +18,7 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -138,6 +140,7 @@ class QuickAddViewModel(
       combine(view(), permissions(), availability()) { view, permissions, saveBlocked ->
             project(view, permissions, saveBlocked)
           }
+          .flowOn(Dispatchers.Default)
           .collect { facts ->
             allPeople = facts.people
             mutable.update { current ->
@@ -651,9 +654,8 @@ class QuickAddViewModel(
       if (at == null || debt.createdAt > at) perContact[debt.contactId] = debt.createdAt
     }
     for (payment in view.payments) {
-      val contactId = view.debts.firstOrNull { it.id == payment.debtId }?.contactId ?: continue
-      val at = perContact[contactId]
-      if (at == null || payment.createdAt > at) perContact[contactId] = payment.createdAt
+      val at = perContact[payment.contactId]
+      if (at == null || payment.createdAt > at) perContact[payment.contactId] = payment.createdAt
     }
     return perContact
   }

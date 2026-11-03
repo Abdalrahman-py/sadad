@@ -1,11 +1,9 @@
 package com.sadad.app.data.sync
 
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -14,35 +12,53 @@ import org.junit.Test
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AutomaticSyncTest {
   @Test
-  fun reconnectAndResumePullWithoutAWriteAndStopWhenHidden() = runTest {
-    var online = false
+  fun oneRequestWhenVisibleStartsAndNoneMoreAfterTenMinutes() = runTest {
+    val calls = mutableListOf<String>()
+    val sync = AutomaticSync(backgroundScope, { true }, { SyncStatus.Idle }) { calls += it }
+    backgroundScope.launch { sync.whileVisible(MutableStateFlow("a"), MutableStateFlow(true)) }
+    runCurrent()
+    assertEquals(listOf("a"), calls)
+    advanceTimeBy(10 * 60_000)
+    runCurrent()
+    assertEquals("the radio must sleep while the user only looks", 1, calls.size)
+  }
+
+  @Test
+  fun returningOnlineRequestsOnceMoreAndASwitchRequestsTheNewStore() = runTest {
     val calls = mutableListOf<String>()
     val stores = MutableStateFlow<String?>("a")
     val connected = MutableStateFlow(false)
-    val sync = AutomaticSync(backgroundScope, { online }, { SyncStatus.Idle }) { calls += it }
-    val visible = backgroundScope.launch { sync.whileVisible(stores, connected) }
-    sync.request("a")
+    val sync = AutomaticSync(backgroundScope, { true }, { SyncStatus.Idle }) { calls += it }
+    backgroundScope.launch { sync.whileVisible(stores, connected) }
     runCurrent()
     assertTrue(calls.isEmpty())
-    online = true
     connected.value = true
     runCurrent()
     assertEquals(listOf("a"), calls)
-    advanceTimeBy(10_001)
+    connected.value = false
     runCurrent()
-    assertEquals(listOf("a", "a"), calls)
+    connected.value = true
+    runCurrent()
+    assertEquals("the network coming back requests once", 2, calls.size)
     stores.value = "b"
     runCurrent()
     assertEquals("b", calls.last())
-    visible.cancelAndJoin()
-    val count = calls.size
-    advanceTimeBy(30_000)
+    advanceTimeBy(10 * 60_000)
     runCurrent()
-    assertEquals(count, calls.size)
-    val resumed = backgroundScope.launch { sync.whileVisible(stores, connected) }
-    runCurrent()
-    assertEquals(count + 1, calls.size)
-    resumed.cancelAndJoin()
+    assertEquals("no loop behind the switch", 3, calls.size)
+  }
+
+  @Test
+  fun signedOutRevokedAndRunningAskForNothing() = runTest {
+    for (status in listOf(SyncStatus.SignedOut, SyncStatus.Revoked, SyncStatus.Running)) {
+      val calls = mutableListOf<String>()
+      val sync = AutomaticSync(backgroundScope, { true }, { status }) { calls += it }
+      backgroundScope.launch { sync.whileVisible(MutableStateFlow("a"), MutableStateFlow(true)) }
+      runCurrent()
+      advanceTimeBy(60_000)
+      runCurrent()
+      assertTrue(status.toString(), calls.isEmpty())
+    }
   }
 
   @Test
@@ -67,7 +83,7 @@ class AutomaticSyncTest {
   }
 
   @Test
-  fun refusedPermissionsDoNotHammerTheServerEveryTenSeconds() = runTest {
+  fun aTerminalRefusalNeverRequests() = runTest {
     var calls = 0
     val sync =
         AutomaticSync(backgroundScope, { true }, { SyncStatus.Failed("store_permission_denied") }) {
@@ -80,7 +96,7 @@ class AutomaticSyncTest {
   }
 
   @Test
-  fun aPassThatDiesUnexpectedlyIsClearedAndRetriedInsteadOfCrashing() = runTest {
+  fun aPassThatDiesUnexpectedlyIsClearedInsteadOfCrashing() = runTest {
     var calls = 0
     var cleared = 0
     val sync =
@@ -95,33 +111,28 @@ class AutomaticSyncTest {
         }
     backgroundScope.launch { sync.whileVisible(MutableStateFlow("a"), MutableStateFlow(true)) }
     runCurrent()
+    advanceTimeBy(10 * 60_000)
+    runCurrent()
     assertEquals(1, calls)
     assertEquals("a stuck Running status must be cleared", 1, cleared)
-    advanceTimeBy(10_001)
-    runCurrent()
-    assertEquals(2, calls)
   }
 
   @Test
-  fun aRetryableRefusalBacksOffInsteadOfPollingEveryTenSeconds() = runTest {
-    val calls = mutableListOf<Long>()
+  fun aRetryableRefusalRequestsOnceAndNeverPolls() = runTest {
+    val calls = mutableListOf<String>()
     val sync =
         AutomaticSync(
             backgroundScope,
             { true },
             { SyncStatus.Failed("temporary_service_failure") },
         ) {
-          calls += currentTime
+          calls += it
         }
     backgroundScope.launch { sync.whileVisible(MutableStateFlow("a"), MutableStateFlow(true)) }
     runCurrent()
-    advanceTimeBy(10_001)
+    assertEquals(1, calls.size)
+    advanceTimeBy(10 * 60_000)
     runCurrent()
-    advanceTimeBy(10_001)
-    runCurrent()
-    assertEquals("10s, then 20s, not 10s again", listOf(0L, 10_000L), calls)
-    advanceTimeBy(10_001)
-    runCurrent()
-    assertEquals(listOf(0L, 10_000L, 30_000L), calls)
+    assertEquals("a struggling server is left to WorkManager's backoff", 1, calls.size)
   }
 }
