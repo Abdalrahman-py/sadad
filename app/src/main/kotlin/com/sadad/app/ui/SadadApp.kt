@@ -185,11 +185,8 @@ fun SadadApp(
                     // Editing came from that person's page: saving goes back to it.
                     back()
                   } else {
-                    // A new person: the form is replaced by their page, back from it is the list.
-                    navController.navigate(ContactDetail(id)) {
-                      popUpTo<ContactForm> { inclusive = true }
-                      launchSingleTop = true
-                    }
+                    // «حفظ فقط» on a new person: their page replaces the form.
+                    navController.openSavedContact(id)
                   }
                 },
                 // The picked number belongs to someone in the archive: the trash lists them.
@@ -198,6 +195,8 @@ fun SadadApp(
                     popUpTo<ContactForm> { inclusive = true }
                   }
                 },
+                // «حفظ وتسجيل دين» on a new person: QuickAdd records their first debt.
+                onRecord = { id -> navController.openFirstDebtRecording(id) },
             )
           }
           composable<ContactPicker> {
@@ -561,3 +560,21 @@ private val OFFLINE_RED = Color(0xFFC13634)
 
 /** The back-stack key the contacts picker stores its [PickedContact] result under. */
 private const val PICKED = "pickedContact"
+
+/** «حفظ فقط» (and edit): the person's page replaces the form; back from it is the list again. */
+internal fun NavHostController.openSavedContact(id: String) {
+  navigate(ContactDetail(id)) {
+    popUpTo<ContactForm> { inclusive = true }
+    launchSingleTop = true
+  }
+}
+
+/**
+ * «حفظ وتسجيل دين»: QuickAdd opens for that person; the form leaves the stack, so back is People.
+ */
+internal fun NavHostController.openFirstDebtRecording(id: String) {
+  navigate(QuickAdd(contactId = id)) {
+    popUpTo<ContactForm> { inclusive = true }
+    launchSingleTop = true
+  }
+}
