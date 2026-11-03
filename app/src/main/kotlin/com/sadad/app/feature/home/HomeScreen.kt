@@ -28,9 +28,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -131,6 +133,7 @@ fun HomeScreen(
       onOpenNotifications = onOpenNotifications,
       onRecord = onRecord,
       onOpenActivity = onOpenActivity,
+      onRefresh = viewModel::refresh,
   )
 }
 
@@ -167,29 +170,39 @@ fun HomeContent(
     onOpenNotifications: () -> Unit = {},
     onRecord: () -> Unit = {},
     onOpenActivity: () -> Unit = {},
+    onRefresh: () -> Unit = {},
 ) {
   val storeName = state.storeName.ifBlank { stringResource(R.string.home_default_store) }
   Column(Modifier.fillMaxSize().sadadPageBackground().testTag(HomeTags.SCREEN)) {
     HomeHeader(storeName = storeName, unread = unread, onOpenNotifications = onOpenNotifications)
-    Column(
-        Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-      val offline = state.offline
-      if (offline != null) OfflineBanner(offline)
-      if (state.empty) {
-        EmptyStart(onRecord)
-      } else {
-        HeroCard(state, onOpenActivity)
-        FollowUpSection(
-            followUps = state.followUps,
-            count = state.followUpCount,
-            storeName = storeName,
-            onOpenContact = onOpenContact,
-            onOpenPeople = onOpenPeople,
-        )
+    if (!state.loaded) {
+      val loading = stringResource(R.string.home_loading)
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(Modifier.semantics { contentDescription = loading })
+      }
+      return@Column
+    }
+    PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh) {
+      Column(
+          Modifier.fillMaxSize()
+              .verticalScroll(rememberScrollState())
+              .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 24.dp),
+          verticalArrangement = Arrangement.spacedBy(18.dp),
+      ) {
+        val offline = state.offline
+        if (offline != null) OfflineBanner(offline)
+        if (state.empty) {
+          EmptyStart(onRecord)
+        } else {
+          HeroCard(state, onOpenActivity)
+          FollowUpSection(
+              followUps = state.followUps,
+              count = state.followUpCount,
+              storeName = storeName,
+              onOpenContact = onOpenContact,
+              onOpenPeople = onOpenPeople,
+          )
+        }
       }
     }
   }

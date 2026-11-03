@@ -303,7 +303,7 @@ class ReportsExportTest {
     val lock = AppLock.get(context)
     lock.markUnlocked()
     lock.appStopped()
-    ShadowSystemClock.advanceBy(Duration.ofSeconds(2))
+    ShadowSystemClock.advanceBy(Duration.ofSeconds(61))
     lock.appStarted()
     return lock.locked.value
   }

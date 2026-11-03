@@ -22,10 +22,9 @@ object PaymentAllocation {
    * supplier's payable, and the caller passes [ContactKind.debtDirection].
    */
   fun openDebts(view: LedgerView, contactId: String, direction: Direction): List<DebtView> =
-      view.debts
-          .filter {
-            it.contactId == contactId && it.direction == direction && it.remaining > Cents.ZERO
-          }
+      view
+          .debtsOf(contactId)
+          .filter { it.direction == direction && it.remaining > Cents.ZERO }
           .sortedBy { it.createdAt }
 
   /**
@@ -78,10 +77,10 @@ object PaymentAllocation {
   fun allocateCredit(view: LedgerView, contactId: String, amount: Cents): List<Allocation> {
     require(amount > Cents.ZERO) { "a debt must be positive" }
     val credit =
-        view.debts
+        view
+            .debtsOf(contactId)
             .filter {
-              it.contactId == contactId &&
-                  it.direction == Direction.PAYABLE &&
+              it.direction == Direction.PAYABLE &&
                   it.origin == DebtOrigin.OVERPAYMENT &&
                   it.remaining > Cents.ZERO
             }

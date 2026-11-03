@@ -76,19 +76,23 @@ data class LedgerView(
     /** Queued commands that cannot apply as they stand and are not shown. */
     val excludedOperations: Set<String>,
 ) {
+  // Built once per view on first use; a body property, so not part of equals or copy.
+  private val debtsByContact: Map<String, List<DebtView>> by lazy { debts.groupBy { it.contactId } }
+
+  /** This Contact's Debts, in [debts] order, without scanning the whole list. */
+  fun debtsOf(contactId: String): List<DebtView> = debtsByContact[contactId].orEmpty()
+
   /**
    * What this Contact is worth: open receivable minus open payable, queued entries included.
    * Positive the Contact owes the store (عليه); negative the store holds their money (له).
    */
   fun net(contactId: String): Cents =
-      debts
-          .filter { it.contactId == contactId }
-          .fold(Cents.ZERO) { sum, debt ->
-            when (debt.direction) {
-              Direction.RECEIVABLE -> sum + debt.remaining
-              Direction.PAYABLE -> sum - debt.remaining
-            }
-          }
+      debtsOf(contactId).fold(Cents.ZERO) { sum, debt ->
+        when (debt.direction) {
+          Direction.RECEIVABLE -> sum + debt.remaining
+          Direction.PAYABLE -> sum - debt.remaining
+        }
+      }
 }
 
 /**

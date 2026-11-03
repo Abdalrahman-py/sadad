@@ -1,5 +1,6 @@
 package com.sadad.app.data.ledger
 
+import app.cash.turbine.test
 import com.sadad.app.data.crypto.Sealed
 import com.sadad.app.data.db.Events
 import com.sadad.ledger.Commands
@@ -8,8 +9,11 @@ import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.ReceiptStatus
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -150,6 +154,29 @@ class OutboxTest : LedgerTestCase() {
     assertEquals(OutboxState.QUEUED, row.state)
     assertEquals(command, row.command)
     assertEquals(command.type, row.type)
+  }
+
+  /**
+   * Room re-emits after any write to the table, even one that changes no row's words. The flow of
+   * [OutboxRow]s must not repeat such an emission: every idle re-emit re-runs the full per-screen
+   * projection.
+   */
+  @Test
+  fun aWriteThatLeavesEveryRowEqualDoesNotEmitAgain() = runTest {
+    val command = contactCommand()
+    outbox.append(listOf(command))
+
+    outbox.rows.test {
+      awaitItem()
+      // The first stamp is a real change: the row grows a recovery permit.
+      db.outboxDao().setRecoveryPermit(listOf(command.operationId), "permit-1")
+      awaitItem()
+      // The second stamp writes the same words: every row still equals itself.
+      db.outboxDao().setRecoveryPermit(listOf(command.operationId), "permit-1")
+      // Real time: give the equal emission somewhere to (wrongly) arrive.
+      withContext(Dispatchers.Default) { delay(300) }
+      expectNoEvents()
+    }
   }
 
   @Test
