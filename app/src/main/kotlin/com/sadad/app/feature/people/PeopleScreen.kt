@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -225,6 +226,10 @@ private fun PeopleActions(state: PeopleState, onAdd: () -> Unit, onFilter: (Peop
 private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
   val p = sadadPalette
   val hint = stringResource(R.string.people_search)
+  // The field owns its text: a value that comes back through the view model's flow arrives late,
+  // and the cursor jumps while the owner types. Only a reset to empty flows back in.
+  var text by rememberSaveable { mutableStateOf(value) }
+  LaunchedEffect(value) { if (value.isEmpty()) text = "" }
   Row(
       Modifier.fillMaxWidth()
           .height(48.dp)
@@ -243,8 +248,11 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
     )
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
       BasicTextField(
-          value = value,
-          onValueChange = onValueChange,
+          value = text,
+          onValueChange = {
+            text = it
+            onValueChange(it)
+          },
           singleLine = true,
           textStyle = TextStyle(fontSize = 15.sp, color = p.text),
           cursorBrush = SolidColor(p.accent),
@@ -253,7 +261,7 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
                 contentDescription = hint
               },
           decorationBox = { field ->
-            if (value.isEmpty()) {
+            if (text.isEmpty()) {
               Text(hint, fontSize = 15.sp, color = p.muted, maxLines = 1)
             }
             field()
