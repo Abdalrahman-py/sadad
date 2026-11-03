@@ -1,1 +1,8 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#00000000" android:strokeColor="#FF000000" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M10.5,3.5a7,7 0,1 0,0 14a7,7 0,1 0,0 -14M15.5,15.5L21,21"/></vector>
+<!-- Material Symbols Rounded «search». -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 380 -320 q -109 0 -184.5 -75.5 T 120 -580 q 0 -109 75.5 -184.5 T 380 -840 q 109 0 184.5 75.5 T 640 -580 q 0 44 -14 83 t -38 69 l 224 224 q 11 11 11 28 t -11 28 q -11 11 -28 11 t -28 -11 L 532 -372 q -30 24 -69 38 t -83 14 Z m 0 -80 q 75 0 127.5 -52.5 T 560 -580 q 0 -75 -52.5 -127.5 T 380 -760 q -75 0 -127.5 52.5 T 200 -580 q 0 75 52.5 127.5 T 380 -400 Z" />
+    </group>
+</vector>

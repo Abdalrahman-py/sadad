@@ -1,5 +1,8 @@
+<!-- Material Symbols Rounded «backspace». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#00000000" android:strokeColor="#FF000000" android:strokeWidth="1.8"
-        android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M21,5H9l-6,7 6,7h12a1,1 0,0 0,1 -1V6a1,1 0,0 0,-1 -1zM12,9l6,6M18,9l-6,6" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="m 560 -424 76 76 q 11 11 28 11 t 28 -11 q 11 -11 11 -28 t -11 -28 l -76 -76 76 -76 q 11 -11 11 -28 t -11 -28 q -11 -11 -28 -11 t -28 11 l -76 76 -76 -76 q -11 -11 -28 -11 t -28 11 q -11 11 -11 28 t 11 28 l 76 76 -76 76 q -11 11 -11 28 t 11 28 q 11 11 28 11 t 28 -11 l 76 -76 Z M 360 -160 q -19 0 -36 -8.5 T 296 -192 L 116 -432 q -16 -21 -16 -48 t 16 -48 l 180 -240 q 11 -15 28 -23.5 t 36 -8.5 h 440 q 33 0 56.5 23.5 T 880 -720 v 480 q 0 33 -23.5 56.5 T 800 -160 H 360 Z m 0 -80 h 440 v -480 H 360 L 180 -480 l 180 240 Z m 130 -240 Z" />
+    </group>
 </vector>

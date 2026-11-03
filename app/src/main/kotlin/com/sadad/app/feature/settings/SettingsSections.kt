@@ -7,8 +7,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,12 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -289,7 +285,12 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
           },
           contentAlignment = Alignment.Center,
       ) {
-        Text("+", color = link, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Icon(
+            painterResource(R.drawable.ic_record),
+            contentDescription = null,
+            tint = link,
+            modifier = Modifier.size(18.dp),
+        )
       }
       Text(
           stringResource(R.string.settings_add_store),
@@ -654,12 +655,12 @@ private fun Section(title: String, content: @Composable () -> Unit) {
   }
 }
 
-/** The icons the board puts before a row's label; drawn here so no new drawable is needed. */
-private enum class RowIcon {
-  LIST,
-  PHONE,
-  CHAT,
-  UPDATE,
+/** The icons the board puts before a row's label. */
+private enum class RowIcon(@DrawableRes val icon: Int) {
+  LIST(R.drawable.ic_list),
+  PHONE(R.drawable.ic_phone),
+  CHAT(R.drawable.ic_whatsapp),
+  UPDATE(R.drawable.ic_update),
 }
 
 /** A card row that leads somewhere: the label, an optional second line, then the chevron. */
@@ -705,93 +706,15 @@ private fun LinkRow(
   }
 }
 
-/** The board's 21 dp line icons: a list, a phone and a chat bubble, stroked in the link colour. */
+/** The 21 dp icon before a row's label, in the link colour. */
 @Composable
 private fun RowGlyph(kind: RowIcon) {
-  val color = linkColor()
-  Canvas(Modifier.size(21.dp)) {
-    val s = size.minDimension
-    val stroke = 1.9.dp.toPx()
-    when (kind) {
-      RowIcon.LIST -> {
-        for (index in 0..2) {
-          val y = s * (0.25f + 0.25f * index)
-          drawLine(color, Offset(s * 0.34f, y), Offset(s * 0.9f, y), stroke, StrokeCap.Round)
-          drawCircle(color, radius = stroke * 0.8f, center = Offset(s * 0.12f, y))
-        }
-      }
-      RowIcon.PHONE -> {
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(s * 0.30f, s * 0.06f),
-            size = Size(s * 0.40f, s * 0.88f),
-            cornerRadius = CornerRadius(s * 0.10f),
-            style = Stroke(width = stroke),
-        )
-        drawLine(
-            color,
-            Offset(s * 0.44f, s * 0.80f),
-            Offset(s * 0.56f, s * 0.80f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-      RowIcon.CHAT -> {
-        drawCircle(
-            color = color,
-            radius = s * 0.33f,
-            center = Offset(s * 0.5f, s * 0.40f),
-            style = Stroke(width = stroke),
-        )
-        // The bubble's tail, toward the bottom-start corner.
-        drawLine(
-            color,
-            Offset(s * 0.32f, s * 0.63f),
-            Offset(s * 0.20f, s * 0.88f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.20f, s * 0.88f),
-            Offset(s * 0.46f, s * 0.72f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-      // An arrow into a tray: the download an update is.
-      RowIcon.UPDATE -> {
-        drawLine(
-            color,
-            Offset(s * 0.5f, s * 0.08f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.32f, s * 0.44f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.68f, s * 0.44f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.18f, s * 0.86f),
-            Offset(s * 0.82f, s * 0.86f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-    }
-  }
+  Icon(
+      painterResource(kind.icon),
+      contentDescription = null,
+      tint = linkColor(),
+      modifier = Modifier.size(21.dp),
+  )
 }
 
 /** A labelled switch: the whole row toggles, the switch only draws the state. */
@@ -837,15 +760,12 @@ private fun SwitchLine(
 /** The board's 18 dp muted chevron, pointing left: toward the screen the row opens. */
 @Composable
 private fun Chevron() {
-  val color = sadadPalette.muted
-  Canvas(Modifier.size(18.dp)) {
-    val stroke = 2.dp.toPx()
-    val start = Offset(size.width * 0.62f, size.height * 0.18f)
-    val elbow = Offset(size.width * 0.32f, size.height * 0.5f)
-    val end = Offset(size.width * 0.62f, size.height * 0.82f)
-    drawLine(color, start, elbow, stroke, StrokeCap.Round)
-    drawLine(color, elbow, end, stroke, StrokeCap.Round)
-  }
+  Icon(
+      painterResource(R.drawable.ic_chevron_start),
+      contentDescription = null,
+      tint = sadadPalette.muted,
+      modifier = Modifier.size(18.dp),
+  )
 }
 
 /** The 32 dp soft block with a store's initials, as the switcher draws each saved store. */
