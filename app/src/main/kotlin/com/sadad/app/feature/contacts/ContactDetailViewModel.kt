@@ -35,6 +35,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** [StatementExport.sharePdf]'s shape: the statement share seam of the contact page. */
+typealias StatementShareCall =
+    suspend (Context, StatementHeader, LedgerView, String?, Instant?, Instant?) -> Unit
+
 /** One row of a Contact's history: a Debt or a Payment, newest or oldest first. */
 data class ContactMovement(
     val id: String,
@@ -112,6 +116,11 @@ class ContactDetailViewModel(
      * a background thread it cannot see (#168).
      */
     private val undoScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /**
+     * The one seam the page shares through, a parameter so a test captures the view a statement is
+     * built from without PDFs or Android's share sheet (ReportsViewModel's [PdfWriterCall] twin).
+     */
+    private val shareStatement: StatementShareCall = StatementExport::sharePdf,
 ) : ViewModel() {
   private data class Dialogs(
       val newestFirst: Boolean = true,
@@ -133,7 +142,7 @@ class ContactDetailViewModel(
 
   init {
     viewModelScope.launch {
-      combine(source.records, dialogs, source.permissions) { records, ui, allowed ->
+      combine(source.records(contactId), dialogs, source.permissions) { records, ui, allowed ->
             currentView = records?.ledger
             val draft = records?.failed?.firstOrNull { it.contact.id == contactId }
             if (draft == null) project(records?.ledger, ui, allowed)
@@ -316,9 +325,7 @@ class ContactDetailViewModel(
             owner = account?.ownerName.orEmpty(),
             periodLabel = context.getString(R.string.contacts_all_periods),
         )
-    runCatching {
-      StatementExport.sharePdf(context, header, view, contactId, from = null, to = null)
-    }
+    runCatching { shareStatement(context, header, view, contactId, null, null) }
         .onFailure { failure ->
           if (failure is CancellationException) throw failure
           dialogs.update { current ->

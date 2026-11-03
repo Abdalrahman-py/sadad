@@ -16,6 +16,7 @@ import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.Direction
+import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
 import java.util.UUID
@@ -578,6 +579,106 @@ class ContactDetailViewModelTest {
       val row = state.movements.first { it.id == credit.entityId }
       assertTrue("a zeroed credit stays in the history, struck through", row.struck)
       assertEquals(Cents.ZERO, row.amount)
+    }
+  }
+
+  @Test
+  fun thePageStateIsTheSameForEveryPersonAndAnotherPersonsQueuedPaymentStaysOnTheirPage() =
+      runTest {
+        TestGraph.signedIn().use { fixture ->
+          val store = checkNotNull(fixture.graph.current.value)
+          val a = contactId(1)
+          val b = contactId(2)
+          val debtA = debt(a, 10_000, id = contactId(11), minute = 2)
+          val debtB = debt(b, 4_000, id = contactId(12), minute = 3)
+          val paidB = payment(debtB.entityId, 1_000, id = contactId(13), minute = 4)
+          fixture.seedCommands(
+              listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
+          )
+          val queuedPayment =
+              store.repository
+                  .payDebt(debtB.entityId, Cents(2_000), PaymentMethod.CASH, null)
+                  .getOrThrow()
+
+          val modelA =
+              ContactDetailViewModel(fixture.graph.contactDetailSource(), a, context).also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
+          val stateA = modelA.state.first { it.loaded && it.movements.isNotEmpty() }
+
+          // Nothing on A's page changes: their one Debt row, no rows of B.
+          assertEquals("أ", stateA.name)
+          assertEquals(Cents(10_000), stateA.balance)
+          assertEquals(Cents.ZERO, stateA.payable)
+          assertEquals(listOf(debtA.entityId), stateA.movements.map { it.id })
+          assertFalse(stateA.movements.single().pending)
+
+          val modelB =
+              ContactDetailViewModel(fixture.graph.contactDetailSource(), b, context).also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
+          val stateB = modelB.state.first { it.loaded && it.movements.size == 3 }
+
+          // B's page still shows their confirmed payment and the queued one.
+          assertEquals(Cents(1_000), stateB.balance)
+          assertEquals(
+              setOf(debtB.entityId, paidB.entityId, queuedPayment),
+              stateB.movements.map { it.id }.toSet(),
+          )
+          assertTrue(stateB.movements.first { it.id == queuedPayment }.pending)
+        }
+      }
+
+  @Test
+  fun sharingTheStatementIsBuiltFromTheViewThatHoldsOnlyThisPersonsRows() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val a = contactId(1)
+      val b = contactId(2)
+      val debtA = debt(a, 10_000, id = contactId(11), minute = 2)
+      val debtB = debt(b, 4_000, id = contactId(12), minute = 3)
+      val paidB = payment(debtB.entityId, 1_000, id = contactId(13), minute = 4)
+      fixture.seedCommands(
+          listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
+      )
+      store.repository.payDebt(debtB.entityId, Cents(2_000), PaymentMethod.CASH, null).getOrThrow()
+      val whole =
+          store.repository.contactRecords
+              .first { it != null && it.ledger.payments.any { row -> row.pending } }!!
+              .ledger
+
+      var shared: LedgerView? = null
+      val model =
+          ContactDetailViewModel(
+                  fixture.graph.contactDetailSource(),
+                  a,
+                  context,
+                  shareStatement = { _, _, view, _, _, _ -> shared = view },
+              )
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      model.state.first { it.loaded && it.movements.isNotEmpty() }
+      model.share(context)
+
+      val statement = checkNotNull(shared)
+      assertEquals(
+          "the same ContactView for the person the page shows",
+          whole.contacts.first { it.id == a },
+          statement.contacts.first { it.id == a },
+      )
+      assertEquals(
+          "their debts as today's whole-store view holds them",
+          whole.debts.filter { it.contactId == a },
+          statement.debts,
+      )
+      assertEquals(
+          "their payments as today's whole-store view holds them",
+          whole.payments.filter { it.contactId == a },
+          statement.payments,
+      )
+      assertEquals(whole.net(a), statement.net(a))
+      // B's queued payment is on B's page, not in A's statement.
+      assertTrue(whole.payments.any { it.contactId == b && it.pending })
+      assertFalse(statement.payments.any { it.contactId != a })
     }
   }
 

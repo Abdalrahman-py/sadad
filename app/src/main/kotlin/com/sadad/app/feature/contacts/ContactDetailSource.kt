@@ -1,17 +1,21 @@
 package com.sadad.app.feature.contacts
 
 import com.sadad.app.AppGraph
-import com.sadad.app.contactRecords
 import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.data.session.Account
 import com.sadad.app.permissions
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.Origin
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 
 /** What the Contact page reads from the open store. */
 interface ContactDetailSource {
-  val records: Flow<ContactRecords?>
+  /** The one contact's records; other people's rows are not read for their page. */
+  fun records(contactId: String): Flow<ContactRecords?>
+
   val permissions: Flow<Map<String, Boolean>>
 
   /** The Arabic sentence for a server refusal [code]. */
@@ -42,7 +46,13 @@ interface ContactDetailStore {
 fun AppGraph.contactDetailSource(): ContactDetailSource {
   val graph = this
   return object : ContactDetailSource {
-    override val records = graph.contactRecords()
+    // The one person the page shows: the loader tickets 165 and 167 reuse.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun records(contactId: String) =
+        graph.current.flatMapLatest { scope ->
+          scope?.personLedger?.observe(contactId) ?: flowOf(null)
+        }
+
     override val permissions = graph.permissions()
 
     override fun refusalText(code: String) = graph.errorMessages.text(code)

@@ -5,6 +5,7 @@ import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.Outbox
+import com.sadad.app.data.ledger.PersonLedger
 import com.sadad.app.data.ledger.RepositorySession
 import com.sadad.app.data.sync.LeaseStore
 import com.sadad.ledger.Origin
@@ -45,6 +46,9 @@ class StoreScope(
 
   // Declared after staffName: LedgerRepository's view combines it during construction.
   val repository: LedgerRepository = LedgerRepository(store, outbox, this, jobs)
+
+  /** The store's rows read one person at a time; the contact page reads it. */
+  val personLedger: PersonLedger = PersonLedger(store, outbox, this)
 
   @Volatile private var epoch: String? = null
 

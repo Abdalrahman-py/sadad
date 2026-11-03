@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.Flow
 interface ContactDao {
   @Query("SELECT * FROM contacts ORDER BY createdSeq") suspend fun all(): List<ContactEntity>
 
+  @Query("SELECT * FROM contacts WHERE id = :id") suspend fun byId(id: String): ContactEntity?
+
   @Upsert suspend fun upsert(row: ContactEntity)
 
   @Query("SELECT createdSeq FROM contacts WHERE id = :id") suspend fun createdSeq(id: String): Long?
@@ -23,6 +25,9 @@ interface ContactDao {
 @Dao
 interface DebtDao {
   @Query("SELECT * FROM debts ORDER BY createdSeq") suspend fun all(): List<DebtEntity>
+
+  @Query("SELECT * FROM debts WHERE contactId = :contactId ORDER BY createdSeq")
+  suspend fun ofContact(contactId: String): List<DebtEntity>
 
   @Upsert suspend fun upsert(row: DebtEntity)
 
@@ -37,6 +42,15 @@ interface DebtDao {
 interface PaymentDao {
   @Query("SELECT * FROM payments ORDER BY createdSeq") suspend fun all(): List<PaymentEntity>
 
+  /**
+   * The payments on one person's debts; the join is by contact, so it scales past the variable
+   * limit.
+   */
+  @Query(
+      "SELECT p.* FROM payments p JOIN debts d ON d.id = p.debtId WHERE d.contactId = :contactId ORDER BY p.createdSeq"
+  )
+  suspend fun ofContact(contactId: String): List<PaymentEntity>
+
   @Upsert suspend fun upsert(row: PaymentEntity)
 
   @Query("SELECT createdSeq FROM payments WHERE id = :id") suspend fun createdSeq(id: String): Long?
@@ -49,6 +63,18 @@ interface PaymentDao {
 @Dao
 interface OffsetDao {
   @Query("SELECT * FROM offsets ORDER BY createdSeq") suspend fun all(): List<OffsetEntity>
+
+  /** The offsets on either side of one person's debts, both sides joined by contact id. */
+  @Query(
+      """
+      SELECT o.* FROM offsets o
+      JOIN debts dr ON dr.id = o.receivableDebtId
+      JOIN debts dp ON dp.id = o.payableDebtId
+      WHERE dr.contactId = :contactId OR dp.contactId = :contactId
+      ORDER BY o.createdSeq
+      """
+  )
+  suspend fun ofContact(contactId: String): List<OffsetEntity>
 
   @Upsert suspend fun upsert(row: OffsetEntity)
 
