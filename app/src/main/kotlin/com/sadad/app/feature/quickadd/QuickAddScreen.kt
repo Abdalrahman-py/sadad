@@ -306,6 +306,11 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
   val hint = stringResource(R.string.quickadd_search_hint)
   val focus = remember { FocusRequester() }
   val keyboard = LocalSoftwareKeyboardController.current
+  // The field owns its text: a value that comes back through the view model's flow arrives a frame
+  // late, and the cursor jumps while the owner types. Only a reset to empty (clear, «تسجيل آخر»)
+  // flows back in.
+  var text by rememberSaveable { mutableStateOf(query) }
+  LaunchedEffect(query) { if (query.isEmpty()) text = "" }
   LaunchedEffect(Unit) {
     focus.requestFocus()
     keyboard?.show()
@@ -323,8 +328,11 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
     ) {
       SearchGlyph(p.muted)
       BasicTextField(
-          value = query,
-          onValueChange = onQuery,
+          value = text,
+          onValueChange = {
+            text = it
+            onQuery(it)
+          },
           singleLine = true,
           textStyle = LocalTextStyle.current.copy(fontSize = 15.sp, color = p.text),
           cursorBrush = SolidColor(p.primary),
@@ -335,17 +343,20 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
               },
           decorationBox = { inner ->
             Box(Modifier.fillMaxWidth()) {
-              if (query.isEmpty()) Text(hint, color = p.muted, fontSize = 15.sp)
+              if (text.isEmpty()) Text(hint, color = p.muted, fontSize = 15.sp)
               inner()
             }
           },
       )
-      if (query.isNotEmpty()) {
+      if (text.isNotEmpty()) {
         RoundIconButton(
             description = stringResource(R.string.quickadd_clear_search),
             size = 40,
             tag = QuickAddTags.CLEAR,
-            onClick = onClear,
+            onClick = {
+              text = ""
+              onClear()
+            },
         ) {
           XGlyph(p.muted, size = 18)
         }

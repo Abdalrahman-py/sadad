@@ -28,6 +28,7 @@ import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -118,6 +120,7 @@ data class QuickAddState(
  * the window ends: the commands are built here and handed to [QuickAddStore.append] on commit, so
  * «تراجع» is truly a no-op.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class QuickAddViewModel(
     private val source: QuickAddSource,
     private val contactId: String?,
@@ -136,6 +139,9 @@ class QuickAddViewModel(
           )
       )
   val state: StateFlow<QuickAddState> = mutable.asStateFlow()
+
+  /** The typed query; the rows for it are found off the main thread, so typing never waits. */
+  private val queries = MutableStateFlow("")
 
   /** The view the last preview was built from; the commands are built against it, never a guess. */
   @Volatile private var currentView: LedgerView? = null
@@ -167,6 +173,22 @@ class QuickAddViewModel(
     if (source.contactsGranted()) {
       mutable.update { it.copy(contactsPermission = ContactPermission.Granted) }
       readContacts()
+    }
+    viewModelScope.launch {
+      queries
+          .mapLatest { query ->
+            query to
+                (PersonSearch.search(allPeople, query) to
+                    ContactPickerRows.search(parsedRows, query))
+          }
+          .flowOn(Dispatchers.Default)
+          .collect { (query, rows) ->
+            mutable.update { current ->
+              // A newer keystroke already moved on; its own search replaces this one.
+              if (current.query != query) current
+              else current.copy(people = members(rows.first, current), contactRows = rows.second)
+            }
+          }
     }
     viewModelScope.launch {
       combine(view(), permissions(), availability()) { view, permissions, saveBlocked ->
@@ -213,19 +235,11 @@ class QuickAddViewModel(
   }
 
   fun onQueryChange(value: String) {
-    mutable.update { current -> current.withQuery(value) }
+    mutable.update { it.copy(query = value, error = null) }
+    queries.value = value
   }
 
-  fun clearQuery() = mutable.update { it.withQuery("") }
-
-  /** The rows are the query's result, so the list and its count always agree. */
-  private fun QuickAddState.withQuery(value: String): QuickAddState =
-      copy(
-          query = value,
-          people = members(PersonSearch.search(allPeople, value), this),
-          contactRows = ContactPickerRows.search(parsedRows, value),
-          error = null,
-      )
+  fun clearQuery() = onQueryChange("")
 
   /** The picker's tap: the flow continues at the amount with that person's debts in view. */
   fun pick(personId: String) {
