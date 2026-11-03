@@ -28,6 +28,9 @@ interface ContactDetailSource {
 interface ContactDetailStore {
   suspend fun archive(contactId: String, reason: String): Result<Unit>
 
+  /** Drops a refused new person and the debts saved with them; never an accepted person. */
+  suspend fun discardDraft(contactId: String): Result<Unit>
+
   fun isOnline(): Boolean
 
   fun origin(): Origin?
@@ -51,6 +54,9 @@ fun AppGraph.contactDetailSource(): ContactDetailSource {
           object : ContactDetailStore {
             override suspend fun archive(contactId: String, reason: String) =
                 scope.repository.archiveContact(contactId, reason)
+
+            override suspend fun discardDraft(contactId: String) =
+                scope.repository.discardDraft(contactId)
 
             override fun isOnline() = scope.isOnline()
 

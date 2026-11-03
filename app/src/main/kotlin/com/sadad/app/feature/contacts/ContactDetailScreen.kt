@@ -75,6 +75,7 @@ import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.StickyActions
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.balanceWord
@@ -190,6 +191,12 @@ internal fun ContactDetailScreen(
                   color = sadadPalette.owes,
               )
               Text(stringResource(R.string.contacts_draft_kept))
+              SadadButton(
+                  text = stringResource(R.string.contacts_discard_draft),
+                  style = SadadButtonStyle.SURFACE,
+                  onClick = viewModel::askDiscard,
+                  modifier = Modifier.fillMaxWidth(),
+              )
             }
           }
           item(key = "draft-info") { InfoCard(state) }
@@ -288,6 +295,17 @@ internal fun ContactDetailScreen(
             Text(stringResource(R.string.contacts_close))
           }
         },
+    )
+  }
+  if (state.confirmDiscard) {
+    ConfirmDialog(
+        title = stringResource(R.string.contacts_discard_draft_title),
+        message = stringResource(R.string.contacts_discard_draft_message),
+        confirmText = stringResource(R.string.contacts_discard_draft),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDiscard,
+        onDismiss = viewModel::dismissDiscard,
+        destructive = true,
     )
   }
   if (state.confirmDelete) {
