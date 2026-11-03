@@ -8,6 +8,7 @@ import com.sadad.app.feature.contactform.ContactFormViewModel
 import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.contacts.contactDetailSource
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Direction
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -45,11 +46,10 @@ class FirstContactSyncTest {
           )
       f.test.closeWithStore(form.viewModelScope)
       if (phone != null) form.onPhoneChange(phone)
-      form.onFirstDebtChange(true)
-      form.onDebtAmountChange("258")
-      form.save()
-      form.confirm()
+      form.saveOnly()
       val id = checkNotNull(form.state.first { it.savedContactId != null }.savedContactId)
+      // The form no longer takes a first debt; it is recorded next, as quick add does.
+      store.repository.addDebt(id, Direction.RECEIVABLE, Cents(25_800), null, null).getOrThrow()
       val detail = ContactDetailViewModel(f.test.graph.contactDetailSource(), id, f.test.context)
       f.test.closeWithStore(detail.viewModelScope)
       detail.state.first { it.loaded && !it.missing && it.balance == Cents(25_800) }

@@ -9,9 +9,10 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
@@ -54,14 +55,9 @@ class ContactFormScreenTest {
       val model = fixture.model()
       model.onNameChange("إبراهيم")
       model.onPhoneChange("123")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("258")
       compose.setContent { SadadTheme { ContactFormScreen(model) } }
       repeat(2) {
-        compose
-            .onNodeWithText(context.getString(R.string.contactform_save_add))
-            .performScrollTo()
-            .performSemanticsAction(SemanticsActions.OnClick) { it() }
+        compose.onNodeWithText(context.getString(R.string.contactform_save_only)).performClick()
         compose.waitForIdle()
         compose.onNodeWithText(checkNotNull(model.state.value.phoneError)).assertIsDisplayed()
         compose.onNodeWithText("123").assertIsDisplayed()
@@ -81,15 +77,6 @@ class ContactFormScreenTest {
     )
   }
 
-  @Test
-  fun savingAtTheBottomRevealsTheInvalidDebtAmount() {
-    assertSaveReveals(
-        configure = { it.onDebtAmountChange("0") },
-        fieldLabel = R.string.contactform_debt_amount,
-        error = { it.debtError },
-    )
-  }
-
   private fun assertSaveReveals(
       configure: (ContactFormViewModel) -> Unit,
       fieldLabel: Int,
@@ -99,14 +86,9 @@ class ContactFormScreenTest {
     fixture.use {
       val model = fixture.model()
       model.onNameChange("إبراهيم")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("258")
       configure(model)
       compose.setContent { SadadTheme { ContactFormScreen(model) } }
-      compose
-          .onNodeWithText(context.getString(R.string.contactform_save_add))
-          .performScrollTo()
-          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose.onNodeWithText(context.getString(R.string.contactform_save_only)).performClick()
       compose.waitForIdle()
       compose.onNodeWithText(checkNotNull(error(model.state.value))).assertIsDisplayed()
       compose.onNodeWithContentDescription(context.getString(fieldLabel)).assertIsFocused()
@@ -129,14 +111,9 @@ class ContactFormScreenTest {
       val model = fixture.model()
       model.onNameChange("إبراهيم")
       model.onPhoneChange("0599123456")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("258")
       compose.setContent { SadadTheme { ContactFormScreen(model) } }
       compose.waitForIdle()
-      compose
-          .onNodeWithText(context.getString(R.string.contactform_save_add))
-          .performScrollTo()
-          .performSemanticsAction(SemanticsActions.OnClick) { it() }
+      compose.onNodeWithText(context.getString(R.string.contactform_save_only)).performClick()
       compose
           .onNodeWithText(context.getString(R.string.contactform_back_to_edit))
           .performSemanticsAction(SemanticsActions.OnClick) { it() }
@@ -154,36 +131,137 @@ class ContactFormScreenTest {
   }
 
   @Test
-  fun theReviewDialogShowsTheFormattedAmount() {
+  fun addModeShowsTheThreePersonFieldsAndBothButtonsAndNothingElse() {
     val fixture = runBlocking { TestGraph.signedIn() }
     fixture.use {
       val model = fixture.model()
-      model.onNameChange("سامي")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("150.5")
-      model.save()
-
       compose.setContent { SadadTheme { ContactFormScreen(model) } }
-
-      compose.onNodeWithText("مراجعة الشخص والدين").assertIsDisplayed()
-      compose.onNodeWithText("150.5 ₪").assertIsDisplayed()
+      compose.waitForIdle()
+      // The name, the phone with its code chip, and the two kind segments.
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_name))
+          .performScrollTo()
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_prefix))
+          .performScrollTo()
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_phone))
+          .performScrollTo()
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_kind_customer))
+          .performScrollTo()
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_kind_supplier))
+          .performScrollTo()
+          .assertIsDisplayed()
+      // The contacts button above the fields and the two buttons pinned at their end.
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_pick_contacts))
+          .performScrollTo()
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_save_record))
+          .assertIsDisplayed()
+      compose.onNodeWithText(context.getString(R.string.contactform_save_only)).assertIsDisplayed()
+      // Nothing else from the busy form stays in add mode.
+      compose.onNodeWithText(context.getString(R.string.contactform_category)).assertDoesNotExist()
+      compose.onNodeWithText(context.getString(R.string.contactform_note)).assertDoesNotExist()
+      compose.onNodeWithText("تسجيل دين عند إضافة الشخص").assertDoesNotExist()
+      compose.onNodeWithText("مبلغ الدين").assertDoesNotExist()
+      assertEquals(
+          0,
+          compose
+              .onAllNodesWithContentDescription(context.getString(R.string.voice_draft))
+              .fetchSemanticsNodes()
+              .size,
+      )
     }
   }
 
   @Test
-  fun theFirstDebtFieldsHideWhenTheSwitchIsOff() {
+  fun editModeKeepsTheCategoryNoteAndVoiceAndHasOneSaveButton() {
     val fixture = runBlocking { TestGraph.signedIn() }
     fixture.use {
-      val model = fixture.model()
-      compose.setContent { SadadTheme { ContactFormScreen(model) } }
-
-      assertTrue(compose.onAllNodesWithText("مبلغ الدين").fetchSemanticsNodes().isEmpty())
-
-      model.onFirstDebtChange(true)
-      compose.waitUntil {
-        compose.onAllNodesWithText("مبلغ الدين").fetchSemanticsNodes().isNotEmpty()
+      var existing: String? = null
+      runBlocking {
+        fixture.seed { existing = addContact("نمر", null, null, null, null).getOrThrow() }
+        fixture.settleAll()
       }
-      compose.onNodeWithText("مبلغ الدين").assertExists()
+
+      val model = fixture.model(contactId = existing)
+      compose.setContent { SadadTheme { ContactFormScreen(model) } }
+      compose.waitUntil(timeoutMillis = 10_000) {
+        model.state.value.name == "نمر"
+      }
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_category))
+          .performScrollTo()
+          .assertIsDisplayed()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_note))
+          .performScrollTo()
+          .assertIsDisplayed()
+      // The voice button needs a speech recognizer; withVoiceForm covers it in edit mode.
+      compose.onNodeWithText(context.getString(R.string.contactform_save_edit)).assertIsDisplayed()
+      compose.onNodeWithText(context.getString(R.string.contactform_save_only)).assertDoesNotExist()
+      compose
+          .onNodeWithText(context.getString(R.string.contactform_save_record))
+          .assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun savingAndRecordingEndsOnTheQuickAddInsteadOfThePersonsPage() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      var recorded: String? = null
+      var opened = 0
+      val model = fixture.model()
+      model.onNameChange("سامي")
+      model.onPhoneChange("0599123456")
+      compose.setContent {
+        SadadTheme {
+          ContactFormScreen(
+              model,
+              onOpenContact = { opened += 1 },
+              onRecord = { recorded = it },
+          )
+        }
+      }
+      compose.waitForIdle()
+      compose.onNodeWithText(context.getString(R.string.contactform_save_record)).performClick()
+      compose.waitUntil(timeoutMillis = 10_000) { recorded != null }
+      assertEquals(0, opened)
+      assertTrue(model.state.value.record)
+    }
+  }
+
+  @Test
+  fun savingOnlyEndsOnThePersonsPage() {
+    val fixture = runBlocking { TestGraph.signedIn() }
+    fixture.use {
+      var opened: String? = null
+      var recorded = 0
+      val model = fixture.model()
+      model.onNameChange("سامي")
+      model.onPhoneChange("0599123456")
+      compose.setContent {
+        SadadTheme {
+          ContactFormScreen(
+              model,
+              onOpenContact = { opened = it },
+              onRecord = { recorded += 1 },
+          )
+        }
+      }
+      compose.waitForIdle()
+      compose.onNodeWithText(context.getString(R.string.contactform_save_only)).performClick()
+      compose.waitUntil(timeoutMillis = 10_000) { opened != null }
+      assertEquals(0, recorded)
     }
   }
 
@@ -218,6 +296,7 @@ class ContactFormScreenTest {
     }
   }
 
+  /** Voice stays on the edit form: add mode has no notes field to narrate into. */
   private fun withVoiceForm(check: (AppLock) -> Unit) {
     val recognizer =
         ResolveInfo().apply {
@@ -237,11 +316,19 @@ class ContactFormScreenTest {
     lock.markUnlocked()
     val fixture = runBlocking { TestGraph.signedIn() }
     fixture.use {
-      val model = fixture.model()
+      var existing: String? = null
+      runBlocking {
+        fixture.seed { existing = addContact("سامي", null, null, null, null).getOrThrow() }
+        fixture.settleAll()
+      }
+      val model = fixture.model(contactId = existing)
       compose.setContent { SadadTheme { ContactFormScreen(model) } }
-      compose
-          .onNodeWithContentDescription(context.getString(R.string.voice_draft))
-          .performScrollTo()
+      compose.waitUntil(timeoutMillis = 10_000) {
+        compose
+            .onAllNodesWithContentDescription(context.getString(R.string.voice_draft))
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
       check(lock)
     }
   }

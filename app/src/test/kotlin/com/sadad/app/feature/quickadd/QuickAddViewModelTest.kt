@@ -54,8 +54,7 @@ class QuickAddViewModelTest {
       fixture.closeWithStore(form.viewModelScope)
       assertEquals("إبراهيم", form.state.value.name)
       form.onPhoneChange("0599123456")
-      form.save()
-      form.confirm()
+      form.saveOnly()
       val id = checkNotNull(form.state.first { it.savedContactId != null }.savedContactId)
       val model =
           QuickAddViewModel(fixture.graph.quickAddSource(), id, false, SavedStateHandle(), 100)
