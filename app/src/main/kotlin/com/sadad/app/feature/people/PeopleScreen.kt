@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
@@ -275,7 +276,12 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
 
 @Composable
 private fun PeopleList(state: PeopleState, onOpenContact: (String) -> Unit) {
+  val list = rememberLazyListState()
+  // A keyed list keeps the first visible person in place when the rows change, so clearing a search
+  // would leave everyone above them out of view; a new search, chip or order starts at the top.
+  LaunchedEffect(state.query, state.filter, state.sort) { list.scrollToItem(0) }
   LazyColumn(
+      state = list,
       modifier = Modifier.fillMaxSize().testTag(PeopleTags.LIST),
       contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 20.dp),
       verticalArrangement = Arrangement.spacedBy(6.dp),
