@@ -5,7 +5,7 @@ import com.sadad.ledger.Changes
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.ReceiptStatus
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 
 /**
  * The Room side of the in-memory [LedgerState]: [load] rebuilds it once when a store opens, and
@@ -42,32 +42,27 @@ class LedgerStore(
    * (the rule of [load], for one person). A contact id that is not stored yet (a queued new person)
    * yields the empty state under the same store meta; null means no `ledger_meta` yet.
    */
-  suspend fun loadPerson(contactId: String): LedgerState? {
-    val stored = meta.get() ?: return null
-    return personState(
-        stored,
-        contacts.byId(contactId),
-        debts.ofContact(contactId),
-        payments.ofContact(contactId),
-        offsets.ofContact(contactId),
-    )
-  }
+  suspend fun loadPerson(contactId: String): LedgerState? =
+      // One transaction: a sync page that lands between the five reads must not tear the person.
+      db.withTransaction {
+        val stored = meta.get() ?: return@withTransaction null
+        personState(
+            stored,
+            contacts.byId(contactId),
+            debts.ofContact(contactId),
+            payments.ofContact(contactId),
+            offsets.ofContact(contactId),
+        )
+      }
 
   /**
-   * The same one-person read as a [Flow]: Room re-runs each query when its table changes, so
-   * [com.sadad.app.data.ledger.PersonLedger.observe] re-reads that person's rows for free.
+   * [loadPerson] again after each commit that touches the ledger tables: one trigger and one
+   * transactional read, so a sync page never surfaces half-applied.
    */
   fun observePerson(contactId: String): Flow<LedgerState?> =
-      combine(
-          meta.observe(),
-          contacts.observeById(contactId),
-          debts.observeOfContact(contactId),
-          payments.observeOfContact(contactId),
-          offsets.observeOfContact(contactId),
-      ) { stored, contact, itsDebts, itsPayments, itsOffsets ->
-        stored ?: return@combine null
-        personState(stored, contact, itsDebts, itsPayments, itsOffsets)
-      }
+      db.invalidationTracker
+          .createFlow("contacts", "debts", "payments", "offsets", "ledger_meta")
+          .map { loadPerson(contactId) }
 
   private fun personState(
       stored: LedgerMetaEntity,

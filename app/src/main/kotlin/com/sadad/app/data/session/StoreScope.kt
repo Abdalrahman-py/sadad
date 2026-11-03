@@ -47,7 +47,7 @@ class StoreScope(
   // Declared after staffName: LedgerRepository's view combines it during construction.
   val repository: LedgerRepository = LedgerRepository(store, outbox, this, jobs)
 
-  /** The store's rows read one person at a time; the contact page and Activity read it. */
+  /** The store's rows read one person at a time; the contact page reads it. */
   val personLedger: PersonLedger = PersonLedger(store, outbox, this)
 
   @Volatile private var epoch: String? = null

@@ -139,9 +139,19 @@ class PersonLedgerTest {
               e to queuedIdsOf(e, store.outbox.snapshot()),
           )
 
+      // excludedOperations holds operation ids; `mine` holds entity ids.
+      val rows = store.outbox.snapshot()
+      fun operationsOf(own: Set<String>) =
+          rows.filter { it.entityId in own }.mapTo(HashSet()) { it.operationId }
+      assertTrue(
+          "the excessive payment is refused in the whole store, so the check below is not empty",
+          operationsOf(setOf(excessivePayment)).single() in expected.ledger.excludedOperations,
+      )
+
       for ((id, own) in mine) {
         val actual = checkNotNull(store.personLedger.records(id)) { id }
         val view = expected.ledger
+        val ownOperations = operationsOf(own)
         assertEquals(
             "$id: same ContactView from either side",
             view.contacts.firstOrNull { it.id == id },
@@ -172,8 +182,8 @@ class PersonLedgerTest {
         assertEquals("$id: same net", view.net(id), actual.ledger.net(id))
         assertEquals(
             "$id: same refusals of their commands",
-            view.excludedOperations intersect own,
-            actual.ledger.excludedOperations intersect own,
+            view.excludedOperations intersect ownOperations,
+            actual.ledger.excludedOperations intersect ownOperations,
         )
         assertEquals(
             "$id: same failed draft",

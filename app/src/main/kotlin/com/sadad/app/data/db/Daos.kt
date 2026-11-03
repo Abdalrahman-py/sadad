@@ -13,8 +13,6 @@ interface ContactDao {
 
   @Query("SELECT * FROM contacts WHERE id = :id") suspend fun byId(id: String): ContactEntity?
 
-  @Query("SELECT * FROM contacts WHERE id = :id") fun observeById(id: String): Flow<ContactEntity?>
-
   @Upsert suspend fun upsert(row: ContactEntity)
 
   @Query("SELECT createdSeq FROM contacts WHERE id = :id") suspend fun createdSeq(id: String): Long?
@@ -30,9 +28,6 @@ interface DebtDao {
 
   @Query("SELECT * FROM debts WHERE contactId = :contactId ORDER BY createdSeq")
   suspend fun ofContact(contactId: String): List<DebtEntity>
-
-  @Query("SELECT * FROM debts WHERE contactId = :contactId ORDER BY createdSeq")
-  fun observeOfContact(contactId: String): Flow<List<DebtEntity>>
 
   @Upsert suspend fun upsert(row: DebtEntity)
 
@@ -55,11 +50,6 @@ interface PaymentDao {
       "SELECT p.* FROM payments p JOIN debts d ON d.id = p.debtId WHERE d.contactId = :contactId ORDER BY p.createdSeq"
   )
   suspend fun ofContact(contactId: String): List<PaymentEntity>
-
-  @Query(
-      "SELECT p.* FROM payments p JOIN debts d ON d.id = p.debtId WHERE d.contactId = :contactId ORDER BY p.createdSeq"
-  )
-  fun observeOfContact(contactId: String): Flow<List<PaymentEntity>>
 
   @Upsert suspend fun upsert(row: PaymentEntity)
 
@@ -86,17 +76,6 @@ interface OffsetDao {
   )
   suspend fun ofContact(contactId: String): List<OffsetEntity>
 
-  @Query(
-      """
-      SELECT o.* FROM offsets o
-      JOIN debts dr ON dr.id = o.receivableDebtId
-      JOIN debts dp ON dp.id = o.payableDebtId
-      WHERE dr.contactId = :contactId OR dp.contactId = :contactId
-      ORDER BY o.createdSeq
-      """
-  )
-  fun observeOfContact(contactId: String): Flow<List<OffsetEntity>>
-
   @Upsert suspend fun upsert(row: OffsetEntity)
 
   @Query("SELECT createdSeq FROM offsets WHERE id = :id") suspend fun createdSeq(id: String): Long?
@@ -109,8 +88,6 @@ interface OffsetDao {
 @Dao
 interface LedgerMetaDao {
   @Query("SELECT * FROM ledger_meta WHERE id = 0") suspend fun get(): LedgerMetaEntity?
-
-  @Query("SELECT * FROM ledger_meta WHERE id = 0") fun observe(): Flow<LedgerMetaEntity?>
 
   @Upsert suspend fun put(row: LedgerMetaEntity)
 
