@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,7 +28,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -65,8 +65,8 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
   Box(modifier.fillMaxSize()) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 88.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 88.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       item(key = "intro") {
         Text(
@@ -74,7 +74,7 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
             color = p.muted,
             fontSize = 14.sp,
             lineHeight = 21.sp,
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier.padding(bottom = 8.dp),
         )
       }
       if (state.items.isEmpty()) {
@@ -103,7 +103,7 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
         visible = state.message != null,
         enter = fadeIn() + slideInVertically { it / 2 },
         exit = fadeOut(),
-        modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
+        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
     ) {
       Text(
           state.message.orEmpty(),
@@ -111,8 +111,8 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
           fontSize = 14.sp,
           modifier =
               Modifier.fillMaxWidth()
-                  .background(TOAST, RoundedCornerShape(13.dp))
-                  .padding(horizontal = 14.dp, vertical = 12.dp)
+                  .background(TOAST, RoundedCornerShape(12.dp))
+                  .padding(horizontal = 16.dp, vertical = 12.dp)
                   .semantics { liveRegion = LiveRegionMode.Polite },
       )
     }
@@ -143,10 +143,10 @@ private fun TrashRow(
   Column(
       modifier
           .fillMaxWidth()
-          .background(p.card, RoundedCornerShape(13.dp))
-          .border(1.dp, p.line, RoundedCornerShape(13.dp))
-          .padding(14.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
+          .padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -157,9 +157,7 @@ private fun TrashRow(
         Text(
             item.title(),
             color = p.text,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
         )
         Text(item.detail(), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
       }

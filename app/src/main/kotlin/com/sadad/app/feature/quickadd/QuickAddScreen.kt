@@ -171,17 +171,16 @@ fun QuickAddScreen(
           onDismissRequest = viewModel::dismissAnomaly,
           containerColor = p.card,
           title = {
-            Text(stringResource(R.string.quickadd_anomaly_title), fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.quickadd_anomaly_title))
           },
           text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
               Text(stringResource(R.string.quickadd_anomaly_body))
               Text(
                   stringResource(
                       R.string.quickadd_anomaly_sentence,
                       viewModel.sentence(context),
                   ),
-                  fontWeight = FontWeight.Bold,
               )
             }
           },
@@ -233,7 +232,7 @@ private fun PickerStep(
 ) {
   val p = sadadPalette
   Column(
-      Modifier.fillMaxSize().imePadding().padding(horizontal = 18.dp),
+      Modifier.fillMaxSize().imePadding().padding(horizontal = 16.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Row(
@@ -246,8 +245,7 @@ private fun PickerStep(
       }
       Text(
           stringResource(R.string.quickadd_picker_title),
-          fontSize = 21.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleLarge,
           color = p.text,
       )
       Spacer(Modifier.width(44.dp))
@@ -270,15 +268,13 @@ private fun PickerStep(
     Text(
         text = listLabelText(state),
         color = p.muted,
-        fontSize = 13.sp,
-        lineHeight = 20.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.bodySmall,
     )
 
     LazyColumn(
         Modifier.fillMaxWidth().weight(1f).testTag(QuickAddTags.PEOPLE),
-        contentPadding = PaddingValues(bottom = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       items(state.people, key = { it.id }) { person ->
         PersonRow(person, onClick = { model.pick(person.id) })
@@ -319,14 +315,14 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
   }
   Surface(
       color = p.card,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       border = BorderStroke(2.dp, if (p.isDark) p.accent else p.primary),
       modifier = Modifier.fillMaxWidth().height(52.dp),
   ) {
     Row(
-        Modifier.fillMaxSize().padding(start = 14.dp, end = 6.dp),
+        Modifier.fillMaxSize().padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       SearchGlyph(p.muted)
       BasicTextField(
@@ -372,17 +368,17 @@ private fun BlockedCard() {
   val p = sadadPalette
   Surface(
       color = p.creditSoft,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.BLOCKED),
   ) {
     Row(
-        Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Column(Modifier.weight(1f)) {
         Text(
             stringResource(R.string.quickadd_blocked_title),
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             fontSize = 14.sp,
             color = p.text,
         )
@@ -402,7 +398,7 @@ private fun PersonRow(person: QuickAddPerson, onClick: () -> Unit) {
   val supplier = person.kind == ContactKind.SUPPLIER
   Surface(
       color = p.card,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       border = BorderStroke(1.dp, p.line),
       modifier =
           Modifier.fillMaxWidth()
@@ -420,9 +416,9 @@ private fun PersonRow(person: QuickAddPerson, onClick: () -> Unit) {
       Column(Modifier.weight(1f)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-          Text(person.name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = p.text)
+          Text(person.name, style = MaterialTheme.typography.titleSmall, color = p.text)
           if (supplier) SupplierBadge()
         }
         val detail = detailLine(person, Instant.now())
@@ -438,13 +434,12 @@ private fun PersonRow(person: QuickAddPerson, onClick: () -> Unit) {
 @Composable
 private fun SupplierBadge() {
   val p = sadadPalette
-  Surface(color = p.surface, shape = RoundedCornerShape(6.dp)) {
+  Surface(color = p.surface, shape = RoundedCornerShape(8.dp)) {
     Text(
         stringResource(R.string.quickadd_supplier_badge),
         color = p.muted,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
     )
   }
 }
@@ -455,11 +450,11 @@ private fun AddNewRow(name: String, onClick: () -> Unit) {
   val link = if (p.isDark) p.accent else p.primary
   Surface(
       color = Color.Transparent,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       modifier =
           Modifier.fillMaxWidth()
               .heightIn(min = 64.dp)
-              .dashedBorder(p.muted, 13.dp)
+              .dashedBorder(p.muted, 12.dp)
               .testTag(QuickAddTags.ADD_NEW)
               .clickable(onClick = onClick)
               .semantics { role = Role.Button },
@@ -470,14 +465,14 @@ private fun AddNewRow(name: String, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Box(
-          Modifier.size(42.dp).clip(CircleShape).background(p.soft),
+          Modifier.size(40.dp).clip(CircleShape).background(p.soft),
           contentAlignment = Alignment.Center,
       ) {
         PlusGlyph(link)
       }
       Text(
           stringResource(R.string.quickadd_new_result, name),
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
           fontSize = 15.sp,
           color = link,
       )
@@ -501,11 +496,11 @@ private fun AmountStep(
   var writingNote by rememberSaveable { mutableStateOf(false) }
   val person = state.selected
   val supplier = person?.kind == ContactKind.SUPPLIER
-  Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, bottom = 20.dp)) {
+  Column(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, bottom = 20.dp)) {
     Row(
         Modifier.fillMaxWidth().height(64.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       RoundIconButton(
           description = stringResource(R.string.quickadd_change_person),
@@ -519,7 +514,7 @@ private fun AmountStep(
       Column(Modifier.weight(1f)) {
         Text(
             person?.name.orEmpty(),
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             fontSize = 16.sp,
             color = p.text,
         )
@@ -537,8 +532,7 @@ private fun AmountStep(
           if (balance.amount != null) {
             Text(
                 balance.amount,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
                 color =
                     when (balance.tone) {
                       BalanceTone.OWES -> p.owes
@@ -562,12 +556,12 @@ private fun AmountStep(
       // The amount and the keypad read left to right, as the board draws them, inside an RTL page.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(verticalAlignment = Alignment.Bottom) {
-          Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
+          Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = p.text)
           Spacer(Modifier.width(8.dp))
           Text(
               text = typedAmountLabel(state.amount),
               fontSize = 52.sp,
-              fontWeight = FontWeight.Bold,
+              fontWeight = FontWeight.SemiBold,
               color = if (state.amount.isEmpty()) Ghost else p.text,
               modifier = Modifier.testTag(QuickAddTags.AMOUNT),
           )
@@ -577,7 +571,7 @@ private fun AmountStep(
       val over = state.payment && amount > state.overBalance
       Surface(
           color = if (over) p.creditSoft else Color.Transparent,
-          shape = RoundedCornerShape(10.dp),
+          shape = RoundedCornerShape(12.dp),
       ) {
         Text(
             text = model.preview(context),
@@ -677,7 +671,7 @@ private fun ModeToggle(state: QuickAddState, model: QuickAddViewModel, supplier:
   val p = sadadPalette
   Surface(
       color = p.surface,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       modifier = Modifier.fillMaxWidth(),
   ) {
     Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -725,7 +719,7 @@ private fun ModeCell(
   val p = sadadPalette
   Surface(
       color = if (chosen) chosenBackground else Color.Transparent,
-      shape = RoundedCornerShape(10.dp),
+      shape = RoundedCornerShape(12.dp),
       border = if (chosen) BorderStroke(1.5.dp, chosenInk) else null,
       modifier =
           modifier.height(44.dp).testTag(tag).clickable(onClick = onClick).semantics {
@@ -736,8 +730,7 @@ private fun ModeCell(
       Text(
           label,
           color = if (chosen) chosenInk else p.muted,
-          fontSize = 14.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.labelLarge,
       )
     }
   }
@@ -780,7 +773,7 @@ private fun Chip(
   val p = sadadPalette
   Surface(
       color = if (active) p.soft else p.card,
-      shape = RoundedCornerShape(22.dp),
+      shape = RoundedCornerShape(24.dp),
       border = BorderStroke(1.dp, p.line),
       modifier =
           Modifier.height(44.dp)
@@ -791,8 +784,7 @@ private fun Chip(
       Text(
           label,
           color = if (p.isDark) p.accent else p.primary,
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.labelLarge,
       )
     }
   }
@@ -858,7 +850,7 @@ private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () 
   AlertDialog(
       modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
-      title = { Text(stringResource(R.string.quickadd_note), fontWeight = FontWeight.Bold) },
+      title = { Text(stringResource(R.string.quickadd_note)) },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
           SadadTextField(
@@ -928,13 +920,13 @@ private fun DoneStep(
       )
   Column(
       Modifier.fillMaxSize()
-          .padding(start = 18.dp, end = 18.dp, top = 32.dp, bottom = 24.dp)
+          .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 24.dp)
           .testTag(QuickAddTags.DONE),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Column(
         Modifier.weight(1f).fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
       Box(
@@ -943,7 +935,7 @@ private fun DoneStep(
       ) {
         CheckGlyph(if (p.isDark) p.accent else p.primary)
       }
-      Text(title, fontSize = 23.sp, fontWeight = FontWeight.Bold, color = p.text)
+      Text(title, style = MaterialTheme.typography.headlineMedium, color = p.text)
       Text(
           withoutVerb(done.sentence),
           fontSize = 15.sp,
@@ -953,13 +945,13 @@ private fun DoneStep(
       )
       Surface(
           color = p.card,
-          shape = RoundedCornerShape(13.dp),
+          shape = RoundedCornerShape(12.dp),
           border = BorderStroke(1.dp, p.line),
       ) {
         Row(
-            Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           val balance = balanceWord(done.net.value)
           Text(
@@ -970,8 +962,7 @@ private fun DoneStep(
           )
           Text(
               text = listOfNotNull(balance.word, balance.amount).joinToString(" "),
-              fontSize = 15.sp,
-              fontWeight = FontWeight.Bold,
+              style = MaterialTheme.typography.titleSmall,
               color =
                   when (balance.tone) {
                     BalanceTone.OWES -> p.owes
@@ -1010,7 +1001,7 @@ private fun DoneStep(
         onClick = { model.another(context) },
         modifier = Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.ANOTHER),
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       if (person != null) {
         SadadButton(
             text = stringResource(R.string.quickadd_open_contact, firstWord(person.name)),
@@ -1056,7 +1047,7 @@ private fun SaveButton(text: String, payment: Boolean, enabled: Boolean, onClick
   Surface(
       onClick = onClick,
       enabled = enabled,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       color = fill,
       contentColor = ink,
       modifier =
@@ -1065,7 +1056,7 @@ private fun SaveButton(text: String, payment: Boolean, enabled: Boolean, onClick
           },
   ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ink)
+      Text(text, style = MaterialTheme.typography.titleMedium, color = ink)
     }
   }
 }
@@ -1106,12 +1097,11 @@ private fun Initials(name: String, supplier: Boolean) {
         else -> "؟"
       }
   val shape = if (supplier) RoundedCornerShape(12.dp) else CircleShape
-  Box(Modifier.size(42.dp).clip(shape).background(p.soft), contentAlignment = Alignment.Center) {
+  Box(Modifier.size(40.dp).clip(shape).background(p.soft), contentAlignment = Alignment.Center) {
     Text(
         text,
         color = if (p.isDark) p.accent else p.primary,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleSmall,
     )
   }
 }
@@ -1137,7 +1127,7 @@ private fun XGlyph(color: Color, size: Int = 24) {
 
 @Composable
 private fun PlusGlyph(color: Color) {
-  Canvas(Modifier.size(22.dp)) {
+  Canvas(Modifier.size(24.dp)) {
     val stroke = this.size.minDimension * 0.1f
     drawLine(
         color,
@@ -1156,7 +1146,7 @@ private fun PlusGlyph(color: Color) {
 
 @Composable
 private fun SearchGlyph(color: Color) {
-  Canvas(Modifier.size(22.dp)) {
+  Canvas(Modifier.size(24.dp)) {
     val stroke = this.size.minDimension * 0.09f
     drawCircle(
         color,

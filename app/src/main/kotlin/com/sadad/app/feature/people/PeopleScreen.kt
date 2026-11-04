@@ -25,6 +25,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -115,7 +116,7 @@ fun PeopleContent(
   val p = sadadPalette
   Column(Modifier.fillMaxSize().sadadPageBackground().testTag(PeopleTags.SCREEN)) {
     Column(
-        Modifier.padding(start = 18.dp, end = 18.dp),
+        Modifier.padding(start = 16.dp, end = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       PeopleHeader(registered = state.registered)
@@ -133,7 +134,7 @@ fun PeopleContent(
       Text(
           total,
           modifier =
-              Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp).testTag(PeopleTags.TOTAL),
+              Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp).testTag(PeopleTags.TOTAL),
           fontSize = 13.sp,
           lineHeight = 20.sp,
           color = p.muted,
@@ -160,14 +161,12 @@ private fun PeopleHeader(registered: Int) {
       Text(
           stringResource(R.string.people_title),
           modifier = Modifier.testTag(PeopleTags.TITLE).semantics { heading() },
-          fontSize = 23.sp,
-          lineHeight = 32.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.headlineMedium,
           color = p.text,
       )
       Text(
           registered.toString(),
-          modifier = Modifier.padding(bottom = 6.dp).testTag(PeopleTags.COUNT),
+          modifier = Modifier.padding(bottom = 8.dp).testTag(PeopleTags.COUNT),
           fontSize = 15.sp,
           lineHeight = 20.sp,
           fontWeight = FontWeight.Medium,
@@ -183,7 +182,7 @@ private fun PeopleActions(state: PeopleState, onAdd: () -> Unit, onFilter: (Peop
   var expanded by remember { mutableStateOf(false) }
   Row(
       Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     SadadButton(
         text = stringResource(R.string.people_add),
@@ -234,18 +233,18 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
   Row(
       Modifier.fillMaxWidth()
           .height(48.dp)
-          .clip(RoundedCornerShape(13.dp))
+          .clip(RoundedCornerShape(12.dp))
           .background(p.card)
-          .border(BorderStroke(1.dp, p.line), RoundedCornerShape(13.dp))
-          .padding(horizontal = 14.dp),
+          .border(BorderStroke(1.dp, p.line), RoundedCornerShape(12.dp))
+          .padding(horizontal = 16.dp),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Icon(
         painterResource(R.drawable.ic_search),
         contentDescription = null,
         tint = p.muted,
-        modifier = Modifier.size(21.dp),
+        modifier = Modifier.size(20.dp),
     )
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
       BasicTextField(
@@ -283,8 +282,8 @@ private fun PeopleList(state: PeopleState, onOpenContact: (String) -> Unit) {
   LazyColumn(
       state = list,
       modifier = Modifier.fillMaxSize().testTag(PeopleTags.LIST),
-      contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 20.dp),
-      verticalArrangement = Arrangement.spacedBy(6.dp),
+      contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 20.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     if (state.loaded && state.rows.isEmpty()) item { NoResults() }
     items(state.rows, key = { it.id }) { row -> PeopleRowItem(row, onOpenContact) }
@@ -300,7 +299,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
   val subInk = if (row.lateDays != null) p.credit else p.muted
   Surface(
       onClick = { onOpenContact(row.id) },
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       color = p.card,
       border = BorderStroke(1.dp, p.line),
       modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag(PeopleTags.row(row.id)),
@@ -314,13 +313,11 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
       Column(Modifier.weight(1f)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           Text(
               row.name,
-              fontSize = 15.sp,
-              lineHeight = 22.sp,
-              fontWeight = FontWeight.Bold,
+              style = MaterialTheme.typography.titleSmall,
               color = p.text,
               maxLines = 1,
               overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -368,7 +365,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
             fontSize = 12.sp,
             lineHeight = 18.sp,
             color = subInk,
-            fontWeight = if (row.lateDays != null) FontWeight.Bold else FontWeight.Normal,
+            fontWeight = if (row.lateDays != null) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
@@ -387,8 +384,8 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
 private fun PersonAvatar(name: String, supplier: Boolean) {
   val p = sadadPalette
   Box(
-      Modifier.size(42.dp)
-          .clip(RoundedCornerShape(if (supplier) 12.dp else 21.dp))
+      Modifier.size(40.dp)
+          .clip(RoundedCornerShape(if (supplier) 12.dp else 20.dp))
           .background(p.soft)
           .clearAndSetSemantics {},
       contentAlignment = Alignment.Center,
@@ -396,8 +393,7 @@ private fun PersonAvatar(name: String, supplier: Boolean) {
     Text(
         initialsOf(name),
         color = if (p.isDark) p.accent else p.primary,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleSmall,
     )
   }
 }
@@ -406,14 +402,12 @@ private fun PersonAvatar(name: String, supplier: Boolean) {
 private fun SupplierBadge() {
   val p = sadadPalette
   Box(
-      Modifier.clip(RoundedCornerShape(6.dp)).background(p.surface).padding(horizontal = 6.dp),
+      Modifier.clip(RoundedCornerShape(8.dp)).background(p.surface).padding(horizontal = 8.dp),
   ) {
     Text(
         stringResource(R.string.people_supplier),
         color = p.muted,
-        fontSize = 11.sp,
-        lineHeight = 18.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.bodySmall,
     )
   }
 }
@@ -424,12 +418,11 @@ private fun NoResults() {
   Column(
       Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 32.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(6.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Text(
         stringResource(R.string.people_no_results),
-        fontSize = 17.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleMedium,
         color = p.text,
         textAlign = TextAlign.Center,
     )

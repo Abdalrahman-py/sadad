@@ -26,9 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.R
 import com.sadad.app.feature.contactform.PersonFields
 import com.sadad.app.feature.contactpicker.ContactPermission
@@ -58,7 +56,7 @@ internal fun NewPersonStep(state: QuickAddState, model: QuickAddViewModel) {
   val fields = state.newPerson ?: return
   val context = LocalContext.current
   Column(
-      Modifier.fillMaxSize().padding(18.dp).testTag(QuickAddNewPersonTags.STEP),
+      Modifier.fillMaxSize().padding(16.dp).testTag(QuickAddNewPersonTags.STEP),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     SadadPageHeading(
@@ -102,8 +100,7 @@ internal fun LazyListScope.phoneContacts(state: QuickAddState, model: QuickAddVi
     Text(
         stringResource(R.string.quickadd_contacts_section),
         color = sadadPalette.muted,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.padding(top = 8.dp),
     )
   }
@@ -125,7 +122,7 @@ private fun AllowContactsRow(model: QuickAddViewModel) {
   Text(
       stringResource(R.string.quickadd_contacts_allow),
       color = if (sadadPalette.isDark) sadadPalette.accent else sadadPalette.primary,
-      fontWeight = FontWeight.Bold,
+      style = MaterialTheme.typography.labelLarge,
       modifier =
           Modifier.fillMaxWidth()
               .heightIn(min = 48.dp)
@@ -148,7 +145,7 @@ private fun PhoneContactRow(row: ContactRow, index: Int, onPick: (ContactRow) ->
           .semantics { role = Role.Button }
           .padding(vertical = 8.dp),
   ) {
-    Text(row.name, fontWeight = FontWeight.Bold, color = sadadPalette.text)
+    Text(row.name, style = MaterialTheme.typography.titleSmall, color = sadadPalette.text)
     Text(
         listOfNotNull(
                 row.numbers.joinToString(" · ") { it.raw },
@@ -167,7 +164,7 @@ internal fun PhoneNumberChooser(state: QuickAddState, model: QuickAddViewModel) 
   val row = state.contactChooser ?: return
   AlertDialog(
       onDismissRequest = model::dismissPhoneChooser,
-      title = { Text(row.name, fontWeight = FontWeight.Bold) },
+      title = { Text(row.name) },
       text = {
         Column {
           row.numbers.forEach { number ->

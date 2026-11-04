@@ -159,8 +159,8 @@ fun StoreScreen(
       ScreenHeader(stringResource(R.string.nav_store))
       LazyColumn(
           modifier = Modifier.fillMaxSize().testTag(SettingsTags.LIST),
-          contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 28.dp),
-          verticalArrangement = Arrangement.spacedBy(18.dp),
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp),
+          verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
         storeCard(
             store = state.store,
@@ -185,7 +185,7 @@ fun StoreScreen(
         message = toast?.first,
         error = toast?.second == true,
         onDismiss = { toast = null },
-        modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
+        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
     )
   }
   if (showStorePhoto && openStore != null) {
