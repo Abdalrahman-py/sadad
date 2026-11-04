@@ -83,14 +83,16 @@ class HistoryViewModelTest {
         assertEquals(count, state.movements.size)
       }
       model.selectCustom(LocalDate.of(2026, 10, 2), LocalDate.of(2026, 10, 17))
-      val custom = model.state.first { it.period is Period.Custom }
+      val custom = model.state.first { it.loaded && it.period is Period.Custom }
       assertEquals(2, custom.movements.size)
       model.selectCustom(LocalDate.of(2026, 10, 17), LocalDate.of(2026, 10, 17))
       assertEquals(
           1,
           model.state
               .first {
-                it.period == Period.Custom(LocalDate.of(2026, 10, 17), LocalDate.of(2026, 10, 17))
+                it.loaded &&
+                    it.period ==
+                        Period.Custom(LocalDate.of(2026, 10, 17), LocalDate.of(2026, 10, 17))
               }
               .movements
               .size,
