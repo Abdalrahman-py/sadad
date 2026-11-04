@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
@@ -30,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,8 +74,8 @@ fun AppUpdateScreen(onBack: (() -> Unit)? = null, modifier: Modifier = Modifier)
         Modifier.fillMaxSize()
             .padding(padding)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
       UpdateCard {
         Text(
@@ -104,9 +104,7 @@ fun AppUpdateScreen(onBack: (() -> Unit)? = null, modifier: Modifier = Modifier)
           Text(
               stringResource(R.string.updates_new_version, manifest.versionName),
               color = p.text,
-              fontSize = 17.sp,
-              lineHeight = 24.sp,
-              fontWeight = FontWeight.Bold,
+              style = MaterialTheme.typography.titleMedium,
           )
           Text(
               stringResource(R.string.updates_size, sizeText(manifest.sizeBytes)),
@@ -286,11 +284,11 @@ private fun UpdateCard(content: @Composable () -> Unit) {
   val p = sadadPalette
   Surface(
       modifier = Modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       color = p.card,
       border = BorderStroke(1.dp, p.line),
   ) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
   }
 }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,7 +45,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -187,7 +187,7 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
         Modifier.fillMaxSize()
             .sadadPageBackground()
             .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(horizontal = 18.dp, vertical = 20.dp),
+            .padding(horizontal = 16.dp, vertical = 20.dp),
     ) {
       Column(
           Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth(),
@@ -195,7 +195,7 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
       ) {
         Column(
             Modifier.fillMaxWidth().testTag(LockTag.BOARD),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
           Column(
               Modifier.fillMaxWidth(),
@@ -211,14 +211,12 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
                   painterResource(R.drawable.ic_lock),
                   null,
                   tint = if (p.isDark) p.accent else p.primary,
-                  modifier = Modifier.size(22.dp),
+                  modifier = Modifier.size(24.dp),
               )
               Text(
                   stringResource(R.string.lock_title),
                   color = p.text,
-                  fontSize = 23.sp,
-                  lineHeight = 32.sp,
-                  fontWeight = FontWeight.Bold,
+                  style = MaterialTheme.typography.headlineMedium,
                   modifier = Modifier.semantics { heading() },
               )
             }

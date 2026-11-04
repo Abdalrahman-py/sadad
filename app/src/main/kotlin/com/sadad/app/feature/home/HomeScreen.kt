@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -179,8 +180,8 @@ fun HomeContent(
       Column(
           Modifier.fillMaxSize()
               .verticalScroll(rememberScrollState())
-              .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 24.dp),
-          verticalArrangement = Arrangement.spacedBy(18.dp),
+              .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+          verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
         val offline = state.offline
         if (offline != null) OfflineBanner(offline)
@@ -212,7 +213,7 @@ private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -
       if (unread > 0) stringResource(R.string.home_bell_new, unread)
       else stringResource(R.string.home_bell)
   Row(
-      Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp, vertical = 8.dp),
+      Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 8.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -220,9 +221,7 @@ private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -
       Text(date, fontSize = 12.sp, lineHeight = 16.sp, color = p.muted)
       Text(
           storeName,
-          fontSize = 21.sp,
-          lineHeight = 28.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleLarge,
           color = p.text,
       )
     }
@@ -244,17 +243,17 @@ private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -
             painterResource(R.drawable.ic_notifications),
             contentDescription = null,
             tint = p.text,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(24.dp),
         )
       }
       if (unread > 0) {
         Surface(
             color = BadgeRed,
             shape = CircleShape,
-            modifier = Modifier.align(Alignment.TopEnd).heightIn(min = 18.dp).widthIn(min = 18.dp),
+            modifier = Modifier.align(Alignment.TopEnd).heightIn(min = 16.dp).widthIn(min = 16.dp),
         ) {
           Box(Modifier.padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-            Text("$unread", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("$unread", style = MaterialTheme.typography.bodySmall, color = Color.White)
           }
         }
       }
@@ -269,18 +268,16 @@ private fun OfflineBanner(offline: HomeOffline) {
   val p = sadadPalette
   Surface(
       color = p.creditSoft,
-      shape = RoundedCornerShape(13.dp),
+      shape = RoundedCornerShape(12.dp),
       modifier = Modifier.fillMaxWidth().testTag(HomeTags.OFFLINE),
   ) {
     Column(
-        Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
       Text(
           stringResource(R.string.home_offline_title, entriesLabel(offline.queued)),
-          fontSize = 14.sp,
-          lineHeight = 20.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
           color = p.text,
       )
       val until = offline.leaseEndsAt
@@ -306,12 +303,12 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
   Box(
       Modifier.fillMaxWidth()
           // The board's `0 12px 28px rgba(2, 48, 43, 0.22)` under the hero.
-          .then(if (p.isDark) Modifier else Modifier.softShadow(18.dp, HeroShadow, 28.dp))
-          .clip(RoundedCornerShape(18.dp))
+          .then(if (p.isDark) Modifier else Modifier.softShadow(16.dp, HeroShadow, 28.dp))
+          .clip(RoundedCornerShape(16.dp))
           .background(Brush.linearGradient(hero))
           .padding(20.dp)
   ) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
       Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             stringResource(R.string.home_owed_to_store),
@@ -321,7 +318,7 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
         )
         MoneyText(
             cents = state.owedToStore,
-            style = TextStyle(fontSize = 34.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.displaySmall,
             color = Color.White,
             modifier = Modifier.testTag(HomeTags.OWED),
         )
@@ -332,7 +329,7 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
               lineHeight = 20.sp,
               color = HeroInk,
           )
-          Spacer(Modifier.width(6.dp))
+          Spacer(Modifier.width(8.dp))
           MoneyText(
               cents = state.storeOwes,
               style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
@@ -343,12 +340,12 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
       }
       Column(
           Modifier.fillMaxWidth()
-              .clip(RoundedCornerShape(13.dp))
+              .clip(RoundedCornerShape(12.dp))
               .background(HeroPanel)
               .clickable(onClick = onOpenActivity)
               .testTag(HomeTags.MONTH_LINE)
               .semantics { role = Role.Button }
-              .padding(horizontal = 14.dp, vertical = 12.dp),
+              .padding(horizontal = 16.dp, vertical = 12.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         Row(
@@ -364,13 +361,12 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
           )
           Row(
               verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
           ) {
             MoneyText(
                 cents = state.monthDebts,
-                style =
-                    TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold),
-                color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
             )
             Icon(
                 painterResource(R.drawable.ic_chevron_start),
@@ -449,7 +445,7 @@ private fun FollowUpSection(
   val link = if (p.isDark) p.accent else p.primary
   Column(
       Modifier.fillMaxWidth().testTag(HomeTags.FOLLOW),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Row(
         Modifier.fillMaxWidth(),
@@ -462,20 +458,18 @@ private fun FollowUpSection(
       ) {
         Text(
             stringResource(R.string.home_follow_title),
-            fontSize = 17.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
             color = p.text,
         )
         if (count > 0) {
-          Surface(color = p.owesSoft, shape = RoundedCornerShape(11.dp)) {
+          Surface(color = p.owesSoft, shape = RoundedCornerShape(12.dp)) {
             Box(
-                Modifier.heightIn(min = 22.dp)
+                Modifier.heightIn(min = 24.dp)
                     .widthIn(min = 24.dp)
-                    .padding(horizontal = 7.dp, vertical = 1.dp),
+                    .padding(horizontal = 8.dp, vertical = 1.dp),
                 contentAlignment = Alignment.Center,
             ) {
-              Text("$count", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = p.owes)
+              Text("$count", style = MaterialTheme.typography.bodySmall, color = p.owes)
             }
           }
         }
@@ -489,15 +483,14 @@ private fun FollowUpSection(
       ) {
         Text(
             stringResource(R.string.home_show_all),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge,
             color = link,
         )
       }
     }
     Surface(
         color = p.card,
-        shape = RoundedCornerShape(13.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, p.line),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -507,7 +500,7 @@ private fun FollowUpSection(
               stringResource(R.string.home_follow_empty),
               fontSize = 14.sp,
               color = p.muted,
-              modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp),
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
           )
         }
         followUps.forEachIndexed { index, person ->
@@ -540,7 +533,7 @@ private fun FollowUpRow(
   val link = if (p.isDark) p.accent else p.primary
   val remindLabel = reminderLabel(person.name)
   Row(
-      Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+      Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -556,22 +549,19 @@ private fun FollowUpRow(
           Modifier.sizeIn(minWidth = 40.dp, minHeight = 40.dp)
               .clip(CircleShape)
               .background(p.soft)
-              .padding(horizontal = 6.dp),
+              .padding(horizontal = 8.dp),
           contentAlignment = Alignment.Center,
       ) {
         Text(
             initialsOf(person.name),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelMedium,
             color = link,
         )
       }
       Column(Modifier.weight(1f)) {
         Text(
             person.name,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             color = p.text,
         )
         Text(
@@ -587,21 +577,19 @@ private fun FollowUpRow(
       Column(horizontalAlignment = Alignment.End) {
         Text(
             stringResource(R.string.home_follow_owes),
-            fontSize = 11.sp,
-            lineHeight = 14.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodySmall,
             color = p.owes,
         )
         MoneyText(
             cents = person.amount,
-            style = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleSmall,
             color = p.owes,
         )
       }
     }
     Box(
         Modifier.size(44.dp)
-            .clip(RoundedCornerShape(13.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(p.surface)
             .clickable(onClick = onRemind)
             .testTag(HomeTags.remind(person.contactId))
@@ -615,7 +603,7 @@ private fun FollowUpRow(
           painterResource(R.drawable.ic_whatsapp),
           contentDescription = null,
           tint = link,
-          modifier = Modifier.size(22.dp),
+          modifier = Modifier.size(24.dp),
       )
     }
   }
@@ -627,34 +615,32 @@ private fun FollowUpRow(
 private fun EmptyStart(onRecord: () -> Unit) {
   val p = sadadPalette
   val link = if (p.isDark) p.accent else p.primary
-  Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
     Surface(
         color = p.card,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, p.line),
         modifier = Modifier.fillMaxWidth(),
     ) {
       Column(
           Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
           horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(14.dp),
+          verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
         Box(
-            Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).background(p.soft),
+            Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(p.soft),
             contentAlignment = Alignment.Center,
         ) {
           Icon(
               painterResource(R.drawable.ic_ledger),
               contentDescription = null,
               tint = link,
-              modifier = Modifier.size(34.dp),
+              modifier = Modifier.size(32.dp),
           )
         }
         Text(
             stringResource(R.string.home_empty_card_title),
-            fontSize = 21.sp,
-            lineHeight = 30.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleLarge,
             color = p.text,
             textAlign = TextAlign.Center,
         )
@@ -668,7 +654,7 @@ private fun EmptyStart(onRecord: () -> Unit) {
         Box(
             Modifier.fillMaxWidth()
                 .height(52.dp)
-                .clip(RoundedCornerShape(13.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(p.primary)
                 .clickable(onClick = onRecord)
                 .testTag(HomeTags.EMPTY_CTA)
@@ -677,8 +663,7 @@ private fun EmptyStart(onRecord: () -> Unit) {
         ) {
           Text(
               stringResource(R.string.home_empty_cta),
-              fontSize = 16.sp,
-              fontWeight = FontWeight.Bold,
+              style = MaterialTheme.typography.titleMedium,
               color = Color.White,
           )
         }
@@ -686,13 +671,11 @@ private fun EmptyStart(onRecord: () -> Unit) {
     }
     Column(
         Modifier.testTag(HomeTags.AFTER_FIRST),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Text(
           stringResource(R.string.home_after_first),
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
           color = p.muted,
       )
       AfterRow(1, stringResource(R.string.home_after_1))
@@ -713,7 +696,7 @@ private fun AfterRow(number: Int, text: String) {
             .background(p.surface),
         contentAlignment = Alignment.Center,
     ) {
-      Text("$number", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = link)
+      Text("$number", style = MaterialTheme.typography.labelLarge, color = link)
     }
     Text(text, fontSize = 14.sp, lineHeight = 21.sp, color = p.text)
   }

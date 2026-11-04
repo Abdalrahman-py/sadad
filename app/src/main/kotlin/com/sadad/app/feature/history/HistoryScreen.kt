@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -46,8 +47,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -140,22 +139,20 @@ fun HistoryContent(
   Box(modifier.fillMaxSize().sadadPageBackground()) {
     Column(Modifier.fillMaxSize()) {
       Row(
-          Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 18.dp),
+          Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp),
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Text(
             stringResource(R.string.title_history),
             color = sadadPalette.text,
-            fontSize = 23.sp,
-            lineHeight = 32.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.weight(1f).semantics { heading() },
         )
         ExportPill { choosingFormat = true }
       }
       LazyColumn(
           modifier = Modifier.fillMaxSize().testTag(HistoryTags.MOVEMENTS),
-          contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 20.dp),
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         item(key = "filters") {
@@ -191,7 +188,7 @@ fun HistoryContent(
         message = state.error ?: if (state.saved) stringResource(R.string.history_saved) else null,
         onDismiss = onDismissExportResult,
         error = state.error != null,
-        modifier = Modifier.align(Alignment.BottomCenter).padding(18.dp),
+        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
     )
   }
   if (choosingFormat) {
@@ -220,7 +217,7 @@ private fun HistoryFilters(
       else periodLabel(LocalContext.current, state.period)
   Row(
       Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Box(Modifier.weight(1f).fillMaxHeight()) {
       SadadButton(
@@ -327,13 +324,13 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
   Row(
       Modifier.fillMaxWidth()
           .heightIn(min = 72.dp)
-          .background(p.card, RoundedCornerShape(13.dp))
-          .border(1.dp, p.line, RoundedCornerShape(13.dp))
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
           .clickable(onClickLabel = open) { onOpen(movement.contactId) }
           .testTag("history:movement:${movement.id}")
-          .padding(horizontal = 12.dp, vertical = 10.dp),
+          .padding(horizontal = 12.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Box(
         Modifier.size(36.dp).background(if (debt) p.owesSoft else p.soft, CircleShape),
@@ -350,9 +347,7 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
       Text(
           movement.name,
           color = p.text,
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
       )
       Text(stringResource(label), color = color, fontSize = 13.sp, lineHeight = 20.sp)
       Text(
@@ -368,7 +363,7 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
     MoneyText(
         movement.amount,
         color = color,
-        style = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold),
+        style = MaterialTheme.typography.titleSmall,
     )
   }
 }
@@ -387,15 +382,14 @@ private fun ExportPill(onClick: () -> Unit) {
       modifier = Modifier.heightIn(min = 40.dp),
   ) {
     Row(
-        Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      Icon(painterResource(R.drawable.ic_payment_in), null, modifier = Modifier.size(18.dp))
+      Icon(painterResource(R.drawable.ic_payment_in), null, modifier = Modifier.size(16.dp))
       Text(
           stringResource(R.string.history_export_button),
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.labelLarge,
       )
     }
   }

@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -52,7 +53,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -314,14 +314,14 @@ fun RecoveryContent(
           modifier
               .fillMaxSize()
               .verticalScroll(rememberScrollState())
-              .padding(start = 18.dp, end = 18.dp, bottom = 24.dp),
+              .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     Row(
         Modifier.fillMaxWidth()
-            .background(p.soft, RoundedCornerShape(13.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .background(p.soft, RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Icon(
           painterResource(R.drawable.ic_phone),
@@ -344,24 +344,22 @@ fun RecoveryContent(
           lineHeight = 21.sp,
           modifier =
               Modifier.fillMaxWidth()
-                  .background(p.creditSoft, RoundedCornerShape(13.dp))
-                  .padding(horizontal = 14.dp, vertical = 12.dp)
+                  .background(p.creditSoft, RoundedCornerShape(12.dp))
+                  .padding(horizontal = 16.dp, vertical = 12.dp)
                   .semantics { liveRegion = LiveRegionMode.Polite },
       )
     }
     Column(
         Modifier.fillMaxWidth()
-            .background(p.card, RoundedCornerShape(18.dp))
-            .border(1.dp, p.line, RoundedCornerShape(18.dp))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .background(p.card, RoundedCornerShape(16.dp))
+            .border(1.dp, p.line, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
       Text(
           stringResource(R.string.recovery_move_title),
           color = p.text,
-          fontSize = 17.sp,
-          lineHeight = 24.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleMedium,
           modifier = Modifier.semantics { heading() },
       )
       NumberedStep(
@@ -383,8 +381,8 @@ fun RecoveryContent(
     }
     Column(
         Modifier.fillMaxWidth()
-            .background(p.card, RoundedCornerShape(13.dp))
-            .border(1.dp, p.line, RoundedCornerShape(13.dp))
+            .background(p.card, RoundedCornerShape(12.dp))
+            .border(1.dp, p.line, RoundedCornerShape(12.dp))
             .animateContentSize(tween(220)),
     ) {
       val turn by animateFloatAsState(if (adminOpen) 180f else 0f, tween(220), label = "chevron")
@@ -392,14 +390,13 @@ fun RecoveryContent(
           Modifier.fillMaxWidth()
               .heightIn(min = 56.dp)
               .toggleable(value = adminOpen, role = Role.Button) { adminOpen = it }
-              .padding(horizontal = 14.dp),
+              .padding(horizontal = 16.dp),
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Text(
             stringResource(R.string.recovery_admin_title),
             color = p.text,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
         Icon(
@@ -411,7 +408,7 @@ fun RecoveryContent(
       }
       if (adminOpen) {
         Column(
-            Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+            Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           Text(
@@ -439,15 +436,13 @@ fun RecoveryContent(
     }
     val revoked = status == "revoked"
     Column(
-        Modifier.fillMaxWidth().border(1.5.dp, p.line, RoundedCornerShape(13.dp)).padding(14.dp),
+        Modifier.fillMaxWidth().border(1.5.dp, p.line, RoundedCornerShape(12.dp)).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       Text(
           stringResource(R.string.recovery_register_title),
           color = p.text,
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
       )
       Text(
           stringResource(R.string.recovery_register_again_explanation),
@@ -488,14 +483,13 @@ private fun NumberedStep(
         // circle, and a fixed size squeezed it to a 1px sliver instead of letting the badge grow.
         Modifier.sizeIn(minWidth = 28.dp, minHeight = 28.dp)
             .background(if (first) p.primary else p.surface, CircleShape)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
       Text(
           "$number",
           color = if (first) Color.White else link,
-          fontSize = 14.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.labelLarge,
           softWrap = false,
           maxLines = 1,
       )
@@ -504,9 +498,7 @@ private fun NumberedStep(
       Text(
           title,
           color = p.text,
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
       )
       Text(detail, color = p.muted, fontSize = 13.sp, lineHeight = 20.sp)
       SadadButton(

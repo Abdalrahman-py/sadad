@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -39,7 +40,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadad.app.R
@@ -96,16 +96,14 @@ fun NotificationsScreen(
   ) { padding ->
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       item(key = "head") {
         Text(
             stringResource(R.string.reminder_channel),
             color = p.muted,
-            fontSize = 13.sp,
-            lineHeight = 20.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.semantics { heading() },
         )
       }
@@ -139,7 +137,7 @@ fun NotificationsScreen(
             color = p.muted,
             fontSize = 12.sp,
             lineHeight = 18.sp,
-            modifier = Modifier.padding(top = 10.dp),
+            modifier = Modifier.padding(top = 12.dp),
         )
       }
     }
@@ -154,29 +152,25 @@ private fun ReminderRow(event: Reminder, onDone: () -> Unit, modifier: Modifier 
       modifier
           .fillMaxWidth()
           .alpha(if (event.read) 0.6f else 1f)
-          .background(p.card, RoundedCornerShape(13.dp))
-          .border(1.dp, p.line, RoundedCornerShape(13.dp))
-          .padding(horizontal = 14.dp, vertical = 12.dp)
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
+          .padding(horizontal = 16.dp, vertical = 12.dp)
           .animateContentSize(),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Box(Modifier.size(8.dp).background(if (event.read) p.line else AMBER, CircleShape))
     Column(Modifier.weight(1f)) {
-      Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             event.contactName,
             color = p.text,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
         )
         Text(
             stringResource(R.string.reminder_owes, formatShekels(event.amountCents)),
             color = p.owes,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
         )
       }
       Text(
@@ -194,14 +188,13 @@ private fun ReminderRow(event: Reminder, onDone: () -> Unit, modifier: Modifier 
         onClick = onDone,
         color = p.surface,
         contentColor = link,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         modifier = Modifier.heightIn(min = 40.dp),
     ) {
-      Box(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), Alignment.Center) {
+      Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), Alignment.Center) {
         Text(
             stringResource(R.string.reminder_mark_done),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge,
         )
       }
     }
