@@ -70,20 +70,20 @@ fun VoiceDraftButton(
         },
         color = sadadPalette.soft,
         shape = CircleShape,
-        modifier = Modifier.size(54.dp),
+        modifier = Modifier.size(56.dp),
     ) {
       Icon(
           painterResource(R.drawable.ic_mic),
           contentDescription = stringResource(R.string.voice_draft),
           tint = if (sadadPalette.isDark) sadadPalette.text else sadadPalette.primary,
-          modifier = Modifier.padding(14.dp),
+          modifier = Modifier.padding(16.dp),
       )
     }
     Text(
         stringResource(R.string.voice_review_hint),
         color = sadadPalette.muted,
         style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.padding(top = 10.dp),
+        modifier = Modifier.padding(top = 12.dp),
     )
   }
 }

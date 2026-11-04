@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import com.sadad.app.ui.theme.sadadPalette
 
@@ -25,11 +24,11 @@ fun StickyActions(modifier: Modifier = Modifier, content: @Composable RowScope.(
       modifier =
           modifier
               .fillMaxWidth()
-              .shadow(8.dp)
               .background(sadadPalette.card)
+              .topHairline(sadadPalette.line)
               .windowInsetsPadding(WindowInsets.navigationBars)
-              .padding(horizontal = 18.dp, vertical = 12.dp),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
+              .padding(horizontal = 16.dp, vertical = 12.dp),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
       content = content,
   )
 }

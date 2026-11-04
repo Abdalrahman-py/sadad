@@ -16,7 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -27,10 +28,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.ui.theme.sadadPalette
 
 /** One pill: its value, its label and an optional count shown after the label. */
@@ -47,7 +46,7 @@ fun <T> ChipRow(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
     tagFor: (T) -> String? = { null },
-    horizontalPadding: Dp = 18.dp,
+    horizontalPadding: Dp = 16.dp,
 ) {
   Row(
       modifier =
@@ -83,7 +82,6 @@ fun <T> ChipFlow(
 @Composable
 private fun <T> PillChip(chip: Chip<T>, on: Boolean, tag: String?, onClick: () -> Unit) {
   val p = sadadPalette
-  val shape = RoundedCornerShape(18.dp)
   // The chosen pill fills in over 180ms instead of snapping.
   val fill by animateColorAsState(if (on) p.primary else p.card, tween(180), label = "chip")
   val edge by animateColorAsState(if (on) p.primary else p.line, tween(180), label = "chipEdge")
@@ -92,9 +90,9 @@ private fun <T> PillChip(chip: Chip<T>, on: Boolean, tag: String?, onClick: () -
           // 36dp pill, 48dp touch target.
           Modifier.minimumInteractiveComponentSize()
               .heightIn(min = 36.dp)
-              .clip(shape)
+              .clip(CircleShape)
               .background(fill)
-              .border(BorderStroke(1.dp, edge), shape)
+              .border(BorderStroke(1.dp, edge), CircleShape)
               .then(if (tag != null) Modifier.testTag(tag) else Modifier)
               .selectable(selected = on, role = Role.RadioButton, onClick = onClick)
               .padding(horizontal = 12.dp),
@@ -102,8 +100,12 @@ private fun <T> PillChip(chip: Chip<T>, on: Boolean, tag: String?, onClick: () -
       horizontalArrangement = Arrangement.spacedBy(4.dp),
   ) {
     val ink = if (on) Color.White else p.text
-    Text(chip.label, color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+    Text(chip.label, color = ink, style = MaterialTheme.typography.labelLarge)
     if (chip.count != null)
-        Text(chip.count.toString(), color = ink.copy(alpha = 0.85f), fontSize = 13.sp)
+        Text(
+            chip.count.toString(),
+            color = ink.copy(alpha = 0.85f),
+            style = MaterialTheme.typography.bodyMedium,
+        )
   }
 }

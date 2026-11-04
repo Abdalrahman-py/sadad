@@ -21,7 +21,7 @@ fun PendingBadge(modifier: Modifier = Modifier) {
   Box(
       modifier =
           modifier
-              .size(10.dp)
+              .size(8.dp)
               .clip(CircleShape)
               .background(MaterialTheme.colorScheme.tertiary)
               .semantics {

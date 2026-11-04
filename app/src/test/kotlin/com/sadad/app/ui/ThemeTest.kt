@@ -1,8 +1,12 @@
 package com.sadad.app.ui
 
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import com.sadad.app.ui.theme.SadadDarkPalette
 import com.sadad.app.ui.theme.SadadLightPalette
 import com.sadad.app.ui.theme.SadadTheme
@@ -40,6 +44,14 @@ class ThemeTest {
     var dark: Boolean? = null
     compose.setContent { SadadTheme(dark = false) { dark = sadadPalette.isDark } }
     assertEquals(false, dark)
+  }
+
+  @Test
+  fun textThatSetsOnlyASizeInheritsNoLineHeight() {
+    var inherited: TextStyle? = null
+    compose.setContent { SadadTheme { inherited = LocalTextStyle.current } }
+    assertEquals(16.sp, inherited?.fontSize)
+    assertEquals(TextUnit.Unspecified, inherited?.lineHeight)
   }
 
   @Test
