@@ -134,7 +134,7 @@ export function tasksView(model: Model, actions: QueueActions) {
         ${
           write
             ? html`<a class="btn btn-primary btn-lg" href="#/create">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 إنشاء حساب متجر</a>`
             : nothing
@@ -171,7 +171,7 @@ export function tasksView(model: Model, actions: QueueActions) {
               subs.length
                 ? html`<div class="list">${subs.map((store) => subRow(store, write, actions))}</div>`
                 : !model.stores.loading && !model.stores.error
-                  ? empty("لا اشتراكات تنتهي خلال سبعة أيام.")
+                  ? empty("لا اشتراكات تنتهي خلال سبعة أيام")
                   : nothing
             }
           </section>

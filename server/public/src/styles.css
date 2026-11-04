@@ -82,7 +82,7 @@ button {
 }
 .eyebrow {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--muted);
 }
 .row {
@@ -94,7 +94,7 @@ button {
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .spread {
   display: flex;
@@ -126,7 +126,7 @@ button {
 summary {
   list-style: none;
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 500;
 }
 summary::-webkit-details-marker {
   display: none;
@@ -146,16 +146,16 @@ summary::-webkit-details-marker {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 28px;
-  min-height: 68px;
-  padding: 10px 24px;
+  gap: 8px 32px;
+  min-height: 64px;
+  padding: 8px 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 .bar-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   text-decoration: none;
   color: inherit;
 }
@@ -167,6 +167,7 @@ summary::-webkit-details-marker {
 .bar-brand strong {
   display: block;
   font-size: 18px;
+  font-weight: 600;
   line-height: 1.2;
 }
 .bar-brand span {
@@ -184,7 +185,7 @@ summary::-webkit-details-marker {
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 0 14px;
+  padding: 0 12px;
   border-radius: var(--r-sm);
   color: var(--muted);
   font-size: 15px;
@@ -198,17 +199,18 @@ summary::-webkit-details-marker {
 .navlink[aria-current="page"] {
   background: var(--brand-soft);
   color: var(--brand);
-  font-weight: 700;
+  font-weight: 500;
 }
 .navlink .count {
-  min-width: 22px;
-  height: 22px;
+  min-width: 20px;
+  height: 20px;
   padding: 0 6px;
-  border-radius: 11px;
-  background: var(--danger);
-  color: #fff;
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -218,7 +220,7 @@ summary::-webkit-details-marker {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .bar-user .email {
   font-size: 13px;
@@ -226,21 +228,21 @@ summary::-webkit-details-marker {
 }
 .signout {
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 0;
   background: none;
   color: var(--brand);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .page {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 28px 24px 56px;
+  padding: 32px 24px 56px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 24px;
 }
 .page-head {
   display: flex;
@@ -252,7 +254,7 @@ summary::-webkit-details-marker {
 .page-head h1 {
   font-size: 30px;
   line-height: 38px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .title-group {
   display: flex;
@@ -276,7 +278,7 @@ summary::-webkit-details-marker {
   padding: 20px;
 }
 .card-tight {
-  padding: 14px 20px;
+  padding: 16px 20px;
 }
 .card-flush {
   padding: 0;
@@ -286,12 +288,12 @@ summary::-webkit-details-marker {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px 10px;
+  gap: 4px 12px;
 }
 .card-head h2 {
   font-size: 20px;
   line-height: 28px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .section {
   display: flex;
@@ -306,7 +308,7 @@ summary::-webkit-details-marker {
 .columns {
   display: flex;
   flex-wrap: wrap;
-  gap: 22px;
+  gap: 24px;
   align-items: flex-start;
 }
 .columns > .main {
@@ -314,34 +316,35 @@ summary::-webkit-details-marker {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 24px;
 }
 .columns > .aside {
   flex: 1 1 300px;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 /* A metric: label above, big number, small unit after it. */
 .metric {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .metric > span {
   font-size: 13px;
   color: var(--muted);
 }
 .metric > b {
-  font-size: 26px;
-  line-height: 34px;
-  font-weight: 700;
+  font-size: 28px;
+  line-height: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .metric > b small {
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted);
 }
 .metric.danger > b {
@@ -358,13 +361,13 @@ summary::-webkit-details-marker {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  padding: 0 18px;
+  padding: 0 16px;
   border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: var(--brand-wash);
   color: var(--brand);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -406,8 +409,8 @@ summary::-webkit-details-marker {
   color: #fff;
 }
 .btn-sm {
-  min-height: 38px;
-  padding: 0 14px;
+  min-height: 36px;
+  padding: 0 12px;
   font-size: 14px;
 }
 .btn-lg {
@@ -434,13 +437,13 @@ summary::-webkit-details-marker {
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
   background: var(--brand-wash);
   color: var(--brand);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .pill-ok {
   background: var(--brand-soft);
@@ -461,20 +464,20 @@ summary::-webkit-details-marker {
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 .chip {
   min-height: 40px;
-  padding: 0 14px;
+  padding: 0 12px;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .chip span {
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted);
 }
 .chip[aria-pressed="true"] {
@@ -490,9 +493,9 @@ summary::-webkit-details-marker {
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .field > span.hint {
   font-size: 12px;
@@ -511,7 +514,7 @@ input,
 select,
 textarea {
   min-width: 0;
-  min-height: 46px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -520,7 +523,7 @@ textarea {
   font-weight: 400;
 }
 textarea {
-  padding: 10px 12px;
+  padding: 12px;
   resize: vertical;
 }
 input[dir="ltr"],
@@ -546,7 +549,7 @@ input[type="checkbox"] {
 .check {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--line);
@@ -568,7 +571,7 @@ fieldset {
 legend {
   padding: 0 0 8px;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 fieldset:disabled input,
 fieldset:disabled select,
@@ -583,10 +586,10 @@ fieldset:disabled .check {
 .search {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1 1 300px;
   min-height: 48px;
-  padding: 0 14px;
+  padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
@@ -594,7 +597,7 @@ fieldset:disabled .check {
 }
 .search input {
   flex: 1;
-  min-height: 46px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   background: none;
@@ -622,7 +625,7 @@ fieldset:disabled .check {
   background: transparent;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .seg button[aria-pressed="true"] {
   background: var(--brand);
@@ -632,7 +635,7 @@ fieldset:disabled .check {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 10px;
+  gap: 12px;
 }
 .inline-form .field {
   flex: 1 1 160px;
@@ -652,15 +655,15 @@ table {
   font-size: 15px;
 }
 th {
-  padding: 14px 12px;
+  padding: 12px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
   text-align: right;
   white-space: nowrap;
 }
 td {
-  padding: 14px 12px;
+  padding: 12px;
   border-top: 1px solid var(--line);
   text-align: right;
   vertical-align: middle;
@@ -689,8 +692,9 @@ tr.is-link:hover td {
 .cell-link b {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 15px;
+  font-weight: 500;
 }
 .cell-link:hover b {
   color: var(--brand);
@@ -704,6 +708,7 @@ tr.is-link:hover td {
 .num {
   direction: ltr;
   unicode-bidi: plaintext;
+  font-variant-numeric: tabular-nums;
 }
 .pager {
   display: flex;
@@ -727,8 +732,8 @@ tr.is-link:hover td {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 20px;
-  padding: 14px 20px;
+  gap: 12px 20px;
+  padding: 16px 20px;
   border-top: 1px solid var(--line);
 }
 .list-row:first-child {
@@ -741,6 +746,7 @@ tr.is-link:hover td {
 }
 .list-row b {
   font-size: 15px;
+  font-weight: 500;
 }
 .events {
   display: flex;
@@ -750,7 +756,7 @@ tr.is-link:hover td {
 .event b {
   display: block;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .event small {
   display: block;
@@ -759,10 +765,10 @@ tr.is-link:hover td {
   overflow-wrap: anywhere;
 }
 .empty {
-  padding: 28px 20px;
+  padding: 32px 20px;
   text-align: center;
   color: var(--muted);
-  border: 1.5px dashed var(--line);
+  border: 1px dashed var(--line);
   border-radius: var(--r-lg);
 }
 .notice-inline {
@@ -786,11 +792,11 @@ tr.is-link:hover td {
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: 40px;
   color: var(--brand);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 500;
   text-decoration: none;
 }
 .store-head {
@@ -818,10 +824,10 @@ tr.is-link:hover td {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-height: 48px;
   padding: 0 16px;
-  border-bottom: 3px solid transparent;
+  border-bottom: 2px solid transparent;
   color: var(--muted);
   font-size: 15px;
   font-weight: 500;
@@ -833,7 +839,7 @@ tr.is-link:hover td {
 .tab[aria-current="page"] {
   border-bottom-color: var(--brand);
   color: var(--brand);
-  font-weight: 700;
+  font-weight: 500;
 }
 .tab .dot {
   width: 8px;
@@ -842,7 +848,7 @@ tr.is-link:hover td {
   background: var(--danger);
 }
 .notice-card {
-  border: 1.5px solid var(--warn);
+  border: 1px solid var(--warn);
   border-radius: var(--r-lg);
   background: var(--surface);
   padding: 16px 20px;
@@ -851,28 +857,28 @@ tr.is-link:hover td {
   border-color: var(--danger);
 }
 .secret {
-  border: 2px solid var(--brand);
+  border: 1px solid var(--brand);
   border-radius: var(--r-lg);
   background: var(--surface);
-  padding: 18px 20px;
+  padding: 16px 20px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 14px 20px;
+  gap: 12px 20px;
 }
 .secret code,
 .permit-id {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: var(--r-sm);
   background: var(--brand-wash);
-  font-size: 17px;
+  font-size: 16px;
   letter-spacing: 0.04em;
   overflow-wrap: anywhere;
   direction: ltr;
   unicode-bidi: plaintext;
 }
 .danger-card {
-  border: 1.5px solid var(--danger);
+  border: 1px solid var(--danger);
   border-radius: var(--r-lg);
   background: var(--surface);
   padding: 20px;
@@ -880,6 +886,7 @@ tr.is-link:hover td {
 .danger-card h2 {
   color: var(--danger);
   font-size: 18px;
+  font-weight: 500;
   margin-bottom: 4px;
 }
 .danger-row {
@@ -928,7 +935,7 @@ tr.is-link:hover td {
 .steps > li {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .drop {
   cursor: pointer;
@@ -937,11 +944,11 @@ tr.is-link:hover td {
   justify-content: center;
   gap: 8px;
   min-height: 72px;
-  border: 1.5px dashed var(--line);
+  border: 1px dashed var(--line);
   border-radius: var(--r-md);
   color: var(--brand);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 /* ---------- toast and dialog ---------- */
@@ -952,9 +959,9 @@ tr.is-link:hover td {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   max-width: min(560px, calc(100% - 48px));
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-radius: var(--r-md);
   background: var(--ink);
   color: #fff;
@@ -968,7 +975,7 @@ tr.is-link:hover td {
   border: 0;
   background: none;
   color: #9fe6d0;
-  font-weight: 700;
+  font-weight: 500;
 }
 .toast.error button {
   color: #fff;
@@ -987,10 +994,10 @@ tr.is-link:hover td {
 .dialog-card {
   background: var(--surface);
   border-radius: var(--r-xl);
-  padding: 22px 24px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 .dialog-head {
   display: flex;
@@ -1001,7 +1008,7 @@ tr.is-link:hover td {
 .dialog-head h2 {
   font-size: 20px;
   line-height: 28px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .dialog-actions {
   display: flex;
@@ -1037,7 +1044,7 @@ tr.is-link:hover td {
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   padding: 24px;
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
@@ -1046,16 +1053,13 @@ tr.is-link:hover td {
 .auth-form h1 {
   font-size: 24px;
   line-height: 32px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 @media (max-width: 720px) {
   .bar {
-    padding: 10px 14px;
-    gap: 8px 16px;
-  }
-  .bar {
-    gap: 4px 10px;
+    padding: 8px 16px;
+    gap: 4px 12px;
   }
   /* A phone hides the email and the brand's subtitle so the bar stays two rows: brand and who,
      then the three sections. */
@@ -1065,7 +1069,7 @@ tr.is-link:hover td {
   }
   .navlink {
     min-height: 40px;
-    padding: 0 10px;
+    padding: 0 8px;
     font-size: 14px;
   }
   .signout,
@@ -1073,10 +1077,10 @@ tr.is-link:hover td {
     min-height: 40px;
   }
   .page {
-    padding: 20px 14px 40px;
+    padding: 20px 16px 40px;
   }
   .page-head h1 {
-    font-size: 25px;
+    font-size: 24px;
   }
   .card,
   .dialog-card,
@@ -1088,15 +1092,15 @@ tr.is-link:hover td {
   }
   th:first-child,
   td:first-child {
-    padding-inline-start: 14px;
+    padding-inline-start: 16px;
   }
   th:last-child,
   td:last-child {
-    padding-inline-end: 14px;
+    padding-inline-end: 16px;
   }
   .toast {
-    inset-inline-start: 14px;
-    bottom: 14px;
+    inset-inline-start: 16px;
+    bottom: 16px;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -1116,11 +1120,11 @@ tr.is-link:hover td {
    No view sets a style attribute: the built page runs under style-src 'self'. */
 .section-title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .row-title {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .ink {
   color: var(--ink);
@@ -1139,11 +1143,11 @@ tr.is-link:hover td {
 }
 .loud-warn {
   color: var(--warn);
-  font-weight: 700;
+  font-weight: 500;
 }
 .loud-danger {
   color: var(--danger);
-  font-weight: 700;
+  font-weight: 500;
 }
 .narrow {
   max-width: 640px;
@@ -1186,7 +1190,7 @@ tr.is-link:hover td {
   flex-direction: column;
   gap: 8px;
   font-size: 15px;
-  line-height: 23px;
+  line-height: 24px;
 }
 .details-box {
   padding: 0;
@@ -1195,7 +1199,7 @@ tr.is-link:hover td {
   padding: 12px 16px;
 }
 .details-box > div {
-  padding: 0 16px 14px;
+  padding: 0 16px 16px;
 }
 .pill-gap {
   margin-inline-start: 8px;
@@ -1210,11 +1214,11 @@ tr.is-link:hover td {
 .auth-title {
   font-size: 24px;
   line-height: 32px;
-  font-weight: 700;
+  font-weight: 500;
 }
 .reading {
   font-size: 15px;
-  line-height: 23px;
+  line-height: 24px;
 }
 .permit-code {
   display: block;
