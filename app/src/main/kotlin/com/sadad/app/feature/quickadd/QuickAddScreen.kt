@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -90,7 +91,8 @@ import com.sadad.app.ui.components.SadadField
 import com.sadad.app.ui.components.SHEKEL
 import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.ui.components.SadadTextField
-import com.sadad.app.ui.components.VoiceDraftButton
+import com.sadad.app.ui.components.Chip as ComponentChip
+import com.sadad.app.ui.components.ChipFlow
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.parseCents
 import com.sadad.app.ui.components.sadadPageBackground
@@ -619,7 +621,6 @@ private fun AmountStep(
         }
       }
       Spacer(Modifier.weight(1f))
-      VoiceDraftButton(onText = {}, modifier = Modifier.size(44.dp))
     }
     Spacer(Modifier.height(12.dp))
 
@@ -847,21 +848,41 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
   }
 }
 
-/** «البيان»: a line saying what the entry was for, kept with it in the ledger. */
+/** «ملاحظة»: a line saying what the entry was for, kept with it in the ledger. */
 @Composable
 private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
   var text by remember { mutableStateOf(current) }
+  val suggestions =
+      stringArrayResource(R.array.quickadd_note_suggestions).map { it.trim() }.filter { it.isNotEmpty() }
   AlertDialog(
       modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
       title = { Text(stringResource(R.string.quickadd_note), fontWeight = FontWeight.Bold) },
       text = {
-        SadadTextField(
-            value = text,
-            onValueChange = { text = it.take(NOTE_MAX_CHARS) },
-            placeholder = stringResource(R.string.quickadd_note_hint),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          SadadTextField(
+              value = text,
+              onValueChange = { text = it.take(NOTE_MAX_CHARS) },
+              placeholder = stringResource(R.string.quickadd_note_hint),
+              modifier = Modifier.fillMaxWidth(),
+          )
+          if (suggestions.isNotEmpty()) {
+            ChipFlow(
+                chips = suggestions.map { ComponentChip(it, it) },
+                selected = "",
+                onSelect = { word ->
+                  // A tap fills the line: «كولا» on its own, a second tap joins with « و».
+                  text =
+                      when {
+                        text.isBlank() -> word
+                        text.split(" و").any { it.trim() == word } -> text
+                        else -> "${text.trim()} و$word"
+                      }
+                      .take(NOTE_MAX_CHARS)
+                },
+            )
+          }
+        }
       },
       confirmButton = {
         TextButton(onClick = { onSave(text.trim()) }) {
