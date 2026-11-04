@@ -121,6 +121,7 @@ class PasswordChangeViewModel(
       mutable.update { it.copy(busy = true, error = null) }
       try {
         source.changePassword(current.current, current.new)
+        source.enrollAfterPasswordChange()
         mutable.update { it.copy(busy = false, destination = source.startRoute()) }
       } catch (refused: ApiException) {
         mutable.update { it.copy(busy = false, error = source.errorText(refused.code)) }

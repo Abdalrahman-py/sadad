@@ -329,7 +329,7 @@ try {
         [installation, proofKey, nonce1, 'هاتف الكاشير', 'أحمد'],
       )
     ).rows[0].result;
-    assert.equal(enrolled.status, 'pending');
+    assert.equal(enrolled.status, 'active');
     assert.equal(enrolled.generation, 1);
 
     // Replay nonce refused
@@ -340,11 +340,18 @@ try {
       /proof_replayed/,
     );
 
-    // A second device may wait as pending while no device is active yet
+    // A later device waits as pending; a cap of 2 lets it in, then the store goes back to 1
+    await db.exec('reset role; update public.stores set allowed_devices = 2 where id = 1');
+    await asStore(storeUser, session);
     const extra = randomUUID();
-    await db.query('select public.sadid_enroll($1, $2, $3, $4, $5)', [extra, proofKey, randomUUID(), 'هاتف ثان', 'سامي']);
+    const second = (
+      await db.query('select public.sadid_enroll($1, $2, $3, $4, $5) as result', [extra, proofKey, randomUUID(), 'هاتف ثان', 'سامي'])
+    ).rows[0].result;
+    assert.equal(second.status, 'pending');
+    await db.exec('reset role; update public.stores set allowed_devices = 1 where id = 1');
+    await asStore(storeUser, session);
 
-    // Approve installation 1 as admin
+    // Approving the active first phone again changes nothing
     await asAdmin('admin');
     const approved = (
       await db.query(

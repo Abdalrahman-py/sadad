@@ -122,6 +122,39 @@ class PasswordChangeViewModelTest {
   }
 
   @Test
+  fun aNewPhoneEnrollsBeforeTheRouteIsRead() = runTest {
+    TestGraph.unsigned().use { fixture ->
+      fixture.signIn(STORE_A, forcePasswordChange = true)
+      fixture.server.enqueue(
+          MockResponse.Builder().body("""{"ok":true,"forcePasswordChange":false}""").build()
+      )
+      fixture.enqueueSession(STORE_A, forcePasswordChange = false)
+      val steps = mutableListOf<String>()
+      val real = fixture.graph.authSource()
+      val source =
+          object : AuthSource by real {
+            override suspend fun enrollAfterPasswordChange() {
+              steps += "enroll"
+            }
+
+            override suspend fun startRoute(): Any {
+              steps += "route"
+              return Home
+            }
+          }
+      val model = PasswordChangeViewModel(source, context)
+      model.onCurrentChange("12345678")
+      model.onNewChange("new-password-long")
+      model.onConfirmChange("new-password-long")
+
+      model.change()
+
+      assertEquals(Home, model.state.first { it.destination != null }.destination)
+      assertEquals(listOf("enroll", "route"), steps)
+    }
+  }
+
+  @Test
   fun anOfflineChangeKeepsTheUserOnTheScreenWithTheFallbackText() = runTest {
     TestGraph.unsigned().use { fixture ->
       fixture.signIn(STORE_A, forcePasswordChange = true)

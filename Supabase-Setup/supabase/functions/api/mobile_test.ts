@@ -188,9 +188,22 @@ async function operationCount(storeId: number): Promise<number> {
 }
 
 dbTest(
-  "enroll with a valid proof registers a pending installation; the same proof again is refused",
+  "a new store's first phone is active; a later one is pending; the same proof again is refused",
   async () => {
-    const store = await newStore();
+    const store = await newStore(2);
+    const first = await newDevice();
+    const firstRes = await send(store.jwt, first, "POST", "/v1/mobile/enroll", {
+      body: enrollBody(first),
+    });
+    assertEqual(firstRes.status, 200);
+    const response = fill(enrollFixture.response, {
+      installationId: first.installationId,
+    });
+    assertEqual(await firstRes.json(), {
+      ...response,
+      installation: { ...response.installation, status: "active" },
+    });
+
     const device = await newDevice();
     const nonce = crypto.randomUUID();
 
@@ -199,10 +212,13 @@ dbTest(
       nonce,
     });
     assertEqual(res.status, 200);
-    assertEqual(
-      await res.json(),
-      fill(enrollFixture.response, { installationId: device.installationId }),
-    );
+    const later = fill(enrollFixture.response, {
+      installationId: device.installationId,
+    });
+    assertEqual(await res.json(), {
+      ...later,
+      installation: { ...later.installation, generation: 2 },
+    });
 
     const replay = await send(store.jwt, device, "POST", "/v1/mobile/enroll", {
       body: enrollBody(device),
@@ -515,7 +531,7 @@ dbTest(
 );
 
 dbTest("a pending installation cannot push operations", async () => {
-  const store = await newStore();
+  const { store } = await activeStore(2);
   const device = await newDevice();
   const enrolled = await send(store.jwt, device, "POST", "/v1/mobile/enroll", {
     body: enrollBody(device),
