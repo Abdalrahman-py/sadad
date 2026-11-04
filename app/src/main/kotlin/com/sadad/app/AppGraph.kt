@@ -323,14 +323,33 @@ internal constructor(
     queuedCount(storeUserId)
   }
 
-  private suspend fun queuedCount(storeUserId: String): Int {
-    val open = stores[storeUserId]
-    if (open?.account?.storeUserId == storeUserId) {
-      return open.outbox.snapshot().count { it.state == OutboxState.QUEUED }
+  private suspend fun queuedCount(storeUserId: String): Int =
+      withDatabaseLocked(storeUserId) { database ->
+        Outbox(database.outboxDao(), dataKey.key).snapshot().count {
+          it.state == OutboxState.QUEUED
+        }
+      }
+
+  /**
+   * Runs [block] on [storeUserId]'s one database for a background read. A second connection to an
+   * open store's file must never exist: its long transaction holds the write lock, and the open
+   * database's invalidation tracker then dies with an uncaught SQLITE_BUSY.
+   */
+  suspend fun <T> withDatabase(storeUserId: String, block: suspend (LedgerDatabase) -> T): T =
+      storeMutex.withLock {
+        withDatabaseLocked(storeUserId, block)
+      }
+
+  private suspend fun <T> withDatabaseLocked(
+      storeUserId: String,
+      block: suspend (LedgerDatabase) -> T,
+  ): T {
+    stores[storeUserId]?.let {
+      return block(it.database)
     }
     val database = openDatabase(storeUserId)
     return try {
-      Outbox(database.outboxDao(), dataKey.key).snapshot().count { it.state == OutboxState.QUEUED }
+      block(database)
     } finally {
       withContext(Dispatchers.IO) { database.close() }
     }
