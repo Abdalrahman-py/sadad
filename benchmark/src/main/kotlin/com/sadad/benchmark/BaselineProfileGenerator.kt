@@ -5,8 +5,9 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Generates the Baseline Profile: start, Home, Contacts scroll, Contact detail, Debt form. The
- * human commits the output after ticket 65 (`./gradlew :app:generateBaselineProfile` on the phone).
+ * Generates the Baseline Profile: start, Home, People scroll, a person's page, quick add to its
+ * amount step. The human commits the output (`./gradlew :app:generateBaselineProfile` on the
+ * phone).
  */
 class BaselineProfileGenerator {
   @get:Rule val rule = BaselineProfileRule()
@@ -19,6 +20,8 @@ class BaselineProfileGenerator {
         openContacts()
         flingContacts(times = 3)
         openFirstContact()
-        openDebtForm()
+        device.pressBack()
+        openQuickAdd()
+        typeTenForFirstPerson()
       }
 }

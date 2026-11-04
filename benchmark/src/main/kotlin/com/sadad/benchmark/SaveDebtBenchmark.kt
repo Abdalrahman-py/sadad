@@ -9,8 +9,8 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Saves a 10 ₪ Debt for the first Contact and measures the app's `save_debt` span (write < 100 ms).
- * Each iteration adds one Debt to the seeded test store.
+ * Saves a 10 ₪ Debt for quick add's first person and measures the app's `save_debt` span (write <
+ * 100 ms). Each iteration adds one Debt to the seeded test store.
  */
 @OptIn(ExperimentalMetricApi::class)
 class SaveDebtBenchmark {
@@ -30,8 +30,7 @@ class SaveDebtBenchmark {
           setupBlock = {
             pressHome()
             startToHome()
-            openContacts()
-            openFirstContact()
+            openQuickAdd()
           },
       ) {
         saveTenShekelDebt()
