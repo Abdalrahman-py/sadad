@@ -2,6 +2,7 @@ package com.sadad.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -15,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -238,7 +240,11 @@ fun SadadTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
         colorScheme = colorsFor(palette, dark),
         shapes = SadadShapes,
         typography = SadadTypography,
-        content = content,
-    )
+    ) {
+      // A Text that sets only its size keeps a line height of that size, not bodyLarge's 24sp,
+      // which at the largest font is 48dp and overflows the 42dp and 44dp boxes such text sits in.
+      val inherited = MaterialTheme.typography.bodyLarge.copy(lineHeight = TextUnit.Unspecified)
+      CompositionLocalProvider(LocalTextStyle provides inherited, content = content)
+    }
   }
 }
