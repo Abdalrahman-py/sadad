@@ -15,6 +15,7 @@ export const KIND_LABELS: Record<string, string> = {
   "account.revoke-all": "إلغاء جميع الأجهزة",
   "installation.approved": "اعتماد هاتف",
   "installation.revoked": "إلغاء اعتماد هاتف",
+  "installation.reactivated": "إعادة اعتماد هاتف",
   "recovery.approved": "اعتماد استرداد",
 };
 

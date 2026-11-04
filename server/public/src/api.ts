@@ -125,17 +125,26 @@ export function createApi(options: ApiOptions) {
           signal,
         }),
       ),
-    decideInstallation: (installationId: string, decision: "approve" | "revoke", reason: string) =>
+    decideInstallation: (
+      installationId: string,
+      decision: "approve" | "revoke" | "reactivate",
+      reason: string,
+    ) =>
       unwrap(
         decision === "approve"
           ? client.POST("/v1/admin/installations/{installationId}/approve", {
               params: { path: { installationId } },
               body: { reason },
             })
-          : client.POST("/v1/admin/installations/{installationId}/revoke", {
-              params: { path: { installationId } },
-              body: { reason },
-            }),
+          : decision === "reactivate"
+            ? client.POST("/v1/admin/installations/{installationId}/reactivate", {
+                params: { path: { installationId } },
+                body: { reason },
+              })
+            : client.POST("/v1/admin/installations/{installationId}/revoke", {
+                params: { path: { installationId } },
+                body: { reason },
+              }),
       ),
     approveRecovery: (body: {
       oldInstallationId: string;

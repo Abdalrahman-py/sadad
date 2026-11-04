@@ -19,6 +19,7 @@ export const noActions: Actions = {
   quickExtend: noop,
   approveDevice: noop,
   revokeDevice: noop,
+  reactivateDevice: noop,
   saveSettings: noop,
   setStatus: noop,
   storeAction: noop,
