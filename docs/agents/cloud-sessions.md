@@ -49,6 +49,6 @@ gh api -X POST $R/pulls -f title='...' -f head=ticket-23 -f base=dev -f body='Cl
 
 - `./tools/check.sh` is the gate before every PR. Ask the human before every run of it or any section (AGENTS.md, الاختبارات); if the answer is no, say in the PR that it was not run. `./tools/check.sh --changed origin/dev` runs only the sections your branch can affect. A teammate on Codex runs none of it locally: the PR's `ci-ok` check is that gate.
 - Never run `supabase db push`, `supabase functions deploy`, or anything that changes project `vhftjmiltqfwmrszdtgf`. The human deploys. Cloud migration versions differ from local file names, so `db push` would re-run old migrations.
-- All stores, users and rows are test data. Never add upgrade paths, fallbacks, compatibility shims or legacy handling (`docs/ARCHITECTURE.md` Part 3, the clean-cut rule). Delete legacy handling you touch.
+- Production holds a real customer's data: migrations keep rows, and the latest `v*` release keeps working (`docs/ARCHITECTURE.md` Part 3). Delete legacy handling you touch only when no shipped release needs it.
 - Device checks (`app/src/androidTest`) need the human's phone; list them in the PR as "not run".
 - Versions are decided in `docs/versions.md`; do not pick newer ones.
