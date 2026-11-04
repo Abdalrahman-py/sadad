@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -181,11 +179,7 @@ private fun PeopleHeader(registered: Int) {
 
 /** Add a contact and choose one of the existing filters, directly below search. */
 @Composable
-private fun PeopleActions(
-    state: PeopleState,
-    onAdd: () -> Unit,
-    onFilter: (PeopleFilter) -> Unit,
-) {
+private fun PeopleActions(state: PeopleState, onAdd: () -> Unit, onFilter: (PeopleFilter) -> Unit) {
   var expanded by remember { mutableStateOf(false) }
   Row(
       Modifier.fillMaxWidth().height(IntrinsicSize.Min),
@@ -472,8 +466,6 @@ private fun filterLabel(filter: PeopleFilter): String =
           PeopleFilter.SUPPLIERS -> R.string.people_filter_suppliers
         }
     )
-
-
 
 @Composable
 private fun peopleViewModel(): PeopleViewModel {

@@ -330,9 +330,6 @@ internal fun SadadShell(
 /** Entry gates hide navigation; account pages opened from Store remain inside the store flow. */
 private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApproval::class)
 
-/** The four tabs show the bar; the contact page has its own sticky record buttons instead. */
-private val WITH_BAR = listOf(Home::class, People::class, Activity::class, Store::class)
-
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
 

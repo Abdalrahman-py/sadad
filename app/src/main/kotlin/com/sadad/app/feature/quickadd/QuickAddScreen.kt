@@ -84,15 +84,14 @@ import com.sadad.app.R
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
-import com.sadad.app.ui.components.KeypadKey
-import com.sadad.app.ui.components.SadadButton
-import com.sadad.app.ui.components.SadadButtonStyle
-import com.sadad.app.ui.components.SadadField
-import com.sadad.app.ui.components.SHEKEL
-import com.sadad.app.ui.components.SadadKeypad
-import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.Chip as ComponentChip
 import com.sadad.app.ui.components.ChipFlow
+import com.sadad.app.ui.components.KeypadKey
+import com.sadad.app.ui.components.SHEKEL
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
+import com.sadad.app.ui.components.SadadKeypad
+import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.parseCents
 import com.sadad.app.ui.components.sadadPageBackground
@@ -853,7 +852,9 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
 private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
   var text by remember { mutableStateOf(current) }
   val suggestions =
-      stringArrayResource(R.array.quickadd_note_suggestions).map { it.trim() }.filter { it.isNotEmpty() }
+      stringArrayResource(R.array.quickadd_note_suggestions)
+          .map { it.trim() }
+          .filter { it.isNotEmpty() }
   AlertDialog(
       modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
@@ -877,8 +878,7 @@ private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () 
                         text.isBlank() -> word
                         text.split(" و").any { it.trim() == word } -> text
                         else -> "${text.trim()} و$word"
-                      }
-                      .take(NOTE_MAX_CHARS)
+                      }.take(NOTE_MAX_CHARS)
                 },
             )
           }

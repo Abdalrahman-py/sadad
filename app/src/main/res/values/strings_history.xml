@@ -6,7 +6,6 @@
 
     <!-- Period filter -->
     <string name="history_filter_label">فلتر السجل: %1$s</string>
-    <string name="history_movements_heading">%1$d حركة · %2$s</string>
     <string name="history_period_day">اليوم</string>
     <string name="history_period_month">هذا الشهر</string>
     <string name="history_period_year">هذه السنة</string>
@@ -18,8 +17,7 @@
     <string name="history_custom_invalid">تاريخ النهاية يجب أن يقع بعد تاريخ البداية.</string>
 
     <!-- People tab -->
-    <string name="history_people_heading">%1$d شخصاً لديهم حركات ضمن %2$s</string>
-    <string name="history_open_reports">فتح التقارير والكشوفات</string>
+    <string name="history_movements_heading">%1$d حركة · %2$s</string>
     <string name="history_empty_title">السجل فارغ</string>
     <string name="history_empty_detail">ستظهر الديون والدفعات هنا بعد تسجيلها.</string>
     <string name="history_person_remaining">المتبقي: %1$s</string>
@@ -55,15 +53,4 @@
     <string name="history_unaccepted_unsendable">لا يمكن إرسالها من هذا الجهاز — تجاهلها</string>
     <string name="history_unaccepted_blocked">لا يمكن التجاهل قبل %1$s</string>
     <string name="history_dismiss">تجاهل</string>
-
-    <!-- Action names, as the Java ledger log printed them -->
-    <string name="history_action_contact_create">إضافة شخص</string>
-    <string name="history_action_contact_update">تعديل شخص</string>
-    <string name="history_action_contact_archive">أرشفة شخص</string>
-    <string name="history_action_contact_restore">استعادة شخص</string>
-    <string name="history_action_debt_create">تسجيل دين</string>
-    <string name="history_action_debt_correct">تصحيح دين</string>
-    <string name="history_action_payment_create">تسجيل دفعة</string>
-    <string name="history_action_payment_reverse">عكس دفعة</string>
-    <string name="history_action_other">عملية دفتر</string>
 </resources>

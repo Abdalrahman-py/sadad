@@ -116,8 +116,8 @@ fun ContactDetailScreen(
 
 /**
  * The Contact board: who they are and where they stand, then every entry with the balance after it,
- * and the two sticky buttons that record for this person. WhatsApp, the statement, edit and archive
- * sit in the ⋯ menu.
+ * and the two sticky buttons that record for this person. Edit is a button in the header; WhatsApp,
+ * the statement and archive sit in the ⋯ menu.
  */
 @Composable
 internal fun ContactDetailScreen(
@@ -367,6 +367,7 @@ private fun ContactTopBar(
     RoundButton(R.drawable.ic_back, stringResource(R.string.contacts_back), onBack)
     Box(Modifier.weight(1f))
     if (state.missing || !state.loaded || state.syncFailure != null) return@Row
+    RoundButton(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), onEdit)
     Box {
       RoundButton(
           R.drawable.ic_more,
@@ -389,10 +390,6 @@ private fun ContactTopBar(
         MenuRow(R.drawable.ic_share, stringResource(R.string.contacts_share), p.text) {
           open = false
           onShare()
-        }
-        MenuRow(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), p.text) {
-          open = false
-          onEdit()
         }
         if (state.canDeleteContacts) {
           MenuRow(R.drawable.ic_archive, stringResource(R.string.contacts_delete), p.owes) {
