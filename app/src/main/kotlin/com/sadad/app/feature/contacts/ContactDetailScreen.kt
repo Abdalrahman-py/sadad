@@ -370,7 +370,7 @@ private fun ContactTopBar(
     RoundButton(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), onEdit)
     Box {
       RoundButton(
-          R.drawable.ic_menu,
+          R.drawable.ic_more,
           stringResource(R.string.contacts_more),
           { open = !open },
           filled = open,
