@@ -68,6 +68,19 @@ class PersonLedger(
           }
           .flowOn(Dispatchers.Default)
 
+  /**
+   * The whole store with the queue on top, read once from Room for a statement and kept by nobody.
+   * A statement needs all of it: its opening balance counts every Debt before the period, and it
+   * lists every person, moved or not.
+   */
+  suspend fun wholeView(): LedgerView =
+      withContext(Dispatchers.Default) {
+        val rows = outbox.snapshot()
+        val staff = session.staffName.first()
+        val state = store.load()
+        state.view(pendingCommands(rows), failedOperations(rows), session.selfInstallationId, staff)
+      }
+
   /** The trash's contacts, built by [LedgerState.view]; nothing queued changes that list. */
   fun archivedContacts(): Flow<List<ContactView>> =
       combine(store.changes(), session.staffName) { _, staff ->

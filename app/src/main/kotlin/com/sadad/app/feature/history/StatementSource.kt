@@ -13,15 +13,11 @@ interface StatementSource {
   /** The rows of [bounds] with the queue on top, for the list; null while no store is open. */
   fun view(bounds: PeriodBounds): Flow<LedgerView?>
 
-  /**
-   * The open store's whole view and its account, from one store so a switch cannot mix two. A
-   * statement needs it: its opening balance counts every Debt before the period, and it lists every
-   * person, moved or not.
-   */
-  fun latest(): Latest?
+  /** The whole view a statement needs, read once, and its account, from one store. */
+  suspend fun latest(): Latest?
 }
 
-class Latest(val view: LedgerView?, val account: Account)
+class Latest(val view: LedgerView, val account: Account)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 fun AppGraph.statementSource(): StatementSource {
@@ -32,7 +28,7 @@ fun AppGraph.statementSource(): StatementSource {
           scope?.personLedger?.period(bounds.from, bounds.to) ?: flowOf(null)
         }
 
-    override fun latest(): Latest? =
-        graph.current.value?.let { scope -> Latest(scope.repository.view.value, scope.account) }
+    override suspend fun latest(): Latest? =
+        graph.current.value?.let { scope -> Latest(scope.personLedger.wholeView(), scope.account) }
   }
 }

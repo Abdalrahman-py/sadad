@@ -24,18 +24,20 @@ class LedgerStore(
     private val events: EventDao = db.eventDao(),
 ) {
   /** The stored rows, ordered by `createdSeq`, which is the event order the maps must keep. */
-  suspend fun load(): LedgerState {
-    val stored = meta.get() ?: return LedgerState.EMPTY
-    return LedgerState(
-        stored.storeId,
-        stored.epoch,
-        stored.cursor,
-        contacts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-        debts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-        payments.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-        offsets.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-    )
-  }
+  suspend fun load(): LedgerState =
+      // One transaction: a statement reads this while a sync page may be landing.
+      db.withTransaction {
+        val stored = meta.get() ?: return@withTransaction LedgerState.EMPTY
+        LedgerState(
+            stored.storeId,
+            stored.epoch,
+            stored.cursor,
+            contacts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            debts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            payments.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            offsets.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        )
+      }
 
   /**
    * The stored rows of exactly one person: the Contact row even when archived, their Debts, the

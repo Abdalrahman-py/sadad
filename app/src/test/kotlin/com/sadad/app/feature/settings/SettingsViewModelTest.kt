@@ -1,20 +1,36 @@
 package com.sadad.app.feature.settings
 
 import androidx.lifecycle.SavedStateHandle
+import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
+import com.sadad.app.export.Statement
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contacts.StatementShareCall
+import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.debt
+import com.sadad.app.feature.contacts.payment
+import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
+import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
+import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -384,6 +400,103 @@ class SettingsViewModelTest {
         val state = model.state.first { it.loaded && it.devices.unsent == 3 }
 
         assertEquals(QueuedEntry(QueuedKind.PAYMENT, "نور", Cents(2_000)), state.devices.newest)
+      }
+    }
+  }
+
+  private class Shared(val view: LedgerView, val from: Instant?, val to: Instant?)
+
+  private fun TestGraph.settingsUi(): SettingsUi {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    closeWithStore(scope)
+    return SettingsUi(scope, SavedStateHandle())
+  }
+
+  private fun TestGraph.dataModule(
+      kit: SettingsKit,
+      ui: SettingsUi,
+      share: StatementShareCall,
+  ): DataModule =
+      DataModule(
+          graph.settingsSource(),
+          kit.preferences,
+          { flowOf(emptyList()) },
+          { flowOf(emptySet()) },
+          settingsClock,
+          ui,
+          share,
+      )
+
+  @Test
+  fun theStoreStatementIsBuiltFromTheWholeStoreWithTheQueueOnTop() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        val store = checkNotNull(fixture.graph.current.value)
+        val a = contactId(1)
+        val b = contactId(2)
+        val c = contactId(3)
+        val old = debt(a, 10_000, id = contactId(11), minute = 3)
+        // Minute 3000 falls on 18 October, the period; the rest are before it.
+        fixture.seedCommands(
+            listOf(
+                contact("أ", a, minute = 0),
+                contact("ب", b, minute = 1),
+                contact("ج", c, minute = 2),
+                old,
+                payment(old.entityId, 4_000, id = contactId(12), minute = 4),
+                debt(b, 6_000, id = contactId(13), minute = 5),
+                debt(a, 2_000, id = contactId(14), minute = 3000),
+            )
+        )
+        store.outbox.append(
+            listOf(
+                Commands.debtCreate(
+                    Events.origin,
+                    Events.at(3001),
+                    a,
+                    Direction.RECEIVABLE,
+                    Cents(500),
+                )
+            )
+        )
+        val whole = checkNotNull(store.repository.view.first { it?.pendingDebts == 1 })
+        val shared = CompletableDeferred<Shared>()
+        val module =
+            fixture.dataModule(kit, fixture.settingsUi()) { _, _, view, _, from, to ->
+              shared.complete(Shared(view, from, to))
+            }
+        val day = LocalDate.of(2026, 10, 18)
+
+        module.shareStatement(fixture.context, ExportPeriod.Custom(day, day))
+
+        val statement = shared.await()
+        assertEquals(whole, statement.view)
+        val pages = Statement.build(statement.view, null, statement.from, statement.to)
+        assertEquals(
+            "every person, moved in the period or not",
+            listOf(a, b, c),
+            pages.map { it.contact.id },
+        )
+        assertEquals(listOf(Cents(6_000), Cents(6_000), Cents.ZERO), pages.map { it.opening })
+        assertEquals(listOf(Cents(8_500), Cents(6_000), Cents.ZERO), pages.map { it.closing })
+      }
+    }
+  }
+
+  @Test
+  fun aStoreWithNobodyHasNoStatementToShare() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var shared = false
+        val ui = fixture.settingsUi()
+        val module = fixture.dataModule(kit, ui) { _, _, _, _, _, _ -> shared = true }
+
+        module.shareStatement(fixture.context, ExportPeriod.Preset(PeriodPreset.MONTH))
+
+        val state = ui.state.first { it.error != null }
+        assertEquals(SettingsError.NOTHING_TO_EXPORT, state.error)
+        assertFalse(state.busy)
+        assertFalse(shared)
       }
     }
   }

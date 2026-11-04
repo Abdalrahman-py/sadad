@@ -120,7 +120,7 @@ class ContactDetailViewModel(
     private val undoScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     /**
      * The one seam the page shares through, a parameter so a test captures the view a statement is
-     * built from without PDFs or Android's share sheet (ReportsViewModel's [PdfWriterCall] twin).
+     * built from without PDFs or Android's share sheet.
      */
     private val shareStatement: StatementShareCall = StatementExport::sharePdf,
 ) : ViewModel() {

@@ -170,44 +170,41 @@ class HistoryViewModel(
   fun dismissExportResult() = export.update { it.copy(saved = false, error = null) }
 
   fun saveStatement(context: Context, uri: Uri, format: StatementFormat) {
-    val latest = source.latest()
-    val view = latest?.view
-    if (view == null) {
-      export.update { it.copy(error = context.getString(R.string.history_export_failed)) }
-      return
-    }
     if (export.value.busy) return
-    if (view.contacts.isEmpty()) {
-      export.update {
-        it.copy(saved = false, error = context.getString(R.string.history_export_empty))
-      }
-      return
-    }
     export.update { it.copy(busy = true, saved = false, error = null) }
-    val account = latest.account
-    val header =
-        StatementHeader(
-            store =
-                account.storeName.ifBlank { null }
-                    ?: context.getString(R.string.history_default_store),
-            owner = account.ownerName,
-            periodLabel = periodLabel(context, period.value),
-        )
-    val bounds = period.value.bounds(clock.zone)
+    val chosen = period.value
+    val bounds = chosen.bounds(clock.zone)
     viewModelScope.launch {
       runCatching {
+        val latest = checkNotNull(source.latest()) { "no store is open" }
+        if (latest.view.contacts.isEmpty()) return@runCatching false
+        val account = latest.account
+        val header =
+            StatementHeader(
+                store =
+                    account.storeName.ifBlank { null }
+                        ?: context.getString(R.string.history_default_store),
+                owner = account.ownerName,
+                periodLabel = periodLabel(context, chosen),
+            )
         StatementExport.save(
             context = context,
             uri = uri,
             format = format,
             header = header,
-            view = view,
+            view = latest.view,
             contactId = null,
             from = bounds.from,
             to = bounds.to,
         )
+        true
       }
-          .onSuccess { export.update { it.copy(busy = false, saved = true) } }
+          .onSuccess { written ->
+            export.update {
+              if (written) it.copy(busy = false, saved = true)
+              else it.copy(busy = false, error = context.getString(R.string.history_export_empty))
+            }
+          }
           .onFailure { failure ->
             if (failure is CancellationException) throw failure
             export.update {

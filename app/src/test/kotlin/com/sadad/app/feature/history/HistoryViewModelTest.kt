@@ -307,6 +307,11 @@ class HistoryViewModelTest {
           checkNotNull(
               scope.repository.view.first { it?.pendingDebts == 1 && it.pendingPayments == 1 }
           )
+      assertEquals(
+          "a statement reads the whole store from Room",
+          whole,
+          fixture.graph.statementSource().latest()?.view,
+      )
       val model = model(fixture)
 
       val periods =
@@ -356,7 +361,7 @@ class HistoryViewModelTest {
           object : StatementSource {
             override fun view(bounds: PeriodBounds) = graph.view(bounds).also { asked += bounds }
 
-            override fun latest() = error("the list must not read the whole-store view")
+            override suspend fun latest(): Latest? = error("the list reads only its period")
           }
       val model =
           HistoryViewModel(source, SavedStateHandle(), clock).also {

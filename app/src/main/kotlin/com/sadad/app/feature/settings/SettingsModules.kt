@@ -10,6 +10,7 @@ import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.export.StatementExport
 import com.sadad.app.export.StatementHeader
+import com.sadad.app.feature.contacts.StatementShareCall
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.feature.history.bounds
 import com.sadad.app.feature.history.periodLabel
@@ -332,6 +333,8 @@ internal class DataModule(
     hiddenTrash: (String) -> Flow<Set<String>>,
     private val clock: Clock,
     private val ui: SettingsUi,
+    /** A parameter so a test captures the view a statement is built from. */
+    private val share: StatementShareCall = StatementExport::sharePdf,
 ) {
   val state: Flow<DataSlice> =
       combine(preferences.exportPeriod, permissions(), trashCount(reminders, hiddenTrash)) {
@@ -360,13 +363,8 @@ internal class DataModule(
     if (ui.state.value.busy) return
     val context = activity.applicationContext
     val scope = source.current.value
-    val view = scope?.repository?.view?.value
-    if (scope == null || view == null) {
+    if (scope == null) {
       ui.state.update { it.copy(error = SettingsError.SHARE_FAILED) }
-      return
-    }
-    if (view.contacts.isEmpty()) {
-      ui.state.update { it.copy(error = SettingsError.NOTHING_TO_EXPORT) }
       return
     }
     ui.state.update { it.copy(error = null, busy = true) }
@@ -382,7 +380,12 @@ internal class DataModule(
         )
     ui.scope.launch {
       try {
-        StatementExport.sharePdf(context, header, view, null, bounds.from, bounds.to)
+        val view = scope.personLedger.wholeView()
+        if (view.contacts.isEmpty()) {
+          ui.state.update { it.copy(busy = false, error = SettingsError.NOTHING_TO_EXPORT) }
+          return@launch
+        }
+        share(context, header, view, null, bounds.from, bounds.to)
         ui.state.update { it.copy(busy = false) }
       } catch (failure: Throwable) {
         if (failure is CancellationException) throw failure
