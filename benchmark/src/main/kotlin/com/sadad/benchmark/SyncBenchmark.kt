@@ -9,7 +9,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * One idle sync pass (nothing new to push or pull) from Settings' "download latest"; measures the
+ * One idle sync pass (nothing new to push or pull) from the Store tab's «مزامنة الآن»; measures the
  * app's `sync_pass` span. The first sync of the seeded store is measured by hand (`sync_pull`, see
  * ticket 65): a fresh install per iteration would need a new device approval each time.
  */

@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
+import com.sadad.app.data.ledger.traced
 import com.sadad.app.feature.contactform.ContactFormState
 import com.sadad.app.feature.contactpicker.ContactNumberRow
 import com.sadad.app.feature.contactpicker.ContactPermission
@@ -809,7 +810,7 @@ class QuickAddViewModel(
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the done step already told the user the record was made.
     store.jobs.launch {
-      store.append(commands)
+      traced("save_debt") { store.append(commands) }
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
