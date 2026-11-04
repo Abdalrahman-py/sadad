@@ -94,6 +94,8 @@ enum class SettingsOutcome {
 data class StoreSlice(
     val storeName: String = "",
     val ownerName: String = "",
+    /** Who uses the store on this phone: the staff name, else the sign-in name. */
+    val userName: String = "",
     val accounts: List<SavedStore> = emptyList(),
 )
 

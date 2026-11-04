@@ -118,19 +118,17 @@ internal fun LazyListScope.storeCard(
             verticalArrangement = Arrangement.Center,
         ) {
           Text(
-              text = store.storeName.ifBlank { stringResource(R.string.settings_default_store) },
+              text =
+                  store.storeName.ifBlank {
+                    store.accounts.firstOrNull { it.active }?.username.orEmpty()
+                  },
               color = p.text,
               style = MaterialTheme.typography.titleMedium,
               maxLines = 1,
               overflow = TextOverflow.Ellipsis,
           )
           Text(
-              // The owner as the account knows it; the part it does not know is left out.
-              text =
-                  store.ownerName
-                      .ifBlank { null }
-                      ?.let { stringResource(R.string.settings_owner_line, it) }
-                      ?: stringResource(R.string.settings_this_device),
+              text = stringResource(R.string.settings_user_line, store.userName),
               color = p.muted,
               fontSize = 13.sp,
               lineHeight = 20.sp,
@@ -227,7 +225,7 @@ private fun StorePhoto(storeUserId: String?, onOpenPhoto: () -> Unit) {
 @Composable
 private fun StoreRow(store: SavedStore, onPick: () -> Unit) {
   val p = sadadPalette
-  val name = store.storeName.ifBlank { stringResource(R.string.settings_default_store) }
+  val name = store.storeName.ifBlank { store.username }
   Surface(
       onClick = onPick,
       shape = RoundedCornerShape(12.dp),
@@ -299,6 +297,12 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
   }
 }
 
+/**
+ * Hidden to keep the Store tab simple; the screen and its route stay. While false, a revoked phone
+ * comes back through the dashboard's «إعادة الاعتماد».
+ */
+private const val SHOW_RECOVERY = false
+
 internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: SettingsNavigation) {
   item {
     val p = sadadPalette
@@ -355,14 +359,16 @@ internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: Set
             }
           }
         }
-        HorizontalDivider(color = p.line)
-        LinkRow(
-            title = stringResource(R.string.settings_recovery),
-            detail = stringResource(R.string.settings_recovery_sub),
-            tag = SettingsTags.RECOVERY,
-            onClick = navigation.onOpenRecovery,
-            icon = RowIcon.PHONE,
-        )
+        if (SHOW_RECOVERY) {
+          HorizontalDivider(color = p.line)
+          LinkRow(
+              title = stringResource(R.string.settings_recovery),
+              detail = stringResource(R.string.settings_recovery_sub),
+              tag = SettingsTags.RECOVERY,
+              onClick = navigation.onOpenRecovery,
+              icon = RowIcon.PHONE,
+          )
+        }
       }
     }
   }

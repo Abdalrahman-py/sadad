@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Store card -->
-    <string name="settings_owner_line">صاحب المتجر: %1$s · هذا الهاتف</string>
-    <string name="settings_this_device">هذا الهاتف</string>
-    <string name="settings_switcher">تبديل</string>
+    <string name="settings_user_line">المستخدم: %1$s</string>
+    <string name="settings_switcher">تبديل المتجر</string>
     <string name="settings_edit_profile_description">تعديل اسم المتجر وصاحب المتجر</string>
     <string name="settings_add_store">إضافة متجر</string>
     <string name="settings_default_store">متجري</string>
@@ -67,8 +66,8 @@
 
     <!-- Data -->
     <string name="settings_data_heading">البيانات</string>
-    <string name="settings_trash">سلة المحذوفات</string>
-    <string name="settings_trash_hint">الكشوفات تُصدَّر من «الحركات»</string>
+    <string name="settings_trash">المحذوفات</string>
+    <string name="settings_trash_hint">استعد الأشخاص والإشعارات المحذوفة</string>
     <string name="settings_trash_none">فارغة</string>
     <string name="settings_trash_one">عنصر واحد</string>
     <string name="settings_trash_two">عنصران</string>
