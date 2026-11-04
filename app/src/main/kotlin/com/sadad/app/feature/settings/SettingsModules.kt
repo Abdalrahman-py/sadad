@@ -246,10 +246,9 @@ private class QueuedNames(private val db: LedgerDatabase, private val rows: List
     return debt(debtId)
   }
 
-  private inline fun <reified T> queued(id: String): T? =
-      rows.firstNotNullOfOrNull { row ->
-        if (row.entityId == id) row.command.payload() as? T else null
-      }
+  private inline fun <reified T> queued(id: String): T? = rows.firstNotNullOfOrNull { row ->
+    if (row.entityId == id) row.command.payload() as? T else null
+  }
 }
 
 /** The app lock: the switch, the PIN and the biometric switch. Needs only the lock itself. */

@@ -15,8 +15,8 @@ interface StatementSource {
 
   /**
    * The open store's whole view and its account, from one store so a switch cannot mix two. A
-   * statement needs it: its opening balance counts every Debt before the period, and it lists
-   * every person, moved or not.
+   * statement needs it: its opening balance counts every Debt before the period, and it lists every
+   * person, moved or not.
    */
   fun latest(): Latest?
 }

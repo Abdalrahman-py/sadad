@@ -346,8 +346,7 @@ class LedgerStoreTest {
     val state = LedgerState.EMPTY.apply(page)
     store.persist(LedgerState.EMPTY, state, page)
 
-    val period =
-        store.loadPeriod(Events.at(10), Events.at(12), setOf(named), setOf(queuedFor))
+    val period = store.loadPeriod(Events.at(10), Events.at(12), setOf(named), setOf(queuedFor))
 
     assertEquals(Events.STORE_ID, period.storeId)
     assertEquals(Events.EPOCH, period.epoch)

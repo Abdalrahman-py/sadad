@@ -123,17 +123,13 @@ class HistoryViewModel(
   private val export = MutableStateFlow(Export())
 
   /** A view with the period it was read for: the list never cuts it to another period's bounds. */
-  private val periodView: Flow<Pair<Period, LedgerView?>> =
-      period.flatMapLatest { period ->
-        source.view(period.bounds(clock.zone)).map { view -> period to view }
-      }
+  private val periodView: Flow<Pair<Period, LedgerView?>> = period.flatMapLatest { period ->
+    source.view(period.bounds(clock.zone)).map { view -> period to view }
+  }
 
   private val rows: StateFlow<HistoryUiState> =
-      combine(periodView, newestFirst, period, export) {
-              (read, view),
-              newestFirst,
-              period,
-              export ->
+      combine(periodView, newestFirst, period, export) { (read, view), newestFirst, period, export
+            ->
             HistoryUiState(
                 newestFirst = newestFirst,
                 period = period,
