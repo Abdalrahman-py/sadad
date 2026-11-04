@@ -9,6 +9,7 @@ name: Ticket scope
 # The repository owner can approve extra paths during review with a PR comment line
 # "scope-approved: `path`" (see docs/agents/issue-tracker.md); the job log shows which comment did.
 # A branch named ticket-* must close an issue; other PRs (no "Closes #N") pass.
+# A ticket-NN PR targets dev, or ticket-MM when stacked.
 
 on:
   # Transitional: this file's own PR runs main's old workflow for `pull_request_target`, which has
@@ -27,11 +28,13 @@ permissions:
 jobs:
   scope:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       PR: ${{ github.event.pull_request.number }}
       HEAD_REF: ${{ github.head_ref }}
+      BASE_REF: ${{ github.base_ref }}
       OWNER: ${{ github.repository_owner }}
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +53,9 @@ jobs:
           fi
           if [[ $HEAD_REF == ticket-* && ! $HEAD_REF =~ ^ticket-[0-9]+$ ]]; then
             echo "::error::branch $HEAD_REF must be named ticket-NN"; exit 1
+          fi
+          if [[ $HEAD_REF == ticket-* && $BASE_REF != dev && ! $BASE_REF =~ ^ticket-[0-9]+$ ]]; then
+            echo "::error::$HEAD_REF targets $BASE_REF; a ticket PR targets dev, or ticket-NN when stacked"; exit 1
           fi
           if [[ $HEAD_REF =~ ^ticket-([0-9]+)$ ]]; then
             n=$((10#${BASH_REMATCH[1]}))
