@@ -1,5 +1,8 @@
+<!-- Material Symbols Rounded «format_list_bulleted». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#00000000" android:strokeColor="#FF000000" android:strokeWidth="1.9"
-        android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M8,6h12M8,12h12M8,18h12M4,6h0.01M4,12h0.01M4,18h0.01" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 400 -200 q -17 0 -28.5 -11.5 T 360 -240 q 0 -17 11.5 -28.5 T 400 -280 h 400 q 17 0 28.5 11.5 T 840 -240 q 0 17 -11.5 28.5 T 800 -200 H 400 Z m 0 -240 q -17 0 -28.5 -11.5 T 360 -480 q 0 -17 11.5 -28.5 T 400 -520 h 400 q 17 0 28.5 11.5 T 840 -480 q 0 17 -11.5 28.5 T 800 -440 H 400 Z m 0 -240 q -17 0 -28.5 -11.5 T 360 -720 q 0 -17 11.5 -28.5 T 400 -760 h 400 q 17 0 28.5 11.5 T 840 -720 q 0 17 -11.5 28.5 T 800 -680 H 400 Z M 200 -160 q -33 0 -56.5 -23.5 T 120 -240 q 0 -33 23.5 -56.5 T 200 -320 q 33 0 56.5 23.5 T 280 -240 q 0 33 -23.5 56.5 T 200 -160 Z m 0 -240 q -33 0 -56.5 -23.5 T 120 -480 q 0 -33 23.5 -56.5 T 200 -560 q 33 0 56.5 23.5 T 280 -480 q 0 33 -23.5 56.5 T 200 -400 Z m -56.5 -263.5 Q 120 -687 120 -720 t 23.5 -56.5 Q 167 -800 200 -800 t 56.5 23.5 Q 280 -753 280 -720 t -23.5 56.5 Q 233 -640 200 -640 t -56.5 -23.5 Z" />
+    </group>
 </vector>

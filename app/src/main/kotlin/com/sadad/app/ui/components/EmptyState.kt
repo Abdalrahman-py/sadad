@@ -9,21 +9,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.R
 import com.sadad.app.ui.theme.sadadPalette
 
 /**
- * The boards' empty card: an icon on a 72dp `soft` tile, a bold title and a muted hint, centred on
- * a white 18dp card.
+ * The boards' empty card: an icon on a 72dp `soft` tile, a title and a muted hint, centred on a
+ * white 16dp card.
  */
 @Composable
 fun EmptyState(
@@ -36,14 +35,14 @@ fun EmptyState(
   Column(
       modifier =
           modifier
-              .background(p.card, RoundedCornerShape(18.dp))
-              .border(1.dp, p.line, RoundedCornerShape(18.dp))
+              .background(p.card, RoundedCornerShape(16.dp))
+              .border(1.dp, p.line, RoundedCornerShape(16.dp))
               .padding(horizontal = 20.dp, vertical = 24.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(10.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Box(
-        Modifier.size(72.dp).background(p.soft, RoundedCornerShape(22.dp)),
+        Modifier.size(72.dp).background(p.soft, RoundedCornerShape(24.dp)),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
@@ -56,16 +55,13 @@ fun EmptyState(
     Text(
         text = title,
         color = p.text,
-        fontSize = 17.sp,
-        lineHeight = 24.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleMedium,
         textAlign = TextAlign.Center,
     )
     Text(
         text = detail,
         color = p.muted,
-        fontSize = 14.sp,
-        lineHeight = 21.sp,
+        style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center,
     )
   }

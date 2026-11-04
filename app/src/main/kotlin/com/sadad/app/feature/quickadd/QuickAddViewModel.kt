@@ -5,6 +5,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
+import com.sadad.app.data.ledger.traced
+import com.sadad.app.feature.contactform.ContactFormState
+import com.sadad.app.feature.contactpicker.ContactNumberRow
+import com.sadad.app.feature.contactpicker.ContactPermission
+import com.sadad.app.feature.contactpicker.ContactPickerRows
+import com.sadad.app.feature.contactpicker.ContactRow
+import com.sadad.app.feature.contactpicker.DeviceContact
+import com.sadad.app.feature.contactpicker.NumberStatus
+import com.sadad.app.feature.contactpicker.SadadPeople
 import com.sadad.app.ui.components.formatAmount
 import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
@@ -18,7 +27,9 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -27,12 +38,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Where the one recording flow stands. */
 enum class QuickAddStep {
   PICKER,
+  /** A person who is not in Sadad yet: name, phone, code and kind, then the amount. */
+  NEW_PERSON,
   AMOUNT,
   DONE,
 }
@@ -72,6 +86,16 @@ data class QuickAddState(
     val error: String? = null,
     val busy: Boolean = false,
     val done: QuickAddDone? = null,
+    /** The new person's fields; kept through the amount step, saved with the debt as one batch. */
+    val newPerson: ContactFormState? = null,
+    /** Whether the phone's contacts may be read; the picker asks only from its own row. */
+    val contactsPermission: ContactPermission = ContactPermission.NotAsked,
+    /** The phone's contacts that match the query, below the store's own people. */
+    val contactRows: List<ContactRow> = emptyList(),
+    /** A phone contact with several numbers, asking which one. */
+    val contactChooser: ContactRow? = null,
+    /** A picked number belongs to someone in the archive: the screen leaves for the trash. */
+    val openTrash: Boolean = false,
 ) {
   /** The saved person the entry is about. */
   val personName: String
@@ -97,6 +121,7 @@ data class QuickAddState(
  * the window ends: the commands are built here and handed to [QuickAddStore.append] on commit, so
  * «تراجع» is truly a no-op.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class QuickAddViewModel(
     private val source: QuickAddSource,
     private val contactId: String?,
@@ -116,6 +141,9 @@ class QuickAddViewModel(
       )
   val state: StateFlow<QuickAddState> = mutable.asStateFlow()
 
+  /** The typed query; the rows for it are found off the main thread, so typing never waits. */
+  private val queries = MutableStateFlow("")
+
   /** The view the last preview was built from; the commands are built against it, never a guess. */
   @Volatile private var currentView: LedgerView? = null
 
@@ -127,6 +155,13 @@ class QuickAddViewModel(
   /** Everyone the store holds, before the picker's query narrows it. */
   @Volatile private var allPeople: List<QuickAddPerson> = emptyList()
 
+  /** The phone's contacts as last read, and their rows parsed against the store's people. */
+  @Volatile private var deviceList: List<DeviceContact> = emptyList()
+  @Volatile private var parsedRows: List<ContactRow> = emptyList()
+
+  /** The entity id the new person's contact.create will carry. */
+  private var newPersonId: String = newId()
+
   /** Whether the Contact this flow was opened for has been made the subject already. */
   private var startContactApplied = false
 
@@ -136,6 +171,40 @@ class QuickAddViewModel(
   private var anomalyApproved: String? = null
 
   init {
+    if (source.contactsGranted()) {
+      mutable.update { it.copy(contactsPermission = ContactPermission.Granted) }
+      readContacts()
+    }
+    viewModelScope.launch {
+      queries
+          .mapLatest { query ->
+            val searched = allPeople
+            val parsed = parsedRows
+            SearchResult(
+                query,
+                searched,
+                parsed,
+                PersonSearch.search(searched, query),
+                ContactPickerRows.search(parsed, query),
+            )
+          }
+          .flowOn(Dispatchers.Default)
+          .collect { found ->
+            mutable.update { current ->
+              // A newer keystroke, or a newer store projection, already replaced this result: the
+              // first search runs before the people are loaded and must not blank the list after.
+              if (
+                  current.query != found.query ||
+                      found.searched !== allPeople ||
+                      found.parsed !== parsedRows
+              ) {
+                current
+              } else {
+                current.copy(people = members(found.people, current), contactRows = found.contacts)
+              }
+            }
+          }
+    }
     viewModelScope.launch {
       combine(view(), permissions(), availability()) { view, permissions, saveBlocked ->
             project(view, permissions, saveBlocked)
@@ -145,8 +214,10 @@ class QuickAddViewModel(
             allPeople = facts.people
             mutable.update { current ->
               val people = facts.people
+              // A new person is not in the store until the batch commits; keep them selected.
               val chosen =
                   current.selected?.let { selected -> people.firstOrNull { it.id == selected.id } }
+                      ?: current.selected?.takeIf { current.newPerson != null }
               // The route's Contact is applied once, on the first projection that can resolve it:
               // going back to the picker must not drag the flow to the amount step again.
               val started =
@@ -162,6 +233,7 @@ class QuickAddViewModel(
                   blocked = facts.blocked,
                   restricted = facts.restricted,
                   people = members(PersonSearch.search(people, current.query), current),
+                  contactRows = ContactPickerRows.search(parsedRows, current.query),
                   selected = selected,
                   overBalance =
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
@@ -178,24 +250,18 @@ class QuickAddViewModel(
   }
 
   fun onQueryChange(value: String) {
-    mutable.update { current -> current.withQuery(value) }
+    mutable.update { it.copy(query = value, error = null) }
+    queries.value = value
   }
 
-  fun clearQuery() = mutable.update { it.withQuery("") }
-
-  /** The rows are the query's result, so the list and its count always agree. */
-  private fun QuickAddState.withQuery(value: String): QuickAddState =
-      copy(
-          query = value,
-          people = members(PersonSearch.search(allPeople, value), this),
-          error = null,
-      )
+  fun clearQuery() = onQueryChange("")
 
   /** The picker's tap: the flow continues at the amount with that person's debts in view. */
   fun pick(personId: String) {
     mutable.update { current ->
+      // Everyone, not only the query's rows: a phone contact can name someone the query missed.
       val person =
-          current.people.firstOrNull { it.id == personId }
+          allPeople.firstOrNull { it.id == personId }
               ?: current.selected?.takeIf { it.id == personId }
       current.copy(
           selected = person,
@@ -212,14 +278,152 @@ class QuickAddViewModel(
 
   fun toPayment() {
     val current = mutable.value
-    if (current.restricted) return
+    // A person created in this flow has nothing to pay yet.
+    if (current.restricted || current.newPerson != null) return
     mutable.update { it.copy(payment = true, anomaly = null, error = null) }
   }
 
   fun backToPicker() {
     mutable.update {
-      it.copy(step = QuickAddStep.PICKER, amount = "", anomaly = null, error = null, done = null)
+      // A new person's amount goes back to their fields, not past them.
+      val step = if (it.newPerson != null) QuickAddStep.NEW_PERSON else QuickAddStep.PICKER
+      it.copy(step = step, amount = "", anomaly = null, error = null, done = null)
     }
+  }
+
+  /** The permission launcher's answer to «اسمح بقراءة جهات الاتصال». */
+  fun onContactsPermission(granted: Boolean, canAskAgain: Boolean = true) {
+    val permission =
+        when {
+          granted -> ContactPermission.Granted
+          canAskAgain -> ContactPermission.Denied
+          else -> ContactPermission.DeniedForever
+        }
+    mutable.update { it.copy(contactsPermission = permission) }
+    if (granted) readContacts()
+  }
+
+  /** A phone contact's row: one number decides at once, several ask which. */
+  fun pickPhoneContact(row: ContactRow) {
+    val number = row.numbers.singleOrNull()
+    if (number == null) mutable.update { it.copy(contactChooser = row) }
+    else resolvePhoneContact(row, number)
+  }
+
+  fun choosePhoneNumber(number: ContactNumberRow) {
+    val row = mutable.value.contactChooser ?: return
+    resolvePhoneContact(row, number)
+  }
+
+  fun dismissPhoneChooser() = mutable.update { it.copy(contactChooser = null) }
+
+  /** The screen has opened the trash for an archived match. */
+  fun onTrashHandled() = mutable.update { it.copy(openTrash = false) }
+
+  private fun resolvePhoneContact(row: ContactRow, number: ContactNumberRow) {
+    mutable.update { it.copy(contactChooser = null) }
+    when (val status = number.status) {
+      is NumberStatus.InLedger -> pick(status.contactId)
+      is NumberStatus.InArchive -> mutable.update { it.copy(openTrash = true) }
+      is NumberStatus.Invalid -> startNewPerson(row.name, "", "970")
+      is NumberStatus.Importable ->
+          startNewPerson(row.name, checkNotNull(number.phone), number.code ?: "970")
+    }
+  }
+
+  /** «إضافة «X» كشخص جديد»: the typed name, an empty phone. */
+  fun addNewPerson() = startNewPerson(mutable.value.query.trim(), "", "970")
+
+  /**
+   * Opens the new-person step, unless the store is already at its person limit: the server stays
+   * the authority, but a full store is told at once instead of after an offline save is refused.
+   */
+  private fun startNewPerson(name: String, phone: String, code: String) {
+    val limit = source.contactLimit()
+    if (limit != null && (currentView?.contacts?.size ?: 0) >= limit) {
+      mutable.update { it.copy(error = source.refusalText("contact_limit_reached")) }
+      return
+    }
+    // One id per new person, so saving again after «تراجع» names the same person.
+    newPersonId = newId()
+    mutable.update {
+      it.copy(
+          step = QuickAddStep.NEW_PERSON,
+          payment = false,
+          selected = null,
+          newPerson = ContactFormState(name = name, phone = phone, prefix = code),
+          error = null,
+      )
+    }
+  }
+
+  fun onNewPersonName(value: String) = newPerson { copy(name = value, nameError = null) }
+
+  fun onNewPersonPrefix(value: String) = newPerson { copy(prefix = value, phoneError = null) }
+
+  fun onNewPersonPhone(value: String) = newPerson {
+    copy(phone = value, phoneError = null, duplicate = null)
+  }
+
+  fun onNewPersonKind(value: ContactKind) = newPerson { copy(kind = value) }
+
+  private fun newPerson(change: ContactFormState.() -> ContactFormState) =
+      mutable.update { current ->
+        current.copy(newPerson = current.newPerson?.change())
+      }
+
+  /** «متابعة»: the fields are checked as the contact form checks them, then the amount opens. */
+  fun confirmNewPerson(context: Context) {
+    val current = mutable.value
+    val fields = current.newPerson ?: return
+    when (val check = checkNewPerson(fields, currentView?.contacts.orEmpty(), context)) {
+      is NewPersonCheck.Invalid -> mutable.update { it.copy(newPerson = check.fields) }
+      is NewPersonCheck.Valid ->
+          mutable.update {
+            it.copy(
+                step = QuickAddStep.AMOUNT,
+                newPerson = fields.copy(name = check.name, phone = check.phone.orEmpty()),
+                // The id the batch's contact.create will carry, so the debt and «فتح السجل» agree.
+                selected =
+                    QuickAddPerson(
+                        id = newPersonId,
+                        name = check.name,
+                        phone = check.phone.orEmpty(),
+                        kind = fields.kind,
+                        net = Cents.ZERO,
+                        lastActivity = null,
+                    ),
+                amount = "",
+                overBalance = Cents.ZERO,
+                error = null,
+            )
+          }
+    }
+  }
+
+  /** «فتح سجل الشخص»: the typed phone is someone's already; record for them instead. */
+  fun openDuplicate() {
+    val id = mutable.value.newPerson?.duplicate?.contactId ?: return
+    mutable.update { it.copy(newPerson = null, selected = null) }
+    pick(id)
+  }
+
+  /** Back from the new-person step: the picker, with nothing kept. */
+  fun leaveNewPerson() = mutable.update {
+    it.copy(step = QuickAddStep.PICKER, newPerson = null, selected = null, error = null)
+  }
+
+  private fun readContacts() =
+      viewModelScope.launch(Dispatchers.Default) {
+        deviceList = source.contacts.list()
+        parseContacts(currentView)
+        mutable.update { it.copy(contactRows = ContactPickerRows.search(parsedRows, it.query)) }
+      }
+
+  private fun parseContacts(view: LedgerView?) {
+    if (deviceList.isEmpty() || view == null) return
+    parsedRows =
+        ContactPickerRows.build(deviceList, SadadPeople(view.contacts, view.archivedContacts))
   }
 
   /** One key of the on-screen keypad: a digit, or «.» for the decimal mark. */
@@ -545,9 +749,23 @@ class QuickAddViewModel(
               debtOrigin = DebtOrigin.OVERPAYMENT,
           )
     }
+    // A person created in this flow travels in the same batch, ahead of their first debt.
+    val fields = current.newPerson
+    val create = fields?.let {
+      Commands.contactCreate(
+          origin,
+          at,
+          person.name,
+          phone = person.phone.ifEmpty { null },
+          kind = person.kind,
+          whatsappCode = it.prefix,
+          entityId = person.id,
+      )
+    }
     // A Debt on a Contact the server has not confirmed must name the command that creates it.
     val parent =
-        currentView?.contacts?.firstOrNull { it.id == person.id && it.pending }?.operationId
+        create?.operationId
+            ?: currentView?.contacts?.firstOrNull { it.id == person.id && it.pending }?.operationId
     val debt =
         Commands.debtCreate(
             origin,
@@ -578,7 +796,7 @@ class QuickAddViewModel(
                   if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
       )
     }
-    return listOf(debt) + offsets
+    return listOfNotNull(create) + debt + offsets
   }
 
   /** Appends the held commands: the only place this flow writes to the outbox. */
@@ -592,7 +810,7 @@ class QuickAddViewModel(
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the done step already told the user the record was made.
     store.jobs.launch {
-      store.append(commands)
+      traced("save_debt") { store.append(commands) }
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
@@ -601,6 +819,15 @@ class QuickAddViewModel(
     val selected = current.selected ?: return people
     return if (people.any { it.id == selected.id }) people else people + selected
   }
+
+  /** A search and the lists it ran over, so a result from lists since replaced can be dropped. */
+  private class SearchResult(
+      val query: String,
+      val searched: List<QuickAddPerson>,
+      val parsed: List<ContactRow>,
+      val people: List<QuickAddPerson>,
+      val contacts: List<ContactRow>,
+  )
 
   private data class Facts(
       val loaded: Boolean = false,
@@ -617,6 +844,7 @@ class QuickAddViewModel(
       blocked: Boolean,
   ): Facts {
     currentView = view
+    parseContacts(view)
     val restricted = permissions["registerPayments"] == false
     if (view == null) return Facts(blocked = blocked, restricted = restricted)
     val lastActivity = lastActivity(view)
@@ -681,6 +909,8 @@ class QuickAddViewModel(
     private const val DUE = "quickadd:due-date"
   }
 }
+
+private fun newId(): String = UUID.randomUUID().toString()
 
 /** «من هذا المبلغ فصاعدًا يسأل التطبيق قبل الحفظ» — the old forms' rule, kept in one place. */
 val ANOMALY_LIMIT: Cents = Cents(500_000)

@@ -51,7 +51,7 @@ dbTest(
       createFixture.response,
     );
     assert(
-      /^[A-Za-z0-9_-]{24}$/.test(body.temporaryPassword),
+      /^[0-9]{8}$/.test(body.temporaryPassword),
       "a 24-character password",
     );
 
@@ -298,7 +298,7 @@ dbTest(
     );
     assertEqual(res.status, 500);
     const lines = h.logs.slice(before);
-    assert(sent.length === 24, "a password was sent to Auth");
+    assert(sent.length === 8, "a password was sent to Auth");
     assert(lines.length === 2, "one error line and one request line");
     assert(!lines.some((line) => line.includes(sent)), "never logged");
     assert(

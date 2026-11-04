@@ -14,6 +14,7 @@ import com.sadad.app.feature.notifications.Reminder
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactView
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +52,7 @@ data class TrashState(
  */
 class TrashViewModel(
     private val repository: LedgerRepository,
+    archived: Flow<List<ContactView>>,
     private val outbox: Outbox,
     private val reminders: DueReminders,
     private val hidden: TrashHidden,
@@ -64,12 +66,12 @@ class TrashViewModel(
 
   init {
     viewModelScope.launch {
-      combine(repository.view, reminders.dismissed(storeUserId), hidden.ids, outbox.rows) {
-              view,
+      combine(archived, reminders.dismissed(storeUserId), hidden.ids, outbox.rows) {
+              archivedContacts,
               dismissed,
               hiddenIds,
               rows ->
-            val contacts = view?.archivedContacts.orEmpty().map { TrashItem.Contact(it) }
+            val contacts = archivedContacts.map { TrashItem.Contact(it) }
             val notifications = dismissed.map { TrashItem.Notification(it) }
             val items = contacts + notifications.filter { it.id !in hiddenIds }
             Triple(

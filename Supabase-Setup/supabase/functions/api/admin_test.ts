@@ -32,7 +32,7 @@ const bodyFor = (route: { method: string }) =>
   route.method === "GET" || route.method === "DELETE" ? undefined : {};
 
 dbTest("the admin routes are in the OpenAPI document", () => {
-  assertEqual(routes.length, 17);
+  assertEqual(routes.length, 18);
   return Promise.resolve();
 });
 

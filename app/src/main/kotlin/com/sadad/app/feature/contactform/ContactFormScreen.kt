@@ -107,7 +107,7 @@ fun ContactFormScreen(
   }
 
   Column(
-      modifier = modifier.fillMaxSize().padding(18.dp),
+      modifier = modifier.fillMaxSize().padding(16.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     SadadPageHeading(

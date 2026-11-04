@@ -46,7 +46,7 @@ const searchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** A search box that asks once the typing pauses. */
 export function searchBox(label: string, value: string, search: (q: string) => void) {
   return html`<label class="search">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
       stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input type="search" aria-label=${label} placeholder=${label} .value=${value} maxlength="120"
       @input=${(event: InputEvent) => {

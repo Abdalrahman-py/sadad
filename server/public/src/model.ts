@@ -240,6 +240,7 @@ export interface QueueActions {
 export interface StoreActions extends Pick<QueueActions, "quickExtend"> {
   approveDevice(installationId: string, storeId: number): void;
   revokeDevice(installationId: string, storeId: number): void;
+  reactivateDevice(installationId: string, storeId: number): void;
 
   saveSettings(form: FormData): void;
   setStatus(status: "active" | "suspended"): void;

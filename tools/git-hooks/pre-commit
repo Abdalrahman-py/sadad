@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Format gate for staged files: the commands of `format` in tools/check.sh, so CI's docs-and-format
+# job stops failing on style. Enable once per clone: git config core.hooksPath tools/git-hooks
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+if grep -qE '\.kts?$' <<< "$staged"; then
+  ./gradlew spotlessCheck --console=plain --quiet || { echo "Run ./gradlew spotlessApply, stage the result, commit again." >&2; exit 1; }
+fi
+if grep -q '^Supabase-Setup/supabase/functions/' <<< "$staged"; then
+  (cd Supabase-Setup/supabase/functions && deno fmt --check && deno lint)
+fi
+if grep -qE '^tools/.*\.ts$' <<< "$staged"; then
+  (cd tools && deno fmt --check && deno lint)
+fi

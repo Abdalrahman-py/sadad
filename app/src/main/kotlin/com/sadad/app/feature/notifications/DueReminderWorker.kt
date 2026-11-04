@@ -21,7 +21,6 @@ import com.sadad.app.AppGraph
 import com.sadad.app.MainActivity
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
-import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.app.data.ledger.Outbox
 import com.sadad.app.data.ledger.failedOperations
@@ -38,7 +37,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Opens separate read connections; never changes the account displayed by the UI. */
+/** Reads every store through [AppGraph.withDatabase]; never changes the account the UI shows. */
 class DueReminderWorker
 @JvmOverloads
 constructor(
@@ -55,9 +54,8 @@ constructor(
           val reminders = suppliedReminders ?: DueReminders.get(applicationContext)
           val today = LocalDate.now(clock)
           for (account in graph.accounts.file().accounts) {
-            val database = LedgerDatabase.open(applicationContext, account.storeUserId)
             val current =
-                try {
+                graph.withDatabase(account.storeUserId) { database ->
                   database.withTransaction {
                     val state = LedgerStore(database).load()
                     val rows = Outbox(database.outboxDao(), graph.dataKey.key).snapshot()
@@ -68,8 +66,6 @@ constructor(
                         account.staffName,
                     )
                   }
-                } finally {
-                  database.close()
                 }
             val contacts = current.contacts.associateBy { it.id }
             for (debt in current.debts) {

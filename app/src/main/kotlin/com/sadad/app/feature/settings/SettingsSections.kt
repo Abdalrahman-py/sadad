@@ -7,8 +7,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -44,12 +45,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -62,7 +59,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -100,7 +96,7 @@ internal fun LazyListScope.storeCard(
   val open = store.accounts.firstOrNull { it.active }?.storeUserId
   item {
     val p = sadadPalette
-    BoardCard(radius = 18.dp) {
+    BoardCard(radius = 16.dp) {
       Row(
           modifier = Modifier.fillMaxWidth().padding(16.dp),
           verticalAlignment = Alignment.CenterVertically,
@@ -112,6 +108,7 @@ internal fun LazyListScope.storeCard(
             modifier =
                 Modifier.weight(1f)
                     .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable(onClickLabel = description, role = Role.Button) {
                       commands.editProfile(store)
                     }
@@ -123,9 +120,7 @@ internal fun LazyListScope.storeCard(
           Text(
               text = store.storeName.ifBlank { stringResource(R.string.settings_default_store) },
               color = p.text,
-              fontSize = 17.sp,
-              lineHeight = 24.sp,
-              fontWeight = FontWeight.Bold,
+              style = MaterialTheme.typography.titleMedium,
               maxLines = 1,
               overflow = TextOverflow.Ellipsis,
           )
@@ -146,7 +141,7 @@ internal fun LazyListScope.storeCard(
         // The board draws this 40 dp tall; the 48 dp touch target is the shell's rule.
         Surface(
             onClick = onToggleStores,
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(12.dp),
             color = p.surface,
             contentColor = linkColor(),
             modifier = Modifier.heightIn(min = 48.dp).testTag(SettingsTags.SWITCHER),
@@ -154,15 +149,14 @@ internal fun LazyListScope.storeCard(
           Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), Alignment.Center) {
             Text(
                 stringResource(R.string.settings_switcher),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
             )
           }
         }
       }
       if (storesOpen) {
         HorizontalDivider(color = p.line)
-        Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
           for (saved in store.accounts) {
             StoreRow(
                 saved,
@@ -201,7 +195,7 @@ private fun StorePhoto(storeUserId: String?, onOpenPhoto: () -> Unit) {
   Box(
       modifier =
           Modifier.size(48.dp)
-              .clip(RoundedCornerShape(14.dp))
+              .clip(RoundedCornerShape(16.dp))
               .background(p.primary)
               .clickable(enabled = storeUserId != null, role = Role.Button) {
                 if (storeUserId != null) onOpenPhoto()
@@ -236,14 +230,14 @@ private fun StoreRow(store: SavedStore, onPick: () -> Unit) {
   val name = store.storeName.ifBlank { stringResource(R.string.settings_default_store) }
   Surface(
       onClick = onPick,
-      shape = RoundedCornerShape(10.dp),
+      shape = RoundedCornerShape(12.dp),
       color = Color.Transparent,
       modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
   ) {
     Row(
-        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Initials(name)
       Text(
@@ -264,14 +258,14 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
   val link = linkColor()
   Surface(
       onClick = onAddStore,
-      shape = RoundedCornerShape(10.dp),
+      shape = RoundedCornerShape(12.dp),
       color = Color.Transparent,
       modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag(SettingsTags.ADD_STORE),
   ) {
     Row(
-        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Box(
           Modifier.size(32.dp).drawBehind {
@@ -283,19 +277,23 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
                     Stroke(
                         width = stroke,
                         pathEffect =
-                            PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+                            PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx())),
                     ),
             )
           },
           contentAlignment = Alignment.Center,
       ) {
-        Text("+", color = link, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Icon(
+            painterResource(R.drawable.ic_record),
+            contentDescription = null,
+            tint = link,
+            modifier = Modifier.size(16.dp),
+        )
       }
       Text(
           stringResource(R.string.settings_add_store),
           color = link,
-          fontSize = 15.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.labelLarge,
       )
     }
   }
@@ -306,25 +304,23 @@ internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: Set
     val p = sadadPalette
     val waiting = devices.unsent > 0
     Section(stringResource(R.string.settings_devices_heading)) {
-      BoardCard(radius = 13.dp) {
+      BoardCard(radius = 12.dp) {
         Row(
             modifier =
                 Modifier.fillMaxWidth()
                     .background(if (waiting) p.creditSoft else Color.Transparent)
-                    .padding(14.dp),
+                    .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-          Box(Modifier.size(10.dp).background(statusColor(devices), CircleShape))
+          Box(Modifier.size(12.dp).background(statusColor(devices), CircleShape))
           Column(Modifier.weight(1f)) {
             Text(
                 text =
                     if (waiting) waitingText(devices.unsent)
                     else stringResource(R.string.settings_sync_all_sent),
                 color = p.text,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
             )
             syncDetail(devices)?.let { detail ->
               Text(detail, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
@@ -346,7 +342,7 @@ internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: Set
           }
           Surface(
               onClick = navigation.onSyncNow,
-              shape = RoundedCornerShape(10.dp),
+              shape = RoundedCornerShape(12.dp),
               color = if (waiting) p.card else p.surface,
               contentColor = linkColor(),
               modifier = Modifier.heightIn(min = 48.dp).testTag(SettingsTags.SYNC_NOW),
@@ -354,8 +350,7 @@ internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: Set
             Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), Alignment.Center) {
               Text(
                   stringResource(R.string.settings_sync_now),
-                  fontSize = 13.sp,
-                  fontWeight = FontWeight.Bold,
+                  style = MaterialTheme.typography.labelLarge,
               )
             }
           }
@@ -381,7 +376,7 @@ internal fun LazyListScope.securitySection(
   item {
     val p = sadadPalette
     Section(stringResource(R.string.settings_security_heading)) {
-      BoardCard(radius = 13.dp) {
+      BoardCard(radius = 12.dp) {
         SwitchLine(
             title = stringResource(R.string.settings_lock_enable),
             detail = stringResource(R.string.settings_lock_enable_sub),
@@ -428,7 +423,7 @@ internal fun LazyListScope.dataSection(data: DataSlice, navigation: SettingsNavi
   if (!data.canDelete) return
   item {
     Section(stringResource(R.string.settings_data_heading)) {
-      BoardCard(radius = 13.dp) {
+      BoardCard(radius = 12.dp) {
         LinkRow(
             title = stringResource(R.string.settings_trash),
             detail = trashText(data.trashCount),
@@ -452,7 +447,7 @@ internal fun LazyListScope.appearanceSection(
       Row(
           modifier =
               Modifier.fillMaxWidth()
-                  .background(p.surface, RoundedCornerShape(13.dp))
+                  .background(p.surface, RoundedCornerShape(12.dp))
                   .padding(4.dp)
                   .testTag(SettingsTags.THEME),
           horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -466,7 +461,7 @@ internal fun LazyListScope.appearanceSection(
           val chosen = theme == choice
           Surface(
               onClick = { commands.setTheme(choice) },
-              shape = RoundedCornerShape(10.dp),
+              shape = RoundedCornerShape(12.dp),
               color = if (chosen) p.primary else Color.Transparent,
               contentColor = if (chosen) Color.White else p.muted,
               modifier =
@@ -477,16 +472,14 @@ internal fun LazyListScope.appearanceSection(
             Box(Modifier.padding(vertical = 12.dp), Alignment.Center) {
               Text(
                   label,
-                  fontSize = 14.sp,
-                  lineHeight = 20.sp,
-                  fontWeight = FontWeight.Bold,
+                  style = MaterialTheme.typography.labelLarge,
                   maxLines = 1,
               )
             }
           }
         }
       }
-      BoardCard(radius = 13.dp) {
+      BoardCard(radius = 12.dp) {
         LinkRow(
             title = stringResource(R.string.settings_notification_settings),
             detail = stringResource(R.string.settings_notification_settings_sub),
@@ -506,7 +499,7 @@ internal fun LazyListScope.accountSection(
   item {
     val p = sadadPalette
     Section(stringResource(R.string.settings_account_heading)) {
-      BoardCard(radius = 13.dp) {
+      BoardCard(radius = 12.dp) {
         LinkRow(
             title = stringResource(R.string.settings_sign_out),
             detail = null,
@@ -525,7 +518,7 @@ internal fun LazyListScope.accountSection(
         error
             ?.takeIf { it == SettingsError.ACTION_FAILED }
             ?.let {
-              Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) { ErrorLine(it) }
+              Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { ErrorLine(it) }
             }
       }
     }
@@ -534,11 +527,11 @@ internal fun LazyListScope.accountSection(
 
 internal fun LazyListScope.supportItem(context: Context) {
   item {
-    BoardCard(radius = 13.dp, onClick = { openSupport(context) }) {
+    BoardCard(radius = 12.dp, onClick = { openSupport(context) }) {
       Row(
           modifier =
               Modifier.fillMaxWidth()
-                  .padding(horizontal = 14.dp, vertical = 16.dp)
+                  .padding(horizontal = 16.dp, vertical = 16.dp)
                   .testTag(SettingsTags.SUPPORT),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -547,8 +540,7 @@ internal fun LazyListScope.supportItem(context: Context) {
         Text(
             stringResource(R.string.settings_support),
             color = linkColor(),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelLarge,
         )
       }
     }
@@ -576,7 +568,7 @@ internal fun LazyListScope.updateItem(update: UpdateState, onOpen: () -> Unit) {
               stringResource(R.string.updates_row_ready, version)
           else -> stringResource(R.string.updates_row_available, version)
         }
-    BoardCard(radius = 13.dp) {
+    BoardCard(radius = 12.dp) {
       LinkRow(
           title = stringResource(R.string.updates_row_title),
           detail = detail,
@@ -607,7 +599,7 @@ internal fun LazyListScope.versionItem() {
 /** The board's card: `--card` white, a 1 dp `--line` border, and the given corner radius. */
 @Composable
 private fun BoardCard(
-    radius: Dp = 13.dp,
+    radius: Dp = 12.dp,
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(0.dp),
@@ -646,20 +638,18 @@ private fun Section(title: String, content: @Composable () -> Unit) {
         text = title,
         modifier = Modifier.semantics { heading() },
         color = sadadPalette.muted,
-        fontSize = 13.sp,
-        lineHeight = 20.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleSmall,
     )
     content()
   }
 }
 
-/** The icons the board puts before a row's label; drawn here so no new drawable is needed. */
-private enum class RowIcon {
-  LIST,
-  PHONE,
-  CHAT,
-  UPDATE,
+/** The icons the board puts before a row's label. */
+private enum class RowIcon(@DrawableRes val icon: Int) {
+  LIST(R.drawable.ic_list),
+  PHONE(R.drawable.ic_phone),
+  CHAT(R.drawable.ic_whatsapp),
+  UPDATE(R.drawable.ic_update),
 }
 
 /** A card row that leads somewhere: the label, an optional second line, then the chevron. */
@@ -686,7 +676,7 @@ private fun LinkRow(
           },
   ) {
     Row(
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -705,93 +695,15 @@ private fun LinkRow(
   }
 }
 
-/** The board's 21 dp line icons: a list, a phone and a chat bubble, stroked in the link colour. */
+/** The 21 dp icon before a row's label, in the link colour. */
 @Composable
 private fun RowGlyph(kind: RowIcon) {
-  val color = linkColor()
-  Canvas(Modifier.size(21.dp)) {
-    val s = size.minDimension
-    val stroke = 1.9.dp.toPx()
-    when (kind) {
-      RowIcon.LIST -> {
-        for (index in 0..2) {
-          val y = s * (0.25f + 0.25f * index)
-          drawLine(color, Offset(s * 0.34f, y), Offset(s * 0.9f, y), stroke, StrokeCap.Round)
-          drawCircle(color, radius = stroke * 0.8f, center = Offset(s * 0.12f, y))
-        }
-      }
-      RowIcon.PHONE -> {
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(s * 0.30f, s * 0.06f),
-            size = Size(s * 0.40f, s * 0.88f),
-            cornerRadius = CornerRadius(s * 0.10f),
-            style = Stroke(width = stroke),
-        )
-        drawLine(
-            color,
-            Offset(s * 0.44f, s * 0.80f),
-            Offset(s * 0.56f, s * 0.80f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-      RowIcon.CHAT -> {
-        drawCircle(
-            color = color,
-            radius = s * 0.33f,
-            center = Offset(s * 0.5f, s * 0.40f),
-            style = Stroke(width = stroke),
-        )
-        // The bubble's tail, toward the bottom-start corner.
-        drawLine(
-            color,
-            Offset(s * 0.32f, s * 0.63f),
-            Offset(s * 0.20f, s * 0.88f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.20f, s * 0.88f),
-            Offset(s * 0.46f, s * 0.72f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-      // An arrow into a tray: the download an update is.
-      RowIcon.UPDATE -> {
-        drawLine(
-            color,
-            Offset(s * 0.5f, s * 0.08f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.32f, s * 0.44f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.68f, s * 0.44f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.18f, s * 0.86f),
-            Offset(s * 0.82f, s * 0.86f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-    }
-  }
+  Icon(
+      painterResource(kind.icon),
+      contentDescription = null,
+      tint = linkColor(),
+      modifier = Modifier.size(20.dp),
+  )
 }
 
 /** A labelled switch: the whole row toggles, the switch only draws the state. */
@@ -807,8 +719,9 @@ private fun SwitchLine(
       modifier =
           Modifier.fillMaxWidth()
               .heightIn(min = 56.dp)
+              .clip(RoundedCornerShape(12.dp))
               .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
-              .padding(horizontal = 14.dp, vertical = 10.dp),
+              .padding(horizontal = 16.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -837,15 +750,12 @@ private fun SwitchLine(
 /** The board's 18 dp muted chevron, pointing left: toward the screen the row opens. */
 @Composable
 private fun Chevron() {
-  val color = sadadPalette.muted
-  Canvas(Modifier.size(18.dp)) {
-    val stroke = 2.dp.toPx()
-    val start = Offset(size.width * 0.62f, size.height * 0.18f)
-    val elbow = Offset(size.width * 0.32f, size.height * 0.5f)
-    val end = Offset(size.width * 0.62f, size.height * 0.82f)
-    drawLine(color, start, elbow, stroke, StrokeCap.Round)
-    drawLine(color, elbow, end, stroke, StrokeCap.Round)
-  }
+  Icon(
+      painterResource(R.drawable.ic_chevron_start),
+      contentDescription = null,
+      tint = sadadPalette.muted,
+      modifier = Modifier.size(16.dp),
+  )
 }
 
 /** The 32 dp soft block with a store's initials, as the switcher draws each saved store. */
@@ -854,14 +764,13 @@ private fun Initials(name: String) {
   val p = sadadPalette
   val initials = name.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull() }
   Box(
-      modifier = Modifier.size(32.dp).background(p.soft, RoundedCornerShape(10.dp)),
+      modifier = Modifier.size(32.dp).background(p.soft, RoundedCornerShape(12.dp)),
       contentAlignment = Alignment.Center,
   ) {
     Text(
         initials.joinToString(""),
         color = linkColor(),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelMedium,
     )
   }
 }

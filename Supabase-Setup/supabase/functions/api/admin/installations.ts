@@ -55,13 +55,15 @@ const pendingRoute = createRoute({
   },
 });
 
-const decisionRoute = (decision: "approve" | "revoke") =>
+const decisionRoute = (decision: "approve" | "revoke" | "reactivate") =>
   createRoute({
     method: "post",
     path: `/admin/installations/{installationId}/${decision}`,
     tags,
     security,
-    description: decision === "approve"
+    description: decision === "reactivate"
+      ? "Gives a revoked device its access back, same key and generation, within the store's device cap (device_limit_reached otherwise). admin only."
+      : decision === "approve"
       ? "Activates a pending device within the store's device cap (device_limit_reached otherwise). admin only."
       : "Revokes a device and its capabilities. admin only.",
     middleware: [allow("admin")] as const,
@@ -110,7 +112,7 @@ export function registerInstallationRoutes(
     return c.json({ ok: true as const, ...page }, 200);
   });
 
-  for (const decision of ["approve", "revoke"] as const) {
+  for (const decision of ["approve", "revoke", "reactivate"] as const) {
     app.openapi(decisionRoute(decision), async (c) => {
       const { installationId } = c.req.valid("param");
       const { reason } = c.req.valid("json");

@@ -9,7 +9,7 @@ Decisions taken (user, 2026-10-14, revised 2026-10-15):
 - **Drop standalone edition** (`standalone` flavor, `STANDALONE_MODE` branches, `"123"/"123"` local login). It goes with the Java app at the Phase 3 switch.
 - Dashboard: **stay static, move to TypeScript + Vite build + typed API client**, as part of the backend cutover.
 - Backend: **one cutover** to Supabase Auth + one `api` function + a squashed schema baseline, with a reset of the test cloud project.
-- **Clean cut, no legacy handling** (2026-10-15): all data is test data, so nothing is migrated, kept compatible or bridged (Part 3, "The clean-cut rule").
+- **Real customer data** (2026-11-04): production holds a customer's ledger, so migrations keep rows and the latest release keeps working. The clean cut still bans bridges and dead legacy code (Part 3).
 
 AGENTS.md rules still hold: one source per component, no second Android project, no parallel server; cloud migrations need review/approval; public repo = no secrets.
 
@@ -237,16 +237,23 @@ Rules:
 
 ## Part 3 — Phased plan
 
-### The clean-cut rule (user decision, 2026-10-15)
+### Real customer data (user decision, 2026-11-04)
 
-Every store, user and row is test data. The plan rebuilds; it never migrates, bridges or keeps an old thing alive:
+The production project and release builds (`com.sadad.app`) hold a real customer's ledger. This replaces the 2026-10-15 rule that all data was test data. Test stores such as `supermarket` share that project.
 
-- **No data migration.** Old local databases, journals, cloud rows and accounts are dropped. Testers reinstall and get fresh test accounts.
-- **No compatibility.** No old-client routes, no dual login, no feature flags between old and new, no period where old and new backends both serve.
-- **No bridges.** New code never wraps or adapts old code: no Java↔Kotlin adapters, no `JSONObject` shims around the new core, no `AndroidView` hosting of old screens. Old code is deleted when its replacement switches on.
-- **Replace and delete in one phase.** A phase is not done while the code, table, function or route it replaces still exists.
+- **Keep rows.** A migration preserves existing cloud rows. When a stored format changes, it rewrites the rows or the code keeps reading both forms. Dropping or deleting customer rows needs the human's yes.
+- **Keep phone data.** A Room version bump ships a migration, so an update keeps confirmed rows and unsent commands.
+- **Keep the latest release working.** A server change stays compatible with the latest `v*` release until the customer has updated. The server has no minimum-version gate, so nothing warns an old build.
 
-If a ticket seems to need an upgrade path, a fallback or an adapter, it is wrong. Stop and ask.
+### The clean-cut rule (user decision, 2026-10-15, narrowed 2026-11-04)
+
+The rule now covers code that no shipped release needs. Old code is rebuilt, not kept alive:
+
+- **No bridges.** New code never wraps or adapts old code: no Java↔Kotlin adapters, no `JSONObject` shims around the new core, no `AndroidView` hosting of old screens.
+- **No compatibility with unreleased or retired things.** No old-client routes for versions the customer has left, no dual login, no feature flags between old and new.
+- **Replace and delete in one phase.** A phase is not done while the code, table, function or route it replaces still exists, once no release uses it.
+
+If a ticket seems to need a bridge or an adapter, stop and ask. A migration or compatibility step that protects customer data or the latest release is required work.
 
 **Accepted gap:** the Phase 2 cutover deletes the backend the current Java app talks to. From then until the Phase 3 switch there is no working Android app. The dashboard moves in Phase 2, so admins keep working.
 

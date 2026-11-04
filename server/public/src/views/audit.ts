@@ -15,6 +15,7 @@ export const KIND_LABELS: Record<string, string> = {
   "account.revoke-all": "إلغاء جميع الأجهزة",
   "installation.approved": "اعتماد هاتف",
   "installation.revoked": "إلغاء اعتماد هاتف",
+  "installation.reactivated": "إعادة اعتماد هاتف",
   "recovery.approved": "اعتماد استرداد",
 };
 
@@ -59,7 +60,7 @@ export const auditList = (
       ? html`<div class="list">${page.rows.map((item) => event(item, showStore))}</div>`
       : page.loading
         ? nothing
-        : html`<p class="empty">لا توجد أحداث مسجلة.</p>`
+        : html`<p class="empty">لا توجد أحداث مسجلة</p>`
   }
   ${pager(label, page, step)}
 `;

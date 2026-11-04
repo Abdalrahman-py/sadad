@@ -35,6 +35,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** [StatementExport.sharePdf]'s shape: the statement share seam of the contact page. */
+typealias StatementShareCall =
+    suspend (Context, StatementHeader, LedgerView, String?, Instant?, Instant?) -> Unit
+
 /** One row of a Contact's history: a Debt or a Payment, newest or oldest first. */
 data class ContactMovement(
     val id: String,
@@ -55,11 +59,9 @@ data class ContactMovement(
     val credit: Cents? = null,
     /** The credit a later Debt took, on a Debt that was paid from credit. */
     val offsetted: Cents? = null,
-    /** A Debt corrected to zero: still in the history, struck through. */
-    val struck: Boolean = false,
-    /** Whether «عكس الدفعة» may run on this row. */
-    val canReverse: Boolean = false,
-    /** Why it may not, when [canReverse] is false for a reason worth naming. */
+    /** Whether «حذف» may run on this row. */
+    val canDelete: Boolean = false,
+    /** Why it may not, when [canDelete] is false for a reason worth naming. */
     val blockedReason: String? = null,
 )
 
@@ -83,6 +85,12 @@ data class ContactDetailState(
     /** The amount to settle before deleting, when deleting is refused. */
     val settleFirst: Cents? = null,
     val confirmDelete: Boolean = false,
+    /** «حذف المسودة» waits for its confirm dialog. */
+    val confirmDiscard: Boolean = false,
+    /** The row whose delete dialogs are open. */
+    val deleting: ContactMovement? = null,
+    /** The first dialog was accepted: the second, final one is showing. */
+    val deleteFinal: Boolean = false,
     /** The Contact waiting in the undo banner; nothing is queued until the banner expires. */
     val undoName: String? = null,
     val error: String? = null,
@@ -110,11 +118,25 @@ class ContactDetailViewModel(
      * a background thread it cannot see (#168).
      */
     private val undoScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /**
+     * The one seam the page shares through, a parameter so a test captures the view a statement is
+     * built from without PDFs or Android's share sheet.
+     */
+    private val shareStatement: StatementShareCall = StatementExport::sharePdf,
 ) : ViewModel() {
   private data class Dialogs(
       val newestFirst: Boolean = true,
       val settleFirst: Cents? = null,
       val confirmDelete: Boolean = false,
+      val confirmDiscard: Boolean = false,
+      val deleting: String? = null,
+      val deleteFinal: Boolean = false,
+      /**
+       * Rows deleted here: a queued delete is online-only, so the view keeps them until the pull.
+       * shortcut: a refused delete stays hidden until the page reopens, fine while refusals need a
+       * second device racing this one.
+       */
+      val deleted: Set<String> = emptySet(),
       val undoName: String? = null,
       val error: String? = null,
       val done: Boolean = false,
@@ -130,7 +152,7 @@ class ContactDetailViewModel(
 
   init {
     viewModelScope.launch {
-      combine(source.records, dialogs, source.permissions) { records, ui, allowed ->
+      combine(source.records(contactId), dialogs, source.permissions) { records, ui, allowed ->
             currentView = records?.ledger
             val draft = records?.failed?.firstOrNull { it.contact.id == contactId }
             if (draft == null) project(records?.ledger, ui, allowed)
@@ -146,6 +168,9 @@ class ContactDetailViewModel(
                     savedDebts = draft.debts,
                     canRegisterPayments = false,
                     canDeleteContacts = false,
+                    confirmDiscard = ui.confirmDiscard,
+                    error = ui.error,
+                    done = ui.done,
                 )
           }
           .flowOn(Dispatchers.Default)
@@ -154,6 +179,25 @@ class ContactDetailViewModel(
   }
 
   fun toggleOrder() = dialogs.update { it.copy(newestFirst = !it.newestFirst) }
+
+  /** «حذف المسودة» on a refused new person's page: asks first. */
+  fun askDiscard() = dialogs.update { it.copy(confirmDiscard = true) }
+
+  fun dismissDiscard() = dialogs.update { it.copy(confirmDiscard = false) }
+
+  /** Deletes the draft's outbox rows; the person leaves the list and the page closes. */
+  fun confirmDiscard() {
+    if (!dialogs.value.confirmDiscard) return
+    dialogs.update { it.copy(confirmDiscard = false) }
+    val store = source.open() ?: return
+    viewModelScope.launch {
+      val result = store.discardDraft(contactId)
+      dialogs.update {
+        if (result.isSuccess) it.copy(done = true)
+        else it.copy(error = appContext.getString(R.string.contacts_discard_draft_failed))
+      }
+    }
+  }
 
   fun requestDelete() {
     val current = mutable.value
@@ -228,40 +272,57 @@ class ContactDetailViewModel(
 
   fun clearError() = dialogs.update { it.copy(error = null) }
 
+  fun askDeleteMovement(movementId: String) = dialogs.update {
+    it.copy(deleting = movementId, deleteFinal = false)
+  }
+
+  fun dismissDeleteMovement() = dialogs.update { it.copy(deleting = null, deleteFinal = false) }
+
+  /** The first accept only opens the final dialog; the second one deletes. */
+  fun confirmDeleteMovement() {
+    val current = dialogs.value
+    val movementId = current.deleting ?: return
+    if (current.deleteFinal) {
+      dismissDeleteMovement()
+      deleteMovement(movementId)
+    } else {
+      dialogs.update { it.copy(deleteFinal = true) }
+    }
+  }
+
   /**
-   * «عكس الدفعة»: reverse every part of the compound, then zero the credit Debt it left. Refused
-   * once any of that credit was used — the later movement has to be corrected first.
+   * History on the server is append-only, so a delete is the ledger's own undo. A Debt is corrected
+   * to zero, refused while Payments or credit stand on it. A Payment reverses every part of the
+   * compound, then zeroes the credit Debt it left, refused once any of that credit was used.
    */
-  fun reverse(movementId: String) {
+  private fun deleteMovement(movementId: String) {
     val movement = mutable.value.movements.firstOrNull { it.id == movementId } ?: return
-    if (movement.kind != MovementKind.PAYMENT || !movement.canReverse) return
+    if (!movement.canDelete) return
     val scope = source.open() ?: return
     if (!scope.isOnline()) {
-      dialogs.update { it.copy(error = appContext.getString(R.string.contacts_reverse_offline)) }
+      dialogs.update {
+        it.copy(error = appContext.getString(R.string.contacts_delete_entry_offline))
+      }
       return
     }
     val origin = scope.origin() ?: return
     val view = currentView
     val at = Instant.now()
+    fun zeroed(debtId: String?) =
+        view
+            ?.debts
+            ?.firstOrNull { it.id == debtId }
+            ?.let { debt ->
+              Commands.debtCorrect(origin, at, debt.id, debt.version, Cents.ZERO, DELETE_REASON)
+            }
     val commands =
-        movement.parts.map { Commands.paymentReverse(origin, at, it, REVERSE_REASON) } +
-            listOfNotNull(
-                movement.creditDebtId?.let { id ->
-                  view
-                      ?.debts
-                      ?.firstOrNull { it.id == id }
-                      ?.let { credit ->
-                        Commands.debtCorrect(
-                            origin,
-                            at,
-                            id,
-                            credit.version,
-                            Cents.ZERO,
-                            REVERSE_REASON,
-                        )
-                      }
-                }
-            )
+        if (movement.kind == MovementKind.DEBT) {
+          listOfNotNull(zeroed(movement.id))
+        } else {
+          movement.parts.map { Commands.paymentReverse(origin, at, it, DELETE_REASON) } +
+              listOfNotNull(zeroed(movement.creditDebtId))
+        }
+    dialogs.update { it.copy(deleted = it.deleted + movementId) }
     // One short write, like the archive: the user already confirmed it, so it outlives the screen.
     undoScope.launch {
       scope.append(commands)
@@ -291,9 +352,7 @@ class ContactDetailViewModel(
             owner = account?.ownerName.orEmpty(),
             periodLabel = context.getString(R.string.contacts_all_periods),
         )
-    runCatching {
-      StatementExport.sharePdf(context, header, view, contactId, from = null, to = null)
-    }
+    runCatching { shareStatement(context, header, view, contactId, null, null) }
         .onFailure { failure ->
           if (failure is CancellationException) throw failure
           dialogs.update { current ->
@@ -307,6 +366,8 @@ class ContactDetailViewModel(
       groups: Collection<List<PaymentView>>,
       credits: Map<Instant, DebtView>,
       debts: Map<String, DebtView>,
+      allowedPayments: Boolean,
+      allowedRecords: Boolean,
   ): List<ContactMovement> = groups.map { parts ->
     val first = parts.first()
     val credit =
@@ -316,7 +377,7 @@ class ContactDetailViewModel(
         }
     val settled = parts.fold(Cents.ZERO) { total, part -> total + part.amount }
     val pending = parts.any { it.pending } || credit?.pending == true
-    // An offset, or a correction, out of the credit means the reversal belongs to a later step.
+    // An offset, or a correction, out of the credit means the delete belongs to a later step.
     val spent = credit != null && credit.remaining < credit.amount
     ContactMovement(
         id = first.id,
@@ -331,9 +392,9 @@ class ContactDetailViewModel(
         creditDebtId = credit?.id,
         settled = settled.takeIf { credit != null },
         credit = credit?.amount,
-        canReverse = !pending && !spent,
+        canDelete = allowedPayments && (credit == null || allowedRecords) && !pending && !spent,
         blockedReason =
-            if (spent) appContext.getString(R.string.contacts_reverse_credit_used) else null,
+            if (spent) appContext.getString(R.string.contacts_delete_credit_used) else null,
     )
   }
 
@@ -344,6 +405,7 @@ class ContactDetailViewModel(
   ): ContactDetailState {
     val allowedPayments = permissions["registerPayments"] != false
     val allowedDelete = permissions["deleteContacts"] != false
+    val allowedRecords = permissions["deleteRecords"] != false
     val contact = view?.contacts?.firstOrNull { it.id == contactId }
     if (contact == null) {
       return ContactDetailState(
@@ -377,9 +439,17 @@ class ContactDetailViewModel(
     val paymentTimes = visible.mapTo(HashSet()) { it.createdAt }
     val movements =
         own.filter { debt ->
-              !(debt.origin == DebtOrigin.OVERPAYMENT && debt.createdAt in paymentTimes)
+              debt.amount > Cents.ZERO &&
+                  !(debt.origin == DebtOrigin.OVERPAYMENT && debt.createdAt in paymentTimes)
             }
             .map { debt ->
+              val pending = debt.pending || debt.hasPendingPayments
+              val blocked =
+                  when {
+                    debt.paid > Cents.ZERO -> R.string.contacts_delete_debt_paid
+                    debt.offsetted > Cents.ZERO -> R.string.contacts_delete_debt_offset
+                    else -> null
+                  }
               ContactMovement(
                   id = debt.id,
                   kind = MovementKind.DEBT,
@@ -388,19 +458,22 @@ class ContactDetailViewModel(
                   method = null,
                   note = debt.note,
                   createdAt = debt.createdAt,
-                  pending = debt.pending || debt.hasPendingPayments,
+                  pending = pending,
                   offsetted = debt.offsetted.takeIf { it > Cents.ZERO },
-                  struck = debt.amount == Cents.ZERO,
+                  canDelete = allowedRecords && !pending && blocked == null,
+                  blockedReason = blocked?.let(appContext::getString),
               )
-            } + paymentRows(groups, credits, ownById)
+            } + paymentRows(groups, credits, ownById, allowedPayments, allowedRecords)
     val ordered =
-        movements.sortedWith(
-            if (dialogs.newestFirst) {
-              compareByDescending<ContactMovement> { it.createdAt }.thenBy { it.id }
-            } else {
-              compareBy<ContactMovement> { it.createdAt }.thenBy { it.id }
-            }
-        )
+        movements
+            .filter { it.id !in dialogs.deleted }
+            .sortedWith(
+                if (dialogs.newestFirst) {
+                  compareByDescending<ContactMovement> { it.createdAt }.thenBy { it.id }
+                } else {
+                  compareBy<ContactMovement> { it.createdAt }.thenBy { it.id }
+                }
+            )
     return ContactDetailState(
         loaded = true,
         name = contact.name,
@@ -411,6 +484,8 @@ class ContactDetailViewModel(
         balance = balance,
         payable = payable,
         movements = ordered,
+        deleting = ordered.firstOrNull { it.id == dialogs.deleting },
+        deleteFinal = dialogs.deleteFinal,
         newestFirst = dialogs.newestFirst,
         canRegisterPayments = allowedPayments,
         canDeleteContacts = allowedDelete,
@@ -434,8 +509,8 @@ class ContactDetailViewModel(
   private companion object {
     const val ARCHIVE_REASON = "حذف الزبون من التطبيق"
 
-    /** The reason a reversal carries on the wire, so the log says why. */
-    const val REVERSE_REASON = "عكس دفعة من التطبيق"
+    /** The reason a delete carries on the wire, so the log says why. */
+    const val DELETE_REASON = "حذف قيد من التطبيق"
 
     /** The Java banner's undo window. */
     const val UNDO_WINDOW_MS = 5_000L

@@ -4,14 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.ui.theme.sadadPalette
 
 /** A name's initials on `soft`, 40dp; decorative, the row beside it says the name. */
@@ -26,8 +25,7 @@ fun Avatar(name: String, modifier: Modifier = Modifier) {
     Text(
         initials.joinToString(""),
         color = sadadPalette.muted,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelLarge,
     )
   }
 }

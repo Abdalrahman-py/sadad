@@ -4,4 +4,8 @@
     <string name="contacts_sync_failed">تعذرت مزامنة الشخص: %1$s</string>
     <string name="contacts_draft_kept">بيانات الشخص والدين محفوظة على هذا الجهاز. هذه المبالغ لم تُعتمد في الرصيد بعد. إذا بلغ المتجر حد الأشخاص، تواصل مع الإدارة لزيادة الحد قبل إعادة الإضافة.</string>
     <string name="contacts_saved_debt">دين محفوظ — غير معتمد</string>
+    <string name="contacts_discard_draft">حذف المسودة</string>
+    <string name="contacts_discard_draft_title">حذف المسودة؟</string>
+    <string name="contacts_discard_draft_message">سيُحذف هذا الشخص والدين المحفوظ معه من هذا الجهاز. لا يمسّ ذلك أي شخص معتمد.</string>
+    <string name="contacts_discard_draft_failed">تعذر حذف المسودة.</string>
 </resources>

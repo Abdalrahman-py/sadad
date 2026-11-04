@@ -108,11 +108,20 @@ class Sessions(
     if (access.value?.userId == storeUserId) access.value = null
   }
 
-  /** Changes the password, then refreshes and stores the new tokens. */
+  /**
+   * Changes the password, then signs in with the new one: the old refresh token may be refused
+   * after the change, which used to send the owner back to Login.
+   */
   suspend fun changePassword(current: String, new: String): Unit = mutex.withLock {
     val session = validLocked() ?: error("not signed in")
     auth.changePassword(session.accessToken, current, new)
-    refreshLocked(session.refreshToken) ?: return@withLock
+    val username = checkNotNull(accounts.account(session.userId)).username
+    try {
+      storeLocked(auth.signIn(username, new))
+    } catch (refused: ApiException) {
+      if (refused.status != 400 && refused.status != 401) throw refused
+      signedOutLocked()
+    }
   }
 
   /** Best effort: an offline sign-out still clears the local tokens and leaves the store's data. */

@@ -29,6 +29,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -57,7 +59,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +76,7 @@ import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.StickyActions
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.balanceWord
@@ -116,8 +118,8 @@ fun ContactDetailScreen(
 
 /**
  * The Contact board: who they are and where they stand, then every entry with the balance after it,
- * and the two sticky buttons that record for this person. WhatsApp, the statement, edit and archive
- * sit in the ⋯ menu.
+ * and the two sticky buttons that record for this person. Edit is a button in the header; WhatsApp,
+ * the statement and archive sit in the ⋯ menu.
  */
 @Composable
 internal fun ContactDetailScreen(
@@ -170,8 +172,8 @@ internal fun ContactDetailScreen(
     Box(Modifier.weight(1f)) {
       LazyColumn(
           Modifier.fillMaxSize().testTag(ContactsTag.MOVEMENTS),
-          contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 20.dp),
-          verticalArrangement = Arrangement.spacedBy(6.dp),
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         item(key = "identity") { Appear { Identity(state, supplier) } }
         if (state.syncFailure != null) {
@@ -183,13 +185,19 @@ internal fun ContactDetailScreen(
               Text(
                   stringResource(R.string.contacts_saved_draft),
                   color = sadadPalette.owes,
-                  fontWeight = FontWeight.Bold,
+                  style = MaterialTheme.typography.titleSmall,
               )
               Text(
                   stringResource(R.string.contacts_sync_failed, state.syncFailure.orEmpty()),
                   color = sadadPalette.owes,
               )
               Text(stringResource(R.string.contacts_draft_kept))
+              SadadButton(
+                  text = stringResource(R.string.contacts_discard_draft),
+                  style = SadadButtonStyle.SURFACE,
+                  onClick = viewModel::askDiscard,
+                  modifier = Modifier.fillMaxWidth(),
+              )
             }
           }
           item(key = "draft-info") { InfoCard(state) }
@@ -197,9 +205,12 @@ internal fun ContactDetailScreen(
             val debt = state.savedDebts[index]
             Column(
                 Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-              Text(stringResource(R.string.contacts_saved_debt), fontWeight = FontWeight.Bold)
+              Text(
+                  stringResource(R.string.contacts_saved_debt),
+                  style = MaterialTheme.typography.titleSmall,
+              )
               Text(formatCents(debt.amountCents), color = sadadPalette.owes)
               debt.note?.let { Text(it) }
               debt.dueDate?.let { Text(it) }
@@ -233,7 +244,7 @@ internal fun ContactDetailScreen(
                 MovementRow(
                     movement,
                     after[movement.id] ?: 0L,
-                    onReverse = { viewModel.reverse(movement.id) },
+                    onDelete = { viewModel.askDeleteMovement(movement.id) },
                 )
               }
             }
@@ -290,6 +301,45 @@ internal fun ContactDetailScreen(
         },
     )
   }
+  if (state.confirmDiscard) {
+    ConfirmDialog(
+        title = stringResource(R.string.contacts_discard_draft_title),
+        message = stringResource(R.string.contacts_discard_draft_message),
+        confirmText = stringResource(R.string.contacts_discard_draft),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDiscard,
+        onDismiss = viewModel::dismissDiscard,
+        destructive = true,
+    )
+  }
+  state.deleting?.let { movement ->
+    ConfirmDialog(
+        title =
+            stringResource(
+                when {
+                  state.deleteFinal -> R.string.contacts_delete_entry_final_title
+                  movement.kind == MovementKind.DEBT -> R.string.contacts_delete_debt_title
+                  else -> R.string.contacts_delete_payment_title
+                }
+            ),
+        message =
+            if (state.deleteFinal) stringResource(R.string.contacts_delete_entry_final_message)
+            else
+                stringResource(
+                    R.string.contacts_delete_entry_message,
+                    formatCents(movement.amount),
+                ),
+        confirmText =
+            stringResource(
+                if (state.deleteFinal) R.string.contacts_delete_entry_final
+                else R.string.contacts_delete_entry_next
+            ),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDeleteMovement,
+        onDismiss = viewModel::dismissDeleteMovement,
+        destructive = true,
+    )
+  }
   if (state.confirmDelete) {
     ConfirmDialog(
         title = stringResource(R.string.contacts_confirm_delete_title),
@@ -316,15 +366,16 @@ private fun ContactTopBar(
   val p = sadadPalette
   var open by rememberSaveable { mutableStateOf(false) }
   Row(
-      Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 10.dp),
+      Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     RoundButton(R.drawable.ic_back, stringResource(R.string.contacts_back), onBack)
     Box(Modifier.weight(1f))
     if (state.missing || !state.loaded || state.syncFailure != null) return@Row
+    RoundButton(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), onEdit)
     Box {
       RoundButton(
-          R.drawable.ic_menu,
+          R.drawable.ic_more,
           stringResource(R.string.contacts_more),
           { open = !open },
           filled = open,
@@ -334,7 +385,7 @@ private fun ContactTopBar(
           expanded = open,
           onDismissRequest = { open = false },
           containerColor = p.card,
-          shape = RoundedCornerShape(13.dp),
+          shape = RoundedCornerShape(12.dp),
           border = BorderStroke(1.dp, p.line),
       ) {
         MenuRow(R.drawable.ic_whatsapp, stringResource(R.string.contacts_whatsapp), p.text) {
@@ -344,10 +395,6 @@ private fun ContactTopBar(
         MenuRow(R.drawable.ic_share, stringResource(R.string.contacts_share), p.text) {
           open = false
           onShare()
-        }
-        MenuRow(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), p.text) {
-          open = false
-          onEdit()
         }
         if (state.canDeleteContacts) {
           MenuRow(R.drawable.ic_archive, stringResource(R.string.contacts_delete), p.owes) {
@@ -365,7 +412,7 @@ private fun MenuRow(icon: Int, label: String, color: Color, onClick: () -> Unit)
   DropdownMenuItem(
       text = { Text(label, color = color, fontSize = 14.sp, fontWeight = FontWeight.Medium) },
       leadingIcon = {
-        Icon(painterResource(icon), null, tint = color, modifier = Modifier.size(19.dp))
+        Icon(painterResource(icon), null, tint = color, modifier = Modifier.size(20.dp))
       },
       onClick = onClick,
       modifier = Modifier.heightIn(min = 48.dp),
@@ -384,7 +431,8 @@ private fun RoundButton(
   Box(
       modifier
           .size(48.dp)
-          .background(if (filled) p.surface else Color.Transparent, CircleShape)
+          .clip(CircleShape)
+          .background(if (filled) p.surface else Color.Transparent)
           .clickable(role = Role.Button, onClick = onClick)
           .semantics { contentDescription = description },
       contentAlignment = Alignment.Center,
@@ -398,12 +446,11 @@ private fun RoundButton(
 private fun Identity(state: ContactDetailState, supplier: Boolean) {
   val p = sadadPalette
   if (state.missing) {
-    Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
       Text(
           stringResource(R.string.contacts_missing),
           color = p.text,
-          fontSize = 21.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleLarge,
           modifier = Modifier.testTag(ContactsTag.TITLE),
       )
       Text(stringResource(R.string.contacts_missing_detail), color = p.muted, fontSize = 14.sp)
@@ -415,31 +462,28 @@ private fun Identity(state: ContactDetailState, supplier: Boolean) {
           if (supplier) R.string.contacts_type_supplier else R.string.contacts_type_customer
       )
   Row(
-      Modifier.fillMaxWidth().padding(bottom = 10.dp),
+      Modifier.fillMaxWidth().padding(bottom = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(14.dp),
+      horizontalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     val initials = state.name.trim().split(Regex("\\s+")).take(2).mapNotNull { it.firstOrNull() }
     Box(
         Modifier.size(56.dp)
-            .background(p.soft, RoundedCornerShape(if (supplier) 14.dp else 28.dp))
+            .background(p.soft, RoundedCornerShape(if (supplier) 16.dp else 28.dp))
             .clearAndSetSemantics {},
         contentAlignment = Alignment.Center,
     ) {
       Text(
           initials.joinToString(""),
           color = if (p.isDark) p.accent else p.primary,
-          fontSize = 19.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleLarge,
       )
     }
     Column(Modifier.weight(1f)) {
       Text(
           state.name,
           color = p.text,
-          fontSize = 21.sp,
-          lineHeight = 30.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleLarge,
           modifier = Modifier.testTag(ContactsTag.TITLE).semantics { heading() },
       )
       Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -482,24 +526,24 @@ private fun BalanceBlock(net: Long, supplier: Boolean) {
       }
   Column(
       Modifier.fillMaxWidth()
-          .padding(bottom = 10.dp)
-          .background(p.card, RoundedCornerShape(18.dp))
-          .border(1.dp, p.line, RoundedCornerShape(18.dp))
-          .padding(18.dp)
+          .padding(bottom = 12.dp)
+          .background(p.card, RoundedCornerShape(16.dp))
+          .border(1.dp, p.line, RoundedCornerShape(16.dp))
+          .padding(16.dp)
           .animateContentSize(tween(250)),
-      verticalArrangement = Arrangement.spacedBy(6.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Row(
         Modifier.clearAndSetSemantics { contentDescription = word.spoken },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Icon(painterResource(arrow), null, tint = color, modifier = Modifier.size(22.dp))
-      Text(word.word, color = color, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+      Icon(painterResource(arrow), null, tint = color, modifier = Modifier.size(24.dp))
+      Text(word.word, color = color, style = MaterialTheme.typography.headlineMedium)
       if (net != 0L) {
         MoneyText(
             Cents(Math.abs(net)),
-            style = TextStyle(fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.displaySmall,
             color = color,
         )
       }
@@ -527,11 +571,11 @@ private fun InfoCard(state: ContactDetailState) {
       )
   Column(
       Modifier.fillMaxWidth()
-          .padding(bottom = 10.dp)
-          .background(p.card, RoundedCornerShape(13.dp))
-          .border(1.dp, p.line, RoundedCornerShape(13.dp))
-          .padding(horizontal = 14.dp, vertical = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
+          .padding(bottom = 12.dp)
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
+          .padding(horizontal = 16.dp, vertical = 12.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     rows.forEach { (label, value, ltr) ->
       Row(
@@ -581,9 +625,7 @@ private fun TimelineHead(newestFirst: Boolean, onToggle: () -> Unit) {
       Text(
           stringResource(R.string.contacts_movements_title),
           color = p.text,
-          fontSize = 17.sp,
-          lineHeight = 24.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleMedium,
           modifier = Modifier.semantics { heading() },
       )
       Text(stringResource(R.string.contacts_after_each), color = p.muted, fontSize = 12.sp)
@@ -599,10 +641,10 @@ private fun TimelineHead(newestFirst: Boolean, onToggle: () -> Unit) {
       Row(
           Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
           verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(6.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
-        Icon(painterResource(R.drawable.ic_sort), null, modifier = Modifier.size(18.dp))
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Icon(painterResource(R.drawable.ic_sort), null, modifier = Modifier.size(16.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge)
       }
     }
   }
@@ -613,15 +655,14 @@ private fun MonthHeader(month: YearMonth) {
   Text(
       "${MONTHS[month.monthValue - 1]} ${month.year}",
       color = sadadPalette.muted,
-      fontSize = 13.sp,
-      fontWeight = FontWeight.Bold,
-      modifier = Modifier.padding(start = 2.dp, end = 2.dp, top = 10.dp, bottom = 2.dp),
+      style = MaterialTheme.typography.labelMedium,
+      modifier = Modifier.padding(start = 2.dp, end = 2.dp, top = 12.dp, bottom = 2.dp),
   )
 }
 
 /** One entry: its icon, what it was and when, its amount, and the balance it left behind. */
 @Composable
-private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: () -> Unit) {
+private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () -> Unit) {
   val p = sadadPalette
   val debt = movement.kind == MovementKind.DEBT
   val link = if (p.isDark) p.accent else p.primary
@@ -645,9 +686,9 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
   Row(
       Modifier.fillMaxWidth()
           .heightIn(min = 64.dp)
-          .background(p.card, RoundedCornerShape(13.dp))
-          .border(1.dp, p.line, RoundedCornerShape(13.dp))
-          .padding(horizontal = 12.dp, vertical = 10.dp),
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
+          .padding(horizontal = 12.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -659,17 +700,14 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
           painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
           null,
           tint = if (debt) p.owes else link,
-          modifier = Modifier.size(18.dp),
+          modifier = Modifier.size(16.dp),
       )
     }
     Column(Modifier.weight(1f)) {
       Text(
           title,
           color = p.text,
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
-          fontWeight = FontWeight.Bold,
-          textDecoration = if (movement.struck) TextDecoration.LineThrough else null,
+          style = MaterialTheme.typography.titleSmall,
       )
       Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
       movement.settled?.let { settled ->
@@ -680,9 +718,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
                 formatCents(movement.credit ?: Cents.ZERO),
             ),
             color = p.credit,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodySmall,
         )
       }
       movement.offsetted?.let { used ->
@@ -694,15 +730,15 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
         )
       }
       when {
-        movement.canReverse ->
+        movement.canDelete ->
             Text(
-                stringResource(R.string.contacts_reverse),
-                color = link,
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                fontWeight = FontWeight.Bold,
+                stringResource(R.string.contacts_delete),
+                color = p.owes,
+                style = MaterialTheme.typography.labelMedium,
                 modifier =
-                    Modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onReverse),
+                    Modifier.padding(top = 2.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(role = Role.Button, onClick = onDelete),
             )
         movement.blockedReason != null ->
             Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
@@ -711,7 +747,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
     Column(horizontalAlignment = Alignment.End) {
       MoneyText(
           movement.amount,
-          style = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold),
+          style = MaterialTheme.typography.titleSmall,
           color = if (debt) p.owes else link,
       )
       if (movement.pending) {
@@ -720,9 +756,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
         Text(
             listOfNotNull(afterWord.word, afterWord.amount).joinToString(" "),
             color = afterColor,
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.semantics { contentDescription = afterWord.spoken },
         )
       }
@@ -744,21 +778,20 @@ private fun RecordActions(
         onClick = onRecordDebt,
         color = p.owesSoft,
         contentColor = p.owes,
-        shape = RoundedCornerShape(13.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.5.dp, p.owes),
         modifier = Modifier.weight(1f).height(52.dp),
     ) {
       Row(
-          horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
           verticalAlignment = Alignment.CenterVertically,
       ) {
-        Icon(painterResource(R.drawable.ic_payment_out), null, modifier = Modifier.size(18.dp))
+        Icon(painterResource(R.drawable.ic_payment_out), null, modifier = Modifier.size(16.dp))
         Text(
             stringResource(
                 if (supplier) R.string.contacts_record_goods else R.string.contacts_record_debt
             ),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
         )
       }
     }
@@ -776,8 +809,8 @@ private fun RecordActions(
       Row(
           Modifier.weight(1f)
               .heightIn(min = 52.dp)
-              .background(p.surface, RoundedCornerShape(13.dp))
-              .padding(horizontal = 10.dp, vertical = 6.dp)
+              .background(p.surface, RoundedCornerShape(12.dp))
+              .padding(horizontal = 12.dp, vertical = 8.dp)
               .semantics(mergeDescendants = true) {},
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -786,7 +819,7 @@ private fun RecordActions(
             painterResource(R.drawable.ic_lock),
             null,
             tint = p.muted,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(16.dp),
         )
         Text(
             stringResource(R.string.contacts_payments_restricted),

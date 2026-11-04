@@ -41,6 +41,7 @@
 ```
 
 - `./tools/check.sh` هو البوابة الموحدة محليًا وفي CI، ويشغّل CI جميع أقسامه.
+- مرة لكل نسخة: `git config core.hooksPath tools/git-hooks`. يفحص الخطاف تنسيق الملفات المُجهّزة قبل كل commit، بأوامر قسم `format` نفسها.
 - النشر يدوي عبر `.github/workflows/supabase-deploy.yml` (`workflow_dispatch` من `main`): يشغّل `./tools/check.sh`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`.
 - `main` خط الإصدار المستقر و`dev` خط التثبيت للفريق: كل دفعة إلى `dev` تنشر `team-latest` بحزمة `com.sadad.app.debug` موقّعة بمفتاح الفريق (`.github/workflows/team-release.yml`)؛ لا تدفع إلى `main` مباشرة.
 - إصدار الإنتاج يتطلب `SADAD_KEYSTORE_FILE` و`SADAD_KEYSTORE_PASSWORD` و`SADAD_KEY_ALIAS` و`SADAD_KEY_PASSWORD` مع `assembleRelease`؛ عنوان Supabase يحدد وقت البناء (`-PSADAD_SUPABASE_URL=...`).
@@ -105,6 +106,7 @@ Codex reads this section when it reviews a pull request (`@codex review`).
 
 - Spec: the PR's `Closes #N` issue is the ticket. Check every "Test first" test and "Steps" item against the diff, and every decision under "Decisions already made".
 - Scope: changed paths stay inside the issue's "Files you may edit".
-- Clean cut: flag any upgrade path, fallback, compatibility shim or legacy handling (`docs/ARCHITECTURE.md` Part 3). All data is test data.
+- Customer data (`docs/ARCHITECTURE.md` Part 3): flag a migration that loses or strands existing rows, a Room version bump without a migration, and a server change that breaks the latest `v*` release.
+- Clean cut: flag bridges and legacy handling that no shipped release needs.
 - Flag secrets (`sb_secret_...`, `service_role`, passwords) and any `supabase db push`, `functions deploy` or other cloud change.
 - Money, auth, crypto and sync code: flag rounding, missing tests for refusal paths, and anything logged that holds a passphrase or key.

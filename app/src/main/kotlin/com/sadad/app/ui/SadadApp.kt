@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,9 +32,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -40,15 +44,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -57,10 +56,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -97,6 +94,7 @@ import com.sadad.app.feature.updates.UpdateCenter
 import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.rememberGraph
 import com.sadad.app.ui.components.sadadPageBackground
+import com.sadad.app.ui.components.topHairline
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.app.ui.theme.sadadPalette
 import kotlin.reflect.KClass
@@ -215,10 +213,9 @@ fun SadadApp(
                 contactId = route.contactId,
                 payment = route.payment,
                 onClose = back,
-                onCreateContact = { name ->
-                  navController.navigate(ContactForm(initialName = name)) {
-                    popUpTo<QuickAdd> { inclusive = true }
-                  }
+                // A picked number of someone in the archive: they are restored from the trash.
+                onOpenTrash = {
+                  navController.navigate(Trash) { popUpTo<QuickAdd> { inclusive = true } }
                 },
                 onOpenContact = { id ->
                   // Single top: quick add opened from this contact returns to it, not a second
@@ -397,10 +394,10 @@ internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) 
   Row(
       modifier =
           Modifier.fillMaxWidth()
-              .shadow(8.dp)
               .background(p.surface)
+              .topHairline(p.line)
               .windowInsetsPadding(WindowInsets.navigationBars)
-              .padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 10.dp)
+              .padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 8.dp)
               .selectableGroup(),
       verticalAlignment = Alignment.Bottom,
   ) {
@@ -444,6 +441,8 @@ private fun RowScope.TabItem(
   val ink = if (selected) (if (p.isDark) p.accent else p.primary) else p.muted
   // The halo fades in over 580ms when the tab becomes the chosen one, as the Java animator did.
   val halo by animateFloatAsState(if (selected) 1f else 0f, tween(580), label = "halo")
+  // The whole cell takes the tap, but the press shows on the pill, not as a square over the cell.
+  val press = remember { MutableInteractionSource() }
   val description =
       stringResource(
           when (syncDot) {
@@ -457,24 +456,31 @@ private fun RowScope.TabItem(
       modifier =
           Modifier.weight(1f)
               .height(64.dp)
-              .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+              .selectable(
+                  selected = selected,
+                  interactionSource = press,
+                  indication = null,
+                  role = Role.Tab,
+                  onClick = onClick,
+              )
               .semantics { contentDescription = description }
               .testTag(tag),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
   ) {
-    Box(Modifier.size(52.dp, 34.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(52.dp, 36.dp), contentAlignment = Alignment.Center) {
+      Box(Modifier.matchParentSize().clip(PILL).indication(press, ripple()))
       Box(
           Modifier.matchParentSize()
               .graphicsLayer { alpha = halo }
-              .background(p.accent.copy(alpha = if (p.isDark) 0.20f else 0.22f), HALO_SHAPE)
+              .background(p.accent.copy(alpha = if (p.isDark) 0.20f else 0.22f), PILL)
       )
-      Icon(painterResource(iconRes), null, tint = ink, modifier = Modifier.size(23.dp))
+      Icon(painterResource(iconRes), null, tint = ink, modifier = Modifier.size(24.dp))
       if (syncDot != SyncDot.NONE) {
         Box(
             Modifier.align(AbsoluteAlignment.TopLeft)
-                .absoluteOffset(x = 10.dp, y = 3.dp)
-                .size(10.dp)
+                .absoluteOffset(x = 12.dp, y = 4.dp)
+                .size(12.dp)
                 .background(
                     if (syncDot == SyncDot.OFFLINE || syncDot == SyncDot.STUCK) OFFLINE_RED
                     else PENDING_AMBER,
@@ -484,13 +490,7 @@ private fun RowScope.TabItem(
         )
       }
     }
-    Text(
-        stringResource(labelRes),
-        color = ink,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-    )
+    Text(stringResource(labelRes), color = ink, style = MaterialTheme.typography.labelMedium)
   }
 }
 
@@ -499,25 +499,32 @@ private fun RowScope.TabItem(
 private fun RowScope.RecordItem(onClick: () -> Unit) {
   val p = sadadPalette
   val description = stringResource(R.string.nav_record_description)
+  val press = remember { MutableInteractionSource() }
   Column(
       modifier =
-          // The pill, gap and label (72dp) stand 8dp taller than the tabs, bottoms aligned.
+          // The pill, gap and label (70dp) stand 6dp taller than the tabs, bottoms aligned.
           Modifier.weight(1f)
-              .clickable(role = Role.Button, onClick = onClick)
+              .clickable(
+                  interactionSource = press,
+                  indication = null,
+                  role = Role.Button,
+                  onClick = onClick,
+              )
               .semantics { contentDescription = description }
               .testTag(ScreenTag.NAV_RECORD),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom),
   ) {
-    // As the board renders it: flexbox squeezes the 60px disc to 46px tall, so a 60x46 pill in a
-    // 4dp ring of the page colour (68x54), with the board's green drop shadow.
+    // A 60x44 pill in a 4dp ring of the page colour (68x52), on a soft 2dp shadow.
     Box(
         modifier =
-            Modifier.size(68.dp, 54.dp)
-                .drawBehind { boardShadow(p.bg) }
+            Modifier.size(68.dp, 52.dp)
+                .shadow(2.dp, PILL)
                 .background(p.bg, PILL)
                 .padding(4.dp)
-                .background(p.primary, PILL),
+                .clip(PILL)
+                .background(p.primary)
+                .indication(press, ripple(color = Color.White)),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
@@ -530,31 +537,12 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
     Text(
         stringResource(R.string.nav_record),
         color = if (p.isDark) p.accent else p.primary,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelMedium,
     )
   }
 }
 
-/**
- * The board's `box-shadow: 0 8px 18px rgba(6, 75, 66, 0.35)` under the pill. `Modifier.shadow`
- * scales its colour by the system shadow alpha (about 0.2), which left it invisible.
- */
-private fun DrawScope.boardShadow(ring: Color) = drawIntoCanvas { canvas ->
-  val paint =
-      Paint().asFrameworkPaint().apply {
-        color = ring.toArgb()
-        // CSS blur 18px is a Gaussian sigma of 9; Android's radius is about sigma / 0.57.
-        setShadowLayer(15.dp.toPx(), 0f, 8.dp.toPx(), RECORD_SHADOW.toArgb())
-      }
-  val radius = size.height / 2
-  canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, radius, radius, paint)
-}
-
-private val HALO_SHAPE = RoundedCornerShape(17.dp)
 private val PILL = RoundedCornerShape(percent = 50)
-private val RECORD_SHADOW = Color(0x59064B42)
 private val PENDING_AMBER = Color(0xFFE0A23A)
 private val OFFLINE_RED = Color(0xFFC13634)
 

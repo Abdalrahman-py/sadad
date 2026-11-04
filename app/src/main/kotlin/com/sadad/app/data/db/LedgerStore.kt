@@ -4,6 +4,9 @@ import androidx.room.withTransaction
 import com.sadad.ledger.Changes
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.ReceiptStatus
+import java.time.Instant
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /**
  * The Room side of the in-memory [LedgerState]: [load] rebuilds it once when a store opens, and
@@ -21,16 +24,135 @@ class LedgerStore(
     private val events: EventDao = db.eventDao(),
 ) {
   /** The stored rows, ordered by `createdSeq`, which is the event order the maps must keep. */
-  suspend fun load(): LedgerState {
+  suspend fun load(): LedgerState =
+      // One transaction: a statement reads this while a sync page may be landing.
+      db.withTransaction {
+        val stored = meta.get() ?: return@withTransaction LedgerState.EMPTY
+        LedgerState(
+            stored.storeId,
+            stored.epoch,
+            stored.cursor,
+            contacts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            debts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            payments.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            offsets.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        )
+      }
+
+  /**
+   * The stored rows of exactly one person: the Contact row even when archived, their Debts, the
+   * Payments on those Debts, the Offsets on either side of them, each map in `createdSeq` order
+   * (the rule of [load], for one person). A contact id that is not stored yet (a queued new person)
+   * yields the empty state under the same store meta; null means no `ledger_meta` yet.
+   */
+  suspend fun loadPerson(contactId: String): LedgerState? =
+      // One transaction: a sync page that lands between the five reads must not tear the person.
+      db.withTransaction {
+        val stored = meta.get() ?: return@withTransaction null
+        personState(
+            stored,
+            contacts.byId(contactId),
+            debts.ofContact(contactId),
+            payments.ofContact(contactId),
+            offsets.ofContact(contactId),
+        )
+      }
+
+  /**
+   * [loadPerson] again after each commit that touches the ledger tables: one trigger and one
+   * transactional read, so a sync page never surfaces half-applied.
+   */
+  fun observePerson(contactId: String): Flow<LedgerState?> = changes().map { loadPerson(contactId) }
+
+  /** Emits at once, then after each commit that touches the ledger tables. */
+  fun changes(): Flow<Set<String>> =
+      db.invalidationTracker.createFlow("contacts", "debts", "payments", "offsets", "ledger_meta")
+
+  /**
+   * The rows Activity needs for `[from, to)`, null meaning unbounded: the debts created in it, the
+   * debts of the payments created in it and [queuedDebts]; every payment and offset on those debts,
+   * so what is left on them stays exact; their contacts and [queuedContacts]. Each map keeps
+   * `createdSeq` order. Without `ledger_meta` it is the empty state, as in [load].
+   */
+  suspend fun loadPeriod(
+      from: Instant?,
+      to: Instant?,
+      queuedDebts: Set<String>,
+      queuedContacts: Set<String>,
+  ): LedgerState =
+      // One transaction: a sync page that lands between the reads must not tear the period.
+      db.withTransaction {
+        val stored = meta.get() ?: return@withTransaction LedgerState.EMPTY
+        val period =
+            debts.inPeriod(
+                from?.toEpochMilli() ?: Long.MIN_VALUE,
+                to?.toEpochMilli() ?: Long.MAX_VALUE,
+            )
+        val debtRows =
+            (period + queuedDebts.chunked(ID_CHUNK).flatMap { debts.byIds(it) })
+                .sortedBy { it.createdSeq }
+                .associateByTo(LinkedHashMap()) { it.id }
+        val debtIds = debtRows.keys.chunked(ID_CHUNK)
+        val contactIds = debtRows.values.mapTo(HashSet(queuedContacts)) { it.contactId }
+        LedgerState(
+            stored.storeId,
+            stored.epoch,
+            stored.cursor,
+            contactIds
+                .chunked(ID_CHUNK)
+                .flatMap { contacts.byIds(it) }
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            debtRows.mapValuesTo(LinkedHashMap()) { it.value.toRow() },
+            debtIds
+                .flatMap { payments.onDebts(it) }
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            // An offset whose two debts fall in two chunks comes back twice; the map keeps one.
+            debtIds
+                .flatMap { offsets.onDebts(it) }
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        )
+      }
+
+  /** Only the archived contacts, in `createdSeq` order; what the trash lists. */
+  suspend fun loadArchived(): LedgerState {
     val stored = meta.get() ?: return LedgerState.EMPTY
     return LedgerState(
         stored.storeId,
         stored.epoch,
         stored.cursor,
-        contacts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-        debts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-        payments.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
-        offsets.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        contacts.archived().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        emptyMap(),
+        emptyMap(),
+    )
+  }
+
+  private fun personState(
+      stored: LedgerMetaEntity,
+      contact: ContactEntity?,
+      debts: List<DebtEntity>,
+      payments: List<PaymentEntity>,
+      offsets: List<OffsetEntity>,
+  ): LedgerState {
+    contact
+        ?: return LedgerState(
+            stored.storeId,
+            stored.epoch,
+            stored.cursor,
+            emptyMap(),
+            emptyMap(),
+            emptyMap(),
+        )
+    return LedgerState(
+        stored.storeId,
+        stored.epoch,
+        stored.cursor,
+        linkedMapOf(contact.id to contact.toRow()),
+        debts.associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        payments.associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        offsets.associateTo(LinkedHashMap()) { it.id to it.toRow() },
     )
   }
 
@@ -100,5 +222,8 @@ class LedgerStore(
   companion object {
     /** ponytail: history shows the latest 200; raise the cap if a screen needs more. */
     const val EVENT_KEEP = 500
+
+    /** Under SQLite's 999 bound variables on older Android; an offset query binds a chunk twice. */
+    private const val ID_CHUNK = 400
   }
 }

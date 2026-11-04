@@ -92,6 +92,49 @@ dbTest(
   },
 );
 
+dbTest(
+  "a revoked installation can be reactivated, within the cap",
+  async () => {
+    const store = await h.seedStore();
+    const device = await pendingDevice(
+      store.storeId,
+      "Redmi",
+      "2026-10-05T10:00:00Z",
+    );
+    const send = (id: string, decision: string) =>
+      h.send(admin.jwt, "POST", `/admin/installations/${id}/${decision}`, {
+        reason: "اختبار",
+      });
+    assertEqual((await send(device, "approve")).status, 200);
+
+    const active = await send(device, "reactivate");
+    assertEqual(active.status, 409);
+    await active.body?.cancel();
+
+    assertEqual((await send(device, "revoke")).status, 200);
+    assertEqual(await status(device), "revoked");
+
+    const replacement = await pendingDevice(
+      store.storeId,
+      "Oppo",
+      "2026-10-05T11:00:00Z",
+    );
+    assertEqual((await send(replacement, "approve")).status, 200);
+    await assertRefusal(
+      await send(device, "reactivate"),
+      refusals.belowActiveDevices,
+    );
+    assertEqual((await send(replacement, "revoke")).status, 200);
+
+    const back = await send(device, "reactivate");
+    assertEqual(await back.json(), {
+      ok: true,
+      installation: { installationId: device, generation: 1, status: "active" },
+    });
+    assertEqual(await status(device), "active");
+  },
+);
+
 dbTest("approve then revoke an installation", async () => {
   const store = await h.seedStore();
   const device = await pendingDevice(

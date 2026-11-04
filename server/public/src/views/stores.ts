@@ -12,7 +12,7 @@ import {
 import { empty, loadState, pill, searchBox } from "./common";
 
 const verifiedTick = () => html`
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#064B42" stroke-width="2.4"
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="tone-ok" stroke="currentColor" stroke-width="1.5"
     stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="موثّق">
     <path d="M5 12.5l4.5 4.5L19 7"/>
   </svg>`;
@@ -67,7 +67,7 @@ export function storesView(model: Model, actions: StoresActions) {
         ${
           canWrite(model)
             ? html`<a class="btn btn-primary btn-lg" href="#/create">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
                   stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
                 إنشاء حساب متجر</a>`
             : nothing

@@ -50,13 +50,19 @@
     <string name="quickadd_pay_customer">استلام دفعة</string>
     <string name="quickadd_debt_supplier">بضاعة بالدين</string>
     <string name="quickadd_pay_supplier">دفع للمورد</string>
-    <string name="quickadd_due">الاستحقاق</string>
-    <string name="quickadd_note">البيان</string>
+    <string name="quickadd_due">موعد الاستحقاق</string>
+    <string name="quickadd_note">ملاحظة</string>
     <string name="quickadd_due_on">يستحق %1$s</string>
     <string name="quickadd_due_confirm">تم</string>
     <string name="quickadd_due_clear">إزالة</string>
-    <string name="quickadd_note_hint">مثلًا: خبز وحليب</string>
+    <string name="quickadd_note_hint">مثلا: كولا و حاجات</string>
     <string name="quickadd_note_save">حفظ</string>
+    <!-- The suggestions the note dialog offers to fill the line with a tap. -->
+    <string-array name="quickadd_note_suggestions">
+        <item>حاجات</item>
+        <item>كولا</item>
+        <item>اندومي</item>
+    </string-array>
     <string name="quickadd_method_cash">نقدي</string>
     <string name="quickadd_method_bank">بنكي</string>
     <string name="quickadd_method_wallet">محفظة</string>
@@ -81,4 +87,9 @@
     <string name="quickadd_open_contact">صفحة %1$s</string>
     <string name="quickadd_home">الرئيسية</string>
     <string name="quickadd_net_label">%1$s الآن:</string>
+    <string name="quickadd_contacts_section">من جهات الاتصال</string>
+    <string name="quickadd_contacts_allow">اسمح بقراءة جهات الاتصال</string>
+    <string name="quickadd_new_person_title">شخص جديد</string>
+    <string name="quickadd_new_person_continue">متابعة</string>
+    <string name="quickadd_open_record">فتح سجل الشخص</string>
 </resources>

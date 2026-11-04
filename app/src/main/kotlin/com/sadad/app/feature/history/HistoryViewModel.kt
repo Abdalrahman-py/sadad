@@ -21,11 +21,14 @@ import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -88,10 +91,10 @@ internal fun historyMovements(
         )
   }
   for (debt in view.debts) {
-    if (debt.createdAt !in bounds || debt.id in pairedCredits) continue
+    // A Debt corrected to zero was deleted.
+    if (debt.amount == Cents.ZERO || debt.createdAt !in bounds || debt.id in pairedCredits) continue
     val name = names[debt.contactId] ?: continue
     val creditOnly = debt.origin == DebtOrigin.OVERPAYMENT
-    if (creditOnly && debt.amount == Cents.ZERO) continue
     rows +=
         HistoryMovement(
             id = debt.id,
@@ -119,19 +122,22 @@ class HistoryViewModel(
   private val period = MutableStateFlow(periodOf(saved.get<String>(PERIOD)))
   private val export = MutableStateFlow(Export())
 
-  /** The view the statement is written from: the newest one the screen has shown. */
-  @Volatile private var currentView: LedgerView? = null
+  /** A view with the period it was read for: the list never cuts it to another period's bounds. */
+  private val periodView: Flow<Pair<Period, LedgerView?>> = period.flatMapLatest { period ->
+    source.view(period.bounds(clock.zone)).map { view -> period to view }
+  }
 
   private val rows: StateFlow<HistoryUiState> =
-      combine(source.view, newestFirst, period, export) { view, newestFirst, period, export ->
-            currentView = view
+      combine(periodView, newestFirst, period, export) { (read, view), newestFirst, period, export
+            ->
             HistoryUiState(
                 newestFirst = newestFirst,
                 period = period,
+                // The last period's list stays up, not loaded, until the new one is read.
                 movements =
                     if (view == null) emptyList()
-                    else historyMovements(view, period.bounds(clock.zone), newestFirst),
-                loaded = view != null,
+                    else historyMovements(view, read.bounds(clock.zone), newestFirst),
+                loaded = view != null && read == period,
                 saved = export.saved,
                 error = export.error,
             )
@@ -164,43 +170,41 @@ class HistoryViewModel(
   fun dismissExportResult() = export.update { it.copy(saved = false, error = null) }
 
   fun saveStatement(context: Context, uri: Uri, format: StatementFormat) {
-    val view = currentView
-    if (view == null) {
-      export.update { it.copy(error = context.getString(R.string.history_export_failed)) }
-      return
-    }
     if (export.value.busy) return
-    if (view.contacts.isEmpty()) {
-      export.update {
-        it.copy(saved = false, error = context.getString(R.string.history_export_empty))
-      }
-      return
-    }
     export.update { it.copy(busy = true, saved = false, error = null) }
-    val account = source.account()
-    val header =
-        StatementHeader(
-            store =
-                account?.storeName?.ifBlank { null }
-                    ?: context.getString(R.string.history_default_store),
-            owner = account?.ownerName.orEmpty(),
-            periodLabel = periodLabel(context, period.value),
-        )
-    val bounds = period.value.bounds(clock.zone)
+    val chosen = period.value
+    val bounds = chosen.bounds(clock.zone)
     viewModelScope.launch {
       runCatching {
+        val latest = checkNotNull(source.latest()) { "no store is open" }
+        if (latest.view.contacts.isEmpty()) return@runCatching false
+        val account = latest.account
+        val header =
+            StatementHeader(
+                store =
+                    account.storeName.ifBlank { null }
+                        ?: context.getString(R.string.history_default_store),
+                owner = account.ownerName,
+                periodLabel = periodLabel(context, chosen),
+            )
         StatementExport.save(
             context = context,
             uri = uri,
             format = format,
             header = header,
-            view = view,
+            view = latest.view,
             contactId = null,
             from = bounds.from,
             to = bounds.to,
         )
+        true
       }
-          .onSuccess { export.update { it.copy(busy = false, saved = true) } }
+          .onSuccess { written ->
+            export.update {
+              if (written) it.copy(busy = false, saved = true)
+              else it.copy(busy = false, error = context.getString(R.string.history_export_empty))
+            }
+          }
           .onFailure { failure ->
             if (failure is CancellationException) throw failure
             export.update {

@@ -1,4 +1,8 @@
+<!-- Material Symbols Rounded «person_add». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FF000000" android:pathData="M15,12c2.21,0 3.99,-1.79 3.99,-4S17.21,4 15,4 11.01,5.79 11.01,8 12.79,12 15,12zM6,10V7H4v3H1v2h3v3h2v-3h3v-2H6zM15,14c-2.67,0 -8,1.34 -8,4v2h16v-2c0,-2.66 -5.33,-4 -8,-4z" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 720 -520 h -80 q -17 0 -28.5 -11.5 T 600 -560 q 0 -17 11.5 -28.5 T 640 -600 h 80 v -80 q 0 -17 11.5 -28.5 T 760 -720 q 17 0 28.5 11.5 T 800 -680 v 80 h 80 q 17 0 28.5 11.5 T 920 -560 q 0 17 -11.5 28.5 T 880 -520 h -80 v 80 q 0 17 -11.5 28.5 T 760 -400 q -17 0 -28.5 -11.5 T 720 -440 v -80 Z m -473 -7 q -47 -47 -47 -113 t 47 -113 q 47 -47 113 -47 t 113 47 q 47 47 47 113 t -47 113 q -47 47 -113 47 t -113 -47 Z M 40 -240 v -32 q 0 -34 17.5 -62.5 T 104 -378 q 62 -31 126 -46.5 T 360 -440 q 66 0 130 15.5 T 616 -378 q 29 15 46.5 43.5 T 680 -272 v 32 q 0 33 -23.5 56.5 T 600 -160 H 120 q -33 0 -56.5 -23.5 T 40 -240 Z m 80 0 h 480 v -32 q 0 -11 -5.5 -20 T 580 -306 q -54 -27 -109 -40.5 T 360 -360 q -56 0 -111 13.5 T 140 -306 q -9 5 -14.5 14 t -5.5 20 v 32 Z m 296.5 -343.5 Q 440 -607 440 -640 t -23.5 -56.5 Q 393 -720 360 -720 t -56.5 23.5 Q 280 -673 280 -640 t 23.5 56.5 Q 327 -560 360 -560 t 56.5 -23.5 Z M 360 -640 Z m 0 400 Z" />
+    </group>
 </vector>

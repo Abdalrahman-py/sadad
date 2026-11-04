@@ -44,6 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -52,7 +53,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -112,8 +112,8 @@ fun LoginScreen(
             Modifier.fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    start = 18.dp,
-                    end = 18.dp,
+                    start = 16.dp,
+                    end = 16.dp,
                     top = if (onBack != null) 16.dp else 56.dp,
                     bottom = 32.dp,
                 ),
@@ -160,7 +160,7 @@ fun LoginScreen(
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           Text(stringResource(R.string.login_no_account), color = p.muted, fontSize = 13.sp)
           SadadButton(
@@ -214,8 +214,8 @@ fun PasswordChangeScreen(
           modifier
               .fillMaxSize()
               .verticalScroll(rememberScrollState())
-              .padding(start = 18.dp, end = 18.dp, top = 40.dp, bottom = 28.dp),
-      verticalArrangement = Arrangement.spacedBy(18.dp),
+              .padding(start = 16.dp, end = 16.dp, top = 40.dp, bottom = 28.dp),
+      verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
     Appear {
       StepIntro(
@@ -256,6 +256,7 @@ fun PasswordChangeScreen(
         Row(
             Modifier.fillMaxWidth()
                 .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .toggleable(value = shown, role = Role.Checkbox, onValueChange = { shown = it }),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -294,8 +295,8 @@ private fun PasswordRules(rules: List<Pair<String, Boolean>>) {
   val unmet = stringResource(R.string.password_rule_unmet)
   Column(
       Modifier.fillMaxWidth()
-          .background(p.bg, RoundedCornerShape(13.dp))
-          .padding(horizontal = 14.dp, vertical = 12.dp)
+          .background(p.bg, RoundedCornerShape(12.dp))
+          .padding(horizontal = 16.dp, vertical = 12.dp)
           .semantics { contentDescription = heading },
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -317,7 +318,7 @@ private fun PasswordRules(rules: List<Pair<String, Boolean>>) {
             painterResource(if (ok) R.drawable.ic_check else R.drawable.ic_circle),
             null,
             tint = ink,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(16.dp),
         )
         Text(label, color = ink, fontSize = 13.sp, lineHeight = 20.sp)
       }
@@ -339,10 +340,10 @@ fun AwaitingApprovalScreen(
   if (state.destination != null || state.loading) return
   val p = sadadPalette
 
-  Column(modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, top = 40.dp, bottom = 28.dp)) {
+  Column(modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 40.dp, bottom = 28.dp)) {
     Column(
         Modifier.weight(1f).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
       Appear {
         StepIntro(
@@ -388,12 +389,12 @@ fun AwaitingApprovalScreen(
     Column(
         Modifier.fillMaxWidth().padding(top = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       AnimatedVisibility(state.busy, enter = fadeIn(), exit = fadeOut()) {
         CircularProgressIndicator(
             color = if (p.isDark) p.accent else p.primary,
-            strokeWidth = 3.dp,
+            strokeWidth = 4.dp,
             modifier = Modifier.size(28.dp),
         )
       }
@@ -423,9 +424,9 @@ private fun ApprovalSteps(needsDetails: Boolean, ownerSub: String) {
   val description = stringResource(R.string.approval_steps)
   Column(
       Modifier.fillMaxWidth()
-          .background(p.card, RoundedCornerShape(18.dp))
-          .border(1.dp, p.line, RoundedCornerShape(18.dp))
-          .padding(18.dp)
+          .background(p.card, RoundedCornerShape(16.dp))
+          .border(1.dp, p.line, RoundedCornerShape(16.dp))
+          .padding(16.dp)
           .semantics { contentDescription = description },
   ) {
     StepRow(
@@ -489,13 +490,11 @@ private fun StepRow(label: String, sub: String?, done: Boolean, current: Boolean
       }
       if (line) Box(Modifier.width(2.dp).height(28.dp).background(p.line))
     }
-    Column(Modifier.padding(top = 3.dp, bottom = 12.dp)) {
+    Column(Modifier.padding(top = 4.dp, bottom = 12.dp)) {
       Text(
           label,
           color = if (done || current) p.text else p.muted,
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.titleSmall,
       )
       if (sub != null) Text(sub, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
     }
@@ -519,8 +518,8 @@ private fun AuthError(text: String?, textAlign: TextAlign? = null) {
         textAlign = textAlign,
         modifier =
             Modifier.fillMaxWidth()
-                .background(p.owesSoft, RoundedCornerShape(13.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .background(p.owesSoft, RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
     )
   }
 }
@@ -534,7 +533,7 @@ private fun EyeToggle(shown: Boolean, onToggle: () -> Unit) {
         contentDescription =
             stringResource(if (shown) R.string.password_hide else R.string.password_show),
         tint = sadadPalette.muted,
-        modifier = Modifier.size(22.dp),
+        modifier = Modifier.size(24.dp),
     )
   }
 }
