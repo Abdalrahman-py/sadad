@@ -29,6 +29,21 @@ import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 class DueReminderWorkerTest {
+  /** A second connection held the write lock over the whole-store read: SQLITE_BUSY in the app. */
+  @Test
+  fun aBackgroundReadOfAnOpenStoreUsesItsOneDatabase() = runTest {
+    val fixture = TestGraph.signedIn()
+    try {
+      val store = checkNotNull(fixture.graph.current.value)
+
+      val used = fixture.graph.withDatabase(store.account.storeUserId) { it }
+
+      assertSame(store.database, used)
+    } finally {
+      fixture.close()
+    }
+  }
+
   @Test
   fun checksEveryStoreAndOnlyPostsEachOpenDueDebtOnce() = runTest {
     val fixture = TestGraph.signedIn()
