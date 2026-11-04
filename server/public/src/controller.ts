@@ -45,6 +45,7 @@ const QUICK_REASON = {
   reject: "رفض طلب جهاز من شاشة المهام",
   approveDialog: "اعتماد جهاز من لوحة الإدارة",
   revoke: "إلغاء اعتماد جهاز من لوحة الإدارة",
+  reactivate: "إعادة اعتماد جهاز من لوحة الإدارة",
   suspend: "تجميد الحساب من لوحة الإدارة",
   activate: "تفعيل الحساب من لوحة الإدارة",
 } as const;
@@ -664,6 +665,22 @@ export class Controller implements Actions {
       busy: false,
       run: async (reason) => {
         await this.api.decideInstallation(installationId, "revoke", reason);
+        this.afterDeviceChange(storeId);
+      },
+    });
+
+  reactivateDevice = (installationId: string, storeId: number) =>
+    this.openDialog({
+      kind: "reason",
+      title: "إعادة اعتماد الجهاز",
+      description: "يعود هذا الجهاز للمزامنة بنفس حسابه وبياناته، بلا تثبيت من جديد.",
+      confirm: "إعادة الاعتماد",
+      danger: false,
+      value: QUICK_REASON.reactivate,
+      error: "",
+      busy: false,
+      run: async (reason) => {
+        await this.api.decideInstallation(installationId, "reactivate", reason);
         this.afterDeviceChange(storeId);
       },
     });

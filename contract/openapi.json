@@ -3225,6 +3225,158 @@
         }
       }
     },
+    "/v1/admin/installations/{installationId}/reactivate": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Gives a revoked device its access back, same key and generation, within the store's device cap (device_limit_reached otherwise). admin only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "installationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The device's new status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "installation": {
+                      "type": "object",
+                      "properties": {
+                        "installationId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "generation": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "active",
+                            "revoked"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "installationId",
+                        "status"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "installation"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/admin/recovery": {
       "post": {
         "tags": [

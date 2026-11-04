@@ -136,7 +136,11 @@ const deviceCard = (
         <code>${phone.installationId}</code>
       </div>
       ${
-        write && phone.status !== "revoked"
+        write && phone.status === "revoked"
+          ? html`<button class="btn btn-primary" type="button" ?disabled=${store.archived}
+              @click=${() => actions.reactivateDevice(phone.installationId, store.id)}>
+              إعادة الاعتماد</button>`
+          : write
           ? html`<div class="btn-group">
               ${
                 phone.status === "pending"
