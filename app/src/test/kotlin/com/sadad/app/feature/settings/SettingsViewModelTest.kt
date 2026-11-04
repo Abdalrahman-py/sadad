@@ -369,6 +369,26 @@ class SettingsViewModelTest {
   }
 
   @Test
+  fun aQueuedPaymentOnAQueuedDebtOfAQueuedContactIsNamedFromTheQueue() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var contact = ""
+        var debt = ""
+        fixture.seed { contact = addContact("نور", null, null, null, null).getOrThrow() }
+        fixture.seed {
+          debt = addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+        }
+        fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
+        val model = kit.viewModel()
+
+        val state = model.state.first { it.loaded && it.devices.unsent == 3 }
+
+        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "نور", Cents(2_000)), state.devices.newest)
+      }
+    }
+  }
+
+  @Test
   fun threeWaitingEntriesAreCountedAndTheNewestIsListed() = runTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->

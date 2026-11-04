@@ -217,6 +217,158 @@ class HistoryViewModelTest {
     }
   }
 
+  // The key rule of ticket 165: the list from the period's rows equals the whole-store one.
+  @Test
+  fun everyPeriodListsWhatTheWholeStoreViewListsInBothOrders() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = fixture.confirmedContact("سامي", at("2025-12-01T09:00:00Z"))
+      val laila = fixture.confirmedContact("ليلى", at("2025-12-01T10:00:00Z"))
+      val gone = fixture.confirmedContact("محذوف", at("2025-12-01T11:00:00Z"))
+      val old = fixture.confirmedDebt(sami, 10000, at("2025-12-20T09:00:00Z"))
+      val recent = fixture.confirmedDebt(sami, 5000, at("2026-10-02T09:00:00Z"))
+      val hers = fixture.confirmedDebt(laila, 3000, at("2026-10-03T09:00:00Z"))
+      // One saved payment split over an old and a new debt, with its overpayment credit.
+      val splitAt = at("2026-10-10T09:00:00Z")
+      fixture.confirmedPayment(old, 3000, splitAt)
+      fixture.confirmedPayment(recent, 2000, splitAt)
+      fixture.fold(
+          Commands.debtCreate(
+              Events.origin,
+              splitAt,
+              sami,
+              Direction.PAYABLE,
+              Cents(500),
+              debtOrigin = DebtOrigin.OVERPAYMENT,
+          )
+      )
+      val reversed =
+          Commands.paymentCreate(
+              Events.origin,
+              at("2026-10-11T09:00:00Z"),
+              hers,
+              Cents(1000),
+              PaymentMethod.CASH,
+          )
+      fixture.fold(reversed)
+      fixture.fold(
+          Commands.paymentReverse(
+              Events.origin,
+              at("2026-10-12T09:00:00Z"),
+              reversed.entityId,
+              "خطأ",
+          )
+      )
+      // A Debt corrected to zero was deleted.
+      val deleted = fixture.confirmedDebt(laila, 700, at("2026-10-13T09:00:00Z"))
+      fixture.fold(
+          Commands.debtCorrect(
+              Events.origin,
+              at("2026-10-13T10:00:00Z"),
+              deleted,
+              expectedVersion = 1,
+              amount = Cents.ZERO,
+              reason = "حذف",
+          )
+      )
+      fixture.confirmedDebt(gone, 900, at("2026-10-14T09:00:00Z"))
+      fixture.fold(
+          Commands.contactArchive(
+              Events.origin,
+              at("2026-10-14T10:00:00Z"),
+              gone,
+              expectedVersion = 1,
+              reason = "حذف",
+          )
+      )
+      fixture.confirmedPayment(old, 1000, at("2026-10-17T07:00:00Z"))
+      // Queued: a debt, and a payment on a debt from before every bounded period.
+      val scope = checkNotNull(fixture.graph.current.value)
+      scope.outbox.append(
+          listOf(
+              Commands.debtCreate(
+                  Events.origin,
+                  at("2026-10-17T08:00:00Z"),
+                  laila,
+                  Direction.RECEIVABLE,
+                  Cents(1200),
+              ),
+              Commands.paymentCreate(
+                  Events.origin,
+                  at("2026-10-17T08:30:00Z"),
+                  old,
+                  Cents(400),
+                  PaymentMethod.CASH,
+              ),
+          )
+      )
+      val whole =
+          checkNotNull(
+              scope.repository.view.first { it?.pendingDebts == 1 && it.pendingPayments == 1 }
+          )
+      val model = model(fixture)
+
+      val periods =
+          listOf(
+              periodOf(PeriodPreset.DAY, LocalDate.now(clock)),
+              periodOf(PeriodPreset.MONTH, LocalDate.now(clock)),
+              periodOf(PeriodPreset.YEAR, LocalDate.now(clock)),
+              Period.All,
+              Period.Custom(LocalDate.of(2026, 10, 10), LocalDate.of(2026, 10, 13)),
+          )
+      for (period in periods) {
+        model.select(period)
+        for (newestFirst in listOf(true, false)) {
+          model.setNewestFirst(newestFirst)
+          val state =
+              model.state.first {
+                it.loaded && it.period == period && it.newestFirst == newestFirst
+              }
+          assertEquals(
+              "$period newestFirst=$newestFirst",
+              historyMovements(whole, period.bounds(clock.zone), newestFirst),
+              state.movements,
+          )
+        }
+      }
+      model.select(periods[0])
+      model.setNewestFirst(true)
+      val today = model.state.first { it.loaded && it.period == periods[0] && it.newestFirst }
+      assertEquals(listOf(400L, 1200L, 1000L), today.movements.map { it.amount.value })
+      assertEquals(listOf(true, true, false), today.movements.map { it.pending })
+      model.select(Period.All)
+      val all = model.state.first { it.loaded && it.period == Period.All }
+      assertTrue(all.movements.none { it.amount == Cents.ZERO })
+      assertTrue(all.movements.none { it.id == reversed.entityId || it.name == "محذوف" })
+      assertEquals(1, all.movements.count { it.amount == Cents(5500) })
+    }
+  }
+
+  @Test
+  fun theListNeverAsksForTheWholeStoreView() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
+      fixture.confirmedDebt(sami, 1000, at("2026-10-17T07:00:00Z"))
+      val graph = fixture.graph.statementSource()
+      val asked = mutableListOf<PeriodBounds>()
+      val source =
+          object : StatementSource {
+            override fun view(bounds: PeriodBounds) = graph.view(bounds).also { asked += bounds }
+
+            override fun latest() = error("the list must not read the whole-store view")
+          }
+      val model =
+          HistoryViewModel(source, SavedStateHandle(), clock).also {
+            fixture.closeWithStore(it.viewModelScope)
+          }
+
+      model.selectPreset(PeriodPreset.DAY)
+
+      val state = model.state.first { it.loaded && it.period is Period.Day }
+      assertEquals(1, state.movements.size)
+      assertEquals(state.period.bounds(clock.zone), asked.last())
+    }
+  }
+
   private val clock: Clock =
       Clock.fixed(
           LocalDate.of(2026, 10, 17).atTime(12, 0).atZone(ZoneId.of("Asia/Gaza")).toInstant(),

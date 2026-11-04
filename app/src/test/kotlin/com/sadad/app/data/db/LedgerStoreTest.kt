@@ -276,6 +276,146 @@ class LedgerStoreTest {
   }
 
   @Test
+  fun thePeriodReadReturnsExactlyTheRowsTheRuleNames() = runTest {
+    val store = LedgerStore(db)
+    val a = contactId(1)
+    val b = contactId(2)
+    val c = contactId(3)
+    val quiet = contactId(4)
+    val queuedFor = contactId(5)
+    val inPeriod = contactId(11)
+    val paidInPeriod = contactId(12)
+    val named = contactId(13)
+    val untouched = contactId(14)
+    val offsetSide = contactId(15)
+    val oldPayment = contactId(21)
+    val periodPayment = contactId(22)
+    val offsetId = contactId(31)
+    fun debt(contactId: String, id: String, minute: Int, sequence: Long, direction: Direction) =
+        Events.accepted(
+            Commands.debtCreate(
+                Events.origin,
+                Events.at(minute),
+                contactId = contactId,
+                direction = direction,
+                amount = Cents(1_000),
+                entityId = id,
+            ),
+            sequence,
+        )
+    fun payment(debtId: String, id: String, minute: Int, sequence: Long) =
+        Events.accepted(
+            Commands.paymentCreate(
+                Events.origin,
+                Events.at(minute),
+                debtId = debtId,
+                amount = Cents(100),
+                method = PaymentMethod.CASH,
+                entityId = id,
+            ),
+            sequence,
+        )
+    val page =
+        Events.page(
+            listOf(
+                Events.accepted(contact("أ", a), 1),
+                Events.accepted(contact("ب", b), 2),
+                Events.accepted(contact("ج", c), 3),
+                Events.accepted(contact("هادئ", quiet), 4),
+                Events.accepted(contact("مؤجل", queuedFor), 5),
+                debt(b, paidInPeriod, 1, 6, Direction.RECEIVABLE),
+                debt(c, named, 2, 7, Direction.RECEIVABLE),
+                debt(quiet, untouched, 3, 8, Direction.RECEIVABLE),
+                debt(a, offsetSide, 4, 9, Direction.PAYABLE),
+                payment(paidInPeriod, oldPayment, 5, 10),
+                debt(a, inPeriod, 10, 11, Direction.RECEIVABLE),
+                Events.accepted(
+                    Commands.debtOffset(
+                        Events.origin,
+                        Events.at(30),
+                        receivableDebtId = inPeriod,
+                        payableDebtId = offsetSide,
+                        amount = Cents(100),
+                        entityId = offsetId,
+                    ),
+                    12,
+                ),
+                payment(paidInPeriod, periodPayment, 11, 13),
+            )
+        )
+    val state = LedgerState.EMPTY.apply(page)
+    store.persist(LedgerState.EMPTY, state, page)
+
+    val period =
+        store.loadPeriod(Events.at(10), Events.at(12), setOf(named), setOf(queuedFor))
+
+    assertEquals(Events.STORE_ID, period.storeId)
+    assertEquals(Events.EPOCH, period.epoch)
+    assertEquals(13L, period.cursor)
+    assertEquals(listOf(paidInPeriod, named, inPeriod), period.debts.keys.toList())
+    assertEquals(
+        "every payment on those debts, not only the period's",
+        listOf(oldPayment, periodPayment),
+        period.payments.keys.toList(),
+    )
+    assertEquals(listOf(offsetId), period.offsets.keys.toList())
+    assertEquals(listOf(a, b, c, queuedFor), period.contacts.keys.toList())
+
+    val end = store.loadPeriod(Events.at(9), Events.at(10), emptySet(), emptySet())
+    assertTrue("the end is exclusive", end.debts.isEmpty() && end.contacts.isEmpty())
+    assertEquals(
+        "unbounded holds every debt",
+        state.debts.keys,
+        store.loadPeriod(null, null, emptySet(), emptySet()).debts.keys,
+    )
+  }
+
+  @Test
+  fun thePeriodAndArchivedReadsAreEmptyWhileThereIsNoLedgerMeta() = runTest {
+    val store = LedgerStore(db)
+    assertEquals(LedgerState.EMPTY, store.loadPeriod(null, null, emptySet(), emptySet()))
+    assertEquals(LedgerState.EMPTY, store.loadArchived())
+  }
+
+  @Test
+  fun theArchivedReadHoldsOnlyArchivedContacts() = runTest {
+    val store = LedgerStore(db)
+    val kept = contactId(1)
+    val first = contactId(2)
+    val second = contactId(3)
+    fun archive(id: String, sequence: Long) =
+        Events.accepted(
+            Commands.contactArchive(
+                Events.origin,
+                Events.at(1),
+                id,
+                expectedVersion = 1,
+                reason = "حذف",
+                entityId = id,
+            ),
+            sequence,
+        )
+    val page =
+        Events.page(
+            listOf(
+                Events.accepted(contact("أ", kept), 1),
+                Events.accepted(contact("ب", first), 2),
+                Events.accepted(contact("ج", second), 3),
+                archive(second, 4),
+                archive(first, 5),
+            )
+        )
+    val state = LedgerState.EMPTY.apply(page)
+    store.persist(LedgerState.EMPTY, state, page)
+
+    val archived = store.loadArchived()
+
+    assertEquals(listOf(first, second), archived.contacts.keys.toList())
+    assertTrue(archived.debts.isEmpty())
+    assertEquals(5L, archived.cursor)
+  }
+
+  @Test
   fun loadsRowsInCreatedSequenceOrderAndKeepsCreatedSeqOnUpdate() = runTest {
     val store = LedgerStore(db)
     // Rows created in sequences 3, 1, 2, so the table's own order cannot be the answer.

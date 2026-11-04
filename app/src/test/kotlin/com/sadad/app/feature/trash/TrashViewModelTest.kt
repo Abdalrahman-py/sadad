@@ -117,6 +117,20 @@ class TrashViewModelTest {
   }
 
   @Test
+  fun theTrashListsTheArchivedContactsOfTheWholeStoreViewInOrder() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val first = fixture.archiveOne("سامي")
+      val second = fixture.archiveOne("ليلى")
+      val whole = fixture.repository().view.value!!.archivedContacts
+      assertEquals(listOf(first, second), whole.map { it.id })
+
+      val state = fixture.model().state.first { it.items.size == 2 }
+
+      assertEquals(whole, state.items.map { (it as TrashItem.Contact).contact })
+    }
+  }
+
+  @Test
   fun restoringAContactQueuesContactRestoreWithItsVersion() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.archiveOne()
