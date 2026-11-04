@@ -12,12 +12,12 @@ Cloud sessions (claude.ai/code) and teammates clone `Abdalrahman-py/sadad` from 
 ## The ticket is a GitHub issue
 
 - Each open ticket is an issue on `Abdalrahman-py/sadad`, labelled with its status (`ready-for-agent`, `ready-for-human`, `needs-triage`, `claimed`). The issue body is the ticket.
-- Labels: `ready-for-agent` = every `Blocked by` ticket is merged into `main`; `blocked` = at least one is not; `claimed` = someone is on it; `ready-for-human` = the maintainer does it (cutover, phone runs).
+- Labels: `ready-for-agent` = every `Blocked by` ticket is merged into `dev` and its issue closed; `blocked` = at least one is not; `claimed` = someone is on it; `ready-for-human` = the maintainer does it (cutover, phone runs).
 - Start an issue labelled `ready-for-agent`. Claim it before any edit: assign yourself, remove `ready-for-agent`, add `claimed`.
 - Stacking: you may also start a `blocked` issue whose only missing blockers are your own open PRs. Branch from that PR's branch, and name the base PR in your PR body ("Stacked on #<pr>"). Never stack on someone else's unmerged branch.
-- Merging: a teammate on Codex merges their own ticket PR through the `take-ticket` skill (`.agents/skills/take-ticket/`), once its review is answered and the required checks `ci-ok` and `scope` pass. Otherwise the maintainer reviews and merges. Either way the `Unblock tickets` workflow then labels every issue whose `Blocked by` issues are all closed `ready-for-agent`.
+- Merging: a teammate on Codex merges their own ticket PR through the `take-ticket` skill (`.agents/skills/take-ticket/`), once its review is answered and the required checks `ci-ok` and `scope` pass. Otherwise the maintainer reviews and merges. Close the issue after the merge: GitHub applies `Closes #N` only on merges into `main`. The `Unblock tickets` workflow then labels every issue whose `Blocked by` issues are all closed `ready-for-agent`.
 - Work on a branch named `ticket-NN`, and keep to the ticket's "Files you may edit".
-- Deliver a pull request into `main` that says `Closes #<issue>`. Put the ticket's proofs (red and green output, `./tools/check.sh` result, sizes) in the PR body.
+- Deliver a pull request into `dev` that says `Closes #<issue>`. Put the ticket's proofs (red and green output, `./tools/check.sh` result, sizes) in the PR body.
 - Where a ticket says to write in its Comments or Status, comment on the issue instead.
 - Paths like `/home/jade/...`, `.scratch/...` and `ticket start/merge` in a ticket are local-only; ignore them. The Phase 3 planning notes that tickets cite (`decisions.md` Q1–Q11, `gap.md` §0–§8) are in `docs/phase-3/`.
 - A teammate on their own clone uses `gh issue ...` and `gh pr ...` normally; the proxy limits below apply only to cloud sessions.
@@ -38,7 +38,7 @@ gh api $R/issues/7                                                # read the tic
 gh api -X DELETE $R/issues/7/labels/ready-for-agent               # claim it
 gh api -X POST $R/issues/7/labels -f 'labels[]=claimed'
 gh api -X POST $R/issues/7/comments -f body='...'                 # ticket comment
-gh api -X POST $R/pulls -f title='...' -f head=ticket-23 -f base=main -f body='Closes #7 ...'
+gh api -X POST $R/pulls -f title='...' -f head=ticket-23 -f base=dev -f body='Closes #7 ...'
 ```
 
 ## Skills
@@ -47,7 +47,7 @@ gh api -X POST $R/pulls -f title='...' -f head=ticket-23 -f base=main -f body='C
 
 ## Rules that also apply locally
 
-- `./tools/check.sh` is the gate before every PR. Ask the human before every run of it or any section (AGENTS.md, الاختبارات); if the answer is no, say in the PR that it was not run. `./tools/check.sh --changed main` runs only the sections your branch can affect. A teammate on Codex runs none of it locally: the PR's `ci-ok` check is that gate.
+- `./tools/check.sh` is the gate before every PR. Ask the human before every run of it or any section (AGENTS.md, الاختبارات); if the answer is no, say in the PR that it was not run. `./tools/check.sh --changed origin/dev` runs only the sections your branch can affect. A teammate on Codex runs none of it locally: the PR's `ci-ok` check is that gate.
 - Never run `supabase db push`, `supabase functions deploy`, or anything that changes project `vhftjmiltqfwmrszdtgf`. The human deploys. Cloud migration versions differ from local file names, so `db push` would re-run old migrations.
 - All stores, users and rows are test data. Never add upgrade paths, fallbacks, compatibility shims or legacy handling (`docs/ARCHITECTURE.md` Part 3, the clean-cut rule). Delete legacy handling you touch.
 - Device checks (`app/src/androidTest`) need the human's phone; list them in the PR as "not run".

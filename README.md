@@ -58,7 +58,7 @@ sdk.dir=/path/to/Android/Sdk
 
 ```sh
 ./tools/check.sh android        # أو: docs | format | dashboard | edge | database
-./tools/check.sh --changed main # الأقسام التي تمسّها تغييراتك فقط، مع --list للعرض بلا تشغيل
+./tools/check.sh --changed origin/dev # الأقسام التي تمسّها تغييراتك فقط، مع --list للعرض بلا تشغيل
 ./gradlew :ledger-core:test testDebugUnitTest
 ```
 

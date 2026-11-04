@@ -61,6 +61,9 @@ run_docs() {
     echo "$migrations" >&2
     return 1
   fi
+  # No bytecode cache: __pycache__ is not git-ignored.
+  (cd tools && PYTHONDONTWRITEBYTECODE=1 python3 -m unittest test_migration_owners)
+  PYTHONDONTWRITEBYTECODE=1 python3 tools/migration_owners.py
   local migration
   while IFS= read -r migration; do
     if [[ ! "${migration##*/}" =~ ^[0-9]{14}_[a-z0-9_]+\.sql$ ]]; then
