@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -324,7 +325,8 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
   Row(
       Modifier.fillMaxWidth()
           .heightIn(min = 72.dp)
-          .background(p.card, RoundedCornerShape(12.dp))
+          .clip(RoundedCornerShape(12.dp))
+          .background(p.card)
           .border(1.dp, p.line, RoundedCornerShape(12.dp))
           .clickable(onClickLabel = open) { onOpen(movement.contactId) }
           .testTag("history:movement:${movement.id}")

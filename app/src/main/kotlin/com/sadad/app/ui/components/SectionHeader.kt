@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -57,6 +58,7 @@ fun SectionHeader(
           linkLabel,
           modifier =
               Modifier.heightIn(min = 48.dp)
+                  .clip(RoundedCornerShape(8.dp))
                   .clickable(role = Role.Button, onClick = onLink)
                   .padding(horizontal = 4.dp, vertical = 12.dp),
           color = if (p.isDark) p.accent else p.primary,

@@ -5,6 +5,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -41,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -437,6 +441,8 @@ private fun RowScope.TabItem(
   val ink = if (selected) (if (p.isDark) p.accent else p.primary) else p.muted
   // The halo fades in over 580ms when the tab becomes the chosen one, as the Java animator did.
   val halo by animateFloatAsState(if (selected) 1f else 0f, tween(580), label = "halo")
+  // The whole cell takes the tap, but the press shows on the pill, not as a square over the cell.
+  val press = remember { MutableInteractionSource() }
   val description =
       stringResource(
           when (syncDot) {
@@ -450,13 +456,20 @@ private fun RowScope.TabItem(
       modifier =
           Modifier.weight(1f)
               .height(64.dp)
-              .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+              .selectable(
+                  selected = selected,
+                  interactionSource = press,
+                  indication = null,
+                  role = Role.Tab,
+                  onClick = onClick,
+              )
               .semantics { contentDescription = description }
               .testTag(tag),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
   ) {
     Box(Modifier.size(52.dp, 36.dp), contentAlignment = Alignment.Center) {
+      Box(Modifier.matchParentSize().clip(PILL).indication(press, ripple()))
       Box(
           Modifier.matchParentSize()
               .graphicsLayer { alpha = halo }
@@ -486,11 +499,17 @@ private fun RowScope.TabItem(
 private fun RowScope.RecordItem(onClick: () -> Unit) {
   val p = sadadPalette
   val description = stringResource(R.string.nav_record_description)
+  val press = remember { MutableInteractionSource() }
   Column(
       modifier =
           // The pill, gap and label (70dp) stand 6dp taller than the tabs, bottoms aligned.
           Modifier.weight(1f)
-              .clickable(role = Role.Button, onClick = onClick)
+              .clickable(
+                  interactionSource = press,
+                  indication = null,
+                  role = Role.Button,
+                  onClick = onClick,
+              )
               .semantics { contentDescription = description }
               .testTag(ScreenTag.NAV_RECORD),
       horizontalAlignment = Alignment.CenterHorizontally,
@@ -503,7 +522,9 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
                 .shadow(2.dp, PILL)
                 .background(p.bg, PILL)
                 .padding(4.dp)
-                .background(p.primary, PILL),
+                .clip(PILL)
+                .background(p.primary)
+                .indication(press, ripple(color = Color.White)),
         contentAlignment = Alignment.Center,
     ) {
       Icon(

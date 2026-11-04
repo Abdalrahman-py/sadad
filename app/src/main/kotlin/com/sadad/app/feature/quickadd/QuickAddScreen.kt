@@ -404,6 +404,7 @@ private fun PersonRow(person: QuickAddPerson, onClick: () -> Unit) {
           Modifier.fillMaxWidth()
               .heightIn(min = 64.dp)
               .testTag(QuickAddTags.person(person.id))
+              .clip(RoundedCornerShape(12.dp))
               .clickable(onClick = onClick)
               .semantics { role = Role.Button },
   ) {
@@ -456,6 +457,7 @@ private fun AddNewRow(name: String, onClick: () -> Unit) {
               .heightIn(min = 64.dp)
               .dashedBorder(p.muted, 12.dp)
               .testTag(QuickAddTags.ADD_NEW)
+              .clip(RoundedCornerShape(12.dp))
               .clickable(onClick = onClick)
               .semantics { role = Role.Button },
   ) {
@@ -722,9 +724,12 @@ private fun ModeCell(
       shape = RoundedCornerShape(12.dp),
       border = if (chosen) BorderStroke(1.5.dp, chosenInk) else null,
       modifier =
-          modifier.height(44.dp).testTag(tag).clickable(onClick = onClick).semantics {
-            role = Role.Button
-          },
+          modifier
+              .height(44.dp)
+              .testTag(tag)
+              .clip(RoundedCornerShape(12.dp))
+              .clickable(onClick = onClick)
+              .semantics { role = Role.Button },
   ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
       Text(
@@ -778,6 +783,7 @@ private fun Chip(
       modifier =
           Modifier.height(44.dp)
               .then(if (tag == null) Modifier else Modifier.testTag(tag))
+              .clip(RoundedCornerShape(24.dp))
               .clickable(onClick = onClick),
   ) {
     Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
