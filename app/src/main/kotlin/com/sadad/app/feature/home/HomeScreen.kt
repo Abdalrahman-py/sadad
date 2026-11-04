@@ -93,7 +93,6 @@ object HomeTags {
   const val SHOW_ALL = "home:show-all"
   const val OFFLINE = "home:offline"
   const val EMPTY_CTA = "home:empty-cta"
-  const val AFTER_FIRST = "home:after-first"
 
   fun follow(contactId: String) = "home:follow-$contactId"
 
@@ -614,91 +613,33 @@ private fun FollowUpRow(
 @Composable
 private fun EmptyStart(onRecord: () -> Unit) {
   val p = sadadPalette
-  val link = if (p.isDark) p.accent else p.primary
-  Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-    Surface(
-        color = p.card,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, p.line),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-      Column(
-          Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
-          horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(16.dp),
-      ) {
-        Box(
-            Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(p.soft),
-            contentAlignment = Alignment.Center,
-        ) {
-          Icon(
-              painterResource(R.drawable.ic_ledger),
-              contentDescription = null,
-              tint = link,
-              modifier = Modifier.size(32.dp),
-          )
-        }
-        Text(
-            stringResource(R.string.home_empty_card_title),
-            style = MaterialTheme.typography.titleLarge,
-            color = p.text,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            stringResource(R.string.home_empty_card_body),
-            fontSize = 15.sp,
-            lineHeight = 24.sp,
-            color = p.muted,
-            textAlign = TextAlign.Center,
-        )
-        Box(
-            Modifier.fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(p.primary)
-                .clickable(onClick = onRecord)
-                .testTag(HomeTags.EMPTY_CTA)
-                .semantics { role = Role.Button },
-            contentAlignment = Alignment.Center,
-        ) {
-          Text(
-              stringResource(R.string.home_empty_cta),
-              style = MaterialTheme.typography.titleMedium,
-              color = Color.White,
-          )
-        }
-      }
-    }
-    Column(
-        Modifier.testTag(HomeTags.AFTER_FIRST),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Text(
-          stringResource(R.string.home_after_first),
-          style = MaterialTheme.typography.titleSmall,
-          color = p.muted,
-      )
-      AfterRow(1, stringResource(R.string.home_after_1))
-      AfterRow(2, stringResource(R.string.home_after_2))
-      AfterRow(3, stringResource(R.string.home_after_3))
-    }
-  }
-}
-
-@Composable
-private fun AfterRow(number: Int, text: String) {
-  val p = sadadPalette
-  val link = if (p.isDark) p.accent else p.primary
-  Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+  Column(
+      Modifier.fillMaxWidth().padding(top = 48.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(16.dp),
+  ) {
+    Text(
+        stringResource(R.string.home_empty_card_title),
+        style = MaterialTheme.typography.titleLarge,
+        color = p.text,
+        textAlign = TextAlign.Center,
+    )
     Box(
-        Modifier.sizeIn(minWidth = 28.dp, minHeight = 28.dp)
-            .clip(CircleShape)
-            .background(p.surface),
+        Modifier.fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(p.primary)
+            .clickable(onClick = onRecord)
+            .testTag(HomeTags.EMPTY_CTA)
+            .semantics { role = Role.Button },
         contentAlignment = Alignment.Center,
     ) {
-      Text("$number", style = MaterialTheme.typography.labelLarge, color = link)
+      Text(
+          stringResource(R.string.home_empty_cta),
+          style = MaterialTheme.typography.titleMedium,
+          color = Color.White,
+      )
     }
-    Text(text, fontSize = 14.sp, lineHeight = 21.sp, color = p.text)
   }
 }
 

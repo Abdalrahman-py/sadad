@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_trash">سلة المحذوفات</string>
+    <string name="title_trash">المحذوفات</string>
     <string name="trash_subtitle">الأشخاص المؤرشفون يبقى سجلهم كاملًا. الاستعادة تعيدهم كما كانوا.</string>
     <string name="trash_empty_title">السلة فارغة</string>
     <string name="trash_empty_detail">ما تؤرشفه من أشخاص أو إشعارات يظهر هنا.</string>

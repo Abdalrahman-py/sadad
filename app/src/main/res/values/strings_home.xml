@@ -25,12 +25,7 @@
 
     <!-- A new store: no hero, a way in. -->
     <string name="home_empty_card_title">دفترك جاهز</string>
-    <string name="home_empty_card_body">سجّل أول دين خلال ثوانٍ: اختر الشخص، اكتب المبلغ، احفظ. يظهر هنا ما لك عند الناس ومن يحتاج متابعة.</string>
     <string name="home_empty_cta">سجّل أول دين</string>
-    <string name="home_after_first">بعد أول تسجيل</string>
-    <string name="home_after_1">يظهر رصيد المتجر هنا: ما لك وما عليك.</string>
-    <string name="home_after_2">من يتأخر عن موعده يظهر في «تحتاج متابعة» مع زر تذكير.</string>
-    <string name="home_after_3">كل حركة تجدها في «الحركات»، وكشف كل شخص في صفحته.</string>
 
     <!-- Offline: how much waits, and until when recording is allowed. -->
     <string name="home_offline_title">لا يوجد اتصال · %1$s</string>
