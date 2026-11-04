@@ -89,11 +89,24 @@ def prefix(p):
     return re.split(r"[*<{]", p)[0]
 
 
+def suffix(p):
+    """Literal part of a pattern after its last glob character."""
+    return re.split(r"[*>}]", p)[-1]
+
+
 def overlaps(a, b):
     pa, pb = prefix(a), prefix(b)
     if pa == a and pb == b:
         return a == b or a.endswith("/") and b.startswith(a) or b.endswith("/") and a.startswith(b)
-    return pa.startswith(pb) or pb.startswith(pa)
+    if pa == a or pb == b:  # one literal path: does the other pattern cover it?
+        lit, pat = (a, b) if pa == a else (b, a)
+        return re.fullmatch(to_regex(pat), lit) is not None
+    # Two patterns: a directory glob covers anything under its prefix; two file-name globs
+    # (2026*_x.sql, 2026*_y.sql) overlap only when both their literal heads and tails can agree.
+    if a.endswith(("/**", "/")) or b.endswith(("/**", "/")):
+        return pa.startswith(pb) or pb.startswith(pa)
+    sa, sb = suffix(a), suffix(b)
+    return (pa.startswith(pb) or pb.startswith(pa)) and (sa.endswith(sb) or sb.endswith(sa))
 
 
 def allowed(text):

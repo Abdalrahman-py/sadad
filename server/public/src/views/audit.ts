@@ -59,7 +59,7 @@ export const auditList = (
       ? html`<div class="list">${page.rows.map((item) => event(item, showStore))}</div>`
       : page.loading
         ? nothing
-        : html`<p class="empty">لا توجد أحداث مسجلة.</p>`
+        : html`<p class="empty">لا توجد أحداث مسجلة</p>`
   }
   ${pager(label, page, step)}
 `;
