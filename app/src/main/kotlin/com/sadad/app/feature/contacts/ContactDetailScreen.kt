@@ -45,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -430,7 +431,8 @@ private fun RoundButton(
   Box(
       modifier
           .size(48.dp)
-          .background(if (filled) p.surface else Color.Transparent, CircleShape)
+          .clip(CircleShape)
+          .background(if (filled) p.surface else Color.Transparent)
           .clickable(role = Role.Button, onClick = onClick)
           .semantics { contentDescription = description },
       contentAlignment = Alignment.Center,
@@ -734,7 +736,9 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
                 color = p.owes,
                 style = MaterialTheme.typography.labelMedium,
                 modifier =
-                    Modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onDelete),
+                    Modifier.padding(top = 2.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(role = Role.Button, onClick = onDelete),
             )
         movement.blockedReason != null ->
             Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)

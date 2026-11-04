@@ -22,7 +22,30 @@ class StyleScanTest {
     assertTrue(offenders.joinToString("\n"), offenders.isEmpty())
   }
 
+  /** A press effect fills its layout bounds unless a clip comes first: the square flash. */
+  @Test
+  fun everyPressEffectFollowsItsShape() {
+    val dirs = listOf(featureDir(), featureDir().resolveSibling("ui"))
+    val files = dirs.flatMap { dir -> dir.walkTopDown().filter { it.extension == "kt" } }
+    val offenders = files.flatMap { file -> unclipped(file) }
+    assertTrue(offenders.joinToString("\n"), offenders.isEmpty())
+  }
+
   // Hand strokes like 1.5.dp stay; the integer before `.dp` is the value scanned.
+
+  /** `file:line` for every press target with no clip just before it and its own indication. */
+  private fun unclipped(file: File): List<String> {
+    val lines = file.readLines()
+    return lines.indices
+        .filter { lines[it].contains(Regex("\\.(clickable|selectable|toggleable)\\(")) }
+        .filterNot { index ->
+          lines.subList(maxOf(0, index - 8), index).any { it.contains(".clip(") } ||
+              lines.subList(index, minOf(lines.size, index + 5)).any {
+                it.contains("indication = null")
+              }
+        }
+        .map { "${file.name}:${it + 1}: ${lines[it]}" }
+  }
 
   /** `file:line` for every hand-set heavy weight in a screen file. */
   private fun bolds(file: File) =

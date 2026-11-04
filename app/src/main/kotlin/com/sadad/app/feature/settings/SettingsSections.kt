@@ -108,6 +108,7 @@ internal fun LazyListScope.storeCard(
             modifier =
                 Modifier.weight(1f)
                     .heightIn(min = 48.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .clickable(onClickLabel = description, role = Role.Button) {
                       commands.editProfile(store)
                     }
@@ -718,6 +719,7 @@ private fun SwitchLine(
       modifier =
           Modifier.fillMaxWidth()
               .heightIn(min = 56.dp)
+              .clip(RoundedCornerShape(12.dp))
               .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
               .padding(horizontal = 16.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
