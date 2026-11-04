@@ -58,7 +58,15 @@
     <!-- Credit: a payment above the debt, and a debt the credit paid for. -->
     <string name="contacts_row_settled_credit">سدّد %1$s · %2$s رصيد</string>
     <string name="contacts_row_offset">خُصم من الرصيد %1$s</string>
-    <string name="contacts_reverse">عكس الدفعة</string>
-    <string name="contacts_reverse_credit_used">استُخدم جزء من الرصيد. صحّح الحركة اللاحقة أولًا.</string>
-    <string name="contacts_reverse_offline">عكس الدفعة يحتاج اتصالًا.</string>
+    <string name="contacts_delete_debt_title">حذف الدين؟</string>
+    <string name="contacts_delete_payment_title">حذف الدفعة؟</string>
+    <string name="contacts_delete_entry_message">سيُحذف هذا القيد بمبلغ %1$s من سجل الشخص ويُعاد حساب رصيده.</string>
+    <string name="contacts_delete_entry_next">متابعة</string>
+    <string name="contacts_delete_entry_final_title">تأكيد الحذف النهائي</string>
+    <string name="contacts_delete_entry_final_message">لا يمكن التراجع عن هذا الحذف. هل أنت متأكد؟</string>
+    <string name="contacts_delete_entry_final">احذف نهائيًا</string>
+    <string name="contacts_delete_entry_offline">حذف القيد يحتاج اتصالًا.</string>
+    <string name="contacts_delete_credit_used">استُخدم جزء من هذا الرصيد، فلا يمكن حذف الدفعة.</string>
+    <string name="contacts_delete_debt_paid">احذف دفعات هذا الدين أولًا.</string>
+    <string name="contacts_delete_debt_offset">سُدّد جزء من هذا الدين من الرصيد، فلا يمكن حذفه.</string>
 </resources>

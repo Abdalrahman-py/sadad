@@ -52,7 +52,9 @@ object Statement {
     val contacts = view.contacts.filter { contactId == null || it.id == contactId }
     val selected = contacts.map { it.id }.toHashSet()
     val debts =
-        view.debts.filter { it.contactId in selected && it.direction == Direction.RECEIVABLE }
+        view.debts.filter {
+          it.contactId in selected && it.direction == Direction.RECEIVABLE && it.amount > Cents.ZERO
+        }
     val debtIds = debts.map { it.id }.toHashSet()
     // A credit Debt is the second half of the payment that left it: one row, at that one instant.
     val credits =

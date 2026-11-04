@@ -88,10 +88,10 @@ internal fun historyMovements(
         )
   }
   for (debt in view.debts) {
-    if (debt.createdAt !in bounds || debt.id in pairedCredits) continue
+    // A Debt corrected to zero was deleted.
+    if (debt.amount == Cents.ZERO || debt.createdAt !in bounds || debt.id in pairedCredits) continue
     val name = names[debt.contactId] ?: continue
     val creditOnly = debt.origin == DebtOrigin.OVERPAYMENT
-    if (creditOnly && debt.amount == Cents.ZERO) continue
     rows +=
         HistoryMovement(
             id = debt.id,

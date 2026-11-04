@@ -57,7 +57,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -117,8 +116,8 @@ fun ContactDetailScreen(
 
 /**
  * The Contact board: who they are and where they stand, then every entry with the balance after it,
- * and the two sticky buttons that record for this person. WhatsApp, the statement, edit and archive
- * sit in the ⋯ menu.
+ * and the two sticky buttons that record for this person. Edit is a button in the header; WhatsApp,
+ * the statement and archive sit in the ⋯ menu.
  */
 @Composable
 internal fun ContactDetailScreen(
@@ -240,7 +239,7 @@ internal fun ContactDetailScreen(
                 MovementRow(
                     movement,
                     after[movement.id] ?: 0L,
-                    onReverse = { viewModel.reverse(movement.id) },
+                    onDelete = { viewModel.askDeleteMovement(movement.id) },
                 )
               }
             }
@@ -308,6 +307,34 @@ internal fun ContactDetailScreen(
         destructive = true,
     )
   }
+  state.deleting?.let { movement ->
+    ConfirmDialog(
+        title =
+            stringResource(
+                when {
+                  state.deleteFinal -> R.string.contacts_delete_entry_final_title
+                  movement.kind == MovementKind.DEBT -> R.string.contacts_delete_debt_title
+                  else -> R.string.contacts_delete_payment_title
+                }
+            ),
+        message =
+            if (state.deleteFinal) stringResource(R.string.contacts_delete_entry_final_message)
+            else
+                stringResource(
+                    R.string.contacts_delete_entry_message,
+                    formatCents(movement.amount),
+                ),
+        confirmText =
+            stringResource(
+                if (state.deleteFinal) R.string.contacts_delete_entry_final
+                else R.string.contacts_delete_entry_next
+            ),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDeleteMovement,
+        onDismiss = viewModel::dismissDeleteMovement,
+        destructive = true,
+    )
+  }
   if (state.confirmDelete) {
     ConfirmDialog(
         title = stringResource(R.string.contacts_confirm_delete_title),
@@ -340,6 +367,7 @@ private fun ContactTopBar(
     RoundButton(R.drawable.ic_back, stringResource(R.string.contacts_back), onBack)
     Box(Modifier.weight(1f))
     if (state.missing || !state.loaded || state.syncFailure != null) return@Row
+    RoundButton(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), onEdit)
     Box {
       RoundButton(
           R.drawable.ic_menu,
@@ -362,10 +390,6 @@ private fun ContactTopBar(
         MenuRow(R.drawable.ic_share, stringResource(R.string.contacts_share), p.text) {
           open = false
           onShare()
-        }
-        MenuRow(R.drawable.ic_pencil, stringResource(R.string.contacts_edit), p.text) {
-          open = false
-          onEdit()
         }
         if (state.canDeleteContacts) {
           MenuRow(R.drawable.ic_archive, stringResource(R.string.contacts_delete), p.owes) {
@@ -639,7 +663,7 @@ private fun MonthHeader(month: YearMonth) {
 
 /** One entry: its icon, what it was and when, its amount, and the balance it left behind. */
 @Composable
-private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: () -> Unit) {
+private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () -> Unit) {
   val p = sadadPalette
   val debt = movement.kind == MovementKind.DEBT
   val link = if (p.isDark) p.accent else p.primary
@@ -687,7 +711,6 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
           fontSize = 15.sp,
           lineHeight = 22.sp,
           fontWeight = FontWeight.Bold,
-          textDecoration = if (movement.struck) TextDecoration.LineThrough else null,
       )
       Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
       movement.settled?.let { settled ->
@@ -712,15 +735,15 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onReverse: ()
         )
       }
       when {
-        movement.canReverse ->
+        movement.canDelete ->
             Text(
-                stringResource(R.string.contacts_reverse),
-                color = link,
+                stringResource(R.string.contacts_delete),
+                color = p.owes,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.Bold,
                 modifier =
-                    Modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onReverse),
+                    Modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onDelete),
             )
         movement.blockedReason != null ->
             Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)

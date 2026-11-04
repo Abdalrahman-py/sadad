@@ -209,7 +209,7 @@ class ContactDetailViewModelTest {
       val pending = model.state.first { it.loaded && it.balance == Cents.ZERO }
       val queued = pending.movements.single { it.kind == MovementKind.PAYMENT }
       assertTrue(queued.pending)
-      assertFalse(queued.canReverse)
+      assertFalse(queued.canDelete)
       fixture.settleAll()
       val state =
           model.state.first {
@@ -220,8 +220,8 @@ class ContactDetailViewModelTest {
       val row = payments.single()
       assertEquals(Cents(15_000), row.amount)
       assertEquals(2, row.parts.size)
-      assertTrue(row.canReverse)
-      model.reverse(row.id)
+      assertTrue(row.canDelete)
+      model.deleteConfirmed(row.id)
       val reversals = awaitOutbox(fixture, 2).map { it.command.payload() as PaymentReverse }
       assertEquals(row.parts.toSet(), reversals.map { it.paymentId }.toSet())
     }
@@ -454,7 +454,7 @@ class ContactDetailViewModelTest {
       assertEquals("the row states the payment the owner typed", Cents(50_000), row.amount)
       assertEquals("half of it settled the Debt", Cents(25_000), row.settled)
       assertEquals("the rest is credit", Cents(25_000), row.credit)
-      assertTrue("nothing used the credit yet", row.canReverse)
+      assertTrue("nothing used the credit yet", row.canDelete)
     }
   }
 
@@ -497,7 +497,7 @@ class ContactDetailViewModelTest {
       val state =
           model.state.first { it.loaded && it.movements.any { it.kind == MovementKind.PAYMENT } }
 
-      model.reverse(state.movements.first { it.kind == MovementKind.PAYMENT }.id)
+      model.deleteConfirmed(state.movements.first { it.kind == MovementKind.PAYMENT }.id)
 
       val rows = awaitOutbox(fixture, 2)
       assertEquals(
@@ -539,20 +539,20 @@ class ContactDetailViewModelTest {
           model.state.first { it.loaded && it.movements.any { it.kind == MovementKind.PAYMENT } }
       val row = state.movements.first { it.kind == MovementKind.PAYMENT }
 
-      assertFalse("part of the credit is spent", row.canReverse)
+      assertFalse("part of the credit is spent", row.canDelete)
       assertEquals(
-          context.getString(R.string.contacts_reverse_credit_used),
+          context.getString(R.string.contacts_delete_credit_used),
           row.blockedReason,
       )
 
-      model.reverse(row.id)
+      model.deleteConfirmed(row.id)
       Thread.sleep(300)
       assertTrue(outboxRows(fixture).isEmpty())
     }
   }
 
   @Test
-  fun aCreditCorrectedToZeroIsShownStruckThrough() = runTest {
+  fun aCreditCorrectedToZeroLeavesTheHistory() = runTest {
     TestGraph.signedIn().use { fixture ->
       val person = contact("سمير", contactId(1), minute = 0)
       val credit = creditDebt(person.entityId, amount = 25_000, minute = 1)
@@ -574,11 +574,76 @@ class ContactDetailViewModelTest {
               .also {
                 fixture.closeWithStore(it.viewModelScope)
               }
-      val state = model.state.first { it.loaded && it.movements.isNotEmpty() }
+      val state = model.state.first { it.loaded }
 
-      val row = state.movements.first { it.id == credit.entityId }
-      assertTrue("a zeroed credit stays in the history, struck through", row.struck)
-      assertEquals(Cents.ZERO, row.amount)
+      assertTrue("a zeroed credit is deleted", state.movements.isEmpty())
+    }
+  }
+
+  @Test
+  fun aDebtIsDeletedOnlyAfterTheSecondConfirm() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val open = debt(person.entityId, 10_000, id = contactId(11), minute = 1)
+      fixture.seedCommands(listOf(person, open))
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      val row = model.state.first { it.movements.isNotEmpty() }.movements.single()
+      assertTrue(row.canDelete)
+
+      model.askDeleteMovement(row.id)
+      assertFalse(model.state.first { it.deleting != null }.deleteFinal)
+      model.confirmDeleteMovement()
+      assertTrue(model.state.first { it.deleteFinal }.deleting != null)
+      assertTrue("nothing is queued before the final confirm", outboxRows(fixture).isEmpty())
+
+      model.confirmDeleteMovement()
+      val correction = awaitOutbox(fixture, 1).single().command.payload() as DebtCorrect
+      assertEquals(open.entityId, correction.debtId)
+      assertEquals(Cents.ZERO, correction.amountCents)
+      val after = model.state.first { it.movements.isEmpty() }
+      assertNull(after.deleting)
+    }
+  }
+
+  @Test
+  fun cancellingTheDeleteDialogsQueuesNothing() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val open = debt(person.entityId, 10_000, id = contactId(11), minute = 1)
+      fixture.seedCommands(listOf(person, open))
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      val row = model.state.first { it.movements.isNotEmpty() }.movements.single()
+
+      model.askDeleteMovement(row.id)
+      model.confirmDeleteMovement()
+      model.dismissDeleteMovement()
+      model.confirmDeleteMovement()
+
+      assertNull(model.state.first { it.deleting == null }.deleting)
+      assertTrue(outboxRows(fixture).isEmpty())
+    }
+  }
+
+  @Test
+  fun aDebtWithAPaymentCannotBeDeletedUntilThePaymentIsGone() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val open = debt(person.entityId, 10_000, id = contactId(11), minute = 1)
+      val paid = payment(open.entityId, 4_000, id = contactId(12), minute = 2)
+      fixture.seedCommands(listOf(person, open, paid))
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      val rows = model.state.first { it.movements.size == 2 }.movements
+
+      val row = rows.first { it.id == open.entityId }
+      assertFalse(row.canDelete)
+      assertEquals(context.getString(R.string.contacts_delete_debt_paid), row.blockedReason)
+      assertTrue(rows.first { it.id == paid.entityId }.canDelete)
     }
   }
 
@@ -680,6 +745,12 @@ class ContactDetailViewModelTest {
       assertTrue(whole.payments.any { it.contactId == b && it.pending })
       assertFalse(statement.payments.any { it.contactId != a })
     }
+  }
+
+  private fun ContactDetailViewModel.deleteConfirmed(movementId: String) {
+    askDeleteMovement(movementId)
+    confirmDeleteMovement()
+    confirmDeleteMovement()
   }
 
   private suspend fun outboxRows(fixture: TestGraph) =
