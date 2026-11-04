@@ -35,11 +35,14 @@ class StyleScanTest {
   /** `file:line` for every `N.dp` whose N is off the 4dp grid, 1 and 2 apart. */
   private fun offGrid(file: File) =
       file.readLines().withIndex().flatMap { (index, line) ->
-        Regex("(?<![\\d.])(\\d+)\\.dp").findAll(line).filter {
-          it.groupValues[1].toInt().let { n -> n % 4 != 0 && n > 2 }
-        }.map {
-          "${file.name}:${index + 1}: $line"
-        }
+        Regex("(?<![\\d.])(\\d+)\\.dp")
+            .findAll(line)
+            .filter {
+              it.groupValues[1].toInt().let { n -> n % 4 != 0 && n > 2 }
+            }
+            .map {
+              "${file.name}:${index + 1}: $line"
+            }
       }
 
   private fun featureFiles(): List<File> =
