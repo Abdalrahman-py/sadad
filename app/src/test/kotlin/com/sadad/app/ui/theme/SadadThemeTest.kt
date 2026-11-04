@@ -1,6 +1,5 @@
 package com.sadad.app.ui.theme
 
-import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -64,7 +63,7 @@ class SadadThemeTest {
           )
         }
     shapes.forEach { (name, shape) ->
-      val corner = (shape as CornerBasedShape).topStart.toPx(Size(100f, 100f), Density(1f))
+      val corner = shape.topStart.toPx(Size(100f, 100f), Density(1f))
       assertEquals(name, 0f, corner % 4f)
     }
   }
