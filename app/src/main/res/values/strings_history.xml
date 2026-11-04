@@ -18,7 +18,6 @@
 
     <!-- People tab -->
     <string name="history_movements_heading">%1$d حركة · %2$s</string>
-    <string name="history_open_reports">فتح التقارير والكشوفات</string>
     <string name="history_empty_title">السجل فارغ</string>
     <string name="history_empty_detail">ستظهر الديون والدفعات هنا بعد تسجيلها.</string>
     <string name="history_person_remaining">المتبقي: %1$s</string>
