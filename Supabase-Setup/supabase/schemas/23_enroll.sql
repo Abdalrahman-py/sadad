@@ -1,4 +1,5 @@
--- Registers a device as pending, within the store's device cap.
+-- Registers a device within the store's device cap: a new store's first phone is active at once,
+-- every later one waits as pending for an admin.
 create function sadid_private.enroll(
   p_installation uuid,
   p_key jsonb,
@@ -15,6 +16,7 @@ declare
   i sadid_private.installations;
   v_generation integer;
   v_active_count integer;
+  v_first boolean;
 begin
   if p_key ->> 'kty' is distinct from 'EC'
      or p_key ->> 'crv' is distinct from 'P-256'
@@ -61,7 +63,9 @@ begin
       raise exception 'device_limit_reached';
     end if;
     select coalesce(max(generation), 0) + 1 into v_generation from sadid_private.installations where store_id = v_store_id;
-    insert into sadid_private.installations(id, store_id, generation, public_key, label, staff_name, status)
+    -- Any earlier row, revoked ones too, means a person already has to decide about this store.
+    v_first := v_generation = 1;
+    insert into sadid_private.installations(id, store_id, generation, public_key, label, staff_name, status, approved_by, approved_at)
     values (
       p_installation,
       v_store_id,
@@ -69,9 +73,22 @@ begin
       p_key,
       left(trim(coalesce(p_label, '')), 120),
       left(trim(coalesce(p_staff_name, '')), 80),
-      'pending'
+      case when v_first then 'active' else 'pending' end,
+      case when v_first then 'first-phone' end,
+      case when v_first then clock_timestamp() end
     )
     returning * into i;
+    if v_first then
+      insert into public.sadid_ledger_state(store_id) values (v_store_id) on conflict do nothing;
+      insert into sadid_private.control_events(store_id, actor, kind, reason, details)
+      values (
+        v_store_id,
+        'first-phone',
+        'installation.approved',
+        'أول جهاز لمتجر جديد',
+        jsonb_build_object('installationId', i.id, 'generation', i.generation)
+      );
+    end if;
   end if;
 
   begin

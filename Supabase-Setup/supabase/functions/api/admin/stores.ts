@@ -390,12 +390,13 @@ const deleteRoute = createRoute({
 type Store = z.infer<typeof StoreSchema>;
 type Summary = z.infer<typeof SummarySchema>;
 
-/** 24 base64url characters from 18 random bytes. */
+/**
+ * 8 random digits, easy to read out to the owner. Random, never a fixed run: whoever signs in first
+ * with it becomes the store's approved first phone.
+ */
 export function temporaryPassword(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(18));
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+  const [value] = crypto.getRandomValues(new Uint32Array(1));
+  return String(value % 100_000_000).padStart(8, "0");
 }
 
 function authFailure(error: unknown): Error {
