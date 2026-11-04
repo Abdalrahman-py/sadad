@@ -137,14 +137,14 @@ export function createApi(options: ApiOptions) {
               body: { reason },
             })
           : decision === "reactivate"
-          ? client.POST("/v1/admin/installations/{installationId}/reactivate", {
-              params: { path: { installationId } },
-              body: { reason },
-            })
-          : client.POST("/v1/admin/installations/{installationId}/revoke", {
-              params: { path: { installationId } },
-              body: { reason },
-            }),
+            ? client.POST("/v1/admin/installations/{installationId}/reactivate", {
+                params: { path: { installationId } },
+                body: { reason },
+              })
+            : client.POST("/v1/admin/installations/{installationId}/revoke", {
+                params: { path: { installationId } },
+                body: { reason },
+              }),
       ),
     approveRecovery: (body: {
       oldInstallationId: string;
