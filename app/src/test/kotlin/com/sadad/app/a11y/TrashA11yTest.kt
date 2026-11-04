@@ -53,6 +53,7 @@ class TrashA11yTest {
     val model =
         TrashViewModel(
                 store.repository,
+                store.personLedger.archivedContacts(),
                 store.outbox,
                 DueReminders(File(temporary.root, "reminders.preferences_pb"), scope),
                 TrashHidden(File(temporary.root, "trash.preferences_pb"), scope),

@@ -54,10 +54,16 @@ class TrashViewModelTest {
       hidden: TrashHidden = hidden(),
   ): TrashViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return TrashViewModel(scope.repository, scope.outbox, reminders, hidden, STORE_A, context)
-        .also {
-          closeWithStore(it.viewModelScope)
-        }
+    return TrashViewModel(
+            scope.repository,
+            scope.personLedger.archivedContacts(),
+            scope.outbox,
+            reminders,
+            hidden,
+            STORE_A,
+            context,
+        )
+        .also { closeWithStore(it.viewModelScope) }
   }
 
   private suspend fun TestGraph.rows() = checkNotNull(graph.current.value).outbox.snapshot()
@@ -175,7 +181,16 @@ class TrashViewModelTest {
       val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
       offline.view.first { view -> view?.archivedContacts?.isNotEmpty() == true }
-      val model = TrashViewModel(offline, scope.outbox, reminders(), hidden(), STORE_A, context)
+      val model =
+          TrashViewModel(
+              offline,
+              scope.personLedger.archivedContacts(),
+              scope.outbox,
+              reminders(),
+              hidden(),
+              STORE_A,
+              context,
+          )
       fixture.closeWithStore(model.viewModelScope)
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 

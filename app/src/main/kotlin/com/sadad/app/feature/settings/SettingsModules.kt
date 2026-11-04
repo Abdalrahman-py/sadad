@@ -3,6 +3,7 @@ package com.sadad.app.feature.settings
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import com.sadad.app.R
+import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.sync.SyncScheduling
@@ -21,7 +22,6 @@ import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
-import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentReverse
 import java.time.Clock
@@ -169,14 +169,13 @@ internal class DevicesModule(
             combine(
                 syncStatus(open.account.storeUserId),
                 open.outbox.rows,
-                open.repository.view,
                 source.accounts.accounts,
-            ) { status, rows, view, accounts ->
+            ) { status, rows, accounts ->
               val waiting = rows.filter { it.state == OutboxState.QUEUED }
               DevicesSlice(
                   line(status),
                   waiting.size,
-                  newest(waiting, view),
+                  newest(waiting, QueuedNames(open.database, rows)),
                   accounts.firstOrNull { it.storeUserId == open.account.storeUserId }?.lastSyncAt,
               )
             }
@@ -188,74 +187,33 @@ internal class DevicesModule(
   }
 
   /** The newest entry waiting for the server, named the way its row reads. */
-  private fun newest(waiting: List<OutboxRow>, view: LedgerView?): QueuedEntry? =
-      waiting
-          // The queue order, not createdAt: three entries made in the same millisecond would tie.
-          .maxByOrNull { it.seq }
-          ?.let { row ->
-            when (val payload = row.command.payload()) {
-              is DebtCreate ->
-                  QueuedEntry(
-                      QueuedKind.DEBT,
-                      contactName(view, payload.contactId),
-                      payload.amountCents,
-                  )
-              is DebtCorrect ->
-                  QueuedEntry(
-                      QueuedKind.DEBT_CORRECT,
-                      debtContact(view, payload.debtId),
-                      payload.amountCents,
-                  )
-              is DebtOffset ->
-                  QueuedEntry(
-                      QueuedKind.OFFSET,
-                      debtContact(view, payload.receivableDebtId),
-                      payload.amountCents,
-                  )
-              is PaymentCreate ->
-                  QueuedEntry(
-                      QueuedKind.PAYMENT,
-                      debtContact(view, payload.debtId),
-                      payload.amountCents,
-                  )
-              is PaymentReverse ->
-                  QueuedEntry(
-                      QueuedKind.PAYMENT_REVERSE,
-                      paymentContact(view, payload.paymentId),
-                      null,
-                  )
-              is ContactCreate -> QueuedEntry(QueuedKind.CONTACT_NEW, payload.name, null)
-              is ContactUpdate -> QueuedEntry(QueuedKind.CONTACT_EDIT, payload.name, null)
-              is ContactArchive ->
-                  QueuedEntry(
-                      QueuedKind.CONTACT_ARCHIVE,
-                      contactName(view, payload.contactId),
-                      null,
-                  )
-              is com.sadad.ledger.ContactDelete ->
-                  QueuedEntry(QueuedKind.CONTACT_DELETE, contactName(view, payload.contactId), null)
-              is ContactRestore ->
-                  QueuedEntry(
-                      QueuedKind.CONTACT_RESTORE,
-                      contactName(view, payload.contactId),
-                      null,
-                  )
-            }
-          }
-
-  private fun contactName(view: LedgerView?, contactId: String): String =
-      view?.contacts?.firstOrNull { it.id == contactId }?.name
-          ?: view?.archivedContacts?.firstOrNull { it.id == contactId }?.name
-          ?: ""
-
-  private fun debtContact(view: LedgerView?, debtId: String): String {
-    val contactId = view?.debts?.firstOrNull { it.id == debtId }?.contactId ?: return ""
-    return contactName(view, contactId)
-  }
-
-  private fun paymentContact(view: LedgerView?, paymentId: String): String {
-    val debtId = view?.payments?.firstOrNull { it.id == paymentId }?.debtId ?: return ""
-    return debtContact(view, debtId)
+  private suspend fun newest(waiting: List<OutboxRow>, names: QueuedNames): QueuedEntry? {
+    // The queue order, not createdAt: three entries made in the same millisecond would tie.
+    val row = waiting.maxByOrNull { it.seq } ?: return null
+    return when (val payload = row.command.payload()) {
+      is DebtCreate ->
+          QueuedEntry(QueuedKind.DEBT, names.contact(payload.contactId), payload.amountCents)
+      is DebtCorrect ->
+          QueuedEntry(QueuedKind.DEBT_CORRECT, names.debt(payload.debtId), payload.amountCents)
+      is DebtOffset ->
+          QueuedEntry(
+              QueuedKind.OFFSET,
+              names.debt(payload.receivableDebtId),
+              payload.amountCents,
+          )
+      is PaymentCreate ->
+          QueuedEntry(QueuedKind.PAYMENT, names.debt(payload.debtId), payload.amountCents)
+      is PaymentReverse ->
+          QueuedEntry(QueuedKind.PAYMENT_REVERSE, names.payment(payload.paymentId), null)
+      is ContactCreate -> QueuedEntry(QueuedKind.CONTACT_NEW, payload.name, null)
+      is ContactUpdate -> QueuedEntry(QueuedKind.CONTACT_EDIT, payload.name, null)
+      is ContactArchive ->
+          QueuedEntry(QueuedKind.CONTACT_ARCHIVE, names.contact(payload.contactId), null)
+      is com.sadad.ledger.ContactDelete ->
+          QueuedEntry(QueuedKind.CONTACT_DELETE, names.contact(payload.contactId), null)
+      is ContactRestore ->
+          QueuedEntry(QueuedKind.CONTACT_RESTORE, names.contact(payload.contactId), null)
+    }
   }
 
   private fun line(status: SyncStatus): SyncLine =
@@ -270,6 +228,27 @@ internal class DevicesModule(
         SyncStatus.PasswordChangeRequired -> SyncLine.PasswordChangeRequired
         SyncStatus.Retry -> SyncLine.Retry
         is SyncStatus.Failed -> SyncLine.Failed(source.errorText(status.code))
+      }
+}
+
+/** Names a queued entry's person: Room first, then the queue for what is not stored yet. */
+private class QueuedNames(private val db: LedgerDatabase, private val rows: List<OutboxRow>) {
+  suspend fun contact(id: String): String =
+      db.contactDao().name(id) ?: queued<ContactCreate>(id)?.name.orEmpty()
+
+  suspend fun debt(id: String): String {
+    val contactId = db.debtDao().contactId(id) ?: queued<DebtCreate>(id)?.contactId ?: return ""
+    return contact(contactId)
+  }
+
+  suspend fun payment(id: String): String {
+    val debtId = db.paymentDao().debtId(id) ?: queued<PaymentCreate>(id)?.debtId ?: return ""
+    return debt(debtId)
+  }
+
+  private inline fun <reified T> queued(id: String): T? =
+      rows.firstNotNullOfOrNull { row ->
+        if (row.entityId == id) row.command.payload() as? T else null
       }
 }
 
@@ -431,11 +410,11 @@ internal class DataModule(
         if (open == null) flowOf(0)
         else
             combine(
-                open.repository.view,
+                open.personLedger.archivedContacts(),
                 reminders(open.account.storeUserId),
                 hiddenTrash(open.account.storeUserId),
-            ) { view, dismissed, hidden ->
-              view?.archivedContacts.orEmpty().size + dismissed.count { it.id !in hidden }
+            ) { archived, dismissed, hidden ->
+              archived.size + dismissed.count { it.id !in hidden }
             }
       }
 }

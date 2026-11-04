@@ -21,11 +21,14 @@ import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -119,19 +122,26 @@ class HistoryViewModel(
   private val period = MutableStateFlow(periodOf(saved.get<String>(PERIOD)))
   private val export = MutableStateFlow(Export())
 
-  /** The view the statement is written from: the newest one the screen has shown. */
-  @Volatile private var currentView: LedgerView? = null
+  /** A view with the period it was read for: the list never cuts it to another period's bounds. */
+  private val periodView: Flow<Pair<Period, LedgerView?>> =
+      period.flatMapLatest { period ->
+        source.view(period.bounds(clock.zone)).map { view -> period to view }
+      }
 
   private val rows: StateFlow<HistoryUiState> =
-      combine(source.view, newestFirst, period, export) { view, newestFirst, period, export ->
-            currentView = view
+      combine(periodView, newestFirst, period, export) {
+              (read, view),
+              newestFirst,
+              period,
+              export ->
             HistoryUiState(
                 newestFirst = newestFirst,
                 period = period,
+                // The last period's list stays up, not loaded, until the new one is read.
                 movements =
                     if (view == null) emptyList()
-                    else historyMovements(view, period.bounds(clock.zone), newestFirst),
-                loaded = view != null,
+                    else historyMovements(view, read.bounds(clock.zone), newestFirst),
+                loaded = view != null && read == period,
                 saved = export.saved,
                 error = export.error,
             )
@@ -164,7 +174,8 @@ class HistoryViewModel(
   fun dismissExportResult() = export.update { it.copy(saved = false, error = null) }
 
   fun saveStatement(context: Context, uri: Uri, format: StatementFormat) {
-    val view = currentView
+    val latest = source.latest()
+    val view = latest?.view
     if (view == null) {
       export.update { it.copy(error = context.getString(R.string.history_export_failed)) }
       return
@@ -177,13 +188,13 @@ class HistoryViewModel(
       return
     }
     export.update { it.copy(busy = true, saved = false, error = null) }
-    val account = source.account()
+    val account = latest.account
     val header =
         StatementHeader(
             store =
-                account?.storeName?.ifBlank { null }
+                account.storeName.ifBlank { null }
                     ?: context.getString(R.string.history_default_store),
-            owner = account?.ownerName.orEmpty(),
+            owner = account.ownerName,
             periodLabel = periodLabel(context, period.value),
         )
     val bounds = period.value.bounds(clock.zone)
