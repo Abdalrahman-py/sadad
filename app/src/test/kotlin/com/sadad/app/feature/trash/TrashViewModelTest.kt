@@ -54,10 +54,16 @@ class TrashViewModelTest {
       hidden: TrashHidden = hidden(),
   ): TrashViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return TrashViewModel(scope.repository, scope.outbox, reminders, hidden, STORE_A, context)
-        .also {
-          closeWithStore(it.viewModelScope)
-        }
+    return TrashViewModel(
+            scope.repository,
+            scope.personLedger.archivedContacts(),
+            scope.outbox,
+            reminders,
+            hidden,
+            STORE_A,
+            context,
+        )
+        .also { closeWithStore(it.viewModelScope) }
   }
 
   private suspend fun TestGraph.rows() = checkNotNull(graph.current.value).outbox.snapshot()
@@ -107,6 +113,20 @@ class TrashViewModelTest {
       val item = state.items.single() as TrashItem.Contact
       assertEquals(id, item.contact.id)
       assertEquals("سامي", item.contact.name)
+    }
+  }
+
+  @Test
+  fun theTrashListsTheArchivedContactsOfTheWholeStoreViewInOrder() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val first = fixture.archiveOne("سامي")
+      val second = fixture.archiveOne("ليلى")
+      val whole = fixture.repository().view.value!!.archivedContacts
+      assertEquals(listOf(first, second), whole.map { it.id })
+
+      val state = fixture.model().state.first { it.items.size == 2 }
+
+      assertEquals(whole, state.items.map { (it as TrashItem.Contact).contact })
     }
   }
 
@@ -175,7 +195,16 @@ class TrashViewModelTest {
       val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
       offline.view.first { view -> view?.archivedContacts?.isNotEmpty() == true }
-      val model = TrashViewModel(offline, scope.outbox, reminders(), hidden(), STORE_A, context)
+      val model =
+          TrashViewModel(
+              offline,
+              scope.personLedger.archivedContacts(),
+              scope.outbox,
+              reminders(),
+              hidden(),
+              STORE_A,
+              context,
+          )
       fixture.closeWithStore(model.viewModelScope)
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 

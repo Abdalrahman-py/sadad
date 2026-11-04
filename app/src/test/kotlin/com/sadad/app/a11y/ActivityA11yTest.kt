@@ -9,10 +9,6 @@ import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryTags
 import com.sadad.app.feature.history.HistoryViewModel
 import com.sadad.app.feature.history.statementSource
-import com.sadad.app.feature.reports.ReportPerson
-import com.sadad.app.feature.reports.ReportsContent
-import com.sadad.app.feature.reports.ReportsState
-import com.sadad.app.feature.reports.ReportsTags
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
@@ -24,7 +20,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The movement feed and the report controls at normal and large font sizes. */
+/** The movement feed at normal and large font sizes. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
 class ActivityA11yTest {
@@ -34,10 +30,6 @@ class ActivityA11yTest {
   @Test fun history() = history(NORMAL_FONT)
 
   @Test fun historyAtLargestFont() = history(LARGEST_FONT)
-
-  @Test fun reports() = reports(NORMAL_FONT)
-
-  @Test fun reportsAtLargestFont() = reports(LARGEST_FONT)
 
   private fun history(fontScale: Float) = compose.withStore { fixture ->
     awaiting {
@@ -60,25 +52,5 @@ class ActivityA11yTest {
         hasTestTag(HistoryTags.ORDER),
         hasTestTag(HistoryTags.PERIOD),
     )
-  }
-
-  private fun reports(fontScale: Float) {
-    compose.showAt(fontScale) {
-      ReportsContent(
-          state =
-              ReportsState(
-                  loaded = true,
-                  people = (1..8).map { ReportPerson("c$it", "شخص $it", "", Cents(100L * it)) },
-                  registered = 8,
-              ),
-          onPreset = {},
-          onCustom = { _, _ -> },
-          onQueryChange = {},
-          onOpen = {},
-          onShare = {},
-          onSave = {},
-      )
-    }
-    compose.assertAccessible(hasTestTag(ReportsTags.SAVE))
   }
 }

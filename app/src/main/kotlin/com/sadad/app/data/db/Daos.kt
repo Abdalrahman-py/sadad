@@ -13,6 +13,14 @@ interface ContactDao {
 
   @Query("SELECT * FROM contacts WHERE id = :id") suspend fun byId(id: String): ContactEntity?
 
+  @Query("SELECT * FROM contacts WHERE id IN (:ids)")
+  suspend fun byIds(ids: List<String>): List<ContactEntity>
+
+  @Query("SELECT * FROM contacts WHERE archived = 1 ORDER BY createdSeq")
+  suspend fun archived(): List<ContactEntity>
+
+  @Query("SELECT name FROM contacts WHERE id = :id") suspend fun name(id: String): String?
+
   @Upsert suspend fun upsert(row: ContactEntity)
 
   @Query("SELECT createdSeq FROM contacts WHERE id = :id") suspend fun createdSeq(id: String): Long?
@@ -28,6 +36,21 @@ interface DebtDao {
 
   @Query("SELECT * FROM debts WHERE contactId = :contactId ORDER BY createdSeq")
   suspend fun ofContact(contactId: String): List<DebtEntity>
+
+  /** The debts created in `[from, to)` and the debts of the payments created in it, in epoch ms. */
+  @Query(
+      """
+      SELECT * FROM debts
+      WHERE (createdAt >= :from AND createdAt < :to)
+      OR id IN (SELECT debtId FROM payments WHERE createdAt >= :from AND createdAt < :to)
+      """
+  )
+  suspend fun inPeriod(from: Long, to: Long): List<DebtEntity>
+
+  @Query("SELECT * FROM debts WHERE id IN (:ids)")
+  suspend fun byIds(ids: List<String>): List<DebtEntity>
+
+  @Query("SELECT contactId FROM debts WHERE id = :id") suspend fun contactId(id: String): String?
 
   @Upsert suspend fun upsert(row: DebtEntity)
 
@@ -50,6 +73,11 @@ interface PaymentDao {
       "SELECT p.* FROM payments p JOIN debts d ON d.id = p.debtId WHERE d.contactId = :contactId ORDER BY p.createdSeq"
   )
   suspend fun ofContact(contactId: String): List<PaymentEntity>
+
+  @Query("SELECT * FROM payments WHERE debtId IN (:debtIds)")
+  suspend fun onDebts(debtIds: List<String>): List<PaymentEntity>
+
+  @Query("SELECT debtId FROM payments WHERE id = :id") suspend fun debtId(id: String): String?
 
   @Upsert suspend fun upsert(row: PaymentEntity)
 
@@ -75,6 +103,11 @@ interface OffsetDao {
       """
   )
   suspend fun ofContact(contactId: String): List<OffsetEntity>
+
+  @Query(
+      "SELECT * FROM offsets WHERE receivableDebtId IN (:debtIds) OR payableDebtId IN (:debtIds)"
+  )
+  suspend fun onDebts(debtIds: List<String>): List<OffsetEntity>
 
   @Upsert suspend fun upsert(row: OffsetEntity)
 

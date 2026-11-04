@@ -215,6 +215,7 @@ private fun trashViewModel(): TrashViewModel {
               val storeUserId = store.account.storeUserId
               TrashViewModel(
                   store.repository,
+                  store.personLedger.archivedContacts(),
                   store.outbox,
                   DueReminders.get(app),
                   TrashHidden.get(app, storeUserId),
