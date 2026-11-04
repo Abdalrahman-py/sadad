@@ -106,6 +106,7 @@ Codex reads this section when it reviews a pull request (`@codex review`).
 
 - Spec: the PR's `Closes #N` issue is the ticket. Check every "Test first" test and "Steps" item against the diff, and every decision under "Decisions already made".
 - Scope: changed paths stay inside the issue's "Files you may edit".
-- Clean cut: flag any upgrade path, fallback, compatibility shim or legacy handling (`docs/ARCHITECTURE.md` Part 3). All data is test data.
+- Customer data (`docs/ARCHITECTURE.md` Part 3): flag a migration that loses or strands existing rows, a Room version bump without a migration, and a server change that breaks the latest `v*` release.
+- Clean cut: flag bridges and legacy handling that no shipped release needs.
 - Flag secrets (`sb_secret_...`, `service_role`, passwords) and any `supabase db push`, `functions deploy` or other cloud change.
 - Money, auth, crypto and sync code: flag rounding, missing tests for refusal paths, and anything logged that holds a passphrase or key.
