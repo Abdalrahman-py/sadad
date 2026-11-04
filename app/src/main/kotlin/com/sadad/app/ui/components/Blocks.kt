@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,13 +73,13 @@ import kotlinx.coroutines.delay
  */
 
 /**
- * The white panel of the sign-in and password boards: `card` fill, `line` border, 26dp corners and
+ * The white panel of the sign-in and password boards: `card` fill, `line` border, 24dp corners and
  * the boards' `0 12px 32px rgba(6,75,66,0.08)` shadow.
  */
 @Composable
 fun SadadPanel(
     modifier: Modifier = Modifier,
-    radius: Dp = 26.dp,
+    radius: Dp = 24.dp,
     shadow: Boolean = true,
     contentPadding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
     content: @Composable ColumnScope.() -> Unit,
@@ -125,20 +126,18 @@ fun StepIntro(
     subtitle: String? = null,
 ) {
   val p = sadadPalette
-  Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+  Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
     if (eyebrow != null) {
-      Text(eyebrow, color = p.muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+      Text(eyebrow, color = p.muted, style = MaterialTheme.typography.labelMedium)
     }
     Text(
         title,
         modifier = Modifier.semantics { heading() },
         color = p.text,
-        fontSize = 23.sp,
-        lineHeight = 32.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.headlineSmall,
     )
     if (subtitle != null) {
-      Text(subtitle, color = p.muted, fontSize = 14.sp, lineHeight = 21.sp)
+      Text(subtitle, color = p.muted, style = MaterialTheme.typography.bodyMedium)
     }
   }
 }
@@ -156,16 +155,13 @@ fun SadadBrand(modifier: Modifier = Modifier, logoSize: Dp = 72.dp, tagline: Boo
     Text(
         stringResource(R.string.brand_name),
         color = if (p.isDark) p.accent else p.primary,
-        fontSize = 26.sp,
-        lineHeight = 34.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.headlineLarge,
     )
     if (tagline) {
       Text(
           stringResource(R.string.brand_tagline),
           color = p.muted,
-          fontSize = 15.sp,
-          lineHeight = 22.sp,
+          style = MaterialTheme.typography.bodyLarge,
           textAlign = TextAlign.Center,
       )
     }
@@ -185,7 +181,7 @@ sealed interface KeypadKey {
 }
 
 /**
- * The 3×4 keypad of quick add and the lock: white 13dp keys with a `line` underline, read left to
+ * The 3×4 keypad of quick add and the lock: white 12dp keys with a `line` underline, read left to
  * right inside the right-to-left page. With [plainSpecials] delete and actions sit on the page
  * colour, as the lock board draws them.
  */
@@ -267,7 +263,7 @@ fun SadadKeypad(
                           color = LocalContentColor.current,
                       )
                   is KeypadKey.Delete ->
-                      Icon(painterResource(R.drawable.ic_backspace), null, Modifier.size(26.dp))
+                      Icon(painterResource(R.drawable.ic_backspace), null, Modifier.size(24.dp))
                   is KeypadKey.Action -> Icon(painterResource(key.icon), null, Modifier.size(28.dp))
                   KeypadKey.Blank -> Unit
                 }
@@ -282,7 +278,7 @@ fun SadadKeypad(
 
 /** The boards' `box-shadow: 0 1px 0 var(--line)` under each key. */
 private fun Modifier.keyUnderline(line: Color) = drawBehind {
-  val r = 13.dp.toPx()
+  val r = 12.dp.toPx()
   drawRoundRect(
       line,
       topLeft = androidx.compose.ui.geometry.Offset(0f, 1.dp.toPx()),
@@ -291,7 +287,7 @@ private fun Modifier.keyUnderline(line: Color) = drawBehind {
   )
 }
 
-private val KeyShape = RoundedCornerShape(13.dp)
+private val KeyShape = RoundedCornerShape(12.dp)
 
 /** The PIN dots: [count] rings, the first [filled] filled; each new dot pops in. */
 @Composable
@@ -307,8 +303,8 @@ fun PinDots(filled: Int, count: Int, description: String, modifier: Modifier = M
       repeat(count) { i ->
         val on = i < filled
         val grow by animateFloatAsState(if (on) 1f else 0f, tween(140), label = "dot")
-        Box(Modifier.size(14.dp).border(2.dp, ink, CircleShape), Alignment.Center) {
-          Box(Modifier.size(14.dp).scale(grow).background(ink, CircleShape))
+        Box(Modifier.size(16.dp).border(2.dp, ink, CircleShape), Alignment.Center) {
+          Box(Modifier.size(16.dp).scale(grow).background(ink, CircleShape))
         }
       }
     }
@@ -359,12 +355,12 @@ fun SadadToastHost(
         Modifier.fillMaxWidth()
             .background(
                 if (error) p.debt else if (p.isDark) p.soft else Color(0xFF142C24),
-                RoundedCornerShape(13.dp),
+                RoundedCornerShape(12.dp),
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics { liveRegion = LiveRegionMode.Assertive },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Icon(
           painterResource(if (error) R.drawable.ic_alert else R.drawable.ic_check),
@@ -377,8 +373,7 @@ fun SadadToastHost(
       Text(
           shown.orEmpty(),
           color = if (error && !p.isDark) Color.White else if (p.isDark) p.text else Color.White,
-          fontSize = 14.sp,
-          lineHeight = 20.sp,
+          style = MaterialTheme.typography.bodyMedium,
           modifier = Modifier.weight(1f),
       )
     }

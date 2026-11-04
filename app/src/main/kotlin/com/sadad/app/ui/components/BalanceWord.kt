@@ -13,9 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.R
 import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.Cents
@@ -65,13 +63,7 @@ fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
       modifier = modifier.clearAndSetSemantics { contentDescription = text.spoken },
       horizontalAlignment = Alignment.End,
   ) {
-    Text(
-        text.word,
-        color = color,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
-        fontWeight = FontWeight.Bold,
-    )
+    Text(text.word, color = color, style = MaterialTheme.typography.labelMedium)
     if (text.amount == null) return@Column
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -84,7 +76,7 @@ fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
           ),
           contentDescription = null,
           tint = color,
-          modifier = Modifier.size(14.dp),
+          modifier = Modifier.size(16.dp),
       )
       MoneyText(
           Cents(Math.abs(netCents)),

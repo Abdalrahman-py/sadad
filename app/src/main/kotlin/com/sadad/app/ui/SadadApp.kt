@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,7 +42,6 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -57,10 +57,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -97,6 +95,7 @@ import com.sadad.app.feature.updates.UpdateCenter
 import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.rememberGraph
 import com.sadad.app.ui.components.sadadPageBackground
+import com.sadad.app.ui.components.topHairline
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.app.ui.theme.sadadPalette
 import kotlin.reflect.KClass
@@ -396,10 +395,10 @@ internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) 
   Row(
       modifier =
           Modifier.fillMaxWidth()
-              .shadow(8.dp)
               .background(p.surface)
+              .topHairline(p.line)
               .windowInsetsPadding(WindowInsets.navigationBars)
-              .padding(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 10.dp)
+              .padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 8.dp)
               .selectableGroup(),
       verticalAlignment = Alignment.Bottom,
   ) {
@@ -462,18 +461,18 @@ private fun RowScope.TabItem(
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
   ) {
-    Box(Modifier.size(52.dp, 34.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(52.dp, 36.dp), contentAlignment = Alignment.Center) {
       Box(
           Modifier.matchParentSize()
               .graphicsLayer { alpha = halo }
-              .background(p.accent.copy(alpha = if (p.isDark) 0.20f else 0.22f), HALO_SHAPE)
+              .background(p.accent.copy(alpha = if (p.isDark) 0.20f else 0.22f), PILL)
       )
-      Icon(painterResource(iconRes), null, tint = ink, modifier = Modifier.size(23.dp))
+      Icon(painterResource(iconRes), null, tint = ink, modifier = Modifier.size(24.dp))
       if (syncDot != SyncDot.NONE) {
         Box(
             Modifier.align(AbsoluteAlignment.TopLeft)
-                .absoluteOffset(x = 10.dp, y = 3.dp)
-                .size(10.dp)
+                .absoluteOffset(x = 12.dp, y = 4.dp)
+                .size(12.dp)
                 .background(
                     if (syncDot == SyncDot.OFFLINE || syncDot == SyncDot.STUCK) OFFLINE_RED
                     else PENDING_AMBER,
@@ -483,13 +482,7 @@ private fun RowScope.TabItem(
         )
       }
     }
-    Text(
-        stringResource(labelRes),
-        color = ink,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-    )
+    Text(stringResource(labelRes), color = ink, style = MaterialTheme.typography.labelMedium)
   }
 }
 
@@ -500,7 +493,7 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
   val description = stringResource(R.string.nav_record_description)
   Column(
       modifier =
-          // The pill, gap and label (72dp) stand 8dp taller than the tabs, bottoms aligned.
+          // The pill, gap and label (70dp) stand 6dp taller than the tabs, bottoms aligned.
           Modifier.weight(1f)
               .clickable(role = Role.Button, onClick = onClick)
               .semantics { contentDescription = description }
@@ -508,11 +501,10 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom),
   ) {
-    // As the board renders it: flexbox squeezes the 60px disc to 46px tall, so a 60x46 pill in a
-    // 4dp ring of the page colour (68x54), with the board's green drop shadow.
+    // A 60x44 pill in a 4dp ring of the page colour (68x52), with the board's green drop shadow.
     Box(
         modifier =
-            Modifier.size(68.dp, 54.dp)
+            Modifier.size(68.dp, 52.dp)
                 .drawBehind { boardShadow(p.bg) }
                 .background(p.bg, PILL)
                 .padding(4.dp)
@@ -529,9 +521,7 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
     Text(
         stringResource(R.string.nav_record),
         color = if (p.isDark) p.accent else p.primary,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelMedium,
     )
   }
 }
@@ -551,7 +541,6 @@ private fun DrawScope.boardShadow(ring: Color) = drawIntoCanvas { canvas ->
   canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, radius, radius, paint)
 }
 
-private val HALO_SHAPE = RoundedCornerShape(17.dp)
 private val PILL = RoundedCornerShape(percent = 50)
 private val RECORD_SHADOW = Color(0x59064B42)
 private val PENDING_AMBER = Color(0xFFE0A23A)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,10 +22,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.R
 import com.sadad.app.ui.theme.sadadPalette
 
@@ -45,7 +44,7 @@ fun ScreenHeader(
           modifier
               .fillMaxWidth()
               .heightIn(min = if (onBack == null) 64.dp else 60.dp)
-              .padding(horizontal = if (onBack == null) 18.dp else 10.dp),
+              .padding(horizontal = if (onBack == null) 16.dp else 8.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     if (onBack != null) {
@@ -70,9 +69,7 @@ fun ScreenHeader(
         title,
         modifier = Modifier.weight(1f).padding(start = 4.dp).semantics { heading() },
         color = sadadPalette.text,
-        fontSize = 21.sp,
-        lineHeight = 28.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleLarge,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
