@@ -81,8 +81,7 @@ private val RowShape = RoundedCornerShape(12.dp)
 private val CardShape = RoundedCornerShape(12.dp)
 
 /** The page ground: flat `bg`. */
-@Composable
-fun Modifier.sadadPageBackground(): Modifier = background(sadadPalette.bg)
+@Composable fun Modifier.sadadPageBackground(): Modifier = background(sadadPalette.bg)
 
 /** The 1dp [color] line along a bar's top edge, where the bar meets the page. */
 fun Modifier.topHairline(color: Color): Modifier = drawBehind {
