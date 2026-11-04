@@ -60,7 +60,12 @@ internal object UpdateInstaller {
    * it must be mutable from API 31 on; below that the flag does not exist.
    */
   private fun callback(context: Context, sessionId: Int): android.content.IntentSender {
-    val intent = Intent(context, UpdateInstallReceiver::class.java).setPackage(context.packageName)
+    // The user is waiting on this answer: the background queue ran 35 minutes behind on a Redmi
+    // Note 9, so the confirmation sheet opened long after the tap, if at all.
+    val intent =
+        Intent(context, UpdateInstallReceiver::class.java)
+            .setPackage(context.packageName)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
     val mutable =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
     return PendingIntent.getBroadcast(
