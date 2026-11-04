@@ -41,14 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -501,11 +496,11 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom),
   ) {
-    // A 60x44 pill in a 4dp ring of the page colour (68x52), with the board's green drop shadow.
+    // A 60x44 pill in a 4dp ring of the page colour (68x52), on a soft 2dp shadow.
     Box(
         modifier =
             Modifier.size(68.dp, 52.dp)
-                .drawBehind { boardShadow(p.bg) }
+                .shadow(2.dp, PILL)
                 .background(p.bg, PILL)
                 .padding(4.dp)
                 .background(p.primary, PILL),
@@ -526,23 +521,7 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
   }
 }
 
-/**
- * The board's `box-shadow: 0 8px 18px rgba(6, 75, 66, 0.35)` under the pill. `Modifier.shadow`
- * scales its colour by the system shadow alpha (about 0.2), which left it invisible.
- */
-private fun DrawScope.boardShadow(ring: Color) = drawIntoCanvas { canvas ->
-  val paint =
-      Paint().asFrameworkPaint().apply {
-        color = ring.toArgb()
-        // CSS blur 18px is a Gaussian sigma of 9; Android's radius is about sigma / 0.57.
-        setShadowLayer(15.dp.toPx(), 0f, 8.dp.toPx(), RECORD_SHADOW.toArgb())
-      }
-  val radius = size.height / 2
-  canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, radius, radius, paint)
-}
-
 private val PILL = RoundedCornerShape(percent = 50)
-private val RECORD_SHADOW = Color(0x59064B42)
 private val PENDING_AMBER = Color(0xFFE0A23A)
 private val OFFLINE_RED = Color(0xFFC13634)
 
