@@ -7,6 +7,7 @@ declare
   v_after bigint := greatest(coalesce(p_after, 0), 0);
   v_limit integer := least(greatest(coalesce(p_limit, 200), 1), 500);
   v_events jsonb;
+  v_installations jsonb;
   v_next_cursor bigint;
   v_has_more boolean;
 begin
@@ -46,6 +47,16 @@ begin
   into v_events, v_next_cursor, v_has_more
   from bounded b;
 
+  -- Every approved or revoked device of the caller's store, so old events still resolve; a
+  -- pending device never recorded one.
+  select coalesce(jsonb_agg(
+           jsonb_build_object('id', i.id, 'label', i.label, 'staffName', i.staff_name)
+           order by i.created_at, i.id
+         ), '[]'::jsonb)
+    into v_installations
+    from sadid_private.installations i
+    where i.store_id = c.store_id and i.status in ('active', 'revoked');
+
   return jsonb_build_object(
     'schemaVersion', st.schema_version,
     'storeId', c.store_id,
@@ -54,12 +65,17 @@ begin
     'nextCursor', v_next_cursor,
     'hasMore', coalesce(v_has_more, false),
     'currency', st.currency,
-    'events', v_events
+    'events', v_events,
+    'installations', v_installations
   );
 end $$;
 alter function sadid_private.changes(bigint, integer) owner to sadid_ledger_executor;
 revoke all on function sadid_private.changes(bigint, integer) from public, anon, service_role;
 grant execute on function sadid_private.changes(bigint, integer) to authenticated;
+
+-- The function reads the devices of the caller's store as sadid_ledger_executor.
+grant select on sadid_private.installations to sadid_ledger_executor;
+create policy ledger_reader on sadid_private.installations for select to sadid_ledger_executor using (true);
 
 create function public.sadid_changes(p_after bigint default 0, p_limit integer default 200) returns jsonb
 language sql stable security invoker set search_path = '' as $$

@@ -16,7 +16,7 @@ class BalanceWordTest {
     val word = balanceWord(25_000)
     assertEquals("عليه", word.word)
     assertEquals(BalanceTone.OWES, word.tone)
-    assertEquals("₪ 250.00", word.amount)
+    assertEquals("₪ 250", word.amount)
   }
 
   @Test
@@ -24,7 +24,7 @@ class BalanceWordTest {
     val word = balanceWord(-25_000)
     assertEquals("له", word.word)
     assertEquals(BalanceTone.CREDIT, word.tone)
-    assertEquals("₪ 250.00", word.amount)
+    assertEquals("₪ 250", word.amount)
   }
 
   @Test
@@ -49,9 +49,9 @@ class BalanceWordTest {
   }
 
   @Test
-  fun theMoneyFormatPutsTheShekelFirstWithTwoDecimals() {
-    assertEquals("₪ 1,234.50", formatShekels(Cents(123_450)))
+  fun theMoneyFormatPutsTheShekelFirstAndTrimsOnlyTrailingZeros() {
+    assertEquals("₪ 1,234.5", formatShekels(Cents(123_450)))
     assertEquals("₪ 0.05", formatShekels(Cents(5)))
-    assertEquals("₪ 1,000,000.00", formatShekels(Cents(100_000_000)))
+    assertEquals("₪ 1,000,000", formatShekels(Cents(100_000_000)))
   }
 }

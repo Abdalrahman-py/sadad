@@ -39,5 +39,6 @@ Decided 2026-10-15 by a version audit: the newest stable versions on Google Mave
 | benchmark-macro-junit4 / baselineprofile plugin | 1.5.0 | build-proven by ticket 63 (`:benchmark:assemble`, `:app:assembleBenchmark`) |
 | profileinstaller | 1.4.1 | build-proven by ticket 63 |
 | sentry-android / sentry gradle plugin | 8.61.0 / 6.23.0 | build-proven by ticket 70 (`:app:assembleRelease` with a DSN, mapping UUID in the release APK) |
+| @sentry/deno / @sentry/browser | 11.9.0 / 11.9.0 | user-approved 2026-10-28; ticket 71 (Edge function, dashboard) |
 | androidx test ext junit / runner / uiautomator | 1.3.0 / 1.7.0 / 2.4.0 | uiautomator build-proven by ticket 63 |
 

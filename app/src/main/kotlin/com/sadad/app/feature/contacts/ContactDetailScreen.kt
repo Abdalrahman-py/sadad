@@ -64,9 +64,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.lock.AppLock
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.Appear
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.ConfirmDialog
@@ -74,6 +74,7 @@ import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.StickyActions
 import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.balanceWord
@@ -173,7 +174,44 @@ internal fun ContactDetailScreen(
           verticalArrangement = Arrangement.spacedBy(6.dp),
       ) {
         item(key = "identity") { Appear { Identity(state, supplier) } }
-        if (!state.missing) {
+        if (state.syncFailure != null) {
+          item(key = "sync-failure") {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Text(
+                  stringResource(R.string.contacts_saved_draft),
+                  color = sadadPalette.owes,
+                  fontWeight = FontWeight.Bold,
+              )
+              Text(
+                  stringResource(R.string.contacts_sync_failed, state.syncFailure.orEmpty()),
+                  color = sadadPalette.owes,
+              )
+              Text(stringResource(R.string.contacts_draft_kept))
+              SadadButton(
+                  text = stringResource(R.string.contacts_discard_draft),
+                  style = SadadButtonStyle.SURFACE,
+                  onClick = viewModel::askDiscard,
+                  modifier = Modifier.fillMaxWidth(),
+              )
+            }
+          }
+          item(key = "draft-info") { InfoCard(state) }
+          items(state.savedDebts.size) { index ->
+            val debt = state.savedDebts[index]
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              Text(stringResource(R.string.contacts_saved_debt), fontWeight = FontWeight.Bold)
+              Text(formatCents(debt.amountCents), color = sadadPalette.owes)
+              debt.note?.let { Text(it) }
+              debt.dueDate?.let { Text(it) }
+            }
+          }
+        } else if (!state.missing) {
           item(key = "balance") {
             Appear(delayMillis = 60) { BalanceBlock(net, supplier) }
           }
@@ -198,7 +236,11 @@ internal fun ContactDetailScreen(
                 item(key = "month:$its") { MonthHeader(its) }
               }
               item(key = "movement:${movement.id}") {
-                MovementRow(movement, after[movement.id] ?: 0L)
+                MovementRow(
+                    movement,
+                    after[movement.id] ?: 0L,
+                    onDelete = { viewModel.askDeleteMovement(movement.id) },
+                )
               }
             }
           }
@@ -221,7 +263,7 @@ internal fun ContactDetailScreen(
         )
       }
     }
-    if (!state.missing && state.loaded) {
+    if (!state.missing && state.loaded && state.syncFailure == null) {
       RecordActions(
           supplier = supplier,
           canPay = state.canRegisterPayments,
@@ -252,6 +294,45 @@ internal fun ContactDetailScreen(
             Text(stringResource(R.string.contacts_close))
           }
         },
+    )
+  }
+  if (state.confirmDiscard) {
+    ConfirmDialog(
+        title = stringResource(R.string.contacts_discard_draft_title),
+        message = stringResource(R.string.contacts_discard_draft_message),
+        confirmText = stringResource(R.string.contacts_discard_draft),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDiscard,
+        onDismiss = viewModel::dismissDiscard,
+        destructive = true,
+    )
+  }
+  state.deleting?.let { movement ->
+    ConfirmDialog(
+        title =
+            stringResource(
+                when {
+                  state.deleteFinal -> R.string.contacts_delete_entry_final_title
+                  movement.kind == MovementKind.DEBT -> R.string.contacts_delete_debt_title
+                  else -> R.string.contacts_delete_payment_title
+                }
+            ),
+        message =
+            if (state.deleteFinal) stringResource(R.string.contacts_delete_entry_final_message)
+            else
+                stringResource(
+                    R.string.contacts_delete_entry_message,
+                    formatCents(movement.amount),
+                ),
+        confirmText =
+            stringResource(
+                if (state.deleteFinal) R.string.contacts_delete_entry_final
+                else R.string.contacts_delete_entry_next
+            ),
+        dismissText = stringResource(R.string.contacts_cancel),
+        onConfirm = viewModel::confirmDeleteMovement,
+        onDismiss = viewModel::dismissDeleteMovement,
+        destructive = true,
     )
   }
   if (state.confirmDelete) {
@@ -285,7 +366,7 @@ private fun ContactTopBar(
   ) {
     RoundButton(R.drawable.ic_back, stringResource(R.string.contacts_back), onBack)
     Box(Modifier.weight(1f))
-    if (state.missing || !state.loaded) return@Row
+    if (state.missing || !state.loaded || state.syncFailure != null) return@Row
     Box {
       RoundButton(
           R.drawable.ic_more,
@@ -585,7 +666,7 @@ private fun MonthHeader(month: YearMonth) {
 
 /** One entry: its icon, what it was and when, its amount, and the balance it left behind. */
 @Composable
-private fun MovementRow(movement: ContactMovement, afterNet: Long) {
+private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () -> Unit) {
   val p = sadadPalette
   val debt = movement.kind == MovementKind.DEBT
   val link = if (p.isDark) p.accent else p.primary
@@ -620,7 +701,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long) {
         contentAlignment = Alignment.Center,
     ) {
       Icon(
-          painterResource(if (debt) R.drawable.ic_record else R.drawable.ic_payment_in),
+          painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
           null,
           tint = if (debt) p.owes else link,
           modifier = Modifier.size(18.dp),
@@ -635,6 +716,41 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long) {
           fontWeight = FontWeight.Bold,
       )
       Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
+      movement.settled?.let { settled ->
+        Text(
+            stringResource(
+                R.string.contacts_row_settled_credit,
+                formatCents(settled),
+                formatCents(movement.credit ?: Cents.ZERO),
+            ),
+            color = p.credit,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+      }
+      movement.offsetted?.let { used ->
+        Text(
+            stringResource(R.string.contacts_row_offset, formatCents(used)),
+            color = p.credit,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+        )
+      }
+      when {
+        movement.canDelete ->
+            Text(
+                stringResource(R.string.contacts_delete),
+                color = p.owes,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier =
+                    Modifier.padding(top = 2.dp).clickable(role = Role.Button, onClick = onDelete),
+            )
+        movement.blockedReason != null ->
+            Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
+      }
     }
     Column(horizontalAlignment = Alignment.End) {
       MoneyText(
@@ -680,7 +796,7 @@ private fun RecordActions(
           horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
           verticalAlignment = Alignment.CenterVertically,
       ) {
-        Icon(painterResource(R.drawable.ic_record), null, modifier = Modifier.size(18.dp))
+        Icon(painterResource(R.drawable.ic_payment_out), null, modifier = Modifier.size(18.dp))
         Text(
             stringResource(
                 if (supplier) R.string.contacts_record_goods else R.string.contacts_record_debt
@@ -779,11 +895,12 @@ private fun methodLabel(method: PaymentMethod): String =
 
 @Composable
 private fun contactDetailViewModel(contactId: String): ContactDetailViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
+  val context = LocalContext.current.applicationContext
   return viewModel(
       factory =
           viewModelFactory {
-            initializer { ContactDetailViewModel(app.graph, contactId, app.applicationContext) }
+            initializer { ContactDetailViewModel(graph.contactDetailSource(), contactId, context) }
           }
   )
 }

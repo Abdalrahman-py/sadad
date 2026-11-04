@@ -3,11 +3,20 @@ package com.sadad.app.ui
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +30,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -32,10 +42,17 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.sadad.app.contactRecords
 import com.sadad.app.feature.auth.MainDispatcherRule
-import com.sadad.app.feature.history.ActivityLogViewModel
+import com.sadad.app.feature.contacts.ContactDetailScreen
+import com.sadad.app.feature.contacts.ContactDetailViewModel
+import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactDetailSource
+import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryViewModel
+import com.sadad.app.feature.history.statementSource
 import com.sadad.app.feature.home.HomeContent
 import com.sadad.app.feature.home.HomeUiState
 import com.sadad.app.feature.notifications.DueReminders
@@ -116,7 +133,7 @@ class EdgeToEdgeTest {
       inShellWithStore(People()) { fixture ->
         awaiting { seedContacts(fixture) }
         val model =
-            PeopleViewModel(fixture.graph, SavedStateHandle()).also {
+            PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
               fixture.closeWithStore(it.viewModelScope)
             }
         awaiting { model.state.first { it.registered > 0 } }
@@ -130,17 +147,14 @@ class EdgeToEdgeTest {
   fun historyClearsTheBars() =
       inShellWithStore(Activity) { fixture ->
         awaiting { seedContacts(fixture) }
-        val history = HistoryViewModel(fixture.graph, SavedStateHandle())
-        val activity = ActivityLogViewModel(fixture.graph)
+        val history = HistoryViewModel(fixture.graph.statementSource(), SavedStateHandle())
         fixture.closeWithStore(history.viewModelScope)
-        fixture.closeWithStore(activity.viewModelScope)
         awaiting {
           history.state.first { it.loaded }
-          activity.state.first { it.loaded }
         }
         val destinations: NavGraphBuilder.() -> Unit = {
           composable<Activity> {
-            HistoryScreen(historyViewModel = history, activityViewModel = activity)
+            HistoryScreen(historyViewModel = history)
           }
         }
         destinations
@@ -181,6 +195,37 @@ class EdgeToEdgeTest {
         destinations
       }
 
+  @Test
+  fun contactActionsRemainAboveThePersistentNavigationBar() =
+      inShellWithStore(
+          ContactDetail(contactId(1)),
+          check = {
+            val barTop =
+                compose.onNodeWithTag(ScreenTag.NAV_HOME).fetchSemanticsNode().boundsInWindow.top
+            for (label in listOf("دين جديد", "استلام دفعة")) {
+              val bottom = compose.onNodeWithText(label).fetchSemanticsNode().boundsInWindow.bottom
+              assertTrue("$label is covered by the app navigation", bottom <= barTop)
+            }
+          },
+      ) { fixture ->
+        val person = contact("سامي", contactId(1))
+        awaiting { fixture.seedCommands(listOf(person)) }
+        val model =
+            ContactDetailViewModel(
+                    fixture.graph.contactDetailSource(),
+                    person.entityId,
+                    compose.activity.applicationContext,
+                )
+                .also {
+                  fixture.closeWithStore(it.viewModelScope)
+                }
+        awaiting { model.state.first { it.loaded } }
+        val destinations: NavGraphBuilder.() -> Unit = {
+          composable<ContactDetail> { ContactDetailScreen(model, {}, {}, {}, {}) }
+        }
+        destinations
+      }
+
   /**
    * Screens such as the Debt and Payment forms keep their own Scaffold. The shell has already
    * placed its content between the bars, so a nested Scaffold must not add the bar insets again.
@@ -204,6 +249,70 @@ class EdgeToEdgeTest {
           }
         }
       }
+
+  /**
+   * Ticket 139: with the keyboard open, the shell hides the bottom bar and pads the NavHost above
+   * it, so the stub form's save button is never under the keyboard. The stub mirrors a form
+   * destination: a scrolling column of text fields ending in a save button.
+   */
+  @Test
+  fun imeHidesTheBarAndPadsTheContent() =
+      inShell(
+          Home,
+          check = {
+            compose.runOnUiThread {
+              val ime =
+                  WindowInsetsCompat.Builder()
+                      .setInsets(
+                          WindowInsetsCompat.Type.ime(),
+                          Insets.of(0, 0, 0, (IME_DP * density).toInt()),
+                      )
+                      .setVisible(WindowInsetsCompat.Type.ime(), true)
+                      .build()
+              ViewCompat.dispatchApplyWindowInsets(
+                  compose.activity.findViewById<View>(android.R.id.content),
+                  ime,
+              )
+            }
+            compose.waitForIdle()
+            assertEquals("the bottom bar hides while the keyboard is open", 0, barItems())
+            val height = compose.onRoot().fetchSemanticsNode().size.height
+            val imeTop = height - (IME_DP * density).toInt()
+            val save = compose.onNodeWithTag(FORM_SAVE).fetchSemanticsNode().boundsInWindow.bottom
+            assertTrue(
+                "the save button is under the keyboard (button $save, keyboard top $imeTop)",
+                save <= imeTop + 0.5f,
+            )
+            // The insets clear: the bar comes back.
+            applyBars()
+            assertEquals("the bottom bar returns when the keyboard closes", 5, barItems())
+          },
+      ) {
+        composable<Home> { KeyboardStubDestination() }
+      }
+
+  /** A form destination: text fields the keyboard could cover, ending in the save button. */
+  @Composable
+  private fun KeyboardStubDestination() {
+    Column(Modifier.fillMaxSize()) {
+      Column(
+          Modifier.weight(1f).verticalScroll(rememberScrollState()),
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        repeat(6) { TextField(value = "حقل $it", onValueChange = {}) }
+      }
+      Button(
+          onClick = {},
+          modifier =
+              Modifier.fillMaxWidth()
+                  .padding(horizontal = 18.dp, vertical = 12.dp)
+                  .testTag(FORM_SAVE),
+      ) {
+        Text("حفظ")
+      }
+    }
+  }
 
   private suspend fun seedContacts(fixture: TestGraph) {
     val repository = checkNotNull(fixture.graph.current.value).repository
@@ -321,5 +430,7 @@ class EdgeToEdgeTest {
 
     const val OUTER = "outer-top"
     const val INNER = "inner-top"
+    const val FORM_SAVE = "form-save"
+    const val IME_DP = 300
   }
 }

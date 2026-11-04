@@ -95,7 +95,7 @@ fun LoginScreen(
      */
     onBack: (() -> Unit)? = null,
     viewModel: LoginViewModel = authViewModel { graph, saved, context ->
-      LoginViewModel(graph, saved, context)
+      LoginViewModel(graph.authSource(), saved, context)
     },
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -189,7 +189,7 @@ fun PasswordChangeScreen(
     modifier: Modifier = Modifier,
     onNavigate: (Any) -> Unit = {},
     viewModel: PasswordChangeViewModel = authViewModel { graph, _, context ->
-      PasswordChangeViewModel(graph, context)
+      PasswordChangeViewModel(graph.authSource(), context)
     },
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -331,7 +331,7 @@ fun AwaitingApprovalScreen(
     modifier: Modifier = Modifier,
     onNavigate: (Any) -> Unit = {},
     viewModel: AwaitingApprovalViewModel = authViewModel { graph, _, context ->
-      AwaitingApprovalViewModel(graph, context)
+      AwaitingApprovalViewModel(graph.authSource(), context)
     },
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()

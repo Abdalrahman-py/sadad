@@ -5,12 +5,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
-import com.sadad.app.data.ledger.FirstDebt
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.data.ledger.WhatsAppPhone
-import com.sadad.app.ui.components.parseCents
-import com.sadad.ledger.Cents
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.LedgerView
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,43 +20,35 @@ import kotlinx.coroutines.launch
 /** A visible Contact that already has the phone the form was given. */
 data class DuplicateContact(val contactId: String, val name: String)
 
-/** The values the review dialog shows; the form fields stay untouched behind it. */
-data class ContactReview(
-    val name: String,
-    val phone: String?,
-    val category: String,
-    val amount: Cents?,
-    val dueDate: String?,
-)
-
 data class ContactFormState(
     val edit: Boolean = false,
+    val validationAttempt: Int = 0,
     val name: String = "",
+    /** The WhatsApp country code the chips choose: `970` or `972`. */
     val prefix: String = "970",
     val phone: String = "",
-    /** The Contact's type; creation keeps `CUSTOMER` until quick add replaces it (ticket 81). */
+    /** The Contact's type, chosen in the full form. */
     val kind: ContactKind = ContactKind.CUSTOMER,
     val category: String = "",
     val note: String = "",
-    val withFirstDebt: Boolean = false,
-    val debtAmount: String = "",
-    val debtDue: String? = null,
-    val debtNote: String = "",
     val nameError: String? = null,
     val phoneError: String? = null,
-    val debtError: String? = null,
     val duplicate: DuplicateContact? = null,
-    val review: ContactReview? = null,
     val busy: Boolean = false,
     val message: String? = null,
     /** Set once the Contact is queued, so the screen opens its record. */
     val savedContactId: String? = null,
+    /** Whether the queued save was «حفظ وتسجيل دين» (`true`) or «حفظ فقط» (`false`). */
+    val record: Boolean = false,
+    /** A picked contact that already lives in the store: the screen opens its page. */
+    val openContactId: String? = null,
+    /** A picked contact of the archive: the screen opens the trash. */
+    val openTrash: Boolean = false,
 )
 
 /**
  * The contact form's state. Every field is written to [SavedStateHandle], so a recreated ViewModel
- * shows what the user typed. Writes only leave through [LedgerRepository], after [save] and then
- * [confirm] on the review dialog.
+ * shows what the user typed. Writes only leave through [LedgerRepository], after [validate].
  */
 class ContactFormViewModel(
     private val repository: LedgerRepository,
@@ -66,13 +56,14 @@ class ContactFormViewModel(
     context: Context,
     private val saved: SavedStateHandle,
     private val contactId: String? = null,
+    initialName: String = "",
 ) : ViewModel() {
   private val appContext = context.applicationContext
   private val mutable =
       MutableStateFlow(
           ContactFormState(
               edit = contactId != null,
-              name = saved.get<String>(NAME).orEmpty(),
+              name = saved.get<String>(NAME) ?: initialName.takeIf { contactId == null }.orEmpty(),
               prefix = saved.get<String>(PREFIX) ?: "970",
               phone = saved.get<String>(PHONE).orEmpty(),
               kind =
@@ -83,10 +74,6 @@ class ContactFormViewModel(
                   saved.get<String>(CATEGORY)
                       ?: appContext.getString(R.string.contactform_default_category),
               note = saved.get<String>(NOTE).orEmpty(),
-              withFirstDebt = saved.get<Boolean>(WITH_DEBT) ?: false,
-              debtAmount = saved.get<String>(DEBT_AMOUNT).orEmpty(),
-              debtDue = saved.get<String>(DEBT_DUE),
-              debtNote = saved.get<String>(DEBT_NOTE).orEmpty(),
           )
       )
   val state: StateFlow<ContactFormState> = mutable.asStateFlow()
@@ -106,7 +93,8 @@ class ContactFormViewModel(
           if (contact != null) {
             prefilled = true
             saved[PREFILLED] = true
-            val (prefix, number) = localPhone(contact.phone)
+            val prefix = contact.whatsappCode
+            val number = contact.phone
             val category =
                 contact.category.ifBlank {
                   appContext.getString(R.string.contactform_default_category)
@@ -147,36 +135,45 @@ class ContactFormViewModel(
 
   fun onNoteChange(value: String) = edit(NOTE, value) { copy(note = value) }
 
-  fun onFirstDebtChange(value: Boolean) =
-      edit(WITH_DEBT, value) { copy(withFirstDebt = value, debtError = null) }
-
-  fun onDebtAmountChange(value: String) =
-      edit(DEBT_AMOUNT, value) { copy(debtAmount = value, debtError = null) }
-
-  fun onDebtDueChange(value: String?) = edit(DEBT_DUE, value) { copy(debtDue = value) }
-
-  fun onDebtNoteChange(value: String) = edit(DEBT_NOTE, value) { copy(debtNote = value) }
-
   fun dismissDuplicate() = mutable.update { it.copy(duplicate = null) }
 
-  fun dismissReview() = mutable.update { it.copy(review = null) }
-
-  /** Validates, then shows the review dialog; nothing is queued yet. */
-  fun save() {
-    if (mutable.value.busy) return
-    val review = validate()?.review()
-    mutable.update { it.copy(review = review) }
+  /**
+   * What the contacts picker handed back: a new person fills name, phone and code; a person the
+   * store already keeps, or one of the archive, is routed by the screen's own outcome state.
+   */
+  fun onPicked(picked: PickedContact) {
+    when (picked) {
+      is PickedContact.New -> {
+        edit(NAME, picked.name) { copy(name = picked.name, nameError = null) }
+        edit(PREFIX, picked.code) { copy(prefix = picked.code, phoneError = null) }
+        edit(PHONE, picked.phone.orEmpty()) {
+          copy(phone = picked.phone.orEmpty(), phoneError = null, duplicate = null)
+        }
+      }
+      is PickedContact.Existing ->
+          mutable.update { it.copy(openContactId = picked.contactId, openTrash = false) }
+      is PickedContact.Archived ->
+          mutable.update { it.copy(openTrash = true, openContactId = null) }
+    }
   }
 
-  /** Queues the reviewed Contact (and its first Debt), or shows why the ledger refused. */
-  fun confirm() {
+  /** The screen has opened the picked person's page or the trash. */
+  fun onPageHandled() = mutable.update { it.copy(openContactId = null, openTrash = false) }
+
+  /** Edit mode: validates and queues the Contact update with no review in between. */
+  fun save() = persist(record = false)
+
+  /** Add mode: «حفظ وتسجيل دين» queues the Contact as it is and ends on the amount screen. */
+  fun saveAndRecord() = persist(record = true)
+
+  /** Add mode: «حفظ فقط» queues the Contact as it is and ends on their page. */
+  fun saveOnly() = persist(record = false)
+
+  /** Validates, then queues the Contact (with no debt; the debt comes from QuickAdd). */
+  private fun persist(record: Boolean) {
     if (mutable.value.busy) return
-    val draft = validate()
-    if (draft == null) {
-      mutable.update { it.copy(review = null) }
-      return
-    }
-    mutable.update { it.copy(review = null, busy = true, message = null) }
+    val draft = validate() ?: return
+    mutable.update { it.copy(busy = true, message = null) }
     viewModelScope.launch {
       val editing = contactId
       val outcome: Result<String> =
@@ -186,8 +183,9 @@ class ContactFormViewModel(
                 draft.phone,
                 draft.category,
                 draft.note,
-                draft.amount?.let { FirstDebt(it, draft.debtNote, draft.due) },
+                null,
                 kind = draft.kind,
+                whatsappCode = draft.whatsappCode,
             )
           } else {
             repository
@@ -198,12 +196,13 @@ class ContactFormViewModel(
                     draft.category,
                     draft.note,
                     draft.kind,
+                    draft.whatsappCode,
                 )
                 .map { editing }
           }
       mutable.update { current ->
         outcome.fold(
-            onSuccess = { current.copy(busy = false, savedContactId = it) },
+            onSuccess = { current.copy(busy = false, savedContactId = it, record = record) },
             onFailure = { current.copy(busy = false, message = refusalText(it)) },
         )
       }
@@ -211,6 +210,14 @@ class ContactFormViewModel(
   }
 
   private fun validate(): Draft? {
+    mutable.update {
+      it.copy(
+          validationAttempt = it.validationAttempt + 1,
+          nameError = null,
+          phoneError = null,
+          duplicate = null,
+      )
+    }
     val current = mutable.value
     val name = current.name.trim()
     if (name.isEmpty() || name.codePointCount(0, name.length) > MAX_NAME) {
@@ -220,56 +227,46 @@ class ContactFormViewModel(
     val rawPhone = current.phone.trim()
     val phone =
         if (rawPhone.isEmpty()) null
-        else
-            try {
-              WhatsAppPhone.normalize(rawPhone, current.prefix)
-            } catch (invalid: IllegalArgumentException) {
-              mutable.update { it.copy(phoneError = invalid.message) }
-              return null
-            }
+        else {
+          val parsed = WhatsAppPhone.parse(rawPhone)
+          val error =
+              when {
+                parsed == null -> R.string.contactform_phone_invalid
+                parsed.code != null && parsed.code != current.prefix ->
+                    R.string.contactform_phone_prefix_mismatch
+                else -> null
+              }
+          if (error != null) {
+            mutable.update { it.copy(phoneError = appContext.getString(error)) }
+            return null
+          }
+          checkNotNull(parsed).phone
+        }
     val duplicate = phone?.let { value ->
       view?.contacts?.firstOrNull { it.id != contactId && it.phone == value }
     }
     if (duplicate != null) {
       mutable.update {
-        it.copy(duplicate = DuplicateContact(duplicate.id, duplicate.name))
+        it.copy(
+            duplicate = DuplicateContact(duplicate.id, duplicate.name),
+            phoneError =
+                appContext.getString(R.string.contactform_duplicate_message, duplicate.name),
+        )
       }
       return null
     }
-    val amount =
-        if (current.withFirstDebt) {
-          parseCents(current.debtAmount)
-              ?: run {
-                val zero = onlyZeroDigits(current.debtAmount)
-                mutable.update {
-                  it.copy(
-                      debtError =
-                          appContext.getString(
-                              if (zero) R.string.contactform_amount_zero
-                              else R.string.contactform_amount_invalid
-                          )
-                  )
-                }
-                return null
-              }
-        } else null
-    mutable.update { it.copy(nameError = null, phoneError = null, debtError = null) }
     return Draft(
         name = name,
         phone = phone,
+        whatsappCode = current.prefix,
         kind = current.kind,
         category =
             current.category.trim().ifEmpty {
               appContext.getString(R.string.contactform_default_category)
             },
         note = current.note.trim().ifEmpty { null },
-        amount = amount,
-        due = current.debtDue,
-        debtNote = current.debtNote.trim().ifEmpty { null },
     )
   }
-
-  private fun Draft.review() = ContactReview(name, phone, category, amount, due)
 
   private fun refusalText(error: Throwable): String =
       when (error) {
@@ -292,12 +289,10 @@ class ContactFormViewModel(
   private data class Draft(
       val name: String,
       val phone: String?,
+      val whatsappCode: String,
       val kind: ContactKind,
       val category: String,
       val note: String?,
-      val amount: Cents?,
-      val due: String?,
-      val debtNote: String?,
   )
 
   private companion object {
@@ -308,26 +303,6 @@ class ContactFormViewModel(
     const val KIND = "kind"
     const val CATEGORY = "category"
     const val NOTE = "note"
-    const val WITH_DEBT = "withFirstDebt"
-    const val DEBT_AMOUNT = "debtAmount"
-    const val DEBT_DUE = "debtDue"
-    const val DEBT_NOTE = "debtNote"
     const val PREFILLED = "prefilled"
-
-    /** `+970599123456` back to the prefix and the local number the form edits. */
-    fun localPhone(phone: String): Pair<String, String> {
-      val digits = phone.removePrefix("+")
-      return when {
-        digits.startsWith("972") -> "972" to digits.removePrefix("972")
-        digits.startsWith("970") -> "970" to digits.removePrefix("970")
-        else -> "970" to phone
-      }
-    }
-
-    /** An amount text that is a number but nothing but zeros, e.g. `0` or `0.00`. */
-    fun onlyZeroDigits(text: String): Boolean {
-      val digits = text.filter { Character.digit(it, 10) >= 0 }
-      return digits.isNotEmpty() && digits.all { Character.digit(it, 10) == 0 }
-    }
   }
 }

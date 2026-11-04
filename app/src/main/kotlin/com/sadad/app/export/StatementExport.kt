@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.ledger.LedgerView
@@ -42,6 +43,14 @@ object StatementExport {
         out.use { write(format, labels, header, statements, it) }
       }
 
+  /** Deletes the statement PDFs still in the cache; a file that refuses is only logged. */
+  suspend fun clearExports(context: Context) =
+      withContext(Dispatchers.IO) {
+        File(context.cacheDir, "exports").listFiles()?.forEach { file ->
+          if (!file.delete()) Log.w("StatementExport", "cannot delete ${file.path}")
+        }
+      }
+
   suspend fun writePdf(
       context: Context,
       header: StatementHeader,
@@ -51,6 +60,7 @@ object StatementExport {
       to: Instant?,
   ): Uri =
       withContext(Dispatchers.IO) {
+        clearExports(context)
         val statements = statements(view, contactId, from, to)
         val directory = File(context.cacheDir, "exports")
         if (!directory.isDirectory && !directory.mkdirs())

@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -30,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +58,6 @@ import com.sadad.app.SadadApplication
 import com.sadad.app.ui.components.Appear
 import com.sadad.app.ui.components.KeypadKey
 import com.sadad.app.ui.components.PinDots
-import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.ui.components.SadadLogo
 import com.sadad.app.ui.components.sadadPageBackground
@@ -68,7 +69,7 @@ import kotlinx.coroutines.withContext
 
 internal object LockTag {
   const val PIN = "lock_pin"
-  const val OPEN = "lock_open"
+  const val BOARD = "lock_board"
 
   fun key(digit: String) = "lock_key_$digit"
 }
@@ -83,8 +84,9 @@ internal interface BiometricAuth {
 
 /**
  * Keeps [content] out of composition behind the PIN or biometric unlock while the lock applies: a
- * store session exists, a PIN is set and the lock is on. Locked from process start and after the
- * app was stopped for more than 1.2 s.
+ * store session exists, a PIN is set and the lock is on. Locked from process start, when the app
+ * closes, and after being stopped for over a minute; a short leave (ON_PAUSE or under the minute)
+ * keeps the owner where he was, and an unlock restores his screen and his half-typed entry.
  */
 @Composable
 fun LockGate(content: @Composable () -> Unit) {
@@ -119,26 +121,41 @@ internal fun LockGate(
   val applies = hasSession == true && enabled == true && pinSet == true
   // Lock off, no PIN or signed out: drop the pending lock so a later PIN does not lock at once.
   LaunchedEffect(locked, known, applies) { if (locked && known && !applies) lock.markUnlocked() }
+  // The content still leaves composition while locked (a lock that keeps the ledger composed puts
+  // real balances in the recents thumbnail), but the holder keeps its saveable state, so the
+  // `rememberNavController` inside it saves and restores the back stack: unlocking puts the owner
+  // back on the screen he was on instead of at the start destination (#177).
+  val kept = rememberSaveableStateHolder()
   when {
-    !locked || (known && !applies) -> content()
+    !locked || (known && !applies) -> kept.SaveableStateProvider(GATED_CONTENT) { content() }
     !known -> Surface(Modifier.fillMaxSize()) {}
     else -> UnlockScreen(lock, biometric)
   }
 }
 
+/** One gated subtree, so its saved state is kept under a stable key while the lock is up. */
+private const val GATED_CONTENT = "gated-content"
+
 @Composable
 private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
   val scope = rememberCoroutineScope()
   val biometricOn by lock.biometricEnabled.collectAsState(false)
-  val canBiometric = remember(biometricOn) { biometricOn && biometric.available() }
+  // canAuthenticate is a binder call: resolved once per setting, off the composition thread.
+  val canBiometric by
+      produceState(false, biometricOn) {
+        value = biometricOn && withContext(Dispatchers.IO) { biometric.available() }
+      }
   var pin by remember { mutableStateOf("") }
+  var checking by remember { mutableStateOf(false) }
   var wrong by remember { mutableStateOf(false) }
   var remaining by remember { mutableLongStateOf(0L) }
   LaunchedEffect(Unit) { remaining = lock.lockout()?.remaining ?: 0L }
+  // The deadline is read once; the countdown runs in memory. Ending a second late is harmless, and
+  // an early end is caught by verifyPin, which answers LockedOut with the stored deadline.
   LaunchedEffect(remaining > 0L) {
     while (remaining > 0L) {
       delay(1_000)
-      remaining = lock.lockout()?.remaining ?: 0L
+      remaining = (remaining - 1_000).coerceAtLeast(0L)
     }
   }
   LaunchedEffect(canBiometric) { if (canBiometric) biometric.authenticate(lock::markUnlocked) }
@@ -164,95 +181,103 @@ private fun UnlockScreen(lock: AppLock, biometric: BiometricAuth) {
               KeypadKey.Char("0"),
               KeypadKey.Delete(stringResource(R.string.common_delete)),
           )
-  // Arabic-first, like the rest of the shell. The Lock board: logo, title, dots, keypad, open.
+  // Center the whole board; keep it scrollable on small screens and at large font sizes.
   CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-    Column(
+    BoxWithConstraints(
         Modifier.fillMaxSize()
             .sadadPageBackground()
             .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(start = 18.dp, end = 18.dp, top = 40.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .padding(horizontal = 18.dp, vertical = 20.dp),
     ) {
       Column(
-          Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),
-          horizontalAlignment = Alignment.CenterHorizontally,
-          verticalArrangement = Arrangement.spacedBy(10.dp),
+          Modifier.verticalScroll(rememberScrollState()).heightIn(min = maxHeight).fillMaxWidth(),
+          verticalArrangement = Arrangement.Center,
       ) {
-        Appear { SadadLogo(64.dp, dark = p.isDark) }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            Modifier.fillMaxWidth().testTag(LockTag.BOARD),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-          Icon(
-              painterResource(R.drawable.ic_lock),
-              null,
-              tint = if (p.isDark) p.accent else p.primary,
-              modifier = Modifier.size(22.dp),
+          Column(
+              Modifier.fillMaxWidth(),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Appear { SadadLogo(64.dp, dark = p.isDark) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              Icon(
+                  painterResource(R.drawable.ic_lock),
+                  null,
+                  tint = if (p.isDark) p.accent else p.primary,
+                  modifier = Modifier.size(22.dp),
+              )
+              Text(
+                  stringResource(R.string.lock_title),
+                  color = p.text,
+                  fontSize = 23.sp,
+                  lineHeight = 32.sp,
+                  fontWeight = FontWeight.Bold,
+                  modifier = Modifier.semantics { heading() },
+              )
+            }
+            Text(
+                stringResource(if (canBiometric) R.string.lock_hint else R.string.lock_hint_pin),
+                color = p.muted,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                textAlign = TextAlign.Center,
+            )
+          }
+          PinDots(
+              filled = pin.length,
+              count = 4,
+              description = stringResource(R.string.lock_pin_entered, pin.length),
+              modifier = Modifier.testTag(LockTag.PIN),
           )
           Text(
-              stringResource(R.string.lock_title),
-              color = p.text,
-              fontSize = 23.sp,
-              lineHeight = 32.sp,
-              fontWeight = FontWeight.Bold,
-              modifier = Modifier.semantics { heading() },
+              message ?: if (pin.isEmpty()) stringResource(R.string.lock_pin_range) else "",
+              color = if (message != null) p.owes else p.muted,
+              fontSize = 13.sp,
+              textAlign = TextAlign.Center,
+              modifier =
+                  Modifier.fillMaxWidth().heightIn(min = 20.dp).semantics {
+                    if (message != null) liveRegion = LiveRegionMode.Polite
+                  },
+          )
+          SadadKeypad(
+              keys = keys,
+              onChar = {
+                if (!locked && !checking && pin.length < 4) {
+                  pin += it
+                  wrong = false
+                  if (pin.length == 4) {
+                    val entered = pin
+                    checking = true
+                    scope.launch {
+                      try {
+                        when (val result = lock.verifyPin(entered)) {
+                          PinResult.Ok -> lock.markUnlocked()
+                          is PinResult.Wrong -> wrong = true
+                          is PinResult.LockedOut -> remaining = result.remaining
+                        }
+                      } finally {
+                        pin = ""
+                        checking = false
+                      }
+                    }
+                  }
+                }
+              },
+              onDelete = { if (!locked && !checking) pin = pin.dropLast(1) },
+              keyHeight = 60.dp,
+              fontSize = 26,
+              plainSpecials = true,
+              tagFor = { key -> (key as? KeypadKey.Char)?.let { LockTag.key(it.label) } },
           )
         }
-        Text(
-            stringResource(if (canBiometric) R.string.lock_hint else R.string.lock_hint_pin),
-            color = p.muted,
-            fontSize = 14.sp,
-            lineHeight = 21.sp,
-            textAlign = TextAlign.Center,
-        )
-        PinDots(
-            filled = pin.length,
-            count = maxOf(4, pin.length),
-            description = stringResource(R.string.lock_pin_entered, pin.length),
-            modifier = Modifier.padding(top = 10.dp).testTag(LockTag.PIN),
-        )
-        Text(
-            message ?: if (pin.isEmpty()) stringResource(R.string.lock_pin_range) else "",
-            color = if (message != null) p.owes else p.muted,
-            fontSize = 13.sp,
-            textAlign = TextAlign.Center,
-            modifier =
-                Modifier.fillMaxWidth().heightIn(min = 20.dp).semantics {
-                  if (message != null) liveRegion = LiveRegionMode.Polite
-                },
-        )
       }
-      SadadKeypad(
-          keys = keys,
-          onChar = {
-            if (!locked && pin.length < 12) {
-              pin += it
-              wrong = false
-            }
-          },
-          onDelete = { pin = pin.dropLast(1) },
-          keyHeight = 60.dp,
-          fontSize = 26,
-          plainSpecials = true,
-          tagFor = { key -> (key as? KeypadKey.Char)?.let { LockTag.key(it.label) } },
-      )
-      SadadButton(
-          text = stringResource(R.string.lock_open),
-          onClick = {
-            val entered = pin
-            pin = ""
-            scope.launch {
-              when (val result = lock.verifyPin(entered)) {
-                PinResult.Ok -> lock.markUnlocked()
-                is PinResult.Wrong -> wrong = true
-                is PinResult.LockedOut -> remaining = result.remaining
-              }
-            }
-          },
-          enabled = !locked && pin.length >= 4,
-          height = 56.dp,
-          modifier = Modifier.fillMaxWidth().testTag(LockTag.OPEN),
-      )
     }
   }
 }

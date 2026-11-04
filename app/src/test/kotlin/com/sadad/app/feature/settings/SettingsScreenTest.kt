@@ -7,7 +7,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
@@ -24,7 +23,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.history.HistoryTags
-import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
@@ -34,6 +32,7 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -95,11 +94,11 @@ class SettingsScreenTest {
       val switched = runBlocking {
         withTimeoutOrNull(10_000) {
           model.state.first { state ->
-            state.accounts.firstOrNull { it.active }?.storeUserId == STORE_A
+            state.store.accounts.firstOrNull { it.active }?.storeUserId == STORE_A
           }
         }
       }
-      assertEquals(STORE_A, switched?.accounts?.firstOrNull { it.active }?.storeUserId)
+      assertEquals(STORE_A, switched?.store?.accounts?.firstOrNull { it.active }?.storeUserId)
     }
   }
 
@@ -181,17 +180,14 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun theExportChipsChangeTheSavedPeriod() {
-    show { kit, _, _ ->
-      scrollTo(hasTestTag(HistoryTags.PERIOD_YEAR))
-      compose.onNodeWithTag(HistoryTags.PERIOD_MONTH).assertIsSelected()
-
-      compose.onNodeWithTag(HistoryTags.PERIOD_YEAR).performClick()
-
-      compose.waitUntil(timeoutMillis = 10_000) {
-        runBlocking { kit.preferences.exportPeriod.first() } ==
-            ExportPeriod.Preset(PeriodPreset.YEAR)
-      }
+  fun theExportPeriodIsNotOfferedHere() {
+    // The restyle moved the statement export — and the period it covers — to «الحركات», where the
+    // entries it lists are. HistoryScreenTest drives the chips there; this screen must not carry a
+    // second copy of them.
+    show { _, _, _ ->
+      compose.onNodeWithTag(SettingsTags.LIST).performScrollToNode(hasTestTag(SettingsTags.TRASH))
+      compose.onAllNodesWithTag(HistoryTags.PERIOD_YEAR).assertCountEquals(0)
+      compose.onAllNodesWithTag(HistoryTags.PERIOD_MONTH).assertCountEquals(0)
     }
   }
 
@@ -214,8 +210,10 @@ class SettingsScreenTest {
   @Test
   fun aDeviceWithoutDeletePermissionsSeesNoTrash() {
     show(canDelete = false) { _, _, _ ->
-      scrollTo(hasText("البيانات"))
-      compose.onAllNodesWithText("سلة المحذوفات").assertCountEquals(0)
+      // The trash is the only thing left in «البيانات», so the section itself is not drawn: there
+      // is no heading to scroll to and nothing to open.
+      compose.onAllNodesWithText("البيانات").assertCountEquals(0)
+      compose.onAllNodesWithTag(SettingsTags.TRASH).assertCountEquals(0)
     }
   }
 
@@ -275,11 +273,29 @@ class SettingsScreenTest {
       compose.onNodeWithTag(SettingsDialogTags.PIN_SAVE).performClick()
 
       compose.waitUntil(timeoutMillis = 10_000) {
-        compose
-            .onAllNodesWithText("الرمز يجب أن يكون من 4 إلى 12 رقماً.")
-            .fetchSemanticsNodes()
-            .isNotEmpty()
+        compose.onAllNodesWithText("الرمز يجب أن يكون 4 أرقام.").fetchSemanticsNodes().isNotEmpty()
       }
+    }
+  }
+
+  @Test
+  fun thePinFieldsKeepOnlyFourDigits() {
+    show { kit, _, _ ->
+      scrollTo(hasText("إنشاء رمز قفل"))
+      compose.onNodeWithText("إنشاء رمز قفل").performScrollTo().performClick()
+      compose.waitUntil(10_000) {
+        compose.onAllNodesWithTag(SettingsDialogTags.PIN_FIRST).fetchSemanticsNodes().isNotEmpty()
+      }
+      compose.onNodeWithTag(SettingsDialogTags.PIN_FIRST).performTextInput("12345")
+      compose.onNodeWithTag(SettingsDialogTags.PIN_SECOND).performTextInput("12346")
+      compose.onNodeWithTag(SettingsDialogTags.PIN_SAVE).performClick()
+      compose.waitUntil(10_000) {
+        compose.onAllNodesWithTag(SettingsDialogTags.PIN_FIRST).fetchSemanticsNodes().isEmpty()
+      }
+      assertEquals(
+          com.sadad.app.feature.lock.PinResult.Ok,
+          runBlocking { kit.lock.verifyPin("1234") },
+      )
     }
   }
 
@@ -359,7 +375,8 @@ class SettingsScreenTest {
               }
             }
             val model = kit.viewModel(biometricAvailable = sensor)
-            runBlocking { model.state.first { it.loaded } }
+            // Bounded: a module flow that never emits fails here instead of hanging the job.
+            runBlocking { withTimeout(10_000) { model.state.first { it.loaded } } }
             val nav = Nav()
             compose.setContent {
               SadadTheme {

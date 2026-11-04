@@ -31,6 +31,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,18 +74,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.KeypadKey
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadField
+import com.sadad.app.ui.components.SHEKEL
 import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.VoiceDraftButton
@@ -107,15 +110,14 @@ object QuickAddTags {
   const val PEOPLE = "quickadd:people"
   const val ADD_NEW = "quickadd:add-new"
   const val BLOCKED = "quickadd:blocked"
-  const val NEW_SHEET = "quickadd:new-sheet"
-  const val NEW_NAME = "quickadd:new-name"
-  const val NEW_PHONE = "quickadd:new-phone"
-  const val NEW_CONTINUE = "quickadd:new-continue"
-  const val KIND_CUSTOMER = "quickadd:kind-customer"
-  const val KIND_SUPPLIER = "quickadd:kind-supplier"
+  const val QUEUED = "quickadd:queued"
   const val AMOUNT = "quickadd:amount"
   const val PREVIEW = "quickadd:preview"
   const val ERROR = "quickadd:error"
+  const val DUE_CHIP = "quickadd:due-chip"
+  const val NOTE_CHIP = "quickadd:note-chip"
+  const val DUE_DIALOG = "quickadd:due-dialog"
+  const val NOTE_DIALOG = "quickadd:note-dialog"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -131,35 +133,36 @@ object QuickAddTags {
   fun key(label: String) = "quickadd:key-$label"
 }
 
-/**
- * Recording a debt or a payment, in the four steps of `QuickAdd.dc.html`: pick the person, create
- * them if they are new, type the amount on a keypad, and read the sentence that was recorded with
- * eight seconds to take it back. Opened from «+» with nothing, or from a Contact's page with that
- * person and the mode already chosen.
- */
+/** Records for a saved person, or for a new one created inside the flow with their first debt. */
 @Composable
 fun QuickAddScreen(
     contactId: String?,
     payment: Boolean,
     onClose: () -> Unit,
     onOpenContact: (String) -> Unit,
+    onOpenTrash: () -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
   val p = sadadPalette
+  // A picked phone number of someone in the archive: they are restored from the trash, not here.
+  LaunchedEffect(state.openTrash) {
+    if (state.openTrash) {
+      viewModel.onTrashHandled()
+      onOpenTrash()
+    }
+  }
 
   Box(Modifier.fillMaxSize().sadadPageBackground()) {
     when (state.step) {
       QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose)
-      QuickAddStep.NEW_PERSON -> {
-        PickerStep(state, viewModel, onClose)
-        NewPersonSheet(state, viewModel)
-      }
+      QuickAddStep.NEW_PERSON -> NewPersonStep(state, viewModel)
       QuickAddStep.AMOUNT ->
           AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
+    PhoneNumberChooser(state, viewModel)
     val anomaly = state.anomaly
     if (anomaly != null) {
       AlertDialog(
@@ -203,12 +206,17 @@ fun QuickAddScreen(
 
 @Composable
 private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   return viewModel(
       factory =
           viewModelFactory {
             initializer {
-              QuickAddViewModel(app.graph, contactId, payment, createSavedStateHandle())
+              QuickAddViewModel(
+                  graph.quickAddSource(this[APPLICATION_KEY]),
+                  contactId,
+                  payment,
+                  createSavedStateHandle(),
+              )
             }
           }
   )
@@ -217,7 +225,11 @@ private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddVie
 /* ---------------------------------------------------------------- picker */
 
 @Composable
-private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: () -> Unit) {
+private fun PickerStep(
+    state: QuickAddState,
+    model: QuickAddViewModel,
+    onClose: () -> Unit,
+) {
   val p = sadadPalette
   Column(
       Modifier.fillMaxSize().imePadding().padding(horizontal = 18.dp),
@@ -246,6 +258,13 @@ private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: 
         onClear = model::clearQuery,
     )
     if (state.blocked) BlockedCard()
+    state.error?.let {
+      Text(
+          it,
+          color = MaterialTheme.colorScheme.error,
+          modifier = Modifier.testTag(QuickAddTags.ERROR),
+      )
+    }
 
     Text(
         text = listLabelText(state),
@@ -273,8 +292,10 @@ private fun PickerStep(state: QuickAddState, model: QuickAddViewModel, onClose: 
           )
         }
       }
-      if (state.query.isNotBlank()) {
-        item { AddNewRow(name = state.query.trim(), onClick = model::startNewPerson) }
+      // A new person is someone to record a debt for; the payment flow has nobody new to pay.
+      if (state.query.isNotBlank() && !state.payment) {
+        item { AddNewRow(name = state.query.trim(), onClick = model::addNewPerson) }
+        phoneContacts(state, model)
       }
     }
   }
@@ -286,6 +307,11 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
   val hint = stringResource(R.string.quickadd_search_hint)
   val focus = remember { FocusRequester() }
   val keyboard = LocalSoftwareKeyboardController.current
+  // The field owns its text: a value that comes back through the view model's flow arrives a frame
+  // late, and the cursor jumps while the owner types. Only a reset to empty (clear, «تسجيل آخر»)
+  // flows back in.
+  var text by rememberSaveable { mutableStateOf(query) }
+  LaunchedEffect(query) { if (query.isEmpty()) text = "" }
   LaunchedEffect(Unit) {
     focus.requestFocus()
     keyboard?.show()
@@ -303,8 +329,11 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
     ) {
       SearchGlyph(p.muted)
       BasicTextField(
-          value = query,
-          onValueChange = onQuery,
+          value = text,
+          onValueChange = {
+            text = it
+            onQuery(it)
+          },
           singleLine = true,
           textStyle = LocalTextStyle.current.copy(fontSize = 15.sp, color = p.text),
           cursorBrush = SolidColor(p.primary),
@@ -315,17 +344,20 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClear: () ->
               },
           decorationBox = { inner ->
             Box(Modifier.fillMaxWidth()) {
-              if (query.isEmpty()) Text(hint, color = p.muted, fontSize = 15.sp)
+              if (text.isEmpty()) Text(hint, color = p.muted, fontSize = 15.sp)
               inner()
             }
           },
       )
-      if (query.isNotEmpty()) {
+      if (text.isNotEmpty()) {
         RoundIconButton(
             description = stringResource(R.string.quickadd_clear_search),
             size = 40,
             tag = QuickAddTags.CLEAR,
-            onClick = onClear,
+            onClick = {
+              text = ""
+              onClear()
+            },
         ) {
           XGlyph(p.muted, size = 18)
         }
@@ -357,15 +389,6 @@ private fun BlockedCard() {
             stringResource(R.string.quickadd_blocked_body),
             fontSize = 12.sp,
             color = p.muted,
-        )
-      }
-      Surface(color = p.card, shape = RoundedCornerShape(10.dp)) {
-        Text(
-            stringResource(R.string.quickadd_reconnect),
-            color = if (p.isDark) p.accent else p.primary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         )
       }
     }
@@ -461,166 +484,9 @@ private fun AddNewRow(name: String, onClick: () -> Unit) {
   }
 }
 
-/* ------------------------------------------------------------ new person */
-
-@Composable
-private fun NewPersonSheet(state: QuickAddState, model: QuickAddViewModel) {
-  val p = sadadPalette
-  Box(Modifier.fillMaxSize().background(Scrim)) {
-    Surface(
-        color = p.card,
-        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-        modifier =
-            Modifier.fillMaxWidth().align(Alignment.BottomCenter).testTag(QuickAddTags.NEW_SHEET),
-    ) {
-      Column(
-          Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 24.dp).imePadding(),
-          verticalArrangement = Arrangement.spacedBy(14.dp),
-      ) {
-        Box(
-            Modifier.width(40.dp)
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(p.line)
-                .align(Alignment.CenterHorizontally)
-        )
-        Text(
-            stringResource(R.string.quickadd_new_title),
-            fontSize = 21.sp,
-            fontWeight = FontWeight.Bold,
-            color = p.text,
-        )
-        SadadField(
-            label = stringResource(R.string.quickadd_name),
-            value = state.newName,
-            onValueChange = model::onNewName,
-            modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.NEW_NAME),
-        )
-        SadadField(
-            label =
-                stringResource(R.string.quickadd_phone) +
-                    " " +
-                    stringResource(R.string.quickadd_phone_hint),
-            value = state.newPhone,
-            onValueChange = model::onNewPhone,
-            placeholder = stringResource(R.string.quickadd_phone_placeholder),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.NEW_PHONE),
-        )
-        KindToggle(state, model)
-        val duplicate = state.duplicate
-        if (duplicate != null) {
-          Surface(
-              color = p.creditSoft,
-              shape = RoundedCornerShape(13.dp),
-              modifier = Modifier.fillMaxWidth(),
-          ) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-              Text(
-                  stringResource(R.string.quickadd_duplicate),
-                  fontSize = 14.sp,
-                  lineHeight = 21.sp,
-                  color = p.text,
-              )
-              Text(
-                  duplicate,
-                  fontSize = 14.sp,
-                  lineHeight = 21.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = p.text,
-              )
-              Surface(color = p.card, shape = RoundedCornerShape(10.dp)) {
-                Text(
-                    stringResource(R.string.quickadd_use_duplicate, duplicate),
-                    color = if (p.isDark) p.accent else p.primary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .clickable(onClick = model::useDuplicate)
-                            .padding(vertical = 12.dp),
-                )
-              }
-            }
-          }
-        }
-        SadadButton(
-            text = stringResource(R.string.quickadd_continue),
-            onClick = model::createPerson,
-            enabled = state.newName.isNotBlank() && state.duplicate == null,
-            modifier = Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.NEW_CONTINUE),
-        )
-        TextButton(onClick = model::cancelNew, modifier = Modifier.fillMaxWidth()) {
-          Text(stringResource(R.string.quickadd_cancel))
-        }
-        Text(
-            stringResource(R.string.quickadd_new_footnote),
-            fontSize = 12.sp,
-            color = p.muted,
-        )
-      }
-    }
-  }
-}
-
-@Composable
-private fun KindToggle(state: QuickAddState, model: QuickAddViewModel) {
-  val p = sadadPalette
-  Surface(
-      color = p.surface,
-      shape = RoundedCornerShape(13.dp),
-      modifier = Modifier.fillMaxWidth(),
-  ) {
-    Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-      KindCell(
-          label = stringResource(R.string.quickadd_customer),
-          chosen = state.newKind == ContactKind.CUSTOMER,
-          tag = QuickAddTags.KIND_CUSTOMER,
-          onClick = { model.onNewKind(ContactKind.CUSTOMER) },
-          modifier = Modifier.weight(1f),
-      )
-      KindCell(
-          label = stringResource(R.string.quickadd_supplier),
-          chosen = state.newKind == ContactKind.SUPPLIER,
-          tag = QuickAddTags.KIND_SUPPLIER,
-          onClick = { model.onNewKind(ContactKind.SUPPLIER) },
-          modifier = Modifier.weight(1f),
-      )
-    }
-  }
-}
-
-@Composable
-private fun KindCell(
-    label: String,
-    chosen: Boolean,
-    tag: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-  val p = sadadPalette
-  Surface(
-      color = if (chosen) p.primary else Color.Transparent,
-      shape = RoundedCornerShape(10.dp),
-      modifier =
-          modifier.height(44.dp).testTag(tag).clickable(onClick = onClick).semantics {
-            role = Role.Button
-          },
-  ) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-      Text(
-          label,
-          color = if (chosen) Color.White else p.muted,
-          fontSize = 14.sp,
-          fontWeight = FontWeight.Bold,
-      )
-    }
-  }
-}
-
 /* ---------------------------------------------------------------- amount */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AmountStep(
     state: QuickAddState,
@@ -695,10 +561,10 @@ private fun AmountStep(
       // The amount and the keypad read left to right, as the board draws them, inside an RTL page.
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(verticalAlignment = Alignment.Bottom) {
-          Text("₪", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
+          Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = p.text)
           Spacer(Modifier.width(8.dp))
           Text(
-              text = amountLabel(state.amount),
+              text = typedAmountLabel(state.amount),
               fontSize = 52.sp,
               fontWeight = FontWeight.Bold,
               color = if (state.amount.isEmpty()) Ghost else p.text,
@@ -727,20 +593,22 @@ private fun AmountStep(
         // A due date belongs to what a customer owes; a supplier's goods have none.
         if (supplier != true) {
           Chip(
-              state.dueDate?.let { stringResource(R.string.quickadd_due_on, it) }
-                  ?: stringResource(R.string.quickadd_due),
+              label =
+                  state.dueDate?.let { stringResource(R.string.quickadd_due_on, it) }
+                      ?: stringResource(R.string.quickadd_due),
               active = state.dueDate != null,
-          ) {
-            choosingDue = true
-          }
+              onClick = { choosingDue = true },
+              tag = QuickAddTags.DUE_CHIP,
+          )
         }
         Chip(
-            state.note.takeIf { it.isNotBlank() }?.let { it.trim().take(NOTE_CHIP_CHARS) }
-                ?: stringResource(R.string.quickadd_note),
+            label =
+                state.note.takeIf { it.isNotBlank() }?.let { it.trim().take(NOTE_CHIP_CHARS) }
+                    ?: stringResource(R.string.quickadd_note),
             active = state.note.isNotEmpty(),
-        ) {
-          writingNote = true
-        }
+            onClick = { writingNote = true },
+            tag = QuickAddTags.NOTE_CHIP,
+        )
       } else {
         for (method in QUICK_METHODS) {
           Chip(
@@ -825,7 +693,8 @@ private fun ModeToggle(state: QuickAddState, model: QuickAddViewModel, supplier:
           onClick = model::toDebt,
           modifier = Modifier.weight(1f),
       )
-      if (!state.restricted) {
+      // A person created in this flow has nothing to pay yet.
+      if (!state.restricted && state.newPerson == null) {
         ModeCell(
             label =
                 stringResource(
@@ -902,13 +771,21 @@ private fun Keypad(onKey: (String) -> Unit, onDelete: () -> Unit) {
 }
 
 @Composable
-private fun Chip(label: String, active: Boolean, onClick: () -> Unit) {
+private fun Chip(
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    tag: String? = null,
+) {
   val p = sadadPalette
   Surface(
       color = if (active) p.soft else p.card,
       shape = RoundedCornerShape(22.dp),
       border = BorderStroke(1.dp, p.line),
-      modifier = Modifier.height(44.dp).clickable(onClick = onClick),
+      modifier =
+          Modifier.height(44.dp)
+              .then(if (tag == null) Modifier else Modifier.testTag(tag))
+              .clickable(onClick = onClick),
   ) {
     Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
       Text(
@@ -941,6 +818,7 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
       )
   val picked = state.selectedDateMillis
   DatePickerDialog(
+      modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
       onDismissRequest = onDismiss,
       confirmButton = {
         TextButton(
@@ -974,6 +852,7 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
 private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
   var text by remember { mutableStateOf(current) }
   AlertDialog(
+      modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
       title = { Text(stringResource(R.string.quickadd_note), fontWeight = FontWeight.Bold) },
       text = {
@@ -1083,18 +962,28 @@ private fun DoneStep(
       }
     }
 
-    SadadButton(
-        text =
-            stringResource(R.string.quickadd_undo) +
-                " " +
-                stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
-        onClick = { model.undo(context) },
-        // The count runs down each second; at zero the entry is queued and there is nothing to
-        // undo.
-        enabled = done.secondsLeft > 0,
-        style = SadadButtonStyle.SURFACE,
-        modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
-    )
+    if (done.offline) {
+      Text(
+          stringResource(R.string.quickadd_done_offline),
+          fontSize = 13.sp,
+          color = p.muted,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.fillMaxWidth().testTag(QuickAddTags.QUEUED),
+      )
+    }
+
+    // Once the entry is queued there is nothing to undo here, so the offer goes away with it.
+    if (done.secondsLeft > 0) {
+      SadadButton(
+          text =
+              stringResource(R.string.quickadd_undo) +
+                  " " +
+                  stringResource(R.string.quickadd_undo_seconds, done.secondsLeft),
+          onClick = { model.undo(context) },
+          style = SadadButtonStyle.SURFACE,
+          modifier = Modifier.fillMaxWidth().height(48.dp).testTag(QuickAddTags.UNDO),
+      )
+    }
     SadadButton(
         text = stringResource(R.string.quickadd_another),
         onClick = { model.another(context) },
@@ -1362,7 +1251,5 @@ private fun Modifier.dashedBorder(color: Color, radius: Dp, width: Dp = 1.5.dp) 
           ),
   )
 }
-
-private val Scrim = Color(0x73142C24)
 
 private val Ghost = Color(0xFF8FA89B)

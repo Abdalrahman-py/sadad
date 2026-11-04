@@ -1,6 +1,7 @@
 package com.sadad.app.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -56,15 +57,20 @@ class SyncDotTest {
                 val scope = checkNotNull(fixture.graph.current.value)
                 scope.outbox.markUnsendable(scope.outbox.snapshot().map { it.operationId })
               }
+          // The collector is dropped before the fixture closes the database under it: a query that
+          // starts after close would throw "connection is closed".
+          val showing = mutableStateOf(true)
           compose.setContent {
             SadadTheme {
-              val dot by syncDot(fixture.graph).collectAsStateWithLifecycle(SyncDot.NONE)
-              SadadBottomBar(rememberNavController(), dot)
+              if (showing.value) {
+                val dot by syncDot(fixture.graph).collectAsStateWithLifecycle(SyncDot.NONE)
+                SadadBottomBar(rememberNavController(), dot)
+              }
             }
           }
           compose.waitForIdle()
           check()
-          // Leave the composition before the fixture closes the store under it.
+          compose.runOnIdle { showing.value = false }
           compose.waitForIdle()
         }
   }

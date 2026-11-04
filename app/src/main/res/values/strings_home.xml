@@ -7,6 +7,9 @@
     <string name="home_month_collection">تحصيل %1$s · %2$s</string>
     <string name="home_month_share">%1$d٪ من ديون الشهر</string>
 
+    <!-- Read aloud while the store's ledger is still being read. -->
+    <string name="home_loading">جارٍ تحميل الحسابات</string>
+
     <!-- تحتاج متابعة -->
     <string name="home_follow_title">تحتاج متابعة</string>
     <string name="home_show_all">عرض الكل</string>

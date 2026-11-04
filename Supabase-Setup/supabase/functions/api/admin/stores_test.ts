@@ -183,6 +183,99 @@ dbTest(
 );
 
 dbTest(
+  "reset password: when Auth refuses the update, the store row and its password stay as they were",
+  async () => {
+    const store = await h.seedStore();
+    assertEqual(await liveSessions(store.userId), 1);
+    const before = await storeRow(store.storeId);
+    // The baseline's auth.users carries no password column; the metadata is what a refused
+    // update must leave alone on top of the row.
+    const [authBefore] = await h.database.query<{
+      email: string;
+      raw_app_meta_data: Record<string, unknown> | null;
+    }>("select email, raw_app_meta_data from auth.users where id = $1", [
+      store.userId,
+    ]);
+
+    h.authAdmin.failNext = { message: "auth is down" };
+    const calls = h.authAdmin.calls.length;
+    const res = await h.send(
+      admin.jwt,
+      "POST",
+      `/admin/stores/${store.storeId}/password`,
+      {},
+    );
+    assertEqual(res.status, 500);
+
+    const after = await storeRow(store.storeId);
+    assertEqual(
+      {
+        name: after.name,
+        username: after.username,
+        status: after.status,
+        revision: after.revision,
+      },
+      {
+        name: before.name,
+        username: before.username,
+        status: before.status,
+        revision: before.revision,
+      },
+    );
+    const [authAfter] = await h.database.query<typeof authBefore>(
+      "select email, raw_app_meta_data from auth.users where id = $1",
+      [store.userId],
+    );
+    assertEqual(authAfter, authBefore);
+    // The routine's state stands: the sessions stay ended and the audit row is written once.
+    assertEqual(await liveSessions(store.userId), 0);
+    const [events] = await h.database.query<{ n: number }>(
+      "select count(*)::int as n from sadid_private.control_events where store_id = $1 and kind = 'account.password-reset'",
+      [store.storeId],
+    );
+    assertEqual(events.n, 1);
+    assertEqual(
+      h.authAdmin.calls.slice(calls).map((call) => call.method),
+      ["updateUserById"],
+    );
+  },
+);
+
+dbTest(
+  "an admin whose session is dead is refused before every Auth admin call",
+  async () => {
+    const store = await h.seedStore();
+    const dead = await h.jwtFor("admin");
+    await h.database.query("delete from auth.sessions where id = $1", [
+      dead.sessionId,
+    ]);
+
+    const calls = h.authAdmin.calls.length;
+    const attempts: {
+      method: "PATCH" | "POST" | "DELETE";
+      path: string;
+      body?: unknown;
+    }[] = [
+      { method: "PATCH", path: "", body: { name: "بواسطة جلسة ميتة" } },
+      { method: "POST", path: "/password", body: {} },
+      { method: "DELETE", path: `?confirm=${store.username}` },
+    ];
+    for (const attempt of attempts) {
+      await assertRefusal(
+        await h.send(
+          dead.jwt,
+          attempt.method,
+          `/admin/stores/${store.storeId}${attempt.path}`,
+          attempt.body,
+        ),
+        refusals.notAdmin,
+      );
+    }
+    assertEqual(h.authAdmin.calls.length, calls);
+  },
+);
+
+dbTest(
   "the request and error logs redact a temporary password even when Auth echoes it back",
   async () => {
     const store = await h.seedStore();

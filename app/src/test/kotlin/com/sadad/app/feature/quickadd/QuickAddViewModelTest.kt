@@ -4,16 +4,21 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
+import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtOffset
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentCreate
+import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -34,6 +39,52 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class QuickAddViewModelTest {
+  @Test
+  fun aPersonSavedThroughTheFullFormCanReceiveADebtAndSurvivesSettlement() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val form =
+          com.sadad.app.feature.contactform.ContactFormViewModel(
+              store.repository,
+              store.account.storeUserId,
+              context,
+              SavedStateHandle(),
+              initialName = "إبراهيم",
+          )
+      fixture.closeWithStore(form.viewModelScope)
+      assertEquals("إبراهيم", form.state.value.name)
+      form.onPhoneChange("0599123456")
+      form.saveOnly()
+      val id = checkNotNull(form.state.first { it.savedContactId != null }.savedContactId)
+      val model =
+          QuickAddViewModel(fixture.graph.quickAddSource(), id, false, SavedStateHandle(), 100)
+      fixture.closeWithStore(model.viewModelScope)
+      model.state.first { it.selected?.id == id }
+      model.press("2")
+      model.press("5")
+      model.press("8")
+      model.save(context)
+      store.awaitOutbox(2)
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      assertEquals(
+          "0599123456",
+          (rows.first().command.payload() as com.sadad.ledger.ContactCreate).phone,
+      )
+      assertEquals(listOf(rows.first().operationId), rows.last().command.dependsOn)
+      fixture.settleAll()
+      val view =
+          store.repository.view.first {
+            it?.contacts?.any { person -> person.id == id && !person.pending } == true
+          }!!
+      assertEquals("إبراهيم", view.contacts.first { it.id == id }.name)
+      assertEquals(Cents(25_800), view.debts.first { it.contactId == id }.remaining)
+    }
+  }
+
   @get:Rule val main = MainDispatcherRule()
   private val context: Context = ApplicationProvider.getApplicationContext()
 
@@ -75,13 +126,39 @@ class QuickAddViewModelTest {
   }
 
   @Test
+  fun thePickerShowsOnlyTheMatches() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      fixture.settledContact("خالد")
+      fixture.settledContact("سارة")
+      fixture.settledContact("سامي")
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.size == 3 }
+
+      model.onQueryChange("سار")
+      // The rows are found off the main thread; wait for the query's own result.
+      model.state.first { it.people.size == 1 }
+
+      assertEquals(listOf("سارة"), model.state.value.people.map { it.name })
+      assertEquals(
+          "the count is the rendered list, not a second number",
+          1,
+          model.state.value.people.size,
+      )
+
+      model.clearQuery()
+      assertEquals(3, model.state.first { it.people.size == 3 }.people.size)
+    }
+  }
+
+  @Test
   fun openingTheFlowForAContactSelectsThemAndStartsAtTheAmount() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
       val model =
-          QuickAddViewModel(fixture.graph, contact, false, SavedStateHandle()).also {
-            fixture.closeWithStore(it.viewModelScope)
-          }
+          QuickAddViewModel(fixture.graph.quickAddSource(), contact, false, SavedStateHandle())
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
       val state = model.state.first { it.loaded }
 
       assertEquals(contact, state.selected?.id)
@@ -187,28 +264,94 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun aPaymentAboveTheOpenBalanceIsRefusedAndCannotBeSaved() = runTest {
+  fun aPaymentAboveTheOpenBalanceBecomesCreditAndThePreviewSaysSo() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
-      fixture.openDebt(contact, 10_000)
+      fixture.openDebt(contact, 25_000)
       val store = checkNotNull(fixture.graph.current.value)
-      val model = fixture.model()
+      val model = fixture.model(undoWindowMs = 50)
       model.state.first { it.loaded && it.people.isNotEmpty() }
       model.pick(contact)
       model.toPayment()
+      model.state.first { it.overBalance == Cents(25_000) }
+
+      for (key in listOf("5", "0", "0")) model.press(key)
+
+      assertEquals(
+          "يسدد ₪ 250 الدين · يبقى له ₪ 250 رصيدًا",
+          model.preview(context),
+      )
+      assertTrue("a customer's overpayment is accepted", model.state.value.canSave)
+
+      model.save(context)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.PAYMENT_CREATE, CommandType.DEBT_CREATE),
+          rows.map { it.type },
+      )
+      val payment = rows[0].command.payload() as PaymentCreate
+      assertEquals(Cents(25_000), payment.amountCents)
+      val credit = rows[1].command.payload() as DebtCreate
+      assertEquals(contact, credit.contactId)
+      assertEquals(Direction.PAYABLE, credit.direction)
+      assertEquals(Cents(25_000), credit.amountCents)
+      assertEquals(DebtOrigin.OVERPAYMENT, credit.origin)
+    }
+  }
+
+  @Test
+  fun aDebtIsPaidFromTheCreditHeldAndThePreviewSaysWhatIsLeft() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val (contact, credit) = fixture.creditFor("خالد", 25_000)
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded && it.people.any { person -> person.id == contact } }
+      model.pick(contact)
+
+      for (key in listOf("1", "0", "0")) model.press(key)
+
+      assertEquals("يُخصم من رصيده ₪ 100 · يبقى له ₪ 150", model.preview(context))
+
+      model.save(context)
+      store.awaitOutbox(2)
+
+      val rows = store.outbox.snapshot()
+      assertEquals(
+          listOf(CommandType.DEBT_CREATE, CommandType.DEBT_OFFSET),
+          rows.map { it.type },
+      )
+      val debt = rows[0].command.payload() as DebtCreate
+      assertEquals(Direction.RECEIVABLE, debt.direction)
+      assertEquals(Cents(10_000), debt.amountCents)
+
+      val offset = rows[1].command.payload() as DebtOffset
+      assertEquals("the new Debt is the one settled", rows[0].entityId, offset.receivableDebtId)
+      assertEquals("the credit pays for it", credit, offset.payableDebtId)
+      assertEquals(Cents(10_000), offset.amountCents)
+      assertEquals(
+          "the offset waits for the Debt it settles",
+          listOf(rows[0].operationId),
+          rows[1].command.dependsOn,
+      )
+    }
+  }
+
+  @Test
+  fun aSupplierPaymentAboveTheBalanceIsStillRefused() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val supplier = fixture.settledContact("مخبز الأمل", kind = ContactKind.SUPPLIER)
+      fixture.openDebt(supplier, 10_000, Direction.PAYABLE)
+      val model = fixture.model()
+      model.state.first { it.loaded && it.people.isNotEmpty() }
+      model.pick(supplier)
+      model.toPayment()
       model.state.first { it.overBalance == Cents(10_000) }
 
-      model.press("1")
-      model.press("2")
-      model.press("0")
+      for (key in listOf("1", "2", "0")) model.press(key)
 
-      val state = model.state.value
-      assertEquals(Cents(10_000), state.overBalance)
-      assertFalse("a payment over the balance cannot be saved", state.canSave)
-      model.save(context)
-      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-      Thread.sleep(600)
-      assertTrue(store.outbox.snapshot().isEmpty())
+      assertFalse("no supplier credit in this ticket", model.state.value.canSave)
     }
   }
 
@@ -241,58 +384,6 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun aPersonWhoDoesNotExistYetIsCreatedAndTheDebtDependsOnIt() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val store = checkNotNull(fixture.graph.current.value)
-      val model = fixture.model()
-      model.state.first { it.loaded }
-
-      model.onQueryChange("سامي")
-      model.startNewPerson()
-      assertEquals(QuickAddStep.NEW_PERSON, model.state.value.step)
-      assertEquals("سامي", model.state.value.newName)
-      model.createPerson()
-      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-
-      model.press("7")
-      model.press("5")
-      model.save(context)
-      store.awaitOutbox(2)
-
-      val rows = store.outbox.snapshot()
-      assertEquals(
-          listOf(CommandType.CONTACT_CREATE, CommandType.DEBT_CREATE),
-          rows.map { it.type },
-      )
-      assertEquals(
-          "the debt waits for the contact that carries it",
-          listOf(rows.first().operationId),
-          rows.last().command.dependsOn,
-      )
-    }
-  }
-
-  @Test
-  fun aPhoneAlreadyInTheStoreOffersThatPersonInstead() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      fixture.settledContact("سارة", phone = "+970599335640")
-      val model = fixture.model()
-      // duplicateFor reads the projected people, so wait for them, not only for loaded.
-      model.state.first { it.loaded && it.people.isNotEmpty() }
-
-      model.startNewPerson()
-      model.onNewName("سارة محمود")
-      model.onNewPhone("0599335640")
-
-      assertEquals("سارة", model.state.value.duplicate)
-      model.useDuplicate()
-
-      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-      assertEquals("سارة", model.state.value.selected?.name)
-    }
-  }
-
-  @Test
   fun withoutPermissionToRegisterPaymentsThereIsNoPaymentMode() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
@@ -311,12 +402,91 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun withoutAnOfflineLeaseThePickerSaysSoBeforeAnyTyping() = runTest {
-    TestGraph.signedIn(online = { false }).use { fixture ->
-      val model = fixture.model()
-      val state = model.state.first { it.loaded }
+  fun withoutNetworkOrLeaseASaveStillQueuesAndTheDoneStepSaysItWaits() = runTest {
+    var online = true
+    TestGraph.signedIn(online = { online }).use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      online = false
+      assertFalse(store.offlineAllowed())
+      val model = fixture.model(undoWindowMs = 50)
+      assertFalse(
+          "a lapsed lease must not block the keypad",
+          model.state.first { it.loaded }.blocked,
+      )
+      model.pick(contact)
+      model.press("4")
+      model.press("0")
 
-      assertTrue("the picker must say the save cannot happen now", state.blocked)
+      assertTrue(model.state.value.canSave)
+      model.save(context)
+      store.awaitOutbox(1)
+
+      assertEquals(
+          Cents(4_000),
+          (store.outbox.snapshot().single().command.payload() as DebtCreate).amountCents,
+      )
+      assertTrue("the done step must say the entry waits", model.state.value.done!!.offline)
+    }
+  }
+
+  @Test
+  fun anUnapprovedDeviceStillMayNotSave() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val account = checkNotNull(fixture.graph.accounts.accounts.first().firstOrNull())
+      fixture.graph.accounts.update(account.storeUserId) {
+        it.copy(installation = StoredInstallation("revoked", 1, emptyMap()))
+      }
+      val model = fixture.model()
+      model.state.first { it.loaded && it.blocked }
+      model.pick(contact)
+      model.press("4")
+
+      assertFalse(model.state.value.canSave)
+    }
+  }
+
+  @Test
+  fun aDebtCarriesTheDueDateAndNoteTheChipsSet() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.onDueDateChange("2026-11-01")
+      model.onNoteChange("بضاعة")
+      model.press("4")
+      model.press("0")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      val payload = store.outbox.snapshot().single().command.payload() as DebtCreate
+      assertEquals("2026-11-01", payload.dueDate)
+      assertEquals("بضاعة", payload.note)
+    }
+  }
+
+  @Test
+  fun undoAfterTheWindowCannotQueueTheSameEntryTwice() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val contact = fixture.settledContact("خالد")
+      val store = checkNotNull(fixture.graph.current.value)
+      val model = fixture.model(undoWindowMs = 50)
+      model.state.first { it.loaded }
+      model.pick(contact)
+      model.press("7")
+      model.press("5")
+      model.save(context)
+      store.awaitOutbox(1)
+
+      // The window has ended: the entry is queued and «تراجع 0» must not re-arm it.
+      model.undo(context)
+      model.save(context)
+      Thread.sleep(300)
+
+      assertEquals(1, store.outbox.snapshot().size)
     }
   }
 
@@ -370,7 +540,7 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun aHeldNewPersonDoesNotTurnTheNextPaymentIntoADebt() = runTest {
+  fun switchingFromANewlySavedPersonToAnExistingOneKeepsPaymentMode() = runTest {
     TestGraph.signedIn().use { fixture ->
       val contact = fixture.settledContact("خالد")
       val debt = fixture.openDebt(contact, 10_000)
@@ -378,23 +548,22 @@ class QuickAddViewModelTest {
       val model = fixture.model(undoWindowMs = 300)
       model.state.first { it.loaded }
 
-      // «زبون جديد» → change your mind → pick somebody else → «دفع».
-      model.onQueryChange("سامي")
-      model.startNewPerson()
-      model.onNewName("سامي")
-      model.createPerson()
+      val added = store.repository.addContact("New customer", null, null, null, null).getOrThrow()
+      model.state.first { it.people.any { person -> person.id == added } }
+      model.pick(added)
       model.backToPicker()
+      model.clearQuery()
       model.pick(contact)
       model.toPayment()
       model.press("1")
       model.press("0")
       model.press("0")
       model.save(context)
-      store.awaitOutbox(1)
+      store.awaitOutbox(2)
 
-      val row = store.outbox.snapshot().single()
+      val row = store.outbox.snapshot().last()
       assertEquals(
-          "the mode on screen decides, not the dropped contact",
+          "the mode on screen decides, not the previous contact",
           CommandType.PAYMENT_CREATE,
           row.type,
       )
@@ -403,15 +572,15 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun undoAfterANewPersonKeepsTheContactWithTheNextSave() = runTest {
+  fun undoingTheDebtKeepsTheSeparatelySavedPersonAndNextSaveDependsOnIt() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
       val model = fixture.model(undoWindowMs = 300)
       model.state.first { it.loaded }
 
-      model.startNewPerson()
-      model.onNewName("سامي")
-      model.createPerson()
+      val added = store.repository.addContact("New customer", null, null, null, null).getOrThrow()
+      model.state.first { it.people.any { person -> person.id == added } }
+      model.pick(added)
       model.press("5")
       model.press("0")
       model.press("0")
@@ -421,7 +590,8 @@ class QuickAddViewModelTest {
       model.undo(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
 
-      // The second save must rebuild the pair, not a debt for a contact that was never created.
+      assertEquals(CommandType.CONTACT_CREATE, store.outbox.snapshot().single().type)
+      // Undo removes only the debt; the separately saved person remains queued.
       model.save(context)
       store.awaitOutbox(2)
 
@@ -435,6 +605,62 @@ class QuickAddViewModelTest {
           listOf(rows.first().operationId),
           rows.last().command.dependsOn,
       )
+    }
+  }
+
+  @Test
+  fun aPersonsLastActivityIsTheirLatestPaymentWhenNewerThanTheirLatestDebt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val sami = Commands.contactCreate(Events.origin, Events.at(0), name = "سامي")
+      val huda = Commands.contactCreate(Events.origin, Events.at(0), name = "هدى")
+      val samiDebt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              sami.entityId,
+              Direction.RECEIVABLE,
+              Cents(10_000),
+          )
+      val hudaDebt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(2),
+              huda.entityId,
+              Direction.RECEIVABLE,
+              Cents(5_000),
+          )
+      val samiPayment =
+          Commands.paymentCreate(
+              Events.origin,
+              Events.at(3),
+              samiDebt.entityId,
+              Cents(4_000),
+              PaymentMethod.CASH,
+          )
+      val hudaLater =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(4),
+              huda.entityId,
+              Direction.RECEIVABLE,
+              Cents(1_000),
+          )
+      fixture.seed {
+        applyPage(
+            Events.page(
+                listOf(sami, huda, samiDebt, hudaDebt, samiPayment, hudaLater).mapIndexed { i, c ->
+                  Events.accepted(c, i + 1L)
+                }
+            )
+        )
+      }
+      val model = fixture.model()
+
+      val people = model.state.first { it.loaded && it.people.size == 2 }.people
+      val last = people.associate { it.id to it.lastActivity }
+
+      assertEquals(Events.at(3), last[sami.entityId])
+      assertEquals(Events.at(4), last[huda.entityId])
     }
   }
 
@@ -460,6 +686,46 @@ class QuickAddViewModelTest {
           .getOrThrow()
           .also { settleAll() }
 
+  /**
+   * A Contact holding [cents] of credit: the excess of an earlier payment, as `apply_one` stores
+   * it.
+   */
+  private suspend fun TestGraph.creditFor(name: String, cents: Long): Pair<String, String> {
+    val contact = java.util.UUID.nameUUIDFromBytes("credit-$name".toByteArray()).toString()
+    val credit = java.util.UUID.randomUUID().toString()
+    seed {
+      applyPage(
+          Events.page(
+              listOf(
+                  Events.accepted(
+                      Commands.contactCreate(
+                          Events.origin,
+                          Events.at(0),
+                          name = name,
+                          entityId = contact,
+                      ),
+                      1,
+                  ),
+                  Events.accepted(
+                      Commands.debtCreate(
+                          Events.origin,
+                          Events.at(1),
+                          contactId = contact,
+                          direction = Direction.PAYABLE,
+                          amount = Cents(cents),
+                          note = "رصيد من دفعة زائدة",
+                          debtOrigin = DebtOrigin.OVERPAYMENT,
+                          entityId = credit,
+                      ),
+                      2,
+                  ),
+              )
+          )
+      )
+    }
+    return contact to credit
+  }
+
   private suspend fun TestGraph.limitPermissions(permissions: Map<String, Boolean>) {
     val account = checkNotNull(graph.accounts.accounts.first().firstOrNull())
     checkNotNull(graph.current.value)
@@ -473,9 +739,10 @@ class QuickAddViewModelTest {
    * screen's scope is registered with the fixture so no collector outlives the database.
    */
   private fun TestGraph.model(undoWindowMs: Long = 300): QuickAddViewModel =
-      QuickAddViewModel(graph, null, false, SavedStateHandle(), undoWindowMs).also {
-        closeWithStore(it.viewModelScope)
-      }
+      QuickAddViewModel(graph.quickAddSource(), null, false, SavedStateHandle(), undoWindowMs)
+          .also {
+            closeWithStore(it.viewModelScope)
+          }
 
   /** The outbox is written from another coroutine; polling keeps the assertion about the row. */
   private suspend fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {

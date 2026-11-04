@@ -13,6 +13,8 @@ data class ContactCreate(
     val name: String,
     val kind: ContactKind = ContactKind.CUSTOMER,
     val phone: String? = null,
+    /** `970` or `972`; absent on create stores `970`, absent on update keeps the stored code. */
+    val whatsappCode: String? = null,
     val category: String? = null,
     val note: String? = null,
 ) : CommandPayload
@@ -23,6 +25,8 @@ data class ContactUpdate(
     val name: String,
     val kind: ContactKind = ContactKind.CUSTOMER,
     val phone: String? = null,
+    /** `970` or `972`; absent on create stores `970`, absent on update keeps the stored code. */
+    val whatsappCode: String? = null,
     val category: String? = null,
     val note: String? = null,
 ) : CommandPayload
@@ -30,6 +34,8 @@ data class ContactUpdate(
 @Serializable data class ContactArchive(val contactId: String, val reason: String) : CommandPayload
 
 @Serializable data class ContactRestore(val contactId: String, val reason: String) : CommandPayload
+
+@Serializable data class ContactDelete(val contactId: String, val reason: String) : CommandPayload
 
 @Serializable
 data class DebtCreate(
@@ -39,6 +45,15 @@ data class DebtCreate(
     val note: String? = null,
     /** `yyyy-MM-dd`. */
     val dueDate: String? = null,
+    /** Absent for a manual Debt; the server defaults to `manual`. */
+    val origin: DebtOrigin? = null,
+) : CommandPayload
+
+@Serializable
+data class DebtOffset(
+    val receivableDebtId: String,
+    val payableDebtId: String,
+    val amountCents: Cents,
 ) : CommandPayload
 
 @Serializable

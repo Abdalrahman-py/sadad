@@ -71,6 +71,10 @@ class UpdateCenterTest {
        "apk":"Sadad-team.apk","sha256":"$sha256","sizeBytes":${apkBytes.size},"notes":"fixes"}
   """
 
+  /** The tag as `api.github.com` reports it: what the second road resolves the APK by. */
+  private fun assetsJson() =
+      """{"assets":[{"id":7,"name":"update.json"},{"id":8,"name":"Sadad-team.apk"}]}"""
+
   private fun center(installed: Int = 40, nowMs: Long = 10_000): UpdateCenter {
     val source =
         UpdateSource(
@@ -182,6 +186,30 @@ class UpdateCenterTest {
     val state = center.awaitPhase(UpdateState.Phase.READY)
     assertEquals(100, state.progress)
     assertTrue(File(folder.root, "updates/sadad-57.apk").isFile)
+    // A download that is working never spends an API request.
+    assertEquals(2, server.requestCount)
+  }
+
+  /**
+   * The failure reported from the device: the release URL answered the manifest, so the check found
+   * the release, and by the time «تنزيل» was tapped that same URL was refusing the APK. Two
+   * refusals, then the asset by id — from the same release, with the same digest.
+   */
+  @Test
+  fun aDownloadTheReleaseUrlRefusesIsCarriedByTheApiRoad() = runBlocking {
+    server.enqueue(MockResponse.Builder().code(200).body(manifestJson(57)).build())
+    server.enqueue(MockResponse.Builder().code(404).body("Not Found").build())
+    server.enqueue(MockResponse.Builder().code(404).body("Not Found").build())
+    server.enqueue(MockResponse.Builder().code(200).body(assetsJson()).build())
+    server.enqueue(MockResponse.Builder().code(200).body(Buffer().write(apkBytes)).build())
+    val center = center(installed = 40)
+    center.check(force = true)
+    center.download()
+    val state = center.awaitPhase(UpdateState.Phase.READY)
+    assertEquals(100, state.progress)
+    assertTrue(File(folder.root, "updates/sadad-57.apk").isFile)
+    val paths = (1..server.requestCount).map { server.takeRequest().url.encodedPath }
+    assertEquals("/api/releases/assets/8", paths.last())
   }
 
   @Test

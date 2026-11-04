@@ -19,11 +19,44 @@ class LedgerStateTest {
   private fun LedgerState.plain() = view(emptyList(), emptySet(), Fixtures.INSTALLATION_ID, "أحمد")
 
   // One contact with one receivable debt of 15000, as in operations.json but built locally.
-  private val contact = Commands.contactCreate(origin, at(0), "سامي", phone = "+970599000000")
+  private val contact = Commands.contactCreate(origin, at(0), "سامي", phone = "0599000000")
   private val debt =
       Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(15000))
   private val payment =
       Commands.paymentCreate(origin, at(2), debt.entityId, Cents(5000), PaymentMethod.CASH)
+
+  @Test
+  fun trashPreservesTheWholeHistoryAndFinalDeletionRemovesOnlyThatContact() {
+    val full =
+        Commands.paymentCreate(origin, at(2), debt.entityId, Cents(15000), PaymentMethod.CASH)
+    val other = Commands.contactCreate(origin, at(0), "شخص آخر")
+    val archive = Commands.contactArchive(origin, at(3), contact.entityId, 1, "نقل للسلة")
+    val restore = Commands.contactRestore(origin, at(4), contact.entityId, 2, "استعادة")
+    val again = Commands.contactArchive(origin, at(5), contact.entityId, 3, "نقل للسلة")
+    val remove =
+        Commands.contactDelete(
+            origin,
+            at(6),
+            contact.entityId,
+            4,
+            "حذف نهائي",
+            entityId = contact.entityId,
+        )
+    val commands = listOf(contact, other, debt, full, archive, restore, again, remove)
+    val events = commands.mapIndexed { i, command -> accepted(command, i + 1L) }
+    val trashed = LedgerState.EMPTY.apply(page(events.take(5)))
+    assertTrue(trashed.contacts.getValue(contact.entityId).archived)
+    assertEquals(1, trashed.debts.size)
+    assertEquals(1, trashed.payments.size)
+    val restored = trashed.apply(page(events.subList(5, 6)))
+    assertTrue(!restored.contacts.getValue(contact.entityId).archived)
+    assertEquals(1, restored.plain().payments.size)
+    val removed = restored.apply(page(events.drop(6)))
+    assertEquals(setOf(other.entityId), removed.contacts.keys)
+    assertTrue(removed.debts.isEmpty())
+    assertTrue(removed.payments.isEmpty())
+    assertTrue(removed.offsets.isEmpty())
+  }
 
   @Test
   fun foldsTheFixtureFlow() {
@@ -127,6 +160,25 @@ class LedgerStateTest {
         )
     assertEquals(5L, after.cursor)
     assertEquals(state.copy(cursor = 5), after)
+  }
+
+  @Test
+  fun whatsappCodeReplaysDefaultsTo970AndAnAbsentUpdateKeepsIt() {
+    assertEquals("970", Events.stateOf(contact).contacts.getValue(contact.entityId).whatsappCode)
+    val other = Commands.contactCreate(origin, at(1), "رامي", "0569000000", whatsappCode = "972")
+    val keep = Commands.contactUpdate(origin, at(2), other.entityId, 1, "رامي", "0569000000")
+    val change =
+        Commands.contactUpdate(origin, at(3), other.entityId, 2, "رامي", whatsappCode = "970")
+    assertEquals("972", Events.stateOf(other).contacts.getValue(other.entityId).whatsappCode)
+    assertEquals("972", Events.stateOf(other, keep).contacts.getValue(other.entityId).whatsappCode)
+    val changed = Events.stateOf(other, keep, change)
+    assertEquals("970", changed.contacts.getValue(other.entityId).whatsappCode)
+    assertEquals("", changed.contacts.getValue(other.entityId).phone)
+    assertEquals("970", changed.plain().contacts.single { it.id == other.entityId }.whatsappCode)
+    assertEquals(
+        "972",
+        Events.stateOf(other).plain().contacts.single { it.id == other.entityId }.whatsappCode,
+    )
   }
 
   @Test

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="quickadd_customer">زبون</string>
     <string name="quickadd_title">تسجيل دين أو دفعة</string>
     <string name="quickadd_placeholder">قيد الإنشاء</string>
     <string name="quickadd_close">إغلاق</string>
@@ -17,8 +18,14 @@
     <string name="quickadd_preview_credit">يصبح له ₪%1$s</string>
     <string name="quickadd_preview_over">المبلغ أكبر من الرصيد المفتوح ₪%1$s</string>
     <!-- The board's two richer previews: a debt against a credit, and a large amount. -->
-    <string name="quickadd_preview_deduct">يُخصم من رصيده ₪%1$s · %2$s</string>
+    <string name="quickadd_preview_deduct">يُخصم من رصيده ₪ %1$s · %2$s</string>
+    <string name="quickadd_preview_deduct_left">يُخصم من رصيده ₪ %1$s · يبقى له ₪ %2$s</string>
+    <string name="quickadd_preview_overpay">يسدد ₪ %1$s الدين · يبقى له ₪ %2$s رصيدًا</string>
+    <string name="quickadd_preview_overpay_all">يُحفظ له رصيدًا · %1$s</string>
     <string name="quickadd_preview_large">%1$s · مبلغ كبير، سنطلب تأكيدًا</string>
+
+    <!-- The note the credit Debt carries, so the timeline says where the balance came from. -->
+    <string name="quickadd_credit_note">رصيد من دفعة زائدة</string>
 
     <string name="quickadd_failed">تعذّر الحفظ، حاول مرة أخرى</string>
 
@@ -32,22 +39,10 @@
     <string name="quickadd_result">نتيجة</string>
     <string name="quickadd_no_results">لا يوجد شخص بهذا الاسم أو الرقم. البحث يتجاهل الفرق بين أ وا وإ، وة وه، وى وي.</string>
     <string name="quickadd_blocked_title">لا يمكن الحفظ الآن</string>
-    <string name="quickadd_blocked_body">انتهى تصريح الحفظ دون اتصال. اتصل بالإنترنت ثم سجّل.</string>
-    <string name="quickadd_reconnect">إعادة الاتصال</string>
+    <string name="quickadd_blocked_body">هذا الجهاز غير معتمد للتسجيل. راجع صاحب المتجر.</string>
 
-    <!-- The new person sheet. -->
-    <string name="quickadd_new_title">شخص جديد</string>
-    <string name="quickadd_name">الاسم</string>
-    <string name="quickadd_phone">رقم الهاتف</string>
-    <string name="quickadd_phone_hint">(اختياري، للتذكير على واتساب)</string>
-    <string name="quickadd_phone_placeholder">05xxxxxxxx</string>
-    <string name="quickadd_customer">زبون</string>
-    <string name="quickadd_supplier">مورد</string>
-    <string name="quickadd_duplicate">هذا الرقم مسجل باسم</string>
-    <string name="quickadd_use_duplicate">التسجيل لـ%1$s بدلًا من ذلك</string>
-    <string name="quickadd_continue">متابعة إلى المبلغ</string>
+    <!-- Shared dialog action. -->
     <string name="quickadd_cancel">إلغاء</string>
-    <string name="quickadd_new_footnote">التصنيف والملاحظات تُضاف لاحقًا من صفحة الشخص.</string>
 
     <!-- The amount step. -->
     <string name="quickadd_change_person">تغيير الشخص</string>
@@ -67,7 +62,7 @@
     <string name="quickadd_method_wallet">محفظة</string>
     <string name="quickadd_key_delete">حذف</string>
     <string name="quickadd_key_dot">فاصلة عشرية</string>
-    <string name="quickadd_save_blocked">الحفظ متوقف حتى يعود الاتصال</string>
+    <string name="quickadd_save_blocked">الحفظ غير متاح لهذا الجهاز</string>
     <string name="quickadd_anomaly_title">مبلغ أكبر من المعتاد</string>
     <string name="quickadd_anomaly_body">راجع القيمة قبل الحفظ:</string>
     <string name="quickadd_anomaly_sentence">%1$s</string>
@@ -79,10 +74,16 @@
     <string name="quickadd_done_payment_customer">تم تسجيل الدفعة</string>
     <string name="quickadd_done_debt_supplier">تم تسجيل البضاعة</string>
     <string name="quickadd_done_payment_supplier">تم تسجيل الدفع</string>
+    <string name="quickadd_done_offline">سيُرسل عند عودة الشبكة</string>
     <string name="quickadd_undo">تراجع</string>
     <string name="quickadd_undo_seconds">· %1$d ث</string>
     <string name="quickadd_another">تسجيل آخر</string>
     <string name="quickadd_open_contact">صفحة %1$s</string>
     <string name="quickadd_home">الرئيسية</string>
     <string name="quickadd_net_label">%1$s الآن:</string>
+    <string name="quickadd_contacts_section">من جهات الاتصال</string>
+    <string name="quickadd_contacts_allow">اسمح بقراءة جهات الاتصال</string>
+    <string name="quickadd_new_person_title">شخص جديد</string>
+    <string name="quickadd_new_person_continue">متابعة</string>
+    <string name="quickadd_open_record">فتح سجل الشخص</string>
 </resources>

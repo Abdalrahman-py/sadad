@@ -1,10 +1,17 @@
 package com.sadad.app.data.session
 
+import android.content.Context
+import android.provider.Settings
+import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.crypto.InstallationSigner
+import com.sadad.app.data.crypto.SoftwareSigner
+import com.sadad.app.data.crypto.ecP256KeyPair
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.AwaitingApproval
 import com.sadad.app.ui.Login
 import com.sadad.app.ui.PasswordChange
+import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import org.junit.Assert.assertEquals
@@ -32,6 +39,41 @@ class SessionsTest {
       assertEquals(2, fixture.server.requestCount)
       assertEquals("refresh-b", fixture.graph.accounts.refreshToken(STORE_A))
     }
+  }
+
+  @Test
+  fun aReinstallOnTheSamePhoneKeepsTheInstallationId() = runTest {
+    // The hardware id survives an uninstall; a random UUID does not.
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    Settings.Secure.putString(
+        context.contentResolver,
+        Settings.Secure.ANDROID_ID,
+        "device-android-id-1",
+    )
+
+    val first = TestGraph.unsigned()
+    val firstId =
+        try {
+          first.signIn(STORE_A)
+          checkNotNull(first.graph.accounts.account(STORE_A)).installationId
+        } finally {
+          first.close()
+        }
+
+    val second = TestGraph.unsigned()
+    val secondId =
+        try {
+          second.signIn(STORE_A)
+          checkNotNull(second.graph.accounts.account(STORE_A)).installationId
+        } finally {
+          second.close()
+        }
+
+    assertEquals(
+        "the same phone signing in again must present the installation it already approved",
+        firstId,
+        secondId,
+    )
   }
 
   @Test
@@ -89,5 +131,66 @@ class SessionsTest {
       assertNull(fixture.graph.accounts.refreshToken(STORE_A))
       assertEquals(Login, fixture.graph.startRoute())
     }
+  }
+
+  @Test
+  fun signInReturnsOnTheTokenWithoutOpeningTheStore() = runTest {
+    TestGraph.unsigned().use { fixture ->
+      fixture.enqueueSession(STORE_A)
+      val host = RecordingHost()
+
+      sessions(fixture, host).signIn("store-a", "password-store-a")
+
+      assertEquals(0, host.opens)
+      assertEquals("refresh-$STORE_A", fixture.graph.accounts.refreshToken(STORE_A))
+      assertEquals(STORE_A, fixture.graph.accounts.file().activeStoreUserId)
+    }
+  }
+
+  @Test
+  fun aFailedStepLeavesNoStoreSessionBehind() = runTest {
+    TestGraph.unsigned().use { fixture ->
+      fixture.enqueueSession(STORE_A)
+      val sessions = sessions(fixture, RecordingHost(closeFails = true))
+
+      val failure = runCatching { sessions.signIn("store-a", "password-store-a") }.exceptionOrNull()
+
+      assertTrue(failure is IOException)
+
+      assertNull(fixture.graph.accounts.refreshToken(STORE_A))
+      assertNull(sessions.inMemorySession(STORE_A))
+    }
+  }
+
+  private fun sessions(fixture: TestGraph, host: SessionHost) =
+      Sessions(
+          fixture.graph.accounts,
+          fixture.graph.authApi,
+          SoftwareKeys(),
+          host,
+          deviceLabel = "Test Device",
+      )
+
+  private class RecordingHost(private val closeFails: Boolean = false) : SessionHost {
+    var opens = 0
+
+    override suspend fun open(account: Account) {
+      opens++
+    }
+
+    override suspend fun close() {
+      if (closeFails) throw IOException("close failed")
+    }
+
+    override suspend fun unsentCount(storeUserId: String) = 0
+  }
+
+  private class SoftwareKeys : Installations {
+    override fun create(keyAlias: String, installationId: String): InstallationSigner =
+        SoftwareSigner(installationId, ecP256KeyPair())
+
+    override fun load(keyAlias: String, installationId: String): InstallationSigner? = null
+
+    override fun delete(keyAlias: String) = Unit
   }
 }

@@ -32,6 +32,31 @@ class PaymentAllocationTest {
   }
 
   @Test
+  fun aContactsDebtsInterleavedWithAnothersGiveTheSameBalanceAndParts() {
+    val other = Commands.contactCreate(origin, at(0), "غيره")
+    fun othersDebt(cents: Long, minute: Int) =
+        Commands.debtCreate(origin, at(minute), other.entityId, Direction.RECEIVABLE, Cents(cents))
+    val view =
+        Events.stateOf(contact, other, othersDebt(700, 0), older, othersDebt(800, 1), newer)
+            .viewWith()
+
+    assertEquals(
+        Cents(15000),
+        PaymentAllocation.openBalance(view, contact.entityId, Direction.RECEIVABLE),
+    )
+    assertEquals(
+        Cents(1500),
+        PaymentAllocation.openBalance(view, other.entityId, Direction.RECEIVABLE),
+    )
+    val parts =
+        PaymentAllocation.allocate(view, contact.entityId, Cents(12000), Direction.RECEIVABLE)
+    assertEquals(
+        listOf(older.entityId to Cents(10000), newer.entityId to Cents(2000)),
+        parts.map { it.debtId to it.amount },
+    )
+  }
+
+  @Test
   fun refusesOverpaymentAndNonPositiveAmounts() {
     val view = Events.stateOf(contact, older, newer).viewWith()
     for (amount in listOf(Cents(15001), Cents(0), Cents(-1))) {
@@ -133,5 +158,80 @@ class PaymentAllocationTest {
       // The supplier's receivable Debt is not a payable pool, and 80_000 is all the payables.
       PaymentAllocation.allocate(view, supplier.entityId, Cents(70_001), Direction.PAYABLE)
     }
+  }
+
+  @Test
+  fun allocateWithCreditSettlesWhatIsOpenAndCreditsTheRest() {
+    val owed =
+        Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(25_000))
+    val view = Events.stateOf(contact, owed).viewWith()
+    val plan =
+        PaymentAllocation.allocateWithCredit(
+            view,
+            contact.entityId,
+            Cents(50_000),
+            Direction.RECEIVABLE,
+        )
+    assertEquals(listOf(owed.entityId to Cents(25_000)), plan.parts.map { it.debtId to it.amount })
+    assertEquals(Cents(25_000), plan.creditCents)
+  }
+
+  @Test
+  fun allocateWithCreditAgainstNothingOpenIsAllCredit() {
+    val view = Events.stateOf(contact).viewWith()
+    val plan =
+        PaymentAllocation.allocateWithCredit(
+            view,
+            contact.entityId,
+            Cents(50_000),
+            Direction.RECEIVABLE,
+        )
+    assertTrue(plan.parts.isEmpty())
+    assertEquals(Cents(50_000), plan.creditCents)
+  }
+
+  @Test
+  fun allocateWithCreditIsCustomersOnly() {
+    val view = Events.stateOf(contact).viewWith()
+    assertThrows(IllegalArgumentException::class.java) {
+      PaymentAllocation.allocateWithCredit(view, contact.entityId, Cents(100), Direction.PAYABLE)
+    }
+  }
+
+  @Test
+  fun allocateCreditUsesTheOldestOverpaymentCreditFirstAndNeverManualPayables() {
+    val olderCredit =
+        Commands.debtCreate(
+            origin,
+            at(1),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(15_000),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+        )
+    val newerCredit =
+        Commands.debtCreate(
+            origin,
+            at(2),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(10_000),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+        )
+    val manual =
+        Commands.debtCreate(origin, at(3), contact.entityId, Direction.PAYABLE, Cents(90_000))
+    val view = Events.stateOf(contact, newerCredit, olderCredit, manual).viewWith()
+    val parts = PaymentAllocation.allocateCredit(view, contact.entityId, Cents(20_000))
+    assertEquals(
+        listOf(olderCredit.entityId to Cents(15_000), newerCredit.entityId to Cents(5_000)),
+        parts.map { it.debtId to it.amount },
+    )
+    assertEquals(
+        "more credit than the new debt needs is left alone, and the manual payable is untouched",
+        listOf(olderCredit.entityId to Cents(15_000), newerCredit.entityId to Cents(10_000)),
+        PaymentAllocation.allocateCredit(view, contact.entityId, Cents(80_000)).map {
+          it.debtId to it.amount
+        },
+    )
   }
 }

@@ -7,6 +7,8 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
+import com.sadad.ledger.ConfirmedLedger
+import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.Direction
@@ -16,17 +18,21 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -103,21 +109,46 @@ class LedgerRepository(
     private val store: LedgerStore,
     private val outbox: Outbox,
     private val session: RepositorySession,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
 ) {
   private val state = MutableStateFlow(LedgerState.EMPTY)
+
+  // The view stays null until the rows are in: the empty state would read as zero balances.
+  private val loaded = MutableStateFlow(false)
   private val mutex = Mutex()
 
-  val view: StateFlow<LedgerView?> =
-      combine(state, outbox.rows, session.staffName) { current, rows, staff ->
-            project(current, rows, staff)
+  // The confirmed half depends on the state and the staff name only, so a queued command, or a
+  // write's check, reuses it; a new state drops it. The writes pass no staff name, hence the map.
+  private val confirmedFor = HashMap<String, ConfirmedLedger>()
+  private var confirmedState: LedgerState? = null
+
+  val contactRecords: StateFlow<ContactRecords?> =
+      combine(state, outbox.rows, session.staffName, loaded) { current, rows, staff, ready ->
+            if (ready) {
+              traced("ledger_project") { contactRecords(project(current, rows, staff), rows) }
+            } else {
+              null
+            }
           }
           .flowOn(Dispatchers.Default)
           .stateIn(scope, SharingStarted.Eagerly, null)
 
+  val view: StateFlow<LedgerView?> =
+      contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
+
   /** Reads the confirmed rows once, when the store opens. */
   suspend fun load() {
-    state.value = store.load()
+    state.value = traced("ledger_load") { store.load() }
+    loaded.value = true
+  }
+
+  /**
+   * Returns once [load] has read the rows. Waits in the store's own scope, so a store closed before
+   * its rows came in cancels the wait instead of holding a sync pass for ever.
+   */
+  suspend fun awaitLoaded() {
+    if (loaded.value) return
+    scope.async { loaded.first { it } }.await()
   }
 
   /**
@@ -136,6 +167,17 @@ class LedgerRepository(
             )
         )
       }
+      // An idle poll's page carries nothing: skip the fold, the persist, the publish and the
+      // compact, so a pass that found nothing new costs no ledger work.
+      if (
+          old.storeId != null &&
+              page.storeId == old.storeId &&
+              page.epoch == old.epoch &&
+              page.events.isEmpty() &&
+              page.nextCursor == old.cursor
+      ) {
+        return
+      }
       val next = old.apply(page)
       store.persist(old, next, page)
       state.value = next
@@ -150,11 +192,22 @@ class LedgerRepository(
       note: String?,
       firstDebt: FirstDebt?,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
   ): Result<String> = guarded {
     val origin = origin()
     requireOfflineAllowed()
     val at = Instant.now()
-    val contact = Commands.contactCreate(origin, at, name, phone, category, note, kind)
+    val contact =
+        Commands.contactCreate(
+            origin,
+            at,
+            name,
+            wirePhone(phone),
+            category,
+            note,
+            kind,
+            whatsappCode,
+        )
     val commands = mutableListOf(contact)
     if (firstDebt != null) {
       commands +=
@@ -180,6 +233,7 @@ class LedgerRepository(
       category: String?,
       note: String?,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
   ): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
@@ -192,10 +246,11 @@ class LedgerRepository(
                 contactId,
                 nextVersion(contactId),
                 name,
-                phone,
+                wirePhone(phone),
                 category,
                 note,
                 kind,
+                whatsappCode,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
             )
@@ -239,6 +294,60 @@ class LedgerRepository(
                 nextVersion(contactId),
                 reason,
                 dependsOn = contact.dependency(),
+                entityId = contactId,
+            )
+        )
+    )
+  }
+
+  /**
+   * Drops a new person the server refused, with the debts saved alongside them: the debts' outbox
+   * rows first (they depend on the person), then the person's. An accepted person is never touched.
+   */
+  suspend fun discardDraft(contactId: String): Result<Unit> = guarded {
+    val known = state.value.contacts.containsKey(contactId)
+    val rows = outbox.snapshot()
+    val draft = rows.firstOrNull {
+      it.entityId == contactId &&
+          it.command.payload() is ContactCreate &&
+          (it.state == OutboxState.REJECTED || it.state == OutboxState.UNSENDABLE)
+    }
+    if (known || draft == null) throw Refusal.Unknown
+    val dependents = rows.filter { draft.operationId in it.command.dependsOn }
+    for (row in dependents + draft) {
+      val result = outbox.dismiss(row.operationId)
+      if (result != DismissResult.Dismissed) throw Refusal.Invalid(result.toString())
+    }
+  }
+
+  /** Permanent deletion is online-only and only targets a zero-balance contact in the trash. */
+  suspend fun deleteContact(contactId: String, reason: String): Result<Unit> = guarded {
+    val origin = origin()
+    requireOnline()
+    val contact =
+        currentView().archivedContacts.firstOrNull { it.id == contactId }
+            ?: throw Refusal.Invalid("انقل الشخص إلى سلة المحذوفات أولًا.")
+    val stored = state.value
+    val rows = outbox.snapshot()
+    val visible =
+        stored
+            .copy(
+                contacts =
+                    stored.contacts.mapValues { (id, row) ->
+                      if (id == contactId) row.copy(archived = false) else row
+                    }
+            )
+            .view(pendingCommands(rows), failedOperations(rows), session.selfInstallationId, "")
+    if (visible.debts.any { it.contactId == contactId && it.remaining > Cents.ZERO })
+        throw Refusal.Invalid("سدّد الرصيد قبل الحذف النهائي.")
+    enqueue(
+        listOf(
+            Commands.contactDelete(
+                origin,
+                Instant.now(),
+                contactId,
+                contact.version,
+                reason,
                 entityId = contactId,
             )
         )
@@ -331,17 +440,28 @@ class LedgerRepository(
     if (!session.isOnline() && !session.offlineAllowed()) throw Refusal.OfflineNotAllowed
   }
 
-  /** The view a write checks against, with the queue included and before it changes. */
-  private suspend fun currentView(): LedgerView = project(state.value, outbox.snapshot(), "")
+  /**
+   * The view a write checks against, with the queue included and before it changes. It waits for
+   * the rows: a store the start route opened may still be reading them, and a check against the
+   * empty state would pass a duplicate phone or refuse a contact that exists.
+   */
+  private suspend fun currentView(): LedgerView {
+    awaitLoaded()
+    return project(state.value, outbox.snapshot(), "")
+  }
 
   /** One projection for the flow and for a write's checks, so both see the same rules. */
   private fun project(current: LedgerState, rows: List<OutboxRow>, staff: String): LedgerView =
-      current.view(
-          pendingCommands(rows),
-          failedOperations(rows),
-          session.selfInstallationId,
-          staff,
-      )
+      confirmedOf(current, staff).view(pendingCommands(rows), failedOperations(rows))
+
+  @Synchronized
+  private fun confirmedOf(current: LedgerState, staff: String): ConfirmedLedger {
+    if (confirmedState !== current) {
+      confirmedFor.clear()
+      confirmedState = current
+    }
+    return confirmedFor.getOrPut(staff) { current.confirmed(session.selfInstallationId, staff) }
+  }
 
   /**
    * The Contact a write names, from either side of the trash; anything else is [Refusal.Unknown].
@@ -372,6 +492,15 @@ class LedgerRepository(
   private suspend fun enqueue(commands: List<LedgerCommand>) {
     outbox.append(commands)
     session.onQueued()
+  }
+
+  /** UI formatting must finish before queueing a person and any dependent financial entries. */
+  private fun wirePhone(value: String?): String? {
+    val phone = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    require(phone.matches(Regex("05[0-9]{8}"))) {
+      "راجع رقم الهاتف؛ يجب أن يكون رقم جوال من 10 أرقام يبدأ بـ05."
+    }
+    return phone
   }
 
   private suspend fun <T> guarded(block: suspend () -> T): Result<T> =

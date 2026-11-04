@@ -32,14 +32,14 @@ class SettingsAccountTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.requestSignOut()
+        model.account.requestSignOut()
 
         val warned = model.state.first { it.pending is Pending.SignOut }
         assertEquals(Pending.SignOut(STORE_A, unsent = 1), warned.pending)
         assertNotNull(fixture.graph.current.value)
 
         fixture.server.enqueue(MockResponse.Builder().body("{}").build())
-        model.confirmSignOut()
+        model.account.confirmSignOut()
 
         model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
         assertNull(fixture.graph.current.value)
@@ -56,10 +56,10 @@ class SettingsAccountTest {
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.requestSignOut()
+        model.account.requestSignOut()
         model.state.first { it.pending is Pending.SignOut }
 
-        model.dismiss()
+        model.ui.dismiss()
 
         assertNull(model.state.first { it.pending == null }.pending)
         assertNotNull(fixture.graph.current.value)
@@ -75,19 +75,19 @@ class SettingsAccountTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.requestRemove()
+        model.account.requestRemove()
         assertEquals(
             Pending.Remove(STORE_A, unsent = 1, confirmed = 0, needed = 2),
             model.state.first { it.pending is Pending.Remove }.pending,
         )
-        model.confirmRemove()
+        model.account.confirmRemove()
         assertEquals(
             Pending.Remove(STORE_A, unsent = 1, confirmed = 1, needed = 2),
             model.state.first { (it.pending as? Pending.Remove)?.confirmed == 1 }.pending,
         )
         assertNotNull(fixture.graph.accounts.account(STORE_A))
 
-        model.confirmRemove()
+        model.account.confirmRemove()
 
         model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
         assertNull(fixture.graph.accounts.account(STORE_A))
@@ -103,12 +103,12 @@ class SettingsAccountTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.requestRemove()
+        model.account.requestRemove()
         assertEquals(
             Pending.Remove(STORE_A, unsent = 0, confirmed = 0, needed = 1),
             model.state.first { it.pending is Pending.Remove }.pending,
         )
-        model.confirmRemove()
+        model.account.confirmRemove()
 
         model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
         assertNull(fixture.graph.accounts.account(STORE_A))
@@ -123,14 +123,17 @@ class SettingsAccountTest {
         fixture.signIn(STORE_B)
         fixture.activate(STORE_B)
         val model = kit.viewModel()
-        val listed = model.state.first { it.loaded && it.accounts.size == 2 }
+        val listed = model.state.first { it.loaded && it.store.accounts.size == 2 }
         assertEquals(STORE_B, checkNotNull(fixture.graph.current.value).account.storeUserId)
-        assertEquals(listOf(STORE_B), listed.accounts.filter { it.active }.map { it.storeUserId })
+        assertEquals(
+            listOf(STORE_B),
+            listed.store.accounts.filter { it.active }.map { it.storeUserId },
+        )
 
-        model.switchTo(STORE_A)
+        model.store.switchTo(STORE_A)
 
         model.state.first {
-          it.accounts.firstOrNull { saved -> saved.active }?.storeUserId == STORE_A
+          it.store.accounts.firstOrNull { saved -> saved.active }?.storeUserId == STORE_A
         }
         assertEquals(STORE_A, checkNotNull(fixture.graph.current.value).account.storeUserId)
       }
@@ -144,7 +147,7 @@ class SettingsAccountTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.requestSignOut()
+        model.account.requestSignOut()
 
         assertEquals(
             Pending.SignOut(STORE_A, unsent = 0),
@@ -162,11 +165,11 @@ class SettingsAccountTest {
         fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.requestRemove()
+        model.account.requestRemove()
         model.state.first { it.pending is Pending.Remove }
         fixture.signIn(STORE_B)
 
-        model.confirmRemove()
+        model.account.confirmRemove()
 
         assertNull(model.state.first { it.pending == null }.pending)
         assertNotNull(fixture.graph.accounts.account(STORE_A))
@@ -181,11 +184,11 @@ class SettingsAccountTest {
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.requestRemove()
+        model.account.requestRemove()
         model.state.first { it.pending == Pending.Remove(STORE_A, 0, 0, 1) }
         fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
 
-        model.confirmRemove()
+        model.account.confirmRemove()
 
         val asked = model.state.first { (it.pending as? Pending.Remove)?.unsent == 1 }
         assertEquals(Pending.Remove(STORE_A, unsent = 1, confirmed = 0, needed = 2), asked.pending)
@@ -204,9 +207,9 @@ class SettingsAccountTest {
         fixture.activate(STORE_B)
         fixture.graph.accounts.clearRefreshToken(STORE_A)
         val model = kit.viewModel()
-        model.state.first { it.loaded && it.accounts.size == 2 }
+        model.state.first { it.loaded && it.store.accounts.size == 2 }
 
-        model.switchTo(STORE_A)
+        model.store.switchTo(STORE_A)
 
         model.state.first { it.outcome == SettingsOutcome.NEEDS_LOGIN }
         assertNull(fixture.graph.current.value)

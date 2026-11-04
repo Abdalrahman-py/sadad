@@ -19,6 +19,8 @@
           "duplicate_phone",
           "invalid_phone",
           "contact_limit_reached",
+          "contact_has_balance",
+          "contact_not_archived",
           "contact_unavailable",
           "debt_unavailable",
           "payment_unavailable",
@@ -31,6 +33,7 @@
           "reason_required",
           "already_reversed",
           "below_paid_total",
+          "offset_invalid",
           "unsupported_operation",
           "dependency_rejected",
           "dependency_pending",
@@ -42,6 +45,7 @@
           "installation_or_session_revoked",
           "installation_key_changed",
           "session_installation_conflict",
+          "session_in_use",
           "ledger_not_initialized",
           "epoch_changed",
           "recovery_not_authorized",
@@ -198,7 +202,7 @@
         "properties": {
           "payload": {
             "type": "string",
-            "description": "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, issuedAt, expiresAt, allowed"
+            "description": "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, contactLimit, issuedAt, expiresAt, allowed"
           },
           "signature": {
             "type": "string",
@@ -247,6 +251,12 @@
             "items": {
               "$ref": "#/components/schemas/ChangeEvent"
             }
+          },
+          "installations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InstallationName"
+            }
           }
         },
         "required": [
@@ -257,7 +267,8 @@
           "nextCursor",
           "hasMore",
           "currency",
-          "events"
+          "events",
+          "installations"
         ]
       },
       "ChangeEvent": {
@@ -359,6 +370,26 @@
           "sequence",
           "epoch",
           "serverTime"
+        ]
+      },
+      "InstallationName": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "staffName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "staffName"
         ]
       },
       "AdminOverview": {
@@ -1481,6 +1512,160 @@
             }
           },
           "429": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/session": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Claims the account for the caller's Auth session, or renews it. 409 session_in_use while another session holds it (the dashboard calls this right after sign-in, and every 60 seconds while it is open).",
+        "responses": {
+          "200": {
+            "description": "This session holds the account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "claimed": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "claimed"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "description": "Frees the account at sign-out, so another browser can sign in at once. Releasing a seat this session does not hold is a no-op. admin and support.",
+        "responses": {
+          "200": {
+            "description": "Released, or nothing to release",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "released": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "released"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Contract error; code is listed in contract/errors.json",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "Contract error; code is listed in contract/errors.json",
             "content": {
               "application/json": {
@@ -3490,7 +3675,7 @@
             "Bearer": []
           }
         ],
-        "description": "Proves the current password, sets a new one (12 to 128 characters, not the current one) and clears app_metadata.force_password_change. Every role; the Auth JWT only, no device proof. The caller's JWT keeps its old claims until it expires: after a 200 the client must refresh its session, and the refreshed JWT carries the cleared flag.",
+        "description": "Proves the current password, sets a new one (8 to 128 characters, not the current one) and clears app_metadata.force_password_change. Every role; the Auth JWT only, no device proof. The caller's JWT keeps its old claims until it expires: after a 200 the client must refresh its session, and the refreshed JWT carries the cleared flag.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3505,7 +3690,7 @@
                   },
                   "newPassword": {
                     "type": "string",
-                    "minLength": 12,
+                    "minLength": 8,
                     "maxLength": 128
                   }
                 },

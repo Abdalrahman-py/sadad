@@ -4,7 +4,13 @@ import { bodyLimit } from "hono/body-limit";
 import type { AppEnv } from "../auth.ts";
 import { ApiError, errorResponses } from "../errors.ts";
 import { call } from "../rpc.ts";
-import { adminDb, type AdminDeps, allow, ReasonSchema } from "./common.ts";
+import {
+  adminDb,
+  type AdminDeps,
+  adminRefusals,
+  allow,
+  ReasonSchema,
+} from "./common.ts";
 
 // sadid_approve_recovery refuses a manifest above 4,000,000 bytes.
 const MAX_BODY_BYTES = 4_194_304;
@@ -59,7 +65,13 @@ const approveRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 413, 500),
+    ...errorResponses(
+      ...adminRefusals,
+      "invalid_input",
+      "operation_id_reused",
+      "payload_too_large",
+      "internal_error",
+    ),
   },
 });
 

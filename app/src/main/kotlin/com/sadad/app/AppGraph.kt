@@ -1,13 +1,12 @@
 package com.sadad.app
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.provider.Settings
 import com.sadad.app.data.crypto.DataKey
 import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.db.LedgerStore
+import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.data.ledger.Outbox
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.net.ApiHttpClient
@@ -22,11 +21,22 @@ import com.sadad.app.data.session.KeystoreInstallations
 import com.sadad.app.data.session.SessionHost
 import com.sadad.app.data.session.Sessions
 import com.sadad.app.data.session.StoreScope
+import com.sadad.app.data.sync.AutomaticSync
 import com.sadad.app.data.sync.LeaseStore
 import com.sadad.app.data.sync.SyncEngine
 import com.sadad.app.data.sync.SyncScheduler
 import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
+import com.sadad.app.data.sync.connectivity
+import com.sadad.app.data.sync.internetAvailable
+import com.sadad.app.export.StatementExport
+import com.sadad.app.feature.contactpicker.DeviceContacts
+import com.sadad.app.feature.contactpicker.SadadPeople
+import com.sadad.app.feature.contactpicker.contactSource
+import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.feature.photo.PhotoKind
+import com.sadad.app.feature.photo.PhotoStore
+import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.ui.AwaitingApproval
 import com.sadad.app.ui.Home
 import com.sadad.app.ui.Login
@@ -36,12 +46,18 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -72,11 +88,22 @@ internal constructor(
     private val bootCount: () -> Int = {
       Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
     },
+    /** The wall clock offline leases are checked against; a test moves it. */
+    private val now: () -> Long = System::currentTimeMillis,
+    /** Stable across a reinstall of the same signing key; see DeviceIdentity. */
+    private val deviceSeed: () -> String? = { androidId(context) },
 ) : SessionHost {
   val errorMessages: ErrorMessages by lazy { ErrorMessages(context) }
 
   val sessions: Sessions by lazy {
-    Sessions(accounts, authApi, installations, this, deviceLabel)
+    Sessions(
+        accounts,
+        authApi,
+        installations,
+        this,
+        deviceLabel,
+        installationSeed = deviceSeed,
+    )
   }
 
   private val mutableCurrent = MutableStateFlow<StoreScope?>(null)
@@ -85,7 +112,22 @@ internal constructor(
   private val syncUsers = mutableMapOf<StoreScope, Int>()
   private val leaseDirectory = leaseDirectory ?: File(context.cacheDir, "sync-${UUID.randomUUID()}")
   private val leases = ConcurrentHashMap<String, LeaseStore>()
-  private val syncEngine by lazy { SyncEngine(accounts, sessions, ledgerApi, ::leaseFor) }
+  internal val syncEngine by lazy { SyncEngine(accounts, sessions, ledgerApi, ::leaseFor) }
+  private val automaticSync by lazy {
+    AutomaticSync(scope, online, { syncStatus(it).value }, { syncEngine.aborted(it) }) {
+      syncStore(it)
+    }
+  }
+
+  suspend fun syncWhileVisible(connection: Flow<Boolean> = connectivity(context)) {
+    automaticSync.whileVisible(current.map { it?.account?.storeUserId }, connection)
+  }
+
+  /** The pull to refresh on Home starts one pass for this store; it no-ops while offline. */
+  fun refresh(storeUserId: String) = automaticSync.request(storeUserId)
+
+  /** The device's contacts for the contact picker; it is device-level, built from this app. */
+  fun deviceContacts(): DeviceContacts = contactSource(context.contentResolver)
 
   fun syncStatus(storeUserId: String): StateFlow<SyncStatus> = syncEngine.status(storeUserId)
 
@@ -95,13 +137,14 @@ internal constructor(
    */
   fun offlineUntil(account: Account): Long? = leaseFor(account.storeUserId).expiresAt(account)
 
-  private fun leaseFor(storeUserId: String): LeaseStore =
+  internal fun leaseFor(storeUserId: String): LeaseStore =
       leases.computeIfAbsent(storeUserId) {
         LeaseStore(
             File(leaseDirectory, "lease-$it.preferences_pb"),
             scope,
             leaseVerifier,
             bootCount,
+            now,
         )
       }
 
@@ -115,7 +158,13 @@ internal constructor(
           }
         }
         try {
-          syncEngine.pass(opened)
+          // A store the start route opened may still be reading its rows.
+          opened.repository.awaitLoaded()
+          syncEngine.pass(opened).also { result ->
+            if (result == SyncStatus.Idle) {
+              accounts.update(storeUserId) { it.copy(lastSyncAt = now()) }
+            }
+          }
         } finally {
           withContext(NonCancellable) {
             storeMutex.withLock {
@@ -149,24 +198,31 @@ internal constructor(
     if (session == null && account.sealedRefreshToken == null) return Login
     if (session?.forcePasswordChange == true) return PasswordChange
     if (account.installation?.status != "active") return AwaitingApproval
-    if (mutableCurrent.value?.account?.storeUserId != account.storeUserId) openStore(account)
+    // Home reads its rows behind the lock screen: the PIN pad must not wait for the ledger.
+    if (mutableCurrent.value?.account?.storeUserId != account.storeUserId) {
+      openStore(account, awaitRows = false)
+    }
     return Home
   }
 
-  /** Closes the open store, then opens [account]'s database, outbox and repository. */
-  suspend fun openStore(account: Account): StoreScope =
+  /**
+   * Closes the open store, then opens [account]'s database, outbox and repository. It returns with
+   * the rows read, unless [awaitRows] is false: then they load in the background and the
+   * repository's view stays null until they are in.
+   */
+  suspend fun openStore(account: Account, awaitRows: Boolean = true): StoreScope =
       withContext(Dispatchers.IO) {
         storeMutex.withLock {
           closeCurrent()
           val opened =
               stores[account.storeUserId]
-                  ?: createStore(account).also { stores[account.storeUserId] = it }
+                  ?: createStore(account, awaitRows).also { stores[account.storeUserId] = it }
           mutableCurrent.value = opened
           opened
         }
       }
 
-  private suspend fun createStore(account: Account): StoreScope {
+  private suspend fun createStore(account: Account, awaitRows: Boolean = true): StoreScope {
     val signer =
         checkNotNull(installations.load(account.keyAlias, account.installationId)) {
           "the installation key for store ${account.storeUserId} is missing"
@@ -181,11 +237,16 @@ internal constructor(
     val storeScope =
         StoreScope(account, database, store, outbox, signer, accounts, online, storeJobs, lease) {
           syncScheduler?.syncNow(account.storeUserId)
+          if (syncScheduler != null) automaticSync.request(account.storeUserId)
         }
+    if (!awaitRows) {
+      // A failed read still ends the app loudly, as it did on the splash, not as a Home that never
+      // fills.
+      storeJobs.launch { loadRows(storeScope) }
+      return storeScope
+    }
     try {
-      storeScope.repository.load()
-      storeScope.setEpoch(database.metaDao().get()?.epoch)
-      syncScheduler?.schedulePeriodic(account.storeUserId)
+      loadRows(storeScope)
       return storeScope
     } catch (error: Throwable) {
       withContext(NonCancellable) { storeScope.close() }
@@ -193,7 +254,19 @@ internal constructor(
     }
   }
 
-  suspend fun closeStore() = storeMutex.withLock { closeCurrent() }
+  /** The epoch goes in first, so sync that waits for the rows never sees the store without it. */
+  private suspend fun loadRows(storeScope: StoreScope) {
+    storeScope.setEpoch(storeScope.database.metaDao().get()?.epoch)
+    storeScope.repository.load()
+    syncScheduler?.schedulePeriodic(storeScope.account.storeUserId)
+  }
+
+  suspend fun closeStore() = storeMutex.withLock {
+    closeCurrent()
+    // The statements of the store that just closed hold its balances; sign-out and a switch land
+    // here, so they leave no exports behind.
+    StatementExport.clearExports(context)
+  }
 
   private suspend fun closeCurrent() {
     val open = mutableCurrent.value ?: return
@@ -216,6 +289,7 @@ internal constructor(
           val account = accounts.account(storeUserId) ?: return@withContext true
           if (queuedCount(storeUserId) > 0 && !confirmedTwice) return@withContext false
           syncScheduler?.cancel(storeUserId)
+          automaticSync.cancel(storeUserId)
           leases[storeUserId]?.clear()
           val open = stores.remove(storeUserId)
           if (mutableCurrent.value?.account?.storeUserId == storeUserId) {
@@ -226,6 +300,13 @@ internal constructor(
           installations.delete(account.keyAlias)
           deleteDatabase(storeUserId)
           accounts.remove(storeUserId)
+          // Everything the app kept for this store goes with it: a store added again under the
+          // same id must not inherit an old photo, hidden ids or reminders.
+          val photos = PhotoStore(context)
+          PhotoKind.entries.forEach { kind -> runCatching { photos.delete(storeUserId, kind) } }
+          TrashHidden.forget(context, storeUserId)
+          DueReminders.get(context).forget(storeUserId)
+          StatementExport.clearExports(context)
           true
         }
       }
@@ -273,7 +354,7 @@ internal constructor(
           installations = KeystoreInstallations,
           openDatabase = { LedgerDatabase.open(context, it) },
           deleteDatabase = { context.deleteDatabase("ledger-$it.db") },
-          online = { isOnline(context) },
+          online = { internetAvailable(context) },
           deviceLabel = Build.MODEL,
           scope = scope,
           syncScheduler = SyncScheduler(context),
@@ -281,13 +362,35 @@ internal constructor(
           bootCount = { boot },
       )
     }
+  }
+}
 
-    private fun isOnline(context: Context): Boolean {
-      val manager = context.getSystemService(ConnectivityManager::class.java) ?: return true
-      val network = manager.activeNetwork ?: return false
-      return manager
-          .getNetworkCapabilities(network)
-          ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+/**
+ * The device value that survives a reinstall of the same signing key. `ANDROID_ID` is stable per
+ * app-signing key + user since Android 8; a device that withholds it falls back to a random id.
+ */
+private fun androidId(context: Context): String? = runCatching {
+  Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+}
+    .getOrNull()
+
+/** The open store's contact records; null while no store is open. */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun AppGraph.contactRecords(): Flow<ContactRecords?> = current.flatMapLatest { scope ->
+  scope?.repository?.contactRecords ?: flowOf(null)
+}
+
+/** The store's own people a pick is compared against; the open store's ledger view. */
+fun AppGraph.contactPeople(): Flow<SadadPeople?> =
+    contactRecords().map { records ->
+      records?.let { SadadPeople(it.directory.contacts, it.ledger.archivedContacts) }
     }
+
+/** The open installation's permissions by name; empty while no store is open. */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun AppGraph.permissions(): Flow<Map<String, Boolean>> = current.flatMapLatest { scope ->
+  val storeUserId = scope?.account?.storeUserId
+  accounts.accounts.map { accounts ->
+    accounts.firstOrNull { it.storeUserId == storeUserId }?.installation?.permissions.orEmpty()
   }
 }

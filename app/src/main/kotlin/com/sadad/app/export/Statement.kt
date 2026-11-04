@@ -1,7 +1,9 @@
 package com.sadad.app.export
 
+import com.sadad.app.data.ledger.paymentGroups
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactView
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import java.time.Instant
@@ -50,8 +52,17 @@ object Statement {
     val contacts = view.contacts.filter { contactId == null || it.id == contactId }
     val selected = contacts.map { it.id }.toHashSet()
     val debts =
-        view.debts.filter { it.contactId in selected && it.direction == Direction.RECEIVABLE }
+        view.debts.filter {
+          it.contactId in selected && it.direction == Direction.RECEIVABLE && it.amount > Cents.ZERO
+        }
     val debtIds = debts.map { it.id }.toHashSet()
+    // A credit Debt is the second half of the payment that left it: one row, at that one instant.
+    val credits =
+        view.debts
+            .filter { it.origin == DebtOrigin.OVERPAYMENT && it.amount > Cents.ZERO }
+            .associateBy { it.contactId to it.createdAt }
+    val seen = view.payments.filter { !it.reversed && it.debtId in debtIds }
+    val groups = paymentGroups(seen, debts.associateBy { it.id })
     val movements = HashMap<String, MutableList<StatementRow>>()
     for (debt in debts) {
       movements.getOrPut(debt.contactId) { mutableListOf() } +=
@@ -67,15 +78,18 @@ object Statement {
               debt.createdBy,
           )
     }
-    for (payment in view.payments) {
-      if (payment.reversed || payment.debtId !in debtIds) continue
+    for (parts in groups) {
+      val payment = parts.first()
+      val key = payment.contactId to payment.createdAt
+      val credit = credits[key]?.takeIf { it.createdBy == payment.createdBy }
+      val settled = parts.fold(Cents.ZERO) { total, part -> total + part.amount }
       movements.getOrPut(payment.contactId) { mutableListOf() } +=
           StatementRow(
               payment.id,
               payment.createdAt,
               MovementKind.PAYMENT,
               Cents.ZERO,
-              payment.amount,
+              settled + (credit?.amount ?: Cents.ZERO),
               Cents.ZERO,
               null,
               payment.note,

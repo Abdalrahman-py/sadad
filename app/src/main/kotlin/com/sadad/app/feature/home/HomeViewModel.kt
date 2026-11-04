@@ -2,7 +2,6 @@ package com.sadad.app.feature.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.ledger.Cents
@@ -25,7 +24,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** One person on «تحتاج متابعة»: what they owe, and how late — `null` means due today. */
@@ -56,6 +54,10 @@ data class HomeUiState(
     val followUpCount: Int = 0,
     val empty: Boolean = false,
     val offline: HomeOffline? = null,
+    /** True while the open store's sync pass is running: the pull to refresh indicator. */
+    val refreshing: Boolean = false,
+    /** False only before the store's ledger is read, when the zeros above mean nothing yet. */
+    val loaded: Boolean = true,
 )
 
 /**
@@ -107,8 +109,8 @@ fun homeUiState(
       if (net <= Cents.ZERO) continue
       var late: Int? = null
       var dueToday = false
-      for (debt in receivable) {
-        if (debt.contactId != contact.id || debt.remaining <= Cents.ZERO) continue
+      for (debt in view.debtsOf(contact.id)) {
+        if (debt.direction != Direction.RECEIVABLE || debt.remaining <= Cents.ZERO) continue
         val due = debt.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (due == null) continue
         val days = ChronoUnit.DAYS.between(due, today).toInt()
@@ -155,8 +157,19 @@ fun homeUiState(
 /** At most this many rows on «تحتاج متابعة»; the rest are behind «عرض الكل». */
 const val FOLLOW_UP_ROWS: Int = 5
 
-/** Follows the open store: its [LedgerView], the queue, the connection, and the store's name. */
-class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewModel() {
+/**
+ * Follows the open store: its [LedgerView], the queue, the connection, and the store's name. The
+ * totals are derived once per view and day; the rest only changes the banner. Off screen it stops.
+ */
+class HomeViewModel
+internal constructor(
+    private val source: HomeSource,
+    private val clock: Clock? = null,
+    private val derive: (LedgerView, YearMonth, ZoneId, LocalDate) -> HomeUiState =
+        { view, month, zone, today ->
+          homeUiState(view = view, month = month, zone = zone, today = today)
+        },
+) : ViewModel() {
   private data class Period(val month: YearMonth, val zone: ZoneId, val today: LocalDate)
 
   private fun clockNow(): Clock = clock ?: Clock.systemDefaultZone()
@@ -183,68 +196,73 @@ class HomeViewModel(graph: AppGraph, private val clock: Clock? = null) : ViewMod
     }
   }
 
-  private data class Inputs(
-      val view: LedgerView?,
+  /** The pull to refresh on Home starts one pass for the open store; offline it ends at once. */
+  fun refresh() = source.refresh()
+
+  /** The derivation, kept while its view and day stay the same: a resubscription reuses it. */
+  private class Derived(val view: LedgerView, val period: Period, val state: HomeUiState)
+
+  @Volatile private var derived: Derived? = null
+
+  // The heavy part reads only the view and the day; a sync status flip or a queued row never
+  // reaches it.
+  private val totals: Flow<HomeUiState> =
+      combine(source.current.flatMapLatest { it?.repository?.view ?: flowOf(null) }, period) {
+          view,
+          period ->
+        if (view == null) return@combine HomeUiState(month = period.month, loaded = false)
+        val last = derived
+        if (last != null && last.view === view && last.period == period) return@combine last.state
+        derive(view, period.month, period.zone, period.today).also {
+          derived = Derived(view, period, it)
+        }
+      }
+
+  private data class Banner(
       val storeName: String,
-      val period: Period,
-      val queued: Int,
-      val offline: Boolean,
-      val leaseEndsAt: Instant?,
+      val offline: HomeOffline?,
+      val refreshing: Boolean,
   )
 
-  private val inputs: Flow<Inputs> =
-      combine(graph.current, graph.accounts.accounts, period) { scope, accounts, period ->
-            Triple(scope, accounts, period)
-          }
-          .flatMapLatest { (scope, accounts, period) ->
+  private val banner: Flow<Banner> =
+      combine(source.current, source.accounts) { scope, accounts -> scope to accounts }
+          .flatMapLatest { (scope, accounts) ->
             val name =
                 accounts
                     .firstOrNull { it.storeUserId == scope?.account?.storeUserId }
                     ?.storeName
                     .orEmpty()
             if (scope == null) {
-              flowOf(Inputs(null, name, period, 0, false, null))
+              flowOf(Banner(name, null, false))
             } else {
-              combine(
-                  scope.repository.view,
-                  scope.outbox.rows,
-                  graph.syncStatus(scope.account.storeUserId),
-              ) { view, rows, status ->
-                Inputs(
-                    view = view,
+              combine(scope.outbox.rows, source.syncStatus(scope.account.storeUserId)) {
+                  rows,
+                  status ->
+                val queued = rows.count { it.state == OutboxState.QUEUED }
+                val offline = status == SyncStatus.Offline || !scope.isOnline()
+                val leaseEndsAt = source.offlineUntil(scope.account)?.let(Instant::ofEpochMilli)
+                Banner(
                     storeName = name,
-                    period = period,
-                    queued = rows.count { it.state == OutboxState.QUEUED },
-                    offline = status == SyncStatus.Offline || !scope.isOnline(),
-                    leaseEndsAt = graph.offlineUntil(scope.account)?.let(Instant::ofEpochMilli),
+                    offline = if (offline && queued > 0) HomeOffline(queued, leaseEndsAt) else null,
+                    // The pull spinner is the running pass itself; offline never enters it.
+                    refreshing = status == SyncStatus.Running,
                 )
               }
             }
           }
 
   val state: StateFlow<HomeUiState> =
-      inputs
-          .map { inputs ->
-            val view = inputs.view
-            if (view == null) {
-              HomeUiState(storeName = inputs.storeName, month = inputs.period.month)
-            } else {
-              homeUiState(
-                  view = view,
-                  month = inputs.period.month,
-                  zone = inputs.period.zone,
-                  storeName = inputs.storeName,
-                  today = inputs.period.today,
-                  queued = inputs.queued,
-                  offline = inputs.offline,
-                  leaseEndsAt = inputs.leaseEndsAt,
-              )
-            }
+      combine(totals, banner) { totals, banner ->
+            totals.copy(
+                storeName = banner.storeName,
+                offline = banner.offline,
+                refreshing = banner.refreshing,
+            )
           }
           .flowOn(Dispatchers.Default)
           .stateIn(
               viewModelScope,
-              SharingStarted.Eagerly,
-              HomeUiState(month = period.value.month),
+              SharingStarted.WhileSubscribed(5_000),
+              HomeUiState(month = period.value.month, loaded = false),
           )
 }

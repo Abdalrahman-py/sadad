@@ -1,17 +1,34 @@
 package com.sadad.app.feature.lock
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import java.io.File
@@ -32,22 +49,32 @@ import org.robolectric.annotation.Config
 
 private const val CONTENT = "المحتوى"
 private const val LOCKED = "التطبيق مقفل"
+private const val HOME = "الرئيسية"
+private const val GO = "افتح"
+private const val CONTACT = "جهة الاتصال"
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = UiTestApplication::class)
+// A real phone's height, not Robolectric's 320x470 default: the lock board is a full screen with
+// its own keypad (no IME), so the keys and the open button must be measured where they live.
+@Config(application = UiTestApplication::class, qualifiers = "w360dp-h800dp-xxhdpi")
 class LockGateTest {
   @get:Rule val compose = createComposeRule()
   @get:Rule val temporary = TemporaryFolder()
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val owner = TestOwner()
   private var now = 100_000L
+  private var bootReads = 0
 
   @After fun close() = scope.cancel()
 
   private fun lockWithPin(): AppLock =
-      AppLock(File(temporary.root, "lock.preferences_pb"), scope, { now }, { 1 }).also {
-        runBlocking { it.setPin("1234") }
-      }
+      AppLock(
+              File(temporary.root, "lock.preferences_pb"),
+              scope,
+              { now },
+              { 1.also { bootReads++ } },
+          )
+          .also { runBlocking { it.setPin("1234") } }
 
   private fun show(
       lock: AppLock,
@@ -75,19 +102,83 @@ class LockGateTest {
   private fun waitFor(text: String) = compose.waitUntil(5_000) { shown(text) }
 
   @Test
-  fun stoppingForTwoSecondsLocksButOneSecondDoesNot() {
+  fun stoppingForAMinuteLocksButFiftyNineSecondsDoesNot() {
     val lock = lockWithPin().also { it.markUnlocked() }
     show(lock)
     compose.onNodeWithText(CONTENT).assertIsDisplayed()
 
-    leaveFor(1_000)
+    leaveFor(59_000)
     compose.waitForIdle()
     compose.onNodeWithText(CONTENT).assertIsDisplayed()
     assertFalse(shown(LOCKED))
 
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(LOCKED)
     assertFalse(shown(CONTENT))
+  }
+
+  @Test
+  fun aPauseWithoutAStopNeverLocks() {
+    val lock = lockWithPin().also { it.markUnlocked() }
+    show(lock)
+    compose.onNodeWithText(CONTENT).assertIsDisplayed()
+
+    compose.runOnUiThread {
+      owner.send(Lifecycle.Event.ON_PAUSE)
+      now += 600_000 // ten minutes under a system dialog or the notification shade
+      owner.send(Lifecycle.Event.ON_RESUME)
+    }
+    compose.waitForIdle()
+    compose.onNodeWithText(CONTENT).assertIsDisplayed()
+    assertFalse(shown(LOCKED))
+  }
+
+  @Test
+  fun aHalfTypedEntrySurvivesTheLock() {
+    val lock = lockWithPin().also { it.markUnlocked() }
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+          LockGate(lock, hasSession = true, biometric = NoBiometric) {
+            val nav = rememberNavController()
+            NavHost(nav, startDestination = HOME) {
+              composable(HOME) {
+                Text(HOME)
+                Text(GO, modifier = Modifier.clickable { nav.navigate(CONTACT) })
+              }
+              composable(CONTACT) {
+                val entry: HalfTypedViewModel =
+                    viewModel<HalfTypedViewModel>(
+                        factory =
+                            viewModelFactory {
+                              initializer { HalfTypedViewModel(createSavedStateHandle()) }
+                            }
+                    )
+                Column {
+                  Text(CONTACT)
+                  TextField(
+                      value = entry.amount(),
+                      onValueChange = { entry.onAmount(it.filter(Char::isDigit)) },
+                      label = { Text("المبلغ") },
+                      singleLine = true,
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    waitFor(HOME)
+    compose.onNodeWithText(GO).performClick()
+    waitFor(CONTACT)
+    compose.onNode(hasSetTextAction()).performTextInput("65")
+
+    leaveFor(60_001)
+    waitFor(LOCKED)
+    lock.markUnlocked()
+    waitFor(CONTACT)
+    compose.onNode(hasSetTextAction()).assertTextEquals("المبلغ", "65", includeEditableText = true)
   }
 
   @Test
@@ -95,7 +186,7 @@ class LockGateTest {
     val lock = lockWithPin().also { it.markUnlocked() }
     runBlocking { lock.setLockEnabled(false) }
     show(lock)
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(CONTENT)
     assertFalse(shown(LOCKED))
   }
@@ -112,11 +203,11 @@ class LockGateTest {
     val lock = lockWithPin().also { it.markUnlocked() }
     show(lock)
     lock.skipNextLock()
-    leaveFor(2_000)
+    leaveFor(60_001)
     compose.waitForIdle()
     compose.onNodeWithText(CONTENT).assertIsDisplayed()
 
-    leaveFor(2_000)
+    leaveFor(60_001)
     waitFor(LOCKED)
   }
 
@@ -127,13 +218,70 @@ class LockGateTest {
     assertFalse(shown(CONTENT))
 
     typePin("9999")
-    compose.onNodeWithTag(LockTag.OPEN).performClick()
     waitFor("رمز القفل غير صحيح")
     assertFalse(shown(CONTENT))
 
     typePin("1234")
-    compose.onNodeWithTag(LockTag.OPEN).performClick()
     waitFor(CONTENT)
+  }
+
+  @Test
+  fun threeDigitsDoNotSubmitAndTheFourthOpensAutomatically() {
+    show(lockWithPin())
+    waitFor(LOCKED)
+    typePin("123")
+    compose.waitForIdle()
+    assertFalse(shown(CONTENT))
+    typePin("4")
+    waitFor(CONTENT)
+  }
+
+  @Test
+  fun theLockBoardIsCenteredVertically() {
+    show(lockWithPin())
+    waitFor(LOCKED)
+    val board = compose.onNodeWithTag("lock_board").fetchSemanticsNode().boundsInRoot
+    val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+    org.junit.Assert.assertTrue(kotlin.math.abs(board.center.y - root.center.y) < 12f)
+  }
+
+  @Test
+  fun rapidExtraPressesSubmitOnlyOneFourDigitAttempt() {
+    val lock = lockWithPin()
+    show(lock)
+    waitFor(LOCKED)
+    val press =
+        compose
+            .onNodeWithTag(LockTag.key("9"))
+            .fetchSemanticsNode()
+            .config[SemanticsActions.OnClick]
+            .action!!
+    compose.runOnUiThread { repeat(8) { press() } }
+    waitFor("رمز القفل غير صحيح")
+    assertEquals(PinResult.Wrong(3), runBlocking { lock.verifyPin("9999") })
+    typePin("1234")
+    waitFor(CONTENT)
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h480dp-xxhdpi")
+  fun theKeypadStillScrollsIntoViewOnASmallScreen() {
+    show(lockWithPin())
+    waitFor(LOCKED)
+    compose.onNodeWithTag(LockTag.key("0")).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun aLockoutCountsDownWithoutReadingTheLockAgain() {
+    val lock = lockWithPin()
+    runBlocking { repeat(5) { lock.verifyPin("9999") } }
+    show(lock)
+    waitFor("محاولات كثيرة؛ انتظر 30 ثانية.")
+    val reads = bootReads
+    compose.mainClock.autoAdvance = false
+    compose.mainClock.advanceTimeBy(3_000)
+    waitFor("محاولات كثيرة؛ انتظر 27 ثانية.")
+    assertEquals(reads, bootReads)
   }
 
   @Test
@@ -153,6 +301,52 @@ class LockGateTest {
     show(lock, biometric = Sensor(available = false))
     waitFor(LOCKED)
     assertFalse(shown("استخدام البصمة أو الوجه"))
+  }
+
+  @Test
+  fun unlockingComesBackToTheScreenTheOwnerWasOn() {
+    val lock = lockWithPin().also { it.markUnlocked() }
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+          // The nav controller is created inside the gated content, exactly as SadadApp is wrapped
+          // by the gate: locking removes the NavHost from composition, so only saved state can put
+          // the owner back on the screen he was on (#177).
+          LockGate(lock, hasSession = true, biometric = NoBiometric) {
+            val nav = rememberNavController()
+            NavHost(nav, startDestination = HOME) {
+              composable(HOME) {
+                Text(HOME)
+                Text(GO, modifier = Modifier.clickable { nav.navigate(CONTACT) })
+              }
+              composable(CONTACT) { Text(CONTACT) }
+            }
+          }
+        }
+      }
+    }
+    waitFor(HOME)
+    compose.onNodeWithText(GO).performClick()
+    waitFor(CONTACT)
+
+    leaveFor(60_001)
+    waitFor(LOCKED)
+    assertFalse(shown(CONTACT))
+
+    lock.markUnlocked()
+
+    waitFor(CONTACT)
+    assertFalse(shown(HOME))
+  }
+
+  /** The SavedStateHandle shape a half-typed entry keeps across the lock's removal from screen. */
+  internal class HalfTypedViewModel(private val saved: androidx.lifecycle.SavedStateHandle) :
+      androidx.lifecycle.ViewModel() {
+    fun amount(): String = saved.get<String>("amount").orEmpty()
+
+    fun onAmount(value: String) {
+      saved["amount"] = value.take(4)
+    }
   }
 
   private object NoBiometric : BiometricAuth {

@@ -19,6 +19,7 @@ begin
     'contacts', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_contacts t where store_id = p_store), '[]'::jsonb),
     'debts', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_debts t where store_id = p_store), '[]'::jsonb),
     'payments', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_payments t where store_id = p_store), '[]'::jsonb),
+    'offsets', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_offsets t where store_id = p_store), '[]'::jsonb),
     'adjustments', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_adjustments t where store_id = p_store), '[]'::jsonb),
     'reversals', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_reversals t where store_id = p_store), '[]'::jsonb),
     'events', coalesce((select jsonb_agg(to_jsonb(t)) from public.sadid_events t where store_id = p_store), '[]'::jsonb)

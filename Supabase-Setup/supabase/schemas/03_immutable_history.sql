@@ -7,7 +7,7 @@ end $$;
 revoke all on function sadid_private.immutable_history() from public, anon, authenticated, service_role;
 
 do $$ declare t text; begin
-  foreach t in array array['sadid_debts', 'sadid_payments', 'sadid_adjustments', 'sadid_reversals', 'sadid_operations', 'sadid_events'] loop
+  foreach t in array array['sadid_debts', 'sadid_payments', 'sadid_offsets', 'sadid_adjustments', 'sadid_reversals', 'sadid_operations', 'sadid_events'] loop
     execute format('create trigger immutable before update or delete on public.%I for each row execute function sadid_private.immutable_history()', t);
   end loop;
   create trigger no_delete before delete on public.sadid_contacts for each row execute function sadid_private.immutable_history();

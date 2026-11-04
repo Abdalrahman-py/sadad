@@ -25,6 +25,7 @@ object Commands {
       category: String? = null,
       note: String? = null,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -37,7 +38,14 @@ object Commands {
           operationId,
           dependsOn,
           ContactCreate.serializer(),
-          ContactCreate(name(name), kind, optional(phone), optional(category), optional(note)),
+          ContactCreate(
+              name(name),
+              kind,
+              optional(phone),
+              whatsappCode,
+              optional(category),
+              optional(note),
+          ),
       )
 
   fun contactUpdate(
@@ -50,6 +58,7 @@ object Commands {
       category: String? = null,
       note: String? = null,
       kind: ContactKind = ContactKind.CUSTOMER,
+      whatsappCode: String? = null,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -67,6 +76,7 @@ object Commands {
               name(name),
               kind,
               optional(phone),
+              whatsappCode,
               optional(category),
               optional(note),
           ),
@@ -117,6 +127,28 @@ object Commands {
           expectedVersion = expectedVersion,
       )
 
+  fun contactDelete(
+      origin: Origin,
+      at: Instant,
+      contactId: String,
+      expectedVersion: Long,
+      reason: String,
+      entityId: String = contactId,
+      operationId: String = newId(),
+      dependsOn: List<String> = emptyList(),
+  ): LedgerCommand =
+      command(
+          origin,
+          at,
+          CommandType.CONTACT_DELETE,
+          entityId,
+          operationId,
+          dependsOn,
+          ContactDelete.serializer(),
+          ContactDelete(uuid("contactId", contactId), reason(reason)),
+          expectedVersion = expectedVersion,
+      )
+
   fun debtCreate(
       origin: Origin,
       at: Instant,
@@ -126,6 +158,7 @@ object Commands {
       note: String? = null,
       /** `yyyy-MM-dd`. */
       dueDate: String? = null,
+      debtOrigin: DebtOrigin? = null,
       entityId: String = newId(),
       operationId: String = newId(),
       dependsOn: List<String> = emptyList(),
@@ -144,6 +177,7 @@ object Commands {
               amount(amount),
               optional(note),
               optional(dueDate),
+              debtOrigin,
           ),
       )
 
@@ -166,8 +200,33 @@ object Commands {
           operationId,
           dependsOn,
           DebtCorrect.serializer(),
-          DebtCorrect(uuid("debtId", debtId), amount(amount), reason(reason)),
+          DebtCorrect(uuid("debtId", debtId), correctionAmount(amount), reason(reason)),
           expectedVersion = expectedVersion,
+      )
+
+  fun debtOffset(
+      origin: Origin,
+      at: Instant,
+      receivableDebtId: String,
+      payableDebtId: String,
+      amount: Cents,
+      entityId: String = newId(),
+      operationId: String = newId(),
+      dependsOn: List<String> = emptyList(),
+  ): LedgerCommand =
+      command(
+          origin,
+          at,
+          CommandType.DEBT_OFFSET,
+          entityId,
+          operationId,
+          dependsOn,
+          DebtOffset.serializer(),
+          DebtOffset(
+              uuid("receivableDebtId", receivableDebtId),
+              uuid("payableDebtId", payableDebtId),
+              amount(amount),
+          ),
       )
 
   fun paymentCreate(
@@ -268,6 +327,13 @@ object Commands {
   private fun amount(cents: Cents): Cents = cents.also {
     require(it >= Cents(1) && it <= Cents.MAX_WIRE) {
       "an amount is 1 to ${Cents.MAX_WIRE.value} cents"
+    }
+  }
+
+  /** A correction may zero an unused Debt (reversing credit); the server guards the rest. */
+  private fun correctionAmount(cents: Cents): Cents = cents.also {
+    require(it >= Cents.ZERO && it <= Cents.MAX_WIRE) {
+      "a correction is 0 to ${Cents.MAX_WIRE.value} cents"
     }
   }
 }

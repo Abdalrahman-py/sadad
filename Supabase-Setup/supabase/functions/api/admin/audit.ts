@@ -2,15 +2,16 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { AppEnv } from "../auth.ts";
 import { errorResponses } from "../errors.ts";
-import { call } from "../rpc.ts";
 import {
   adminDb,
   type AdminDeps,
+  adminRefusals,
   allow,
-  decodeCursor,
-  encodeCursor,
+  callPage,
   NextCursorSchema,
   pageQuery,
+  security,
+  tags,
 } from "./common.ts";
 
 const AuditEventSchema = z
@@ -30,8 +31,8 @@ const AuditEventSchema = z
 const auditRoute = createRoute({
   method: "get",
   path: "/admin/audit",
-  tags: ["admin"],
-  security: [{ Bearer: [] }],
+  tags,
+  security,
   description:
     "Newest first. source=control: admin actions (kind, reason, details). source=access: audited ledger reads (reason, recordCounts). storeId narrows to one store; q matches part of the actor, kind or reason. admin and support.",
   middleware: [allow("admin", "support")] as const,
@@ -55,7 +56,11 @@ const auditRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 500),
+    ...errorResponses(
+      ...adminRefusals,
+      "invalid_input",
+      "internal_error",
+    ),
   },
 });
 
@@ -65,19 +70,12 @@ export function registerAuditRoutes(
 ): void {
   app.openapi(auditRoute, async (c) => {
     const { source, storeId, q, cursor, limit } = c.req.valid("query");
-    const page = await call<
+    const page = await callPage<
       { events: z.infer<typeof AuditEventSchema>[]; nextCursor: unknown }
-    >(adminDb(c, deps), "sadid_admin_audit", {
+    >(adminDb(c, deps), "sadid_admin_audit", { q, cursor, limit }, {
       p_source: source,
       p_store: storeId ?? null,
-      p_query: q ?? null,
-      p_after: decodeCursor(cursor),
-      p_limit: limit,
     });
-    return c.json({
-      ok: true as const,
-      events: page.events,
-      nextCursor: encodeCursor(page.nextCursor),
-    }, 200);
+    return c.json({ ok: true as const, ...page }, 200);
   });
 }

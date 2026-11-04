@@ -2,7 +2,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { type AccountDeps, registerAccountRoutes } from "./account.ts";
 import { type AdminDeps, registerAdminRoutes } from "./admin.ts";
-import { type AppEnv, type LookupStoreId, type VerifyClaims } from "./auth.ts";
+import { type AppEnv, type VerifyClaims } from "./auth.ts";
 import {
   ApiError,
   type ErrorCode,
@@ -68,7 +68,6 @@ export type RequestLogger = (line: string) => void;
 export interface AppOptions {
   allowedOrigins?: readonly string[];
   verifyClaims?: VerifyClaims;
-  lookupStoreId?: LookupStoreId;
   logError?: ErrorLogger;
   logRequest?: RequestLogger;
   mobile?: MobileDeps;
@@ -84,15 +83,12 @@ const defaultVerifyClaims: VerifyClaims = () =>
     error: new ApiError("authorization_required", 401),
   });
 
-const defaultLookupStoreId: LookupStoreId = () => Promise.resolve(undefined);
-
 export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
   const allowedOrigins = new Set(
     options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS,
   );
   const verifyClaims = options.verifyClaims ?? defaultVerifyClaims;
   const logRequest = options.logRequest ?? defaultRequestLogger;
-  const lookupStoreId = options.lookupStoreId ?? defaultLookupStoreId;
 
   const root = new OpenAPIHono<AppEnv>({
     getPath: routePath,
@@ -145,7 +141,7 @@ export function createApp(options: AppOptions = {}): OpenAPIHono<AppEnv> {
     const started = performance.now();
     const requestId = c.req.header("x-request-id") || crypto.randomUUID();
     c.set("requestId", requestId);
-    c.set("authDeps", { verifyClaims, lookupStoreId });
+    c.set("authDeps", { verifyClaims });
     c.header("Cache-Control", "no-store");
     c.header("X-Content-Type-Options", "nosniff");
     await next();

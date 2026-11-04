@@ -32,7 +32,7 @@ const bodyFor = (route: { method: string }) =>
   route.method === "GET" || route.method === "DELETE" ? undefined : {};
 
 dbTest("the admin routes are in the OpenAPI document", () => {
-  assertEqual(routes.length, 15);
+  assertEqual(routes.length, 17);
   return Promise.resolve();
 });
 
@@ -58,7 +58,11 @@ dbTest(
     const { jwt } = await h.jwtFor("support");
     for (const route of routes) {
       const res = await h.send(jwt, route.method, route.path, bodyFor(route));
-      if (route.method === "GET") {
+      // The seat is per account, not per role: support claims and releases its own like an admin.
+      if (route.path === "/admin/session") {
+        assertEqual({ route, status: res.status }, { route, status: 200 });
+        await res.body?.cancel();
+      } else if (route.method === "GET") {
         assertEqual({ route, status: res.status }, { route, status: 200 });
         await res.body?.cancel();
       } else {

@@ -6,6 +6,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -109,6 +110,40 @@ class UpdateSourceTest {
     assertTrue(result is ManifestResult.Found)
     assertEquals(58, (result as ManifestResult.Found).manifest.versionCode)
     assertEquals(2, server.requestCount)
+  }
+
+  /**
+   * A manifest read while the window was closed says nothing about a download started a minute
+   * later: the release URL can be refusing by then. The APK must still have the second road, and
+   * the listing is asked once and its asset id remembered.
+   */
+  @Test
+  fun theApksAssetIdIsAskedOnceWhenTheDownloadNeedsIt() = runTest {
+    server.enqueue(MockResponse.Builder().code(200).body(body()).build())
+    server.enqueue(
+        MockResponse.Builder()
+            .code(200)
+            .body(listing("update.json" to 7, "Sadad-team.apk" to 8))
+            .build()
+    )
+    val source = source()
+    val manifest = (source.latest() as ManifestResult.Found).manifest
+    // Nothing was spent on the API while the download had its own URL to try.
+    assertEquals(server.url("/Sadad-team.apk").toString(), source.apkUrl(manifest))
+    assertEquals(server.url("/api/releases/assets/8").toString(), source.apkFallbackUrl(manifest))
+    assertEquals(server.url("/api/releases/assets/8").toString(), source.apkFallbackUrl(manifest))
+    // One listing for both calls: the release URL's answer cost nothing, the API was asked twice.
+    assertEquals(2, server.requestCount)
+  }
+
+  /** No second road when the listing cannot be read either: the download's own answer stands. */
+  @Test
+  fun anUnreadableListingLeavesTheDownloadWithoutASecondRoad() = runTest {
+    server.enqueue(MockResponse.Builder().code(200).body(body()).build())
+    server.enqueue(MockResponse.Builder().code(503).body("").build())
+    val source = source()
+    val manifest = (source.latest() as ManifestResult.Found).manifest
+    assertNull(source.apkFallbackUrl(manifest))
   }
 
   @Test

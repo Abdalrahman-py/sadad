@@ -38,6 +38,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.Avatar
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
@@ -175,6 +176,7 @@ private fun TrashRow(
           text = stringResource(R.string.trash_delete),
           onClick = onDelete,
           style = SadadButtonStyle.TEXT,
+          enabled = !restoring,
           height = 44.dp,
       )
     }
@@ -202,23 +204,25 @@ private fun TrashItem.detail(): String =
     }
 
 @Composable
-private fun trashViewModel(): TrashViewModel =
-    viewModel(
-        factory =
-            viewModelFactory {
-              initializer {
-                val app = this[APPLICATION_KEY] as SadadApplication
-                val store =
-                    checkNotNull(app.graph.current.value) { "the trash needs an open store" }
-                val storeUserId = store.account.storeUserId
-                TrashViewModel(
-                    store.repository,
-                    store.outbox,
-                    DueReminders.get(app),
-                    TrashHidden.get(app, storeUserId),
-                    storeUserId,
-                    app,
-                )
-              }
+private fun trashViewModel(): TrashViewModel {
+  val graph = requireGraph()
+  return viewModel(
+      factory =
+          viewModelFactory {
+            initializer {
+              val app = this[APPLICATION_KEY] as SadadApplication
+              val store = checkNotNull(graph.current.value) { "the trash needs an open store" }
+              val storeUserId = store.account.storeUserId
+              TrashViewModel(
+                  store.repository,
+                  store.personLedger.archivedContacts(),
+                  store.outbox,
+                  DueReminders.get(app),
+                  TrashHidden.get(app, storeUserId),
+                  storeUserId,
+                  app,
+              )
             }
-    )
+          }
+  )
+}

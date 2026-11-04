@@ -5,136 +5,155 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
+import com.sadad.app.data.ledger.paymentGroups
+import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementExport
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.export.StatementHeader
 import com.sadad.ledger.Cents
+import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** One Contact with movements in the chosen period: the row the people tab lists. */
-data class HistoryPerson(
+/** One recorded debt or saved payment, including allocations across multiple debts. */
+data class HistoryMovement(
+    val id: String,
     val contactId: String,
     val name: String,
-    /** Sum of `remaining` over the Contact's receivable Debts, in and out of the period. */
-    val openBalance: Cents,
-    /** The newest counted movement, which orders the list. */
-    val lastMovementAt: Instant,
-    /** The newest receivable Debt's amount, whatever period it was recorded in. */
-    val lastDebt: Cents?,
+    val kind: MovementKind,
+    val direction: Direction,
+    val amount: Cents,
+    val createdAt: Instant,
+    val pending: Boolean,
 )
 
 data class HistoryUiState(
-    val tab: HistoryTab = HistoryTab.PEOPLE,
     val period: Period = Period.All,
-    val people: List<HistoryPerson> = emptyList(),
+    val newestFirst: Boolean = true,
+    val movements: List<HistoryMovement> = emptyList(),
     val loaded: Boolean = false,
-    /** The statement was written to the document the user picked. */
     val saved: Boolean = false,
     val error: String? = null,
 )
 
-enum class HistoryTab {
-  PEOPLE,
-  ACTIVITY,
-}
-
-/**
- * The people tab's rows: Contacts with at least one receivable Debt or non-reversed Payment inside
- * [bounds], newest movement first, as the Java screen's `buildHistory` counted them. A Contact's
- * open balance and last Debt are its whole history, not only the period.
- */
-fun historyPeople(view: LedgerView, bounds: PeriodBounds): List<HistoryPerson> {
-  val receivable = view.debts.filter { it.direction == Direction.RECEIVABLE }
-  val receivableIds = receivable.mapTo(HashSet()) { it.id }
-  val byContact = receivable.groupBy { it.contactId }
+/** Read-only projection of visible debts and non-reversed payments, not raw ledger operations. */
+internal fun historyMovements(
+    view: LedgerView,
+    bounds: PeriodBounds,
+    newestFirst: Boolean,
+): List<HistoryMovement> {
   val names = view.contacts.associate { it.id to it.name }
-
-  val movements = HashMap<String, MutableList<Instant>>()
-  for (debt in receivable) {
-    if (debt.createdAt !in bounds) continue
-    movements.getOrPut(debt.contactId) { mutableListOf() } += debt.createdAt
-  }
-  for (payment in view.payments) {
-    if (payment.reversed || payment.debtId !in receivableIds) continue
-    if (payment.createdAt !in bounds) continue
-    movements.getOrPut(payment.contactId) { mutableListOf() } += payment.createdAt
-  }
-
-  return movements
-      .mapNotNull { (contactId, times) ->
-        val name = names[contactId] ?: return@mapNotNull null
-        val debts = byContact[contactId].orEmpty()
-        HistoryPerson(
-            contactId = contactId,
+  val debts = view.debts.associateBy { it.id }
+  val credits =
+      view.debts
+          .filter { it.origin == DebtOrigin.OVERPAYMENT && it.amount > Cents.ZERO }
+          .associateBy { Triple(it.contactId, it.createdAt, it.createdBy) }
+  val pairedCredits = HashSet<String>()
+  val rows = mutableListOf<HistoryMovement>()
+  for (parts in paymentGroups(view.payments.filter { !it.reversed }, debts)) {
+    val first = parts.first()
+    val direction = debts.getValue(first.debtId).direction
+    val credit =
+        credits[Triple(first.contactId, first.createdAt, first.createdBy)]?.takeIf {
+          direction == Direction.RECEIVABLE
+        }
+    credit?.let { pairedCredits += it.id }
+    if (first.createdAt !in bounds) continue
+    val name = names[first.contactId] ?: continue
+    rows +=
+        HistoryMovement(
+            id = first.id,
+            contactId = first.contactId,
             name = name,
-            openBalance = debts.fold(Cents.ZERO) { total, debt -> total + debt.remaining },
-            lastMovementAt = times.max(),
-            lastDebt = debts.maxByOrNull { it.createdAt }?.amount,
+            kind = MovementKind.PAYMENT,
+            direction = direction,
+            amount = parts.fold(credit?.amount ?: Cents.ZERO) { sum, part -> sum + part.amount },
+            createdAt = first.createdAt,
+            pending = parts.any { it.pending } || credit?.pending == true,
         )
-      }
-      .sortedWith(compareByDescending<HistoryPerson> { it.lastMovementAt }.thenBy { it.name })
+  }
+  for (debt in view.debts) {
+    // A Debt corrected to zero was deleted.
+    if (debt.amount == Cents.ZERO || debt.createdAt !in bounds || debt.id in pairedCredits) continue
+    val name = names[debt.contactId] ?: continue
+    val creditOnly = debt.origin == DebtOrigin.OVERPAYMENT
+    rows +=
+        HistoryMovement(
+            id = debt.id,
+            contactId = debt.contactId,
+            name = name,
+            kind = if (creditOnly) MovementKind.PAYMENT else MovementKind.DEBT,
+            direction = if (creditOnly) Direction.RECEIVABLE else debt.direction,
+            amount = debt.amount,
+            createdAt = debt.createdAt,
+            pending = debt.pending,
+        )
+  }
+  val order = compareBy<HistoryMovement> { it.createdAt }.thenBy { it.id }
+  return rows.sortedWith(if (newestFirst) order.reversed() else order)
 }
 
-/**
- * The history tab: the period and the People/Activity tab live in [saved], so a recreated screen
- * keeps them. The people list follows the open store's [LedgerView]; the statement is written from
- * that same view with ticket 56's [StatementExport], for every Contact and the chosen period.
- */
+/** The movement feed follows the current store; period and order survive recreation. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HistoryViewModel(
-    private val graph: AppGraph,
+    private val source: StatementSource,
     private val saved: SavedStateHandle,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
-  private val tab = MutableStateFlow(tabOf(saved.get<String>(TAB)))
+  private val newestFirst = MutableStateFlow(saved.get<Boolean>(NEWEST_FIRST) ?: true)
   private val period = MutableStateFlow(periodOf(saved.get<String>(PERIOD)))
   private val export = MutableStateFlow(Export())
 
-  /** The view the statement is written from: the newest one the screen has shown. */
-  @Volatile private var currentView: LedgerView? = null
+  /** A view with the period it was read for: the list never cuts it to another period's bounds. */
+  private val periodView: Flow<Pair<Period, LedgerView?>> = period.flatMapLatest { period ->
+    source.view(period.bounds(clock.zone)).map { view -> period to view }
+  }
 
   private val rows: StateFlow<HistoryUiState> =
-      combine(view(), tab, period, export) { view, tab, period, export ->
-            currentView = view
+      combine(periodView, newestFirst, period, export) { (read, view), newestFirst, period, export
+            ->
             HistoryUiState(
-                tab = tab,
+                newestFirst = newestFirst,
                 period = period,
-                people =
+                // The last period's list stays up, not loaded, until the new one is read.
+                movements =
                     if (view == null) emptyList()
-                    else historyPeople(view, period.bounds(clock.zone)),
-                loaded = view != null,
+                    else historyMovements(view, read.bounds(clock.zone), newestFirst),
+                loaded = view != null && read == period,
                 saved = export.saved,
                 error = export.error,
             )
           }
+          .flowOn(Dispatchers.Default)
           .stateIn(
               viewModelScope,
               SharingStarted.Eagerly,
-              HistoryUiState(tab = tab.value, period = period.value),
+              HistoryUiState(newestFirst = newestFirst.value, period = period.value),
           )
 
   val state: StateFlow<HistoryUiState> = rows
 
-  fun onTabChange(value: HistoryTab) {
-    saved[TAB] = value.name
-    tab.value = value
+  fun setNewestFirst(value: Boolean) {
+    saved[NEWEST_FIRST] = value
+    newestFirst.value = value
   }
 
   fun selectPreset(preset: PeriodPreset) = select(periodOf(preset, LocalDate.now(clock)))
@@ -151,43 +170,41 @@ class HistoryViewModel(
   fun dismissExportResult() = export.update { it.copy(saved = false, error = null) }
 
   fun saveStatement(context: Context, uri: Uri, format: StatementFormat) {
-    val view = currentView
-    if (view == null) {
-      export.update { it.copy(error = context.getString(R.string.history_export_failed)) }
-      return
-    }
     if (export.value.busy) return
-    if (view.contacts.isEmpty()) {
-      export.update {
-        it.copy(saved = false, error = context.getString(R.string.history_export_empty))
-      }
-      return
-    }
     export.update { it.copy(busy = true, saved = false, error = null) }
-    val account = graph.current.value?.account
-    val header =
-        StatementHeader(
-            store =
-                account?.storeName?.ifBlank { null }
-                    ?: context.getString(R.string.history_default_store),
-            owner = account?.ownerName.orEmpty(),
-            periodLabel = periodLabel(context, period.value),
-        )
-    val bounds = period.value.bounds(clock.zone)
+    val chosen = period.value
+    val bounds = chosen.bounds(clock.zone)
     viewModelScope.launch {
       runCatching {
+        val latest = checkNotNull(source.latest()) { "no store is open" }
+        if (latest.view.contacts.isEmpty()) return@runCatching false
+        val account = latest.account
+        val header =
+            StatementHeader(
+                store =
+                    account.storeName.ifBlank { null }
+                        ?: context.getString(R.string.history_default_store),
+                owner = account.ownerName,
+                periodLabel = periodLabel(context, chosen),
+            )
         StatementExport.save(
             context = context,
             uri = uri,
             format = format,
             header = header,
-            view = view,
+            view = latest.view,
             contactId = null,
             from = bounds.from,
             to = bounds.to,
         )
+        true
       }
-          .onSuccess { export.update { it.copy(busy = false, saved = true) } }
+          .onSuccess { written ->
+            export.update {
+              if (written) it.copy(busy = false, saved = true)
+              else it.copy(busy = false, error = context.getString(R.string.history_export_empty))
+            }
+          }
           .onFailure { failure ->
             if (failure is CancellationException) throw failure
             export.update {
@@ -201,12 +218,6 @@ class HistoryViewModel(
 
   fun clearError() = export.update { it.copy(error = null) }
 
-  private fun view() =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
-
-  private fun tabOf(name: String?): HistoryTab =
-      HistoryTab.entries.firstOrNull { it.name == name } ?: HistoryTab.PEOPLE
-
   private data class Export(
       val busy: Boolean = false,
       val saved: Boolean = false,
@@ -214,7 +225,7 @@ class HistoryViewModel(
   )
 
   private companion object {
-    const val TAB = "history:tab"
+    const val NEWEST_FIRST = "history:newest-first"
     const val PERIOD = "history:period"
   }
 }

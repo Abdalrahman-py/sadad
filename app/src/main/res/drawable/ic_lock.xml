@@ -1,5 +1,8 @@
+<!-- Material Symbols Rounded «lock». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#00000000" android:strokeColor="#FF000000" android:strokeWidth="2"
-        android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M7,11h10a2,2 0,0 1,2 2v6a2,2 0,0 1,-2 2H7a2,2 0,0 1,-2 -2v-6a2,2 0,0 1,2 -2zM8,11V8a4,4 0,0 1,8 0v3" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 240 -80 q -33 0 -56.5 -23.5 T 160 -160 v -400 q 0 -33 23.5 -56.5 T 240 -640 h 40 v -80 q 0 -83 58.5 -141.5 T 480 -920 q 83 0 141.5 58.5 T 680 -720 v 80 h 40 q 33 0 56.5 23.5 T 800 -560 v 400 q 0 33 -23.5 56.5 T 720 -80 H 240 Z m 0 -80 h 480 v -400 H 240 v 400 Z m 296.5 -143.5 Q 560 -327 560 -360 t -23.5 -56.5 Q 513 -440 480 -440 t -56.5 23.5 Q 400 -393 400 -360 t 23.5 56.5 Q 447 -280 480 -280 t 56.5 -23.5 Z M 360 -640 h 240 v -80 q 0 -50 -35 -85 t -85 -35 q -50 0 -85 35 t -35 85 v 80 Z M 240 -160 v -400 400 Z" />
+    </group>
 </vector>

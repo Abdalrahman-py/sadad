@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,9 +27,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,14 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -62,16 +57,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.sadad.app.LocalGraph
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
 import com.sadad.app.feature.notifications.DueReminders
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.components.sadadPageBackground
@@ -131,6 +126,7 @@ fun HomeScreen(
       onOpenNotifications = onOpenNotifications,
       onRecord = onRecord,
       onOpenActivity = onOpenActivity,
+      onRefresh = viewModel::refresh,
   )
 }
 
@@ -140,7 +136,7 @@ fun HomeScreen(
 private fun unreadReminders(): Int {
   val context = LocalContext.current
   // The screen tests run under UiTestApplication, which has no graph; they pass their own count.
-  val graph = (context.applicationContext as? SadadApplication)?.graph ?: return 0
+  val graph = LocalGraph.current ?: return 0
   val reminders = remember(context) { DueReminders.get(context) }
   val unread by
       remember(graph, reminders) {
@@ -153,13 +149,10 @@ private fun unreadReminders(): Int {
 }
 
 @Composable
-private fun homeViewModel(): HomeViewModel =
-    viewModel(
-        factory =
-            viewModelFactory {
-              initializer { HomeViewModel((this[APPLICATION_KEY] as SadadApplication).graph) }
-            }
-    )
+private fun homeViewModel(): HomeViewModel {
+  val graph = requireGraph()
+  return viewModel(factory = viewModelFactory { initializer { HomeViewModel(graph.homeSource()) } })
+}
 
 @Composable
 fun HomeContent(
@@ -170,29 +163,39 @@ fun HomeContent(
     onOpenNotifications: () -> Unit = {},
     onRecord: () -> Unit = {},
     onOpenActivity: () -> Unit = {},
+    onRefresh: () -> Unit = {},
 ) {
   val storeName = state.storeName.ifBlank { stringResource(R.string.home_default_store) }
   Column(Modifier.fillMaxSize().sadadPageBackground().testTag(HomeTags.SCREEN)) {
     HomeHeader(storeName = storeName, unread = unread, onOpenNotifications = onOpenNotifications)
-    Column(
-        Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-      val offline = state.offline
-      if (offline != null) OfflineBanner(offline)
-      if (state.empty) {
-        EmptyStart(onRecord)
-      } else {
-        HeroCard(state, onOpenActivity)
-        FollowUpSection(
-            followUps = state.followUps,
-            count = state.followUpCount,
-            storeName = storeName,
-            onOpenContact = onOpenContact,
-            onOpenPeople = onOpenPeople,
-        )
+    if (!state.loaded) {
+      val loading = stringResource(R.string.home_loading)
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(Modifier.semantics { contentDescription = loading })
+      }
+      return@Column
+    }
+    PullToRefreshBox(isRefreshing = state.refreshing, onRefresh = onRefresh) {
+      Column(
+          Modifier.fillMaxSize()
+              .verticalScroll(rememberScrollState())
+              .padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 24.dp),
+          verticalArrangement = Arrangement.spacedBy(18.dp),
+      ) {
+        val offline = state.offline
+        if (offline != null) OfflineBanner(offline)
+        if (state.empty) {
+          EmptyStart(onRecord)
+        } else {
+          HeroCard(state, onOpenActivity)
+          FollowUpSection(
+              followUps = state.followUps,
+              count = state.followUpCount,
+              storeName = storeName,
+              onOpenContact = onOpenContact,
+              onOpenPeople = onOpenPeople,
+          )
+        }
       }
     }
   }
@@ -237,7 +240,12 @@ private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -
               },
           contentAlignment = Alignment.Center,
       ) {
-        BellGlyph(p.text)
+        Icon(
+            painterResource(R.drawable.ic_notifications),
+            contentDescription = null,
+            tint = p.text,
+            modifier = Modifier.size(22.dp),
+        )
       }
       if (unread > 0) {
         Surface(
@@ -603,7 +611,12 @@ private fun FollowUpRow(
             },
         contentAlignment = Alignment.Center,
     ) {
-      WhatsAppGlyph(link)
+      Icon(
+          painterResource(R.drawable.ic_whatsapp),
+          contentDescription = null,
+          tint = link,
+          modifier = Modifier.size(22.dp),
+      )
     }
   }
 }
@@ -630,7 +643,12 @@ private fun EmptyStart(onRecord: () -> Unit) {
             Modifier.size(72.dp).clip(RoundedCornerShape(22.dp)).background(p.soft),
             contentAlignment = Alignment.Center,
         ) {
-          LedgerGlyph(link)
+          Icon(
+              painterResource(R.drawable.ic_ledger),
+              contentDescription = null,
+              tint = link,
+              modifier = Modifier.size(34.dp),
+          )
         }
         Text(
             stringResource(R.string.home_empty_card_title),
@@ -698,91 +716,6 @@ private fun AfterRow(number: Int, text: String) {
       Text("$number", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = link)
     }
     Text(text, fontSize = 14.sp, lineHeight = 21.sp, color = p.text)
-  }
-}
-
-/* ---------------------------------------------------------------- glyphs */
-
-@Composable
-private fun BellGlyph(color: Color) {
-  Canvas(Modifier.size(22.dp)) {
-    val stroke = size.minDimension * 0.09f
-    drawRoundRect(
-        color = color,
-        topLeft = Offset(size.width * 0.28f, size.height * 0.26f),
-        size = Size(size.width * 0.44f, size.height * 0.46f),
-        cornerRadius = CornerRadius(size.width * 0.22f),
-        style = Stroke(width = stroke),
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.2f, size.height * 0.74f),
-        Offset(size.width * 0.8f, size.height * 0.74f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.44f, size.height * 0.86f),
-        Offset(size.width * 0.56f, size.height * 0.86f),
-        stroke,
-        StrokeCap.Round,
-    )
-  }
-}
-
-@Composable
-private fun WhatsAppGlyph(color: Color) {
-  Canvas(Modifier.size(20.dp)) {
-    val stroke = size.minDimension * 0.09f
-    drawCircle(
-        color = color,
-        radius = size.minDimension * 0.38f,
-        center = Offset(size.width * 0.5f, size.height * 0.46f),
-        style = Stroke(width = stroke),
-    )
-    val tail =
-        Path().apply {
-          moveTo(size.width * 0.32f, size.height * 0.72f)
-          lineTo(size.width * 0.22f, size.height * 0.86f)
-          lineTo(size.width * 0.46f, size.height * 0.78f)
-          close()
-        }
-    drawPath(tail, color)
-  }
-}
-
-@Composable
-private fun LedgerGlyph(color: Color) {
-  Canvas(Modifier.size(34.dp)) {
-    val stroke = size.minDimension * 0.08f
-    drawRoundRect(
-        color = color,
-        topLeft = Offset(size.width * 0.16f, size.height * 0.12f),
-        size = Size(size.width * 0.68f, size.height * 0.76f),
-        cornerRadius = CornerRadius(size.width * 0.1f),
-        style = Stroke(width = stroke),
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.32f, size.height * 0.12f),
-        Offset(size.width * 0.32f, size.height * 0.88f),
-        stroke,
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.44f, size.height * 0.38f),
-        Offset(size.width * 0.7f, size.height * 0.38f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        color,
-        Offset(size.width * 0.44f, size.height * 0.58f),
-        Offset(size.width * 0.7f, size.height * 0.58f),
-        stroke,
-        StrokeCap.Round,
-    )
   }
 }
 

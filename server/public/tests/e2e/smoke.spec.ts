@@ -72,6 +72,10 @@ async function mockBackend(page: Page) {
     };
     const key = `${request.method()} ${path}`;
     switch (key) {
+      case "POST /v1/admin/session":
+        return route.fulfill({ json: { ok: true, claimed: true } });
+      case "DELETE /v1/admin/session":
+        return route.fulfill({ json: { ok: true, released: true } });
       case "GET /v1/admin/overview":
         return route.fulfill({ json: { ok: true, overview } });
       case "GET /v1/admin/stores":
@@ -129,38 +133,40 @@ test("sign in, create a store, open it and approve its device", async ({ page })
   await page.getByLabel("كلمة المرور").fill("correct horse battery");
   await page.getByRole("button", { name: "دخول آمن" }).click();
 
-  await expect(page.getByText("admin@sadad.test")).toBeVisible();
-  await expect(page.getByText("لا توجد حسابات متاجر")).toBeVisible();
+  // The landing screen is the queue, not a table of stores.
+  await expect(page.getByRole("heading", { level: 1, name: "المهام" })).toBeVisible();
+  await expect(page.locator(".bar-user")).toContainText("admin@sadad.test");
+  await expect(page.getByText("لا أجهزة تنتظر")).toBeVisible();
 
   // Create the store from contract/fixtures/admin/create-store.json.
-  await page.getByRole("button", { name: "إنشاء حساب متجر" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("اسم المتجر").fill(createStore.request.name);
-  await dialog.getByLabel("اسم المستخدم").fill(createStore.request.username);
-  await dialog.getByLabel("نوع الاشتراك").selectOption(createStore.request.subscriptionMode);
-  await dialog
-    .getByLabel("مدة الاشتراك بالأيام")
-    .fill(String(createStore.request.subscriptionDays));
-  await dialog.getByLabel("عدد الأجهزة المسموحة").fill(String(createStore.request.allowedDevices));
-  await dialog.getByLabel("حد جهات الاتصال النشطة").fill(String(createStore.request.debtorLimit));
-  await dialog.getByLabel("التصدير").uncheck();
-  await dialog.getByRole("button", { name: "إنشاء الحساب" }).click();
+  await page.getByRole("link", { name: "إنشاء حساب متجر" }).click();
+  // New stores default to the schema floor of 200; the field stays editable.
+  await expect(page.getByLabel(/حد الأشخاص النشطين/)).toHaveValue("200");
+  await page.getByLabel("اسم المتجر").fill(createStore.request.name);
+  await page.getByLabel(/اسم الدخول/).fill(createStore.request.username);
+  await page.getByLabel(/المدة/).fill(String(createStore.request.subscriptionDays));
+  await page.getByLabel(/الأجهزة المسموحة/).fill(String(createStore.request.allowedDevices));
+  await page.getByLabel(/حد الأشخاص النشطين/).fill(String(createStore.request.debtorLimit));
+  await page.getByText("الصلاحيات").click();
+  await page.getByLabel("التصدير").uncheck();
+  await page.getByRole("button", { name: "إنشاء الحساب" }).click();
   await expect(page.getByText(PASSWORD)).toBeVisible();
   const createCall = calls.find((c) => c.method === "POST" && c.path === "/v1/admin/stores");
   expect(createCall?.body).toMatchObject(createStore.request);
 
-  // List → open store.
-  const listed = page.getByRole("row", { name: /بقالة الزاوية/ });
-  await expect(listed).toBeVisible();
-  await listed.getByRole("button", { name: "إدارة" }).click();
-  await expect(page.getByRole("heading", { name: "بقالة الزاوية" })).toBeVisible();
-  await expect(page.getByText("بانتظار اعتمادك")).toBeVisible();
+  // Hand off → the store page, whose overview shows the waiting device.
+  await page.getByRole("link", { name: "فتح صفحة المتجر" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "بقالة الزاوية" })).toBeVisible();
+  await expect(page.getByText("جهاز ينتظر الاعتماد")).toBeVisible();
 
   // Approve the pending installation with a reason.
-  await page.getByRole("button", { name: "اعتماد الهاتف" }).click();
-  await page.getByRole("dialog").getByLabel("سبب الإجراء").fill("هاتف المتجر الجديد");
-  await page.getByRole("dialog").getByRole("button", { name: "تأكيد" }).click();
-  await expect(page.getByText("هاتف معتمد")).toBeVisible();
+  await page.getByRole("link", { name: "مراجعة واعتماد" }).click();
+  await expect(page.getByText("بانتظار الاعتماد")).toBeVisible();
+  await page.getByRole("button", { name: "اعتماد", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("سبب الإجراء").fill("هاتف المتجر الجديد");
+  await dialog.getByRole("button", { name: "اعتماد الجهاز" }).click();
+  await expect(page.getByText("معتمد", { exact: true })).toBeVisible();
   const approveCall = calls.find((c) => c.path === `/v1/admin/installations/${PENDING_ID}/approve`);
   expect(approveCall?.body).toEqual({ reason: "هاتف المتجر الجديد" });
 
@@ -195,4 +201,49 @@ test("refuses a store account at sign-in", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText(
     messages[refusals.notAdmin.code as keyof typeof messages],
   );
+});
+
+test("refuses a second sign-in while the account is open elsewhere", async ({ page }) => {
+  // Auth accepts the password; the api's lease refuses the seat, and no board is shown.
+  await page.route(`${SUPABASE_URL}/auth/v1/**`, (route) =>
+    route.fulfill({
+      json: {
+        access_token: JWT,
+        token_type: "bearer",
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_token: "refresh-token",
+        user: {
+          id: "6c1f0e4a-0000-4000-8000-000000000001",
+          aud: "authenticated",
+          app_metadata: { role: "admin" },
+          user_metadata: {},
+          created_at: "",
+        },
+      },
+    }),
+  );
+  const calls: string[] = [];
+  await page.route(`${API_BASE}/**`, (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace(/^\/functions\/v1\/api/, "");
+    calls.push(`${request.method()} ${path}`);
+    return route.fulfill({
+      status: 409,
+      json: {
+        ok: false,
+        code: "session_in_use",
+        message: messages.session_in_use,
+      },
+    });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("البريد الإلكتروني").fill("admin@sadad.test");
+  await page.getByLabel("كلمة المرور").fill("correct horse battery");
+  await page.getByRole("button", { name: "دخول آمن" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(messages.session_in_use);
+  await expect(page.getByRole("heading", { level: 1, name: "المهام" })).toHaveCount(0);
+  expect(calls).toEqual(["POST /v1/admin/session"]);
 });

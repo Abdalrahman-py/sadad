@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="title_history">سجل الحركات</string>
+    <string name="title_history">آخر الحركات</string>
 
     <!-- Tabs -->
-    <string name="history_tab_people">الأشخاص</string>
-    <string name="history_tab_activity">عمليات الدفتر</string>
 
     <!-- Period filter -->
     <string name="history_filter_label">فلتر السجل: %1$s</string>
+    <string name="history_movements_heading">%1$d حركة · %2$s</string>
     <string name="history_period_day">اليوم</string>
     <string name="history_period_month">هذا الشهر</string>
     <string name="history_period_year">هذه السنة</string>

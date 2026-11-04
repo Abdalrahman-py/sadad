@@ -1,7 +1,12 @@
 import "./styles.css";
 import { createApi } from "./api";
 import { Controller } from "./controller";
+import { initSentry } from "./scrub";
 import { supabaseSession } from "./session";
+
+// Crash reporting starts only when the build carried a DSN (a GitHub Pages variable);
+// otherwise nothing is sent.
+initSentry(import.meta.env.VITE_SENTRY_DSN);
 
 const root = document.getElementById("app") as HTMLElement;
 

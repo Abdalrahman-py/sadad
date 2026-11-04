@@ -529,11 +529,55 @@ try {
 
     await db.exec('reset role; begin');
     try {
-      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '+٩٩٩ ١٢٣٤٥٦٧٨٩' });
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف تحقق اصطناعي', phone: '٠٥٩٩ ١٢٣ ٤٥٦' });
       assert.equal((await apply(a)).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر', phone: '0599123456' }))).code, 'duplicate_phone');
       assert.equal((await apply(command('contact.archive', { contactId: a.entityId, reason: 'تحقق' }, { expectedVersion: 1 }))).status, 'accepted');
-      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '+999123456789' }))).code, 'duplicate_phone');
+      assert.equal((await apply(command('contact.create', { kind: 'customer', name: 'مكرر مؤرشف', phone: '0599123456' }))).code, 'duplicate_phone');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
+  await check('Contact phone is 05 plus 8 digits and the WhatsApp code is its own field', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const codeOf = async (id) =>
+        (await db.query('select phone, whatsapp_code from public.sadid_contacts where id = $1', [id])).rows[0];
+      const a = command('contact.create', { kind: 'customer', name: 'هاتف محلي', phone: '0599123456' });
+      assert.equal((await apply(a)).status, 'accepted');
+      await db.exec('reset role');
+      assert.deepEqual(await codeOf(a.entityId), { phone: '0599123456', whatsapp_code: '970' });
+      for (const phone of ['+970599123456', '0299123456', '059912345', '05991234567']) {
+        assert.equal(
+          (await apply(command('contact.create', { kind: 'customer', name: `رفض ${phone}`, phone }))).code,
+          'invalid_phone',
+          phone,
+        );
+      }
+      const cleaned = command('contact.create', { kind: 'customer', name: 'أرقام عربية', phone: '٠٥٦٩ (١٢٣) ٤٥-٦', whatsappCode: '972' });
+      assert.equal((await apply(cleaned)).status, 'accepted');
+      await db.exec('reset role');
+      assert.deepEqual(await codeOf(cleaned.entityId), { phone: '0569123456', whatsapp_code: '972' });
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'customer', name: 'مكرر رمز آخر', phone: '0599123456', whatsappCode: '972' }))).code,
+        'duplicate_phone',
+      );
+      assert.equal(
+        (await apply(command('contact.create', { kind: 'customer', name: 'رمز غريب', phone: '0591111111', whatsappCode: '971' }))).code,
+        'invalid_input',
+      );
+      const edit = { contactId: a.entityId, name: 'هاتف محلي', phone: '0599123456', kind: 'customer' };
+      assert.equal((await apply(command('contact.update', { ...edit, whatsappCode: '972' }, { expectedVersion: 1 }))).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal((await codeOf(a.entityId)).whatsapp_code, '972');
+      assert.equal((await apply(command('contact.update', edit, { expectedVersion: 2 }))).status, 'accepted');
+      await db.exec('reset role');
+      assert.equal((await codeOf(a.entityId)).whatsapp_code, '972', 'an absent whatsappCode leaves it unchanged');
+      assert.equal(
+        (await apply(command('contact.update', { ...edit, whatsappCode: '971' }, { expectedVersion: 3 }))).code,
+        'invalid_input',
+      );
     } finally {
       await db.exec('rollback; reset role');
     }
@@ -550,7 +594,7 @@ try {
       }
       const edit = command(
         'contact.update',
-        { contactId: contact.entityId, name: 'اسم جديد', phone: '+٩٧٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
+        { contactId: contact.entityId, name: 'اسم جديد', phone: '٠٥٩٩١٢٣٤٥٦', category: 'عميل', note: 'ملاحظة جديدة', kind: 'customer' },
         { expectedVersion: 1 },
       );
       assert.equal((await apply(edit)).status, 'accepted');
@@ -635,18 +679,155 @@ try {
     assert.equal((await apply(reverse)).status, 'accepted');
     assert.equal((await apply(command('payment.reverse', reverse.payload))).code, 'already_reversed');
 
+    const archivedPerson = command('contact.create', { kind: 'customer', name: 'عميل للسلة', phone: '' });
+    assert.equal((await apply(archivedPerson)).status, 'accepted');
     assert.equal(
-      (await apply(command('contact.archive', { contactId: contact.entityId, reason: 'أرشفة' }, { expectedVersion: 1 }))).status,
+      (await apply(command('contact.archive', { contactId: archivedPerson.entityId, reason: 'أرشفة' }, { expectedVersion: 1 }))).status,
       'accepted',
     );
     assert.equal(
-      (await apply(command('debt.create', { contactId: contact.entityId, amountCents: 1, direction: 'receivable' }))).code,
+      (await apply(command('debt.create', { contactId: archivedPerson.entityId, amountCents: 1, direction: 'receivable' }))).code,
       'contact_unavailable',
     );
     assert.equal(
-      (await apply(command('contact.restore', { contactId: contact.entityId, reason: 'استعادة' }, { expectedVersion: 2 }))).status,
+      (await apply(command('contact.restore', { contactId: archivedPerson.entityId, reason: 'استعادة' }, { expectedVersion: 2 }))).status,
       'accepted',
     );
+  });
+
+  await check('Trash preserves paid history until explicit final deletion and refuses open balances', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const c = command('contact.create', { kind: 'customer', name: 'سلة', phone: '0569654321' });
+      assert.equal((await apply(c)).status, 'accepted');
+      const d = command('debt.create', { contactId: c.entityId, direction: 'receivable', amountCents: 100 });
+      assert.equal((await apply(d)).status, 'accepted');
+      assert.equal((await apply(command('contact.archive', { contactId:c.entityId, reason:'سلة' }, {expectedVersion:1}))).code, 'contact_has_balance');
+      assert.equal((await apply(command('contact.delete', { contactId:c.entityId, reason:'حذف' }, {expectedVersion:1}))).code, 'contact_not_archived');
+      const p = command('payment.create', { debtId:d.entityId, amountCents:100, method:'cash' });
+      assert.equal((await apply(p)).status, 'accepted');
+      assert.equal((await apply(command('contact.archive', {contactId:c.entityId,reason:'سلة'}, {expectedVersion:1}))).status,'accepted');
+      assert.equal((await apply(command('payment.reverse', {paymentId:p.entityId,reason:'عكس أثناء السلة'}))).status,'accepted');
+      assert.equal((await apply(command('contact.delete', {contactId:c.entityId,reason:'مرفوض'}, {expectedVersion:2}))).code,'contact_has_balance');
+      assert.equal((await apply(command('contact.restore', {contactId:c.entityId,reason:'استعادة'}, {expectedVersion:2}))).status,'accepted');
+      assert.equal((await apply(command('payment.create', {debtId:d.entityId,amountCents:100,method:'cash'}))).status,'accepted');
+      assert.equal((await apply(command('contact.archive', {contactId:c.entityId,reason:'سلة'}, {expectedVersion:3}))).status,'accepted');
+      const del = command('contact.delete', {contactId:c.entityId,reason:'حذف نهائي'}, {expectedVersion:4, entityId:c.entityId});
+      assert.equal((await apply({...del, expectedVersion:3, operationId:randomUUID()})).code,'entity_version_changed');
+      await db.exec('reset role');
+      await db.query("update sadid_private.installations set permissions=permissions || '{\"deleteContacts\":false}'::jsonb where id=$1", [installation]);
+      assert.equal((await apply({...del,operationId:randomUUID()})).code,'store_permission_denied');
+      await db.exec('reset role');
+      await db.query("update sadid_private.installations set permissions=permissions || '{\"deleteContacts\":true}'::jsonb where id=$1", [installation]);
+      assert.equal((await apply(del)).status,'accepted');
+      assert.equal((await apply(del)).status,'accepted');
+      assert.equal((await apply(command('contact.restore', {contactId:c.entityId,reason:'ممنوع'}, {expectedVersion:5}))).code,'entity_version_changed');
+      assert.equal((await apply(command('payment.reverse', {paymentId:p.entityId,reason:'ممنوع'}))).code,'payment_unavailable');
+      assert.equal((await apply(command('debt.correct', {debtId:d.entityId,amountCents:200,reason:'ممنوع'}, {expectedVersion:1}))).code,'debt_unavailable');
+      assert.equal((await apply(command('contact.create', {kind:'customer', name:'جديد', phone:'0569654321'}))).status,'accepted');
+    } finally { await db.exec('rollback; reset role'); }
+  });
+
+  await check('Credit: overpayment origin, debt.offset remaining rules, and zero correction guards', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const person = command('contact.create', { kind: 'customer', name: 'عميل رصيد', phone: '' });
+      assert.equal((await apply(person)).status, 'accepted');
+      const debt250 = command('debt.create', { contactId: person.entityId, amountCents: 25000, direction: 'receivable' }, { dependsOn: [person.operationId] });
+      assert.equal((await apply(debt250)).status, 'accepted');
+
+      assert.equal(
+        (await apply(command('debt.create', { contactId: person.entityId, amountCents: 100, direction: 'receivable', origin: 'overpayment' }))).code,
+        'invalid_input',
+        'overpayment credit is always payable',
+      );
+
+      const pay250 = command('payment.create', { debtId: debt250.entityId, amountCents: 25000, method: 'cash' }, { dependsOn: [debt250.operationId] });
+      assert.equal((await apply(pay250)).status, 'accepted');
+      const credit = command('debt.create', { contactId: person.entityId, amountCents: 25000, direction: 'payable', origin: 'overpayment', note: 'رصيد من دفعة زائدة' }, { dependsOn: [pay250.operationId] });
+      assert.equal((await apply(credit)).status, 'accepted');
+
+      const debt100 = command('debt.create', { contactId: person.entityId, amountCents: 10000, direction: 'receivable' }, { dependsOn: [credit.operationId] });
+      assert.equal((await apply(debt100)).status, 'accepted');
+
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt250.entityId, payableDebtId: debt100.entityId, amountCents: 1 }))).code,
+        'offset_invalid',
+        'same-direction pair refused',
+      );
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 0 }))).code,
+        'offset_invalid',
+        'zero offset refused',
+      );
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 10001 }))).code,
+        'offset_invalid',
+        'above the receivable remaining, within the credit',
+      );
+
+      const stranger = command('contact.create', { kind: 'customer', name: 'عميل آخر', phone: '' });
+      assert.equal((await apply(stranger)).status, 'accepted');
+      const strangerDebt = command('debt.create', { contactId: stranger.entityId, amountCents: 5000, direction: 'receivable' }, { dependsOn: [stranger.operationId] });
+      assert.equal((await apply(strangerDebt)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: strangerDebt.entityId, payableDebtId: credit.entityId, amountCents: 1000 }))).code,
+        'offset_invalid',
+        'two contacts refused',
+      );
+
+      const off100 = command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 10000 }, { dependsOn: [debt100.operationId, credit.operationId] });
+      assert.equal((await apply(off100)).status, 'accepted');
+
+      const remaining = async (id) => Number((await db.query(
+        `select coalesce((select a.amount_cents from public.sadid_adjustments a
+                          where a.store_id = d.store_id and a.debt_id = d.id order by a.version desc limit 1), d.amount_cents)
+                - coalesce((select sum(p.amount_cents) from public.sadid_payments p
+                            where p.store_id = d.store_id and p.debt_id = d.id
+                              and not exists (select 1 from public.sadid_reversals r where r.store_id = p.store_id and r.payment_id = p.id)), 0)
+                - coalesce((select sum(o.amount_cents) from public.sadid_offsets o
+                            where o.store_id = d.store_id and (o.receivable_debt_id = d.id or o.payable_debt_id = d.id)), 0) as left
+         from public.sadid_debts d where d.id = $1`, [id])).rows[0].left);
+      await db.exec('reset role');
+      assert.equal(await remaining(debt100.entityId), 0, 'the new debt is settled by the offset');
+      assert.equal(await remaining(credit.entityId), 15000, '150 of 250 credit remains');
+
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: debt100.entityId, payableDebtId: credit.entityId, amountCents: 1 }))).code,
+        'offset_invalid',
+        'a settled debt cannot be offset again',
+      );
+      assert.equal(
+        (await apply(command('payment.create', { debtId: debt100.entityId, amountCents: 1, method: 'cash' }))).code,
+        'overpayment',
+        'after a full offset nothing is left to pay',
+      );
+
+      const bigDebt = command('debt.create', { contactId: person.entityId, amountCents: 20000, direction: 'receivable' });
+      assert.equal((await apply(bigDebt)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.offset', { receivableDebtId: bigDebt.entityId, payableDebtId: credit.entityId, amountCents: 15001 }))).code,
+        'offset_invalid',
+        'above the credit remaining, within the receivable',
+      );
+
+      assert.equal(
+        (await apply(command('debt.correct', { debtId: credit.entityId, amountCents: 0, reason: 'تصفية رصيد' }, { expectedVersion: 1 }))).code,
+        'below_paid_total',
+        'used credit cannot be corrected to zero',
+      );
+      const credit2 = command('debt.create', { contactId: person.entityId, amountCents: 5000, direction: 'payable', origin: 'overpayment' });
+      assert.equal((await apply(credit2)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.correct', { debtId: credit2.entityId, amountCents: 0, reason: 'عكس رصيد غير مستخدم' }, { expectedVersion: 1 }))).status,
+        'accepted',
+        'unused credit corrects to zero',
+      );
+      await db.exec('reset role');
+      assert.equal(await remaining(credit2.entityId), 0, 'a zero correction closes the credit');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
   });
 
   await check('Batch apply returns one receipt per operation and is idempotent on resend', async () => {
@@ -895,6 +1076,55 @@ try {
     assert.equal(act.action, 'end-sessions');
   });
 
+  await check('One admin session at a time: a second session is refused until the holder leaves or goes stale', async () => {
+    const user = randomUUID();
+    const first = randomUUID();
+    const second = randomUUID();
+    const claim = () => db.query('select public.sadid_admin_session_claim() as result').then(r => r.rows[0].result);
+
+    // The lease is keyed to an Auth user, so this admin needs a row there like a real one.
+    await db.exec('reset role');
+    await db.query('insert into auth.users(id, email) values ($1, $2)', [user, 'lease@sadad.invalid']);
+    await asAdmin('admin', user, first);
+    assert.equal(await claim(), true, 'the first session claims the account');
+    assert.equal(await claim(), true, 'the same session may come back');
+
+    await asAdmin('admin', user, second);
+    assert.equal(await claim(), false, 'a second session is refused while the first is live');
+
+    // Ten silent minutes free the account: a browser closed without signing out must not lock it.
+    await db.exec('reset role');
+    await db.query("update sadid_private.admin_session_lease set seen_at = now() - interval '11 minutes' where user_id = $1", [user]);
+    await asAdmin('admin', user, second);
+    assert.equal(await claim(), true, 'a stale lease is taken over');
+
+    await asAdmin('admin', user, first);
+    assert.equal(await claim(), false, 'the session that lost the seat stays out');
+
+    await asAdmin('admin', user, second);
+    await db.query('select public.sadid_admin_session_release()');
+    await db.exec('reset role');
+    const left = await db.query('select count(*)::int as n from sadid_private.admin_session_lease where user_id = $1', [user]);
+    assert.equal(left.rows[0].n, 0, 'signing out frees the account at once');
+
+    await asAdmin('admin', user, first);
+    assert.equal(await claim(), true, 'the next session claims a freed account');
+
+    // A session that does not hold the seat cannot release someone else's.
+    await asAdmin('admin', user, second);
+    await db.query('select public.sadid_admin_session_release()');
+    await db.exec('reset role');
+    const still = await db.query('select count(*)::int as n from sadid_private.admin_session_lease where user_id = $1', [user]);
+    assert.equal(still.rows[0].n, 1);
+
+    // A store account is refused outright rather than given a seat.
+    await asStore(storeUser, session);
+    await assert.rejects(claim(), /admin_authorization_required/);
+
+    await db.exec('reset role');
+    await db.query('delete from sadid_private.admin_session_lease where user_id = $1', [user]);
+  });
+
   await check('Store isolation and suspended store or expired subscription refusal in current_capability', async () => {
     // Re-create session after end-sessions
     await db.exec('reset role');
@@ -1013,6 +1243,54 @@ try {
     await db.query('delete from public.stores where id = $1', [id]);
     await db.exec('reset role');
     assert.equal((await db.query('select count(*)::int n from sadid_private.store_memberships where user_id = $1', [owner])).rows[0].n, 0);
+  });
+
+  await check('changes lists the store devices with their names, approved and revoked alike, and no other store\'s', async () => {
+    await db.exec('reset role');
+    const otherStoreDevice = (await db.query('select id from sadid_private.installations where store_id = 2')).rows[0].id;
+    await capability('read');
+    const page = (await db.query('select public.sadid_changes(0, 500) as result')).rows[0].result;
+    const byId = Object.fromEntries(page.installations.map((i) => [i.id, i]));
+    assert.deepEqual(byId[activeInstallation], { id: activeInstallation, label: 'جهاز بديل', staffName: 'أحمد' });
+    assert.deepEqual(
+      byId[installation],
+      { id: installation, label: 'هاتف الكاشير', staffName: 'أحمد' },
+      'the revoked device is still listed, so its old events still resolve',
+    );
+    assert.equal(byId[otherStoreDevice], undefined, "another store's devices are absent");
+  });
+
+  await check('Person limit: nothing left below 200 and the lease capability reads the store limit', async () => {
+    await db.exec('reset role; set role service_role');
+    // A store at 200 keeps its value and a store above 200 is never lowered by the
+    // migration's own update clause (replayed here exactly as the migration carries it).
+    await db.query('update public.stores set debtor_limit = 200 where id = 1');
+    await db.query('update public.stores set debtor_limit = 300 where id = 2');
+    await db.exec('update public.stores set debtor_limit = 200 where debtor_limit < 200');
+    assert.deepEqual(
+      (await db.query('select id, debtor_limit from public.stores order by id')).rows.map((r) => [r.id, r.debtor_limit]),
+      [[1, 200], [2, 300]],
+    );
+
+    // A store that had fallen behind 200 is raised to the new floor.
+    await db.query('update public.stores set debtor_limit = 100 where id = 1');
+    await db.exec('update public.stores set debtor_limit = 200 where debtor_limit < 200');
+    assert.equal((await db.query('select debtor_limit from public.stores where id = 1')).rows[0].debtor_limit, 200);
+
+    // A store created without a limit gets the new 200 default.
+    await db.query("insert into public.stores(id, name, username) values (3, 'متجر ثالث', 'third-store')");
+    assert.equal((await db.query('select debtor_limit from public.stores where id = 3')).rows[0].debtor_limit, 200);
+
+    // The lease capability reads its store's limit; another scope and no capability are refused.
+    await capability('lease');
+    assert.equal((await db.query('select public.sadid_lease_limit() as limit')).rows[0].limit, 200);
+    await capability('read');
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required/);
+    await asStore();
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required/);
+    await db.exec('reset role');
+    await assert.rejects(db.query('select public.sadid_lease_limit()'), /authorization_required|permission denied/);
+    await db.exec('reset role');
   });
 
   console.log(JSON.stringify({ engine: (await db.query('select version()')).rows[0].version, tests }, null, 2));

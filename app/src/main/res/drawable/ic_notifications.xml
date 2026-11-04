@@ -1,6 +1,8 @@
+<!-- Material Symbols Rounded «notifications». -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FF000000"
-        android:pathData="M12,22c1.1,0 2,-0.9 2,-2h-4c0,1.1 0.9,2 2,2zM18,16v-5c0,-3.07 -1.63,-5.64 -4.5,-6.32V4a1.5,1.5 0,0 0,-3 0v0.68C7.64,5.36 6,7.92 6,11v5l-2,2v1h16v-1z" />
+    android:viewportWidth="960" android:viewportHeight="960">
+    <group android:translateY="960">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M 200 -200 q -17 0 -28.5 -11.5 T 160 -240 q 0 -17 11.5 -28.5 T 200 -280 h 40 v -280 q 0 -83 50 -147.5 T 420 -792 v -28 q 0 -25 17.5 -42.5 T 480 -880 q 25 0 42.5 17.5 T 540 -820 v 28 q 80 20 130 84.5 T 720 -560 v 280 h 40 q 17 0 28.5 11.5 T 800 -240 q 0 17 -11.5 28.5 T 760 -200 H 200 Z m 280 -300 Z m 0 420 q -33 0 -56.5 -23.5 T 400 -160 h 160 q 0 33 -23.5 56.5 T 480 -80 Z M 320 -280 h 320 v -280 q 0 -66 -47 -113 t -113 -47 q -66 0 -113 47 t -47 113 v 280 Z" />
+    </group>
 </vector>

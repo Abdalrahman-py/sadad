@@ -46,6 +46,9 @@ jobs:
           done
           code=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
           echo "SADAD_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          # The tag is the version name too, so the published app has its own line (v1.x.y) while
+          # dev keeps building 3.0.0-team from the gradle property default.
+          echo "SADAD_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           echo "Sadad ${GITHUB_REF_NAME#v} is versionCode $code"
       - name: Install release verification tools
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
@@ -75,16 +78,29 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         run: |
-          ./gradlew testReleaseUnitTest assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE"
+          # No testReleaseUnitTest here on purpose: the Compose test rules launch
+          # androidx.activity.ComponentActivity, and that activity reaches the merged manifest only
+          # through ui-test-manifest, which is debug-only precisely so it does not ship. Running the
+          # release variant's unit tests therefore cannot host a Compose test (116 of 532 fail with
+          # "Unable to resolve activity"), and adding the artifact to release would put a test
+          # activity in the production APK. The logic is covered by the `checks` job, which runs the
+          # whole suite on debug on this same commit; what this job verifies is the artifact itself
+          # (signature, badging, mapping, size, Baseline Profile).
+          ./gradlew assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" \
+            -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE" -PSADAD_VERSION_NAME="$SADAD_VERSION_NAME"
       - name: Fail when R8 reports missing classes
         run: |
+          mapping=app/build/outputs/mapping/release/mapping.txt
+          [[ -s "$mapping" ]] || { echo "::error::$mapping is missing; R8 did not run, so this gate proves nothing"; exit 1; }
+          # R8 writes missing_rules.txt only when it actually finds missing classes. Its absence is
+          # the clean result, not a moved path — checking for the file failed every good build.
           missing=app/build/outputs/mapping/release/missing_rules.txt
-          [[ -f "$missing" ]] || { echo "::error::$missing not found; AGP moved it, so this gate checks nothing"; exit 1; }
           if [[ -s "$missing" ]]; then
             echo "::error::R8 reported missing classes; add a keep rule with a reason in app/proguard-rules.pro"
             cat "$missing"
             exit 1
           fi
+          echo "R8 reported no missing classes."
       - name: Verify Sentry mapping metadata when crash reporting is enabled
         env:
           SADAD_SENTRY_DSN: ${{ secrets.SADAD_SENTRY_DSN }}

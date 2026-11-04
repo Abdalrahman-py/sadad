@@ -77,7 +77,7 @@ export function createApi(options: ApiOptions) {
             query: {
               q: query.q || undefined,
               cursor: query.cursor,
-              limit: 50,
+              limit: 100,
               includeArchived: query.includeArchived ? "true" : "false",
             },
           },
@@ -121,7 +121,7 @@ export function createApi(options: ApiOptions) {
     pendingInstallations: (query: { q?: string; cursor?: string }, signal?: AbortSignal) =>
       unwrap(
         client.GET("/v1/admin/installations", {
-          params: { query: { q: query.q || undefined, cursor: query.cursor, limit: 50 } },
+          params: { query: { q: query.q || undefined, cursor: query.cursor, limit: 100 } },
           signal,
         }),
       ),
@@ -163,6 +163,10 @@ export function createApi(options: ApiOptions) {
           signal,
         }),
       ).then((r) => r.ledger),
+    /** Claims the account for this Auth session, or renews it; another browser gets 409. */
+    claimSession: () => unwrap(client.POST("/v1/admin/session")),
+    /** Frees the account at sign-out so the next browser can sign in at once. */
+    releaseSession: () => unwrap(client.DELETE("/v1/admin/session")),
     audit: (
       query: { source: AuditSource; storeId?: number; q?: string; cursor?: string },
       signal?: AbortSignal,

@@ -2,6 +2,7 @@ package com.sadad.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -15,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -26,8 +28,6 @@ import androidx.compose.ui.unit.sp
 @Immutable
 data class SadadPalette(
     val bg: Color,
-    /** The page background runs from [bg] to this, top to bottom. */
-    val bgEnd: Color,
     val surface: Color,
     val soft: Color,
     val primary: Color,
@@ -61,7 +61,6 @@ data class SadadPalette(
 val SadadLightPalette =
     SadadPalette(
         bg = Color(0xFFF5F8F3),
-        bgEnd = Color(0xFFEDF6EF),
         surface = Color(0xFFE7F3ED),
         soft = Color(0xFFD6EFE4),
         primary = Color(0xFF064B42),
@@ -85,17 +84,16 @@ val SadadLightPalette =
 
 val SadadDarkPalette =
     SadadPalette(
-        bg = Color(0xFF102721),
-        bgEnd = Color(0xFF142E25),
-        surface = Color(0xFF1C3931),
-        soft = Color(0xFF2A4E42),
+        bg = Color(0xFF121514),
+        surface = Color(0xFF1A1E1C),
+        soft = Color(0xFF252B28),
         primary = Color(0xFF256C5A),
         accent = Color(0xFF78DEC0),
-        text = Color(0xFFF0F7EF),
-        muted = Color(0xFFB5CEC0),
-        line = Color(0xFF375A4B),
+        text = Color(0xFFEDF1EE),
+        muted = Color(0xFFA3ADA8),
+        line = Color(0xFF2E3532),
         warn = Color(0xFFFFD08A),
-        card = Color(0xFF1C3931),
+        card = Color(0xFF1A1E1C),
         heroEnd = Color(0xFF02302B),
         onHeroMuted = Color(0xFFC6F0E0),
         debt = Color(0xFFF59A9F),
@@ -194,46 +192,44 @@ private fun colorsFor(p: SadadPalette, dark: Boolean) =
             scrim = Color.Black,
         )
 
-/**
- * The Java app's radii: 10dp buttons and cards, 13dp fields, 14dp switch rows, 18dp the hero and
- * 26dp the sign-in panels.
- */
+/** The radii, all on the 4dp grid: 12dp buttons, fields and cards, 16dp blocks, 24dp sheets. */
 val SadadShapes =
     Shapes(
         extraSmall = RoundedCornerShape(8.dp),
-        small = RoundedCornerShape(10.dp),
-        medium = RoundedCornerShape(13.dp),
-        large = RoundedCornerShape(18.dp),
-        extraLarge = RoundedCornerShape(26.dp),
+        small = RoundedCornerShape(12.dp),
+        medium = RoundedCornerShape(12.dp),
+        large = RoundedCornerShape(16.dp),
+        extraLarge = RoundedCornerShape(24.dp),
     )
 
-private fun style(size: Int, bold: Boolean = false, line: Int = (size * 1.4f).toInt()) =
+private fun style(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) =
     TextStyle(
         fontSize = size.sp,
         lineHeight = line.sp,
-        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+        fontWeight = weight,
+        fontFeatureSettings = "tnum",
     )
 
 /**
- * The Java app's sizes in the system face: 34 the hero figure, 23 page titles, 21 card figures, 17
- * section titles, 15 fields and body, 14 buttons, 13 field labels and subtitles, 12 notes, 11
- * captions and 10 the bottom bar.
+ * One scale in the system face, six sizes and two weights, every style in tabular digits: 32 the
+ * hero figure, the only SemiBold; 24 page titles, 20 card figures and 16 section titles, Medium; 16
+ * fields and body, 14 body and buttons, 12 notes, captions and the bottom bar.
  */
 val SadadTypography =
     Typography(
-        displaySmall = style(34, bold = true, line = 42),
-        headlineLarge = style(26, bold = true),
-        headlineMedium = style(23, bold = true),
-        headlineSmall = style(23, bold = true),
-        titleLarge = style(21, bold = true),
-        titleMedium = style(17, bold = true),
-        titleSmall = style(15, bold = true),
-        bodyLarge = style(15),
-        bodyMedium = style(13),
-        bodySmall = style(12),
-        labelLarge = style(14, bold = true),
-        labelMedium = style(13, bold = true),
-        labelSmall = style(10),
+        displaySmall = style(32, 40, FontWeight.SemiBold),
+        headlineLarge = style(24, 32, FontWeight.Medium),
+        headlineMedium = style(24, 32, FontWeight.Medium),
+        headlineSmall = style(24, 32, FontWeight.Medium),
+        titleLarge = style(20, 28, FontWeight.Medium),
+        titleMedium = style(16, 24, FontWeight.Medium),
+        titleSmall = style(14, 20, FontWeight.Medium),
+        bodyLarge = style(16, 24),
+        bodyMedium = style(14, 20),
+        bodySmall = style(12, 16),
+        labelLarge = style(14, 20, FontWeight.Medium),
+        labelMedium = style(12, 16, FontWeight.Medium),
+        labelSmall = style(12, 16),
     )
 
 @Composable
@@ -244,7 +240,11 @@ fun SadadTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
         colorScheme = colorsFor(palette, dark),
         shapes = SadadShapes,
         typography = SadadTypography,
-        content = content,
-    )
+    ) {
+      // A Text that sets only its size keeps a line height of that size, not bodyLarge's 24sp,
+      // which at the largest font is 48dp and overflows the 42dp and 44dp boxes such text sits in.
+      val inherited = MaterialTheme.typography.bodyLarge.copy(lineHeight = TextUnit.Unspecified)
+      CompositionLocalProvider(LocalTextStyle provides inherited, content = content)
+    }
   }
 }

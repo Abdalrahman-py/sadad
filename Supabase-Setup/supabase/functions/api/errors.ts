@@ -34,13 +34,17 @@ const DEFAULT_STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   proof_replayed: 409,
   installation_key_changed: 409,
   session_installation_conflict: 409,
+  session_in_use: 409,
   duplicate_phone: 409,
   entity_id_exists: 409,
   entity_version_changed: 409,
   already_reversed: 409,
   below_paid_total: 409,
   overpayment: 409,
+  offset_invalid: 409,
   contact_limit_reached: 409,
+  contact_has_balance: 409,
+  contact_not_archived: 409,
   device_limit_reached: 409,
   store_not_archived: 409,
   store_archived: 409,
@@ -114,10 +118,11 @@ const defaultLogger: ErrorLogger = (entry) => {
 
 const ErrorRef = { $ref: "#/components/schemas/ErrorResponse" } as const;
 
-/** OpenAPI responses for the contract errors a route can return. */
-export function errorResponses(...statuses: number[]) {
+/** OpenAPI responses for the contract errors a route can return; the statuses come from the code map. */
+export function errorResponses(...codes: ErrorCode[]) {
+  const statuses = new Set(codes.map(statusForCode));
   return Object.fromEntries(
-    statuses.map((status) => [status, {
+    [...statuses].map((status) => [status, {
       description: "Contract error; code is listed in contract/errors.json",
       content: { "application/json": { schema: ErrorRef } },
     }]),

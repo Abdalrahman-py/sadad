@@ -37,8 +37,10 @@ import com.sadad.app.feature.photo.PhotoEditor
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.feature.updates.UpdateCenter
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.ui.components.ScreenHeader
+import java.time.Clock
 import kotlinx.coroutines.delay
 
 /** Stable handles the store tab's tests find its list and its rows by. */
@@ -98,16 +100,16 @@ fun StoreScreen(
   val update by updates.state.collectAsStateWithLifecycle()
   var storesOpen by rememberSaveable { mutableStateOf(false) }
   var showStorePhoto by rememberSaveable { mutableStateOf(false) }
-  val openStore = state.accounts.firstOrNull { it.active }?.storeUserId
+  val openStore = state.store.accounts.firstOrNull { it.active }?.storeUserId
   // «مزامنة الآن» says it started, then how it ended: sent, offline, or what refused.
   var syncAsked by rememberSaveable { mutableStateOf(false) }
   var toast by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
   val syncStarted = stringResource(R.string.settings_sync_started)
   val syncDone = stringResource(R.string.settings_sync_done)
-  val phrase = statusPhrase(state.sync)
-  LaunchedEffect(state.sync) {
+  val phrase = statusPhrase(state.devices.sync)
+  LaunchedEffect(state.devices.sync) {
     if (!syncAsked) return@LaunchedEffect
-    when (state.sync) {
+    when (state.devices.sync) {
       SyncLine.Running -> Unit
       SyncLine.Idle -> {
         toast = syncDone to false
@@ -123,17 +125,19 @@ fun StoreScreen(
   LaunchedEffect(syncAsked) {
     if (syncAsked) {
       delay(6_000)
-      if (syncAsked && state.sync == SyncLine.Idle) {
+      if (syncAsked && state.devices.sync == SyncLine.Idle) {
         toast = syncDone to false
         syncAsked = false
       }
     }
   }
   // Re-read on resume: a fingerprint enrolled in the system settings shows its switch on return.
-  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { settingsViewModel.refreshBiometricSensor() }
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+    settingsViewModel.security.refreshBiometricSensor()
+  }
   LaunchedEffect(state.outcome) {
     if (state.outcome == SettingsOutcome.NEEDS_LOGIN) {
-      settingsViewModel.consumeOutcome()
+      settingsViewModel.ui.consumeOutcome()
       onNeedsLogin()
     }
   }
@@ -147,7 +151,7 @@ fun StoreScreen(
           onSyncNow = {
             syncAsked = true
             toast = syncStarted to false
-            settingsViewModel.downloadLatest()
+            settingsViewModel.devices.downloadLatest()
           },
       )
   Box(Modifier.fillMaxSize()) {
@@ -159,19 +163,19 @@ fun StoreScreen(
           verticalArrangement = Arrangement.spacedBy(18.dp),
       ) {
         storeCard(
-            state = state,
-            model = settingsViewModel,
+            store = state.store,
+            commands = settingsViewModel.store,
             storesOpen = storesOpen,
             onToggleStores = { storesOpen = !storesOpen },
             onOpenPhoto = { showStorePhoto = true },
             onAddStore = onAddStore,
             onPickStore = { storesOpen = false },
         )
-        devicesSection(state, settingsViewModel, navigation)
-        securitySection(state, settingsViewModel, navigation)
-        dataSection(state, settingsViewModel, navigation, context)
-        appearanceSection(state, settingsViewModel, context)
-        accountSection(state, settingsViewModel)
+        dataSection(state.data, navigation)
+        devicesSection(state.devices, navigation)
+        securitySection(state.security, settingsViewModel.security, navigation)
+        appearanceSection(state.theme, settingsViewModel.appearance, context)
+        accountSection(settingsViewModel.account, state.busy, state.error)
         supportItem(context)
         updateItem(update, onOpenUpdates)
         versionItem()
@@ -186,27 +190,36 @@ fun StoreScreen(
   }
   if (showStorePhoto && openStore != null) {
     PhotoEditor(openStore, PhotoKind.STORE, { showStorePhoto = false }) {
-      settingsViewModel.state.value.accounts.firstOrNull { it.active }?.storeUserId
+      settingsViewModel.state.value.store.accounts.firstOrNull { it.active }?.storeUserId
     }
   }
-  SettingsDialogs(state, settingsViewModel)
+  SettingsDialogs(
+      state,
+      settingsViewModel.store,
+      settingsViewModel.security,
+      settingsViewModel.account,
+      settingsViewModel.ui,
+  )
 }
 
 @Composable
 private fun storeViewModel(): SettingsViewModel {
   val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   val biometric = rememberActivityBiometric()
   return viewModel(
       factory =
           viewModelFactory {
             initializer {
               SettingsViewModel(
-                  graph = app.graph,
+                  source = graph.settingsSource(),
                   saved = createSavedStateHandle(),
                   preferences = ThemePreference.get(app),
                   lock = AppLock.get(app),
                   scheduler = SyncScheduler(app),
+                  clock = Clock.systemDefaultZone(),
                   biometricAvailable = biometric::available,
+                  syncStatus = graph::syncStatus,
                   reminders = DueReminders.get(app)::dismissed,
                   hiddenTrash = { storeUserId -> TrashHidden.get(app, storeUserId).ids },
               )

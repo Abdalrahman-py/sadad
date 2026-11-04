@@ -50,11 +50,81 @@ class LedgerMigrationTest {
     }
   }
 
+  @Test
+  fun aVersionThreeDatabaseKeepsItsRowsAndGainsTheDebtOriginAndTheOffsetsTable() {
+    val file = context.getDatabasePath("ledger-migration-3.db")
+    file.parentFile?.mkdirs()
+    writeVersionThree(file.absolutePath)
+
+    val db = LedgerDatabase.open(context, "migration-3")
+    try {
+      val debts = db.openHelper.readableDatabase.query("SELECT id, origin FROM debts")
+      assertTrue("the Debt must survive the upgrade", debts.moveToFirst())
+      assertEquals("d1", debts.getString(0))
+      assertEquals("manual", debts.getString(1))
+      debts.close()
+
+      val offsets = db.openHelper.readableDatabase.query("SELECT count(1) FROM offsets")
+      assertTrue(offsets.moveToFirst())
+      assertEquals(0, offsets.getInt(0))
+      offsets.close()
+
+      val contacts = db.openHelper.readableDatabase.query("SELECT count(1) FROM contacts")
+      assertTrue(contacts.moveToFirst())
+      assertEquals(1, contacts.getInt(0))
+      contacts.close()
+    } finally {
+      db.close()
+    }
+  }
+
   /**
    * Writes a v1 database the way a phone that ran the first schema has it: Room's DDL, two rows.
    */
-  private fun writeVersionOne(path: String) {
-    val schema = database(version = 1)
+  private fun writeVersionOne(path: String) =
+      write(path, version = 1) { sqlite ->
+        sqlite.execSQL(
+            """
+            INSERT INTO contacts
+              (id, name, phone, category, note, archived, version, operationId, createdAt,
+               originInstallationId, createdSeq)
+            VALUES ('c1', 'سارة محمود', '', 'customer', '', 0, 1, 'op-contact', 0, 'inst', 1)
+            """
+                .trimIndent()
+        )
+        insertDebt(sqlite)
+      }
+
+  /** The schema the phones ran before credit: `contacts` has its kind, `debts` has no origin. */
+  private fun writeVersionThree(path: String) =
+      write(path, version = 3) { sqlite ->
+        sqlite.execSQL(
+            """
+            INSERT INTO contacts
+              (id, name, phone, kind, category, note, archived, version, operationId, createdAt,
+               originInstallationId, createdSeq)
+            VALUES ('c1', 'سارة محمود', '', 'customer', 'customer', '', 0, 1, 'op-contact', 0, 'inst', 1)
+            """
+                .trimIndent()
+        )
+        insertDebt(sqlite)
+      }
+
+  private fun insertDebt(sqlite: SQLiteDatabase) {
+    sqlite.execSQL(
+        """
+        INSERT INTO debts
+          (id, contactId, direction, amountCents, note, dueDate, version, operationId, createdAt,
+           originInstallationId, createdSeq)
+        VALUES ('d1', 'c1', 'receivable', 12000, '', NULL, 1, 'op-debt', 0, 'inst', 2)
+        """
+            .trimIndent()
+    )
+  }
+
+  /** Room's own DDL for [version], then the rows the test wants, then the version stamp. */
+  private fun write(path: String, version: Int, rows: (SQLiteDatabase) -> Unit) {
+    val schema = database(version = version)
     val sqlite = SQLiteDatabase.openOrCreateDatabase(path, null)
     try {
       for (query in schema.getValue("setupQueries").jsonArray) {
@@ -68,25 +138,8 @@ class LedgerMigrationTest {
           sqlite.execSQL(sql)
         }
       }
-      sqlite.execSQL(
-          """
-          INSERT INTO contacts
-            (id, name, phone, category, note, archived, version, operationId, createdAt,
-             originInstallationId, createdSeq)
-          VALUES ('c1', 'سارة محمود', '', 'customer', '', 0, 1, 'op-contact', 0, 'inst', 1)
-          """
-              .trimIndent()
-      )
-      sqlite.execSQL(
-          """
-          INSERT INTO debts
-            (id, contactId, direction, amountCents, note, dueDate, version, operationId, createdAt,
-             originInstallationId, createdSeq)
-          VALUES ('d1', 'c1', 'receivable', 12000, '', NULL, 1, 'op-debt', 0, 'inst', 2)
-          """
-              .trimIndent()
-      )
-      sqlite.version = 1
+      rows(sqlite)
+      sqlite.version = version
     } finally {
       sqlite.close()
     }

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
@@ -39,13 +40,16 @@ class AuthScreensTest {
               .build()
       )
       var navigated: Any? = null
-      val model = LoginViewModel(fixture.graph, SavedStateHandle(), context)
+      val model = LoginViewModel(fixture.graph.authSource(), SavedStateHandle(), context)
       compose.setContent {
         LoginScreen(viewModel = model, onNavigate = { navigated = it })
       }
       compose.onNodeWithTag(AuthTags.USERNAME).performTextInput("store-a")
       compose.onNodeWithTag(AuthTags.PASSWORD).performTextInput("password-store-a")
 
+      // The restyled card is taller than the default test viewport, so the button starts below the
+      // fold and a click there never lands: scroll to it the way a user would.
+      compose.onNodeWithTag(AuthTags.LOGIN_BUTTON).performScrollTo()
       compose.onNodeWithTag(AuthTags.LOGIN_BUTTON).performClick()
       compose.waitForIdle()
 

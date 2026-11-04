@@ -186,8 +186,126 @@ class LedgerViewTest {
   }
 
   @Test
+  fun netOfEachContactAmongInterleavedDebtsAndAQueuedOneOnTop() {
+    val sami = Commands.contactCreate(origin, at(0), "سامي")
+    val huda = Commands.contactCreate(origin, at(0), "هدى")
+    val gone = Commands.contactCreate(origin, at(0), "مؤرشف")
+    fun debt(contact: LedgerCommand, direction: Direction, cents: Long, minute: Int) =
+        Commands.debtCreate(origin, at(minute), contact.entityId, direction, Cents(cents))
+    val sami1 = debt(sami, Direction.RECEIVABLE, 10_000, 1)
+    val huda1 = debt(huda, Direction.RECEIVABLE, 7_000, 1)
+    val sami2 = debt(sami, Direction.PAYABLE, 3_000, 2)
+    val gone1 = debt(gone, Direction.RECEIVABLE, 5_000, 2)
+    val huda2 = debt(huda, Direction.PAYABLE, 9_000, 3)
+    val sami3 = debt(sami, Direction.RECEIVABLE, 2_000, 3)
+    fun pay(debt: LedgerCommand, cents: Long) =
+        Commands.paymentCreate(origin, at(4), debt.entityId, Cents(cents), PaymentMethod.CASH)
+    val archive = Commands.contactArchive(origin, at(5), gone.entityId, 1, "انتقل")
+    val state =
+        Events.stateOf(
+            sami,
+            huda,
+            gone,
+            sami1,
+            huda1,
+            sami2,
+            gone1,
+            huda2,
+            sami3,
+            pay(sami1, 4_000),
+            pay(huda1, 7_000),
+            pay(sami2, 1_000),
+            archive,
+        )
+    val view = state.viewWith()
+
+    // سامي: (10,000 - 4,000) - (3,000 - 1,000) + 2,000; هدى: 0 - 9,000; the archived one counts 0.
+    assertEquals(Cents(6_000), view.net(sami.entityId))
+    assertEquals(Cents(-9_000), view.net(huda.entityId))
+    assertEquals(Cents.ZERO, view.net(gone.entityId))
+    assertEquals(listOf(gone.entityId), view.archivedContacts.map { it.id })
+
+    val queued = debt(sami, Direction.RECEIVABLE, 500, 6)
+    val withQueued = state.viewWith(listOf(queued))
+    assertEquals(Cents(6_500), withQueued.net(sami.entityId))
+    assertEquals(Cents(6_000), view.net(sami.entityId))
+  }
+
+  @Test
   fun netOfSomeoneWithNoOpenDebtIsZero() {
     val view = Events.stateOf(contact).viewWith()
     assertEquals(Cents.ZERO, view.net(contact.entityId))
+  }
+
+  @Test
+  fun mainBoardCreditSteps() {
+    // دين 250 → عليه 250
+    val debt250 =
+        Commands.debtCreate(origin, at(1), contact.entityId, Direction.RECEIVABLE, Cents(25_000))
+    assertEquals(Cents(25_000), Events.stateOf(contact, debt250).viewWith().net(contact.entityId))
+
+    // دفعة 500: 250 settle the debt, 250 become credit → له 250
+    val pay250 =
+        Commands.paymentCreate(origin, at(2), debt250.entityId, Cents(25_000), PaymentMethod.CASH)
+    val credit =
+        Commands.debtCreate(
+            origin,
+            at(3),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(25_000),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+            note = "رصيد من دفعة زائدة",
+        )
+    val afterPayment = Events.stateOf(contact, debt250, pay250, credit).viewWith()
+    assertEquals(Cents(-25_000), afterPayment.net(contact.entityId))
+    assertEquals(
+        DebtOrigin.OVERPAYMENT,
+        afterPayment.debts.single { it.id == credit.entityId }.origin,
+    )
+
+    // دين 100 paid from the credit → له 150
+    val debt100 =
+        Commands.debtCreate(origin, at(4), contact.entityId, Direction.RECEIVABLE, Cents(10_000))
+    val offset =
+        Commands.debtOffset(origin, at(5), debt100.entityId, credit.entityId, Cents(10_000))
+    val afterOffset = Events.stateOf(contact, debt250, pay250, credit, debt100, offset).viewWith()
+    assertEquals(Cents(-15_000), afterOffset.net(contact.entityId))
+
+    // An offset is not cash: the one real payment is still the only payment row.
+    assertEquals(listOf(pay250.entityId), afterOffset.payments.map { it.id })
+    val creditRow = afterOffset.debts.single { it.id == credit.entityId }
+    assertEquals(Cents.ZERO, creditRow.paid)
+    assertEquals(Cents(10_000), creditRow.offsetted)
+    assertEquals(Cents(15_000), creditRow.remaining)
+    assertEquals(Cents(15_000), creditRow.confirmedRemaining)
+    assertEquals(Cents.ZERO, afterOffset.debts.single { it.id == debt100.entityId }.remaining)
+  }
+
+  @Test
+  fun queuedOffsetsReduceBothSidesAndTooLargeOnesAreExcluded() {
+    val credit =
+        Commands.debtCreate(
+            origin,
+            at(1),
+            contact.entityId,
+            Direction.PAYABLE,
+            Cents(25_000),
+            debtOrigin = DebtOrigin.OVERPAYMENT,
+        )
+    val debt100 =
+        Commands.debtCreate(origin, at(2), contact.entityId, Direction.RECEIVABLE, Cents(10_000))
+    val offset =
+        Commands.debtOffset(origin, at(3), debt100.entityId, credit.entityId, Cents(10_000))
+    val tooBig = Commands.debtOffset(origin, at(4), debt100.entityId, credit.entityId, Cents(1))
+    val view = Events.stateOf(contact).viewWith(listOf(credit, debt100, offset, tooBig))
+    assertEquals(Cents(-15_000), view.net(contact.entityId))
+    assertEquals(setOf(tooBig.operationId), view.excludedOperations)
+    assertTrue(view.payments.isEmpty())
+
+    // An offset the server already accepted is not projected twice.
+    val confirmed = Events.stateOf(contact, credit, debt100, offset).viewWith(listOf(offset))
+    assertEquals(Cents(-15_000), confirmed.net(contact.entityId))
+    assertTrue(confirmed.excludedOperations.isEmpty())
   }
 }

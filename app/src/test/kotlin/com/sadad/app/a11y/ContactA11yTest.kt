@@ -9,6 +9,7 @@ import com.sadad.app.R
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactDetailViewModel
+import com.sadad.app.feature.contacts.contactDetailSource
 import com.sadad.app.ui.UiTestApplication
 import org.junit.Rule
 import org.junit.Test
@@ -32,7 +33,7 @@ class ContactA11yTest {
     val (fixture, contact) = graphWithDebt()
     fixture.use {
       val model =
-          ContactDetailViewModel(fixture.graph, contact, context).also {
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), contact, context).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.showAt(fontScale) {

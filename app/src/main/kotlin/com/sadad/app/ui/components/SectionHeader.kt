@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,9 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sadad.app.ui.theme.sadadPalette
 
 /** A section title, an optional [count] pill, and an optional trailing link («عرض الكل»). */
@@ -40,18 +39,16 @@ fun SectionHeader(
         title,
         modifier = Modifier.semantics { heading() },
         color = p.text,
-        fontSize = 17.sp,
-        lineHeight = 24.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleMedium,
     )
     if (count != null) {
       Box(
-          Modifier.heightIn(min = 22.dp)
-              .background(p.owesSoft, RoundedCornerShape(11.dp))
-              .padding(horizontal = 7.dp),
+          Modifier.heightIn(min = 24.dp)
+              .background(p.owesSoft, RoundedCornerShape(12.dp))
+              .padding(horizontal = 8.dp),
           contentAlignment = Alignment.Center,
       ) {
-        Text(count.toString(), color = p.owes, fontSize = 12.sp)
+        Text(count.toString(), color = p.owes, style = MaterialTheme.typography.bodySmall)
       }
     }
     Box(Modifier.weight(1f))
@@ -63,8 +60,7 @@ fun SectionHeader(
                   .clickable(role = Role.Button, onClick = onLink)
                   .padding(horizontal = 4.dp, vertical = 12.dp),
           color = if (p.isDark) p.accent else p.primary,
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Bold,
+          style = MaterialTheme.typography.labelLarge,
       )
     }
   }

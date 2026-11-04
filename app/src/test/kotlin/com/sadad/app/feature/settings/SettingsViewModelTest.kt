@@ -1,20 +1,36 @@
 package com.sadad.app.feature.settings
 
 import androidx.lifecycle.SavedStateHandle
+import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.app.data.sync.SyncStatus
+import com.sadad.app.export.Statement
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contacts.StatementShareCall
+import com.sadad.app.feature.contacts.contact
+import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.debt
+import com.sadad.app.feature.contacts.payment
+import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
+import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
+import java.time.Instant
 import java.time.LocalDate
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,24 +48,41 @@ class SettingsViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
   @Test
+  fun lastSuccessfulSyncStaysVisibleWhileOfflineAndAfterReopeningSettings() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        val status = MutableStateFlow<SyncStatus>(SyncStatus.Offline)
+        val model = kit.viewModel(syncStatus = { status })
+        model.state.first { it.loaded }
+        val time = 1_793_534_400_000L
+        fixture.graph.accounts.update(STORE_A) { it.copy(lastSyncAt = time) }
+        val state = model.state.first { it.devices.lastSyncAt == time }
+        assertEquals(SyncLine.Offline, state.devices.sync)
+        val reopened = kit.viewModel(syncStatus = { status })
+        assertEquals(time, reopened.state.first { it.loaded }.devices.lastSyncAt)
+      }
+    }
+  }
+
+  @Test
   fun savingTheStoreNameUpdatesTheAccountAndSurvivesANewViewModel() = runTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.editProfile()
-        model.onProfileChange(storeName = "متجر سامي", ownerName = "سامي")
-        model.saveProfile()
+        model.store.editProfile(model.state.value.store)
+        model.store.onProfileChange(storeName = "متجر سامي", ownerName = "سامي")
+        model.store.saveProfile()
 
-        model.state.first { it.pending == null && it.storeName == "متجر سامي" }
+        model.state.first { it.pending == null && it.store.storeName == "متجر سامي" }
         val account = checkNotNull(fixture.graph.accounts.account(STORE_A))
         assertEquals("متجر سامي", account.storeName)
         assertEquals("سامي", account.ownerName)
         val recreated = kit.viewModel()
-        val state = recreated.state.first { it.loaded && it.storeName.isNotEmpty() }
-        assertEquals("متجر سامي", state.storeName)
-        assertEquals("سامي", state.ownerName)
+        val state = recreated.state.first { it.loaded && it.store.storeName.isNotEmpty() }
+        assertEquals("متجر سامي", state.store.storeName)
+        assertEquals("سامي", state.store.ownerName)
       }
     }
   }
@@ -61,8 +94,8 @@ class SettingsViewModelTest {
         val saved = SavedStateHandle()
         val model = kit.viewModel(saved)
         model.state.first { it.loaded }
-        model.editProfile()
-        model.onProfileChange(storeName = "متجر ل", ownerName = "")
+        model.store.editProfile(model.state.value.store)
+        model.store.onProfileChange(storeName = "متجر ل", ownerName = "")
 
         val recreated = kit.viewModel(saved)
         val state = recreated.state.first { it.loaded && it.pending is Pending.Profile }
@@ -79,7 +112,7 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         assertEquals(ThemeChoice.SYSTEM, model.state.first { it.loaded }.theme)
 
-        model.setTheme(ThemeChoice.DARK)
+        model.appearance.setTheme(ThemeChoice.DARK)
 
         model.state.first { it.theme == ThemeChoice.DARK }
         assertEquals("settings.preferences_pb", ThemePreference.FILE_NAME)
@@ -95,11 +128,11 @@ class SettingsViewModelTest {
         val status = MutableStateFlow<SyncStatus>(SyncStatus.Failed("store_suspended"))
         val model = kit.viewModel(syncStatus = { status })
 
-        val state = model.state.first { it.loaded && it.sync is SyncLine.Failed }
+        val state = model.state.first { it.loaded && it.devices.sync is SyncLine.Failed }
 
         val text = fixture.graph.errorMessages.text("store_suspended")
         assertEquals("المتجر موقوف؛ حُفظت الإدخالات المعلقة.", text)
-        assertEquals(SyncLine.Failed(text), state.sync)
+        assertEquals(SyncLine.Failed(text), state.devices.sync)
       }
     }
   }
@@ -125,7 +158,10 @@ class SettingsViewModelTest {
 
         for ((source, line) in expected) {
           status.value = source
-          assertEquals(line, model.state.first { it.loaded && it.sync == line }.sync)
+          assertEquals(
+              line,
+              model.state.first { it.loaded && it.devices.sync == line }.devices.sync,
+          )
         }
       }
     }
@@ -138,11 +174,11 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.setLockEnabled(true)
+        model.security.setLockEnabled(true)
 
         assertEquals(Pending.SetPin, model.state.first { it.pending != null }.pending)
         assertFalse(kit.lock.hasPin())
-        assertFalse(model.state.value.lockOn)
+        assertFalse(model.state.value.security.lockOn)
       }
     }
   }
@@ -153,12 +189,12 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.setLockEnabled(true)
+        model.security.setLockEnabled(true)
         model.state.first { it.pending == Pending.SetPin }
 
-        model.savePin("12", "12")
+        model.security.savePin("12", "12")
         assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
-        model.savePin("483927", "483928")
+        model.security.savePin("4839", "4838")
         assertEquals(
             PinError.MISMATCH,
             model.state.first { it.pinError == PinError.MISMATCH }.pinError,
@@ -176,12 +212,12 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         val model = kit.viewModel()
         model.state.first { it.loaded }
-        model.setLockEnabled(true)
+        model.security.setLockEnabled(true)
         model.state.first { it.pending == Pending.SetPin }
 
-        model.savePin("483927", "483927")
+        model.security.savePin("4839", "4839")
 
-        val state = model.state.first { it.pending == null && it.lockOn }
+        val state = model.state.first { it.pending == null && it.security.lockOn }
         assertTrue(kit.lock.hasPin())
         assertNull(state.pinError)
       }
@@ -192,13 +228,13 @@ class SettingsViewModelTest {
   fun turningTheLockOffKeepsThePin() = runTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
-        kit.lock.setPin("483927")
+        kit.lock.setPin("4839")
         val model = kit.viewModel()
-        model.state.first { it.loaded && it.lockOn }
+        model.state.first { it.loaded && it.security.lockOn }
 
-        model.setLockEnabled(false)
+        model.security.setLockEnabled(false)
 
-        model.state.first { !it.lockOn }
+        model.state.first { !it.security.lockOn }
         assertTrue(kit.lock.hasPin())
       }
     }
@@ -210,18 +246,18 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         val without = kit.viewModel(biometricAvailable = false)
         without.state.first { it.loaded }
-        without.setBiometric(true)
+        without.security.setBiometric(true)
         assertFalse(kit.lock.biometricEnabled.first())
 
         val withSensor = kit.viewModel(biometricAvailable = true)
         withSensor.state.first { it.loaded }
-        withSensor.setBiometric(true)
+        withSensor.security.setBiometric(true)
         assertEquals(Pending.SetPin, withSensor.state.first { it.pending != null }.pending)
 
-        kit.lock.setPin("483927")
-        withSensor.dismiss()
-        withSensor.setBiometric(true)
-        withSensor.state.first { it.biometricEnabled }
+        kit.lock.setPin("4839")
+        withSensor.ui.dismiss()
+        withSensor.security.setBiometric(true)
+        withSensor.state.first { it.security.biometricEnabled }
         assertTrue(kit.lock.biometricEnabled.first())
       }
     }
@@ -234,15 +270,15 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         assertEquals(
             ExportPeriod.Preset(PeriodPreset.MONTH),
-            model.state.first { it.loaded }.exportPeriod,
+            model.state.first { it.loaded }.data.exportPeriod,
         )
 
-        model.selectPreset(PeriodPreset.YEAR)
-        model.state.first { it.exportPeriod == ExportPeriod.Preset(PeriodPreset.YEAR) }
-        model.selectCustom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
+        model.data.selectPreset(PeriodPreset.YEAR)
+        model.state.first { it.data.exportPeriod == ExportPeriod.Preset(PeriodPreset.YEAR) }
+        model.data.selectCustom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
 
         val custom = ExportPeriod.Custom(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 9))
-        model.state.first { it.exportPeriod == custom }
+        model.state.first { it.data.exportPeriod == custom }
         assertEquals(custom, kit.preferences.exportPeriod.first())
       }
     }
@@ -255,7 +291,7 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.downloadLatest()
+        model.devices.downloadLatest()
 
         assertEquals(listOf(STORE_A), kit.recording.syncNow)
       }
@@ -269,7 +305,7 @@ class SettingsViewModelTest {
         fixture.seed { addContact("سامي", null, null, null, null).getOrThrow() }
         val model = kit.viewModel()
 
-        assertEquals(1, model.state.first { it.loaded && it.unsent == 1 }.unsent)
+        assertEquals(1, model.state.first { it.loaded && it.devices.unsent == 1 }.devices.unsent)
       }
     }
   }
@@ -281,18 +317,18 @@ class SettingsViewModelTest {
         val saved = SavedStateHandle()
         val model = kit.viewModel(saved)
         model.state.first { it.loaded }
-        model.requestPin()
+        model.security.requestPin()
         model.state.first { it.pending == Pending.SetPin }
 
-        for (pin in listOf("1234567890123", "12a4")) {
-          model.savePin(pin, pin)
+        for (pin in listOf("12345", "1234567890123", "12a4")) {
+          model.security.savePin(pin, pin)
           assertEquals(PinError.INVALID, model.state.first { it.pinError != null }.pinError)
         }
-        model.savePin("483927", "483927")
+        model.security.savePin("4839", "4839")
         model.state.first { it.pending == null }
 
         assertTrue(kit.lock.hasPin())
-        assertTrue(saved.keys().none { key -> saved.get<Any>(key).toString().contains("483927") })
+        assertTrue(saved.keys().none { key -> saved.get<Any>(key).toString().contains("4839") })
       }
     }
   }
@@ -308,10 +344,17 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.unsent == 2 }
+        // Rows emit before the view is recomputed: wait for the name, not just the count.
+        val state =
+            model.state.first {
+              it.loaded && it.devices.unsent == 2 && it.devices.newest?.name?.isNotEmpty() == true
+            }
 
-        assertEquals(2, state.unsent)
-        assertEquals(QueuedEntry(QueuedKind.DEBT, "سارة محمود", Cents(12_000)), state.newest)
+        assertEquals(2, state.devices.unsent)
+        assertEquals(
+            QueuedEntry(QueuedKind.DEBT, "سارة محمود", Cents(12_000)),
+            state.devices.newest,
+        )
       }
     }
   }
@@ -330,9 +373,130 @@ class SettingsViewModelTest {
         fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.unsent == 1 }
+        // Rows emit before the view is recomputed: wait for the name, not just the count.
+        val state =
+            model.state.first {
+              it.loaded && it.devices.unsent == 1 && it.devices.newest?.name?.isNotEmpty() == true
+            }
 
-        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "سامي", Cents(2_000)), state.newest)
+        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "سامي", Cents(2_000)), state.devices.newest)
+      }
+    }
+  }
+
+  @Test
+  fun aQueuedPaymentOnAQueuedDebtOfAQueuedContactIsNamedFromTheQueue() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var contact = ""
+        var debt = ""
+        fixture.seed { contact = addContact("نور", null, null, null, null).getOrThrow() }
+        fixture.seed {
+          debt = addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+        }
+        fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
+        val model = kit.viewModel()
+
+        val state = model.state.first { it.loaded && it.devices.unsent == 3 }
+
+        assertEquals(QueuedEntry(QueuedKind.PAYMENT, "نور", Cents(2_000)), state.devices.newest)
+      }
+    }
+  }
+
+  private class Shared(val view: LedgerView, val from: Instant?, val to: Instant?)
+
+  private fun TestGraph.settingsUi(): SettingsUi {
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    closeWithStore(scope)
+    return SettingsUi(scope, SavedStateHandle())
+  }
+
+  private fun TestGraph.dataModule(
+      kit: SettingsKit,
+      ui: SettingsUi,
+      share: StatementShareCall,
+  ): DataModule =
+      DataModule(
+          graph.settingsSource(),
+          kit.preferences,
+          { flowOf(emptyList()) },
+          { flowOf(emptySet()) },
+          settingsClock,
+          ui,
+          share,
+      )
+
+  @Test
+  fun theStoreStatementIsBuiltFromTheWholeStoreWithTheQueueOnTop() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        val store = checkNotNull(fixture.graph.current.value)
+        val a = contactId(1)
+        val b = contactId(2)
+        val c = contactId(3)
+        val old = debt(a, 10_000, id = contactId(11), minute = 3)
+        // Minute 3000 falls on 18 October, the period; the rest are before it.
+        fixture.seedCommands(
+            listOf(
+                contact("أ", a, minute = 0),
+                contact("ب", b, minute = 1),
+                contact("ج", c, minute = 2),
+                old,
+                payment(old.entityId, 4_000, id = contactId(12), minute = 4),
+                debt(b, 6_000, id = contactId(13), minute = 5),
+                debt(a, 2_000, id = contactId(14), minute = 3000),
+            )
+        )
+        store.outbox.append(
+            listOf(
+                Commands.debtCreate(
+                    Events.origin,
+                    Events.at(3001),
+                    a,
+                    Direction.RECEIVABLE,
+                    Cents(500),
+                )
+            )
+        )
+        val whole = checkNotNull(store.repository.view.first { it?.pendingDebts == 1 })
+        val shared = CompletableDeferred<Shared>()
+        val module =
+            fixture.dataModule(kit, fixture.settingsUi()) { _, _, view, _, from, to ->
+              shared.complete(Shared(view, from, to))
+            }
+        val day = LocalDate.of(2026, 10, 18)
+
+        module.shareStatement(fixture.context, ExportPeriod.Custom(day, day))
+
+        val statement = shared.await()
+        assertEquals(whole, statement.view)
+        val pages = Statement.build(statement.view, null, statement.from, statement.to)
+        assertEquals(
+            "every person, moved in the period or not",
+            listOf(a, b, c),
+            pages.map { it.contact.id },
+        )
+        assertEquals(listOf(Cents(6_000), Cents(6_000), Cents.ZERO), pages.map { it.opening })
+        assertEquals(listOf(Cents(8_500), Cents(6_000), Cents.ZERO), pages.map { it.closing })
+      }
+    }
+  }
+
+  @Test
+  fun aStoreWithNobodyHasNoStatementToShare() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      SettingsKit(fixture).use { kit ->
+        var shared = false
+        val ui = fixture.settingsUi()
+        val module = fixture.dataModule(kit, ui) { _, _, _, _, _, _ -> shared = true }
+
+        module.shareStatement(fixture.context, ExportPeriod.Preset(PeriodPreset.MONTH))
+
+        val state = ui.state.first { it.error != null }
+        assertEquals(SettingsError.NOTHING_TO_EXPORT, state.error)
+        assertFalse(state.busy)
+        assertFalse(shared)
       }
     }
   }
@@ -346,10 +510,10 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        val state = model.state.first { it.loaded && it.unsent == 3 }
+        val state = model.state.first { it.loaded && it.devices.unsent == 3 }
 
-        assertEquals(3, state.unsent)
-        assertEquals(QueuedEntry(QueuedKind.CONTACT_NEW, "شخص 2", null), state.newest)
+        assertEquals(3, state.devices.unsent)
+        assertEquals(QueuedEntry(QueuedKind.CONTACT_NEW, "شخص 2", null), state.devices.newest)
       }
     }
   }
@@ -364,8 +528,8 @@ class SettingsViewModelTest {
 
         val state = model.state.first { it.loaded }
 
-        assertEquals(0, state.unsent)
-        assertNull(state.newest)
+        assertEquals(0, state.devices.unsent)
+        assertNull(state.devices.newest)
       }
     }
   }
@@ -377,7 +541,7 @@ class SettingsViewModelTest {
         val status = MutableStateFlow<SyncStatus>(SyncStatus.Offline)
         val model = kit.viewModel(syncStatus = { status })
 
-        assertEquals(SyncLine.Offline, model.state.first { it.loaded }.sync)
+        assertEquals(SyncLine.Offline, model.state.first { it.loaded }.devices.sync)
       }
     }
   }
@@ -393,7 +557,7 @@ class SettingsViewModelTest {
         fixture.settleAll()
         val model = kit.viewModel()
 
-        assertEquals(1, model.state.first { it.loaded && it.trashCount == 1 }.trashCount)
+        assertEquals(1, model.state.first { it.loaded && it.data.trashCount == 1 }.data.trashCount)
       }
     }
   }
@@ -414,7 +578,7 @@ class SettingsViewModelTest {
         }
         val model = kit.viewModel()
 
-        assertFalse(model.state.first { it.loaded && !it.canDelete }.canDelete)
+        assertFalse(model.state.first { it.loaded && !it.data.canDelete }.data.canDelete)
       }
     }
   }
@@ -424,10 +588,18 @@ class SettingsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
         assertFalse(
-            kit.viewModel(biometricAvailable = false).state.first { it.loaded }.biometricAvailable
+            kit.viewModel(biometricAvailable = false)
+                .state
+                .first { it.loaded }
+                .security
+                .biometricAvailable
         )
         assertTrue(
-            kit.viewModel(biometricAvailable = true).state.first { it.loaded }.biometricAvailable
+            kit.viewModel(biometricAvailable = true)
+                .state
+                .first { it.loaded }
+                .security
+                .biometricAvailable
         )
       }
     }
@@ -449,14 +621,14 @@ class SettingsViewModelTest {
         val model = kit.viewModel()
         model.state.first { it.loaded }
 
-        model.downloadLatest()
+        model.devices.downloadLatest()
 
         val state = model.state.first { it.error != null }
         assertEquals(SettingsError.ACTION_FAILED, state.error)
         assertFalse(state.busy)
 
         // A later action that works clears the old failure.
-        model.setTheme(ThemeChoice.DARK)
+        model.appearance.setTheme(ThemeChoice.DARK)
         assertNull(model.state.first { it.theme == ThemeChoice.DARK }.error)
       }
     }

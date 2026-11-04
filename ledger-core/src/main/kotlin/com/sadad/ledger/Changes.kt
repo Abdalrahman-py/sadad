@@ -19,6 +19,16 @@ data class Changes(
     val hasMore: Boolean,
     val currency: String,
     val events: List<ChangeEvent>,
+    /** Every approved or revoked device of the store, so any event can name its recorder. */
+    val installations: List<InstallationName> = emptyList(),
+)
+
+/** A device of the same store, as the server knows it. */
+@Serializable
+data class InstallationName(
+    val id: String,
+    val label: String,
+    val staffName: String,
 )
 
 /**

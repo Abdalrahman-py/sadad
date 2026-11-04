@@ -3,7 +3,7 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { type AppEnv, verifyCaller } from "./auth.ts";
+import { type AppEnv, gateCaller } from "./auth.ts";
 import { ApiError, errorResponses } from "./errors.ts";
 import { call, type RpcClient, unavailable } from "./rpc.ts";
 import { readProofHeaders, verifyProof } from "./proof.ts";
@@ -23,12 +23,23 @@ export interface MobileDeps {
   lease?: LeaseSigner;
 }
 
+/** What the store gate refuses with, for the routes' OpenAPI error lists. */
+const storeRefusals = [
+  "authorization_required",
+  "store_permission_denied",
+] as const;
+
 const MAX_BODY_BYTES = 65_536;
 // sadid_issue_capability refuses a write request above 512 KiB.
 const MAX_BATCH_BYTES = 524_288;
 const MAX_BATCH = 100;
 const LEASE_DAYS = 7;
-const LEASE_ALLOWED = ["contact.create", "debt.create", "payment.create"];
+const LEASE_ALLOWED = [
+  "contact.create",
+  "debt.create",
+  "debt.offset",
+  "payment.create",
+];
 
 /** The path after the function prefix: /api/v1/x and /functions/v1/api/v1/x are both /v1/x. */
 export const routePath = (req: Request): string =>
@@ -51,19 +62,10 @@ interface StoreCaller {
 }
 
 async function storeCaller(c: Context<AppEnv>): Promise<StoreCaller> {
-  const { jwt, userId, role, claims } = await verifyCaller(c);
-  if (role !== "store") {
-    throw new ApiError("store_permission_denied", 403);
-  }
-  const sessionId = claims.session_id;
-  if (typeof sessionId !== "string" || !sessionId) {
-    throw new ApiError("authorization_required", 401);
-  }
-  const appMeta = claims.app_metadata as Record<string, unknown> | undefined;
-  if (appMeta?.force_password_change === true) {
-    throw new ApiError("password_change_required", 403);
-  }
-  return { jwt, userId, sessionId };
+  const { jwt, userId, claims } = await gateCaller(c, ["store"], {
+    session: true,
+  });
+  return { jwt, userId, sessionId: claims.session_id as string };
 }
 
 interface InstallationKey {
@@ -216,6 +218,14 @@ const ChangeEventSchema = z
   })
   .openapi("ChangeEvent");
 
+const InstallationNameSchema = z
+  .object({
+    id: z.uuid(),
+    label: z.string(),
+    staffName: z.string(),
+  })
+  .openapi("InstallationName");
+
 const ChangesSchema = z
   .object({
     schemaVersion: z.number().int(),
@@ -226,6 +236,7 @@ const ChangesSchema = z
     hasMore: z.boolean(),
     currency: z.string(),
     events: z.array(ChangeEventSchema),
+    installations: z.array(InstallationNameSchema),
   })
   .openapi("Changes");
 
@@ -233,7 +244,7 @@ const LeaseSchema = z
   .object({
     payload: z.string().openapi({
       description:
-        "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, issuedAt, expiresAt, allowed",
+        "base64url of the JSON lease: schemaVersion, projectRef, storeId, userId, installationId, generation, contactLimit, issuedAt, expiresAt, allowed",
     }),
     signature: z.string().openapi({
       description: "ECDSA P-256 SHA-256 over the payload bytes, raw r||s",
@@ -276,7 +287,14 @@ const enrollRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 413, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "invalid_input",
+      "installation_key_changed",
+      "payload_too_large",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -297,7 +315,12 @@ const leaseRoute = createRoute({
         },
       },
     },
-    ...errorResponses(401, 403, 409, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "installation_key_changed",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -323,7 +346,13 @@ const changesRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "invalid_input",
+      "epoch_changed",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -359,7 +388,14 @@ const operationsRoute = createRoute({
         },
       },
     },
-    ...errorResponses(400, 401, 403, 409, 413, 429, 500),
+    ...errorResponses(
+      ...storeRefusals,
+      "invalid_input",
+      "epoch_changed",
+      "payload_too_large",
+      "request_rate_limited",
+      "internal_error",
+    ),
   },
 });
 
@@ -405,6 +441,11 @@ export function registerMobileRoutes(
   app.openapi(leaseRoute, async (c) => {
     if (!deps.lease) throw new ApiError("temporary_service_failure");
     const signed = await signedRequest(c, deps, "lease");
+    const contactLimit = await call<number>(
+      deps.userDb(signed.caller.jwt, signed.capability),
+      "sadid_lease_limit",
+      {},
+    );
     const issuedAt = Date.now();
     const payload = encoder.encode(JSON.stringify({
       schemaVersion: 1,
@@ -413,6 +454,7 @@ export function registerMobileRoutes(
       userId: signed.caller.userId,
       installationId: signed.installationId,
       generation: signed.installation.generation,
+      contactLimit,
       issuedAt,
       expiresAt: issuedAt + LEASE_DAYS * 86_400_000,
       allowed: LEASE_ALLOWED,

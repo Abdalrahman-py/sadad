@@ -33,7 +33,8 @@ class RecoveryPushTest {
               entityId = UUID.randomUUID().toString(),
           )
       f.scope.outbox.append(listOf(foreign))
-      Recovery.setPermit(f.scope, oldInstallation, permit)
+      val manifest = Recovery.manifest(f.scope, oldInstallation)
+      Recovery.setPermit(f.scope, oldInstallation, permit, manifest)
 
       f.server.enqueue(receiptResponse(listOf(foreign)))
       f.server.enqueue(receiptResponse(listOf(own)))
@@ -64,7 +65,8 @@ class RecoveryPushTest {
               entityId = UUID.randomUUID().toString(),
           )
       f.scope.outbox.append(listOf(foreign))
-      Recovery.setPermit(f.scope, oldInstallation, permit)
+      val manifest = Recovery.manifest(f.scope, oldInstallation)
+      Recovery.setPermit(f.scope, oldInstallation, permit, manifest)
       f.server.enqueue(refusalResponse("recovery_not_authorized"))
       f.page()
 
@@ -84,7 +86,8 @@ class RecoveryPushTest {
       val oldInstallation = UUID.randomUUID().toString()
       val foreign = foreignContact(oldInstallation)
       f.scope.outbox.append(listOf(foreign))
-      Recovery.setPermit(f.scope, oldInstallation, UUID.randomUUID().toString())
+      val manifest = Recovery.manifest(f.scope, oldInstallation)
+      Recovery.setPermit(f.scope, oldInstallation, UUID.randomUUID().toString(), manifest)
       f.server.enqueue(refusalResponse("recovery_not_authorized"))
       f.server.enqueue(receiptResponse(listOf(own)))
       f.page()
@@ -130,7 +133,8 @@ class RecoveryPushTest {
           f.scope.outbox.snapshot().first { it.operationId == dependent.operationId }.state,
       )
 
-      Recovery.setPermit(f.scope, oldInstallation, UUID.randomUUID().toString())
+      val manifest = Recovery.manifest(f.scope, oldInstallation)
+      Recovery.setPermit(f.scope, oldInstallation, UUID.randomUUID().toString(), manifest)
       f.server.enqueue(receiptResponse(listOf(foreign)))
       f.server.enqueue(receiptResponse(listOf(dependent)))
       f.page()

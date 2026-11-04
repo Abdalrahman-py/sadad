@@ -6,6 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.os.StrictMode
 import android.util.Log
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.work.Configuration
 import com.sadad.app.crash.CrashReporting
 import com.sadad.app.feature.notifications.DueReminderWorker
@@ -16,8 +20,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class SadadApplication : Application(), Configuration.Provider {
+open class SadadApplication : Application(), Configuration.Provider {
   override val workManagerConfiguration: Configuration
     get() = Configuration.Builder().build()
 
@@ -25,7 +30,15 @@ class SadadApplication : Application(), Configuration.Provider {
   /**
    * One graph for the process; the first access may touch the Keystore, so callers do it off main.
    */
-  val graph: AppGraph by lazy { AppGraph.create(this) }
+  private val graphLazy = lazy { createGraph() }
+  val graph: AppGraph by graphLazy
+
+  /** The graph when an earlier caller built it, else null; never builds it, so main may ask. */
+  val graphIfBuilt: AppGraph?
+    get() = if (graphLazy.isInitialized()) graphLazy.value else null
+
+  /** The seam the composition test uses to see which thread builds the graph. */
+  internal open fun createGraph(): AppGraph = AppGraph.create(this)
 
   override fun onCreate() {
     super.onCreate()
@@ -111,6 +124,24 @@ class SadadApplication : Application(), Configuration.Provider {
     const val OUR_PACKAGE = "com.sadad."
     const val TAG = "SadadApplication"
   }
+}
+
+/** The graph for the screens under `SadadApp`, which shows no screen until it is built. */
+val LocalGraph = staticCompositionLocalOf<AppGraph?> { null }
+
+/** [LocalGraph] for a screen's ViewModel factory; the screen is always under `SadadApp`. */
+@Composable
+fun requireGraph(): AppGraph = checkNotNull(LocalGraph.current) { "no graph: not under SadadApp" }
+
+/**
+ * The process graph, null until built. The first build can touch the Keystore, so it runs on IO,
+ * never in composition; a graph an earlier caller built shows on the first frame.
+ */
+@Composable
+fun rememberGraph(): AppGraph? {
+  val app = LocalContext.current.applicationContext as? SadadApplication ?: return null
+  return produceState(app.graphIfBuilt, app) { value = withContext(Dispatchers.IO) { app.graph } }
+      .value
 }
 
 private const val SADAD_PACKAGE = "com.sadad."

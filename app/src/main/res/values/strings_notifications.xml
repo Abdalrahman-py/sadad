@@ -4,6 +4,7 @@
     <string name="reminder_channel">مواعيد الاستحقاق</string>
     <string name="reminder_today">يستحق اليوم: %1$s · المتجر: %2$s</string>
     <string name="reminder_tomorrow">يستحق غداً: %1$s · المتجر: %2$s</string>
+    <string name="reminder_public">لديك دين يستحق قريباً</string>
     <string name="reminders_title">الإشعارات</string>
     <string name="reminders_subtitle">مواعيد الاستحقاق قبل يوم وفي يومها</string>
     <string name="reminders_empty">لا توجد إشعارات استحقاق حالياً</string>

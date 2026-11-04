@@ -3,16 +3,21 @@ package com.sadad.app.feature.contacts
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.sadad.app.AppGraph
 import com.sadad.app.R
 import com.sadad.app.data.ledger.Refusal
+import com.sadad.app.data.ledger.WhatsAppPhone
+import com.sadad.app.data.ledger.paymentGroups
 import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementExport
 import com.sadad.app.export.StatementHeader
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Commands
+import com.sadad.ledger.DebtOrigin
+import com.sadad.ledger.DebtView
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.PaymentView
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -21,17 +26,18 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** [StatementExport.sharePdf]'s shape: the statement share seam of the contact page. */
+typealias StatementShareCall =
+    suspend (Context, StatementHeader, LedgerView, String?, Instant?, Instant?) -> Unit
 
 /** One row of a Contact's history: a Debt or a Payment, newest or oldest first. */
 data class ContactMovement(
@@ -43,13 +49,31 @@ data class ContactMovement(
     val note: String,
     val createdAt: Instant,
     val pending: Boolean,
+    /** The payment ids this row stands for: a compound's parts, so a reversal names them all. */
+    val parts: List<String> = listOf(id),
+    /** The credit Debt the payment left, when it overpaid; it is never a row of its own. */
+    val creditDebtId: String? = null,
+    /** The part of [amount] that settled Debts, when the row is an overpayment. */
+    val settled: Cents? = null,
+    /** The part of [amount] the store now holds as credit. */
+    val credit: Cents? = null,
+    /** The credit a later Debt took, on a Debt that was paid from credit. */
+    val offsetted: Cents? = null,
+    /** Whether «حذف» may run on this row. */
+    val canDelete: Boolean = false,
+    /** Why it may not, when [canDelete] is false for a reason worth naming. */
+    val blockedReason: String? = null,
 )
 
 data class ContactDetailState(
     val loaded: Boolean = false,
     val missing: Boolean = false,
+    val syncFailure: String? = null,
+    val savedDebts: List<com.sadad.ledger.DebtCreate> = emptyList(),
     val name: String = "",
     val phone: String = "",
+    /** The WhatsApp country code: `970` or `972`. */
+    val whatsappCode: String = "970",
     val category: String = "",
     val note: String = "",
     val balance: Cents = Cents.ZERO,
@@ -61,6 +85,12 @@ data class ContactDetailState(
     /** The amount to settle before deleting, when deleting is refused. */
     val settleFirst: Cents? = null,
     val confirmDelete: Boolean = false,
+    /** «حذف المسودة» waits for its confirm dialog. */
+    val confirmDiscard: Boolean = false,
+    /** The row whose delete dialogs are open. */
+    val deleting: ContactMovement? = null,
+    /** The first dialog was accepted: the second, final one is showing. */
+    val deleteFinal: Boolean = false,
     /** The Contact waiting in the undo banner; nothing is queued until the banner expires. */
     val undoName: String? = null,
     val error: String? = null,
@@ -75,16 +105,38 @@ data class ContactDetailState(
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ContactDetailViewModel(
-    private val graph: AppGraph,
+    private val source: ContactDetailSource,
     private val contactId: String,
     private val appContext: Context,
     /** The Java banner's five seconds; tests shorten it. */
     private val undoWindowMs: Long = UNDO_WINDOW_MS,
+    /**
+     * The undo window runs here, not in the screen's composition, like the Java banner on the
+     * Activity: leaving the Contact during the five seconds must not drop a delete the dialog
+     * already promised. It runs off the Main dispatcher so a test dispatcher's virtual clock cannot
+     * fire it early, and it is a parameter so a test can hold the job and join it instead of racing
+     * a background thread it cannot see (#168).
+     */
+    private val undoScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    /**
+     * The one seam the page shares through, a parameter so a test captures the view a statement is
+     * built from without PDFs or Android's share sheet.
+     */
+    private val shareStatement: StatementShareCall = StatementExport::sharePdf,
 ) : ViewModel() {
   private data class Dialogs(
       val newestFirst: Boolean = true,
       val settleFirst: Cents? = null,
       val confirmDelete: Boolean = false,
+      val confirmDiscard: Boolean = false,
+      val deleting: String? = null,
+      val deleteFinal: Boolean = false,
+      /**
+       * Rows deleted here: a queued delete is online-only, so the view keeps them until the pull.
+       * shortcut: a refused delete stays hidden until the page reopens, fine while refusals need a
+       * second device racing this one.
+       */
+      val deleted: Set<String> = emptySet(),
       val undoName: String? = null,
       val error: String? = null,
       val done: Boolean = false,
@@ -94,22 +146,32 @@ class ContactDetailViewModel(
   private val mutable = MutableStateFlow(ContactDetailState())
   val state: StateFlow<ContactDetailState> = mutable.asStateFlow()
 
-  /**
-   * The undo window runs here, not in the screen's composition, like the Java banner on the
-   * Activity: leaving the Contact during the five seconds must not drop a delete the dialog already
-   * promised. Nothing else uses this scope, the job ends within [undoWindowMs], and it runs off the
-   * Main dispatcher so a test dispatcher's virtual clock cannot fire it early.
-   */
-  private val undoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var undoJob: Job? = null
 
   @Volatile private var currentView: LedgerView? = null
 
   init {
     viewModelScope.launch {
-      combine(view(), dialogs, permissions()) { view, ui, allowed ->
-            currentView = view
-            project(view, ui, allowed)
+      combine(source.records(contactId), dialogs, source.permissions) { records, ui, allowed ->
+            currentView = records?.ledger
+            val draft = records?.failed?.firstOrNull { it.contact.id == contactId }
+            if (draft == null) project(records?.ledger, ui, allowed)
+            else
+                ContactDetailState(
+                    loaded = true,
+                    name = draft.contact.name,
+                    phone = draft.contact.phone,
+                    whatsappCode = draft.contact.whatsappCode,
+                    category = draft.contact.category,
+                    note = draft.contact.note,
+                    syncFailure = source.refusalText(draft.code),
+                    savedDebts = draft.debts,
+                    canRegisterPayments = false,
+                    canDeleteContacts = false,
+                    confirmDiscard = ui.confirmDiscard,
+                    error = ui.error,
+                    done = ui.done,
+                )
           }
           .flowOn(Dispatchers.Default)
           .collect { mutable.value = it }
@@ -117,6 +179,25 @@ class ContactDetailViewModel(
   }
 
   fun toggleOrder() = dialogs.update { it.copy(newestFirst = !it.newestFirst) }
+
+  /** «حذف المسودة» on a refused new person's page: asks first. */
+  fun askDiscard() = dialogs.update { it.copy(confirmDiscard = true) }
+
+  fun dismissDiscard() = dialogs.update { it.copy(confirmDiscard = false) }
+
+  /** Deletes the draft's outbox rows; the person leaves the list and the page closes. */
+  fun confirmDiscard() {
+    if (!dialogs.value.confirmDiscard) return
+    dialogs.update { it.copy(confirmDiscard = false) }
+    val store = source.open() ?: return
+    viewModelScope.launch {
+      val result = store.discardDraft(contactId)
+      dialogs.update {
+        if (result.isSuccess) it.copy(done = true)
+        else it.copy(error = appContext.getString(R.string.contacts_discard_draft_failed))
+      }
+    }
+  }
 
   fun requestDelete() {
     val current = mutable.value
@@ -164,8 +245,8 @@ class ContactDetailViewModel(
     undoJob = null
     if (dialogs.value.undoName == null) return
     dialogs.update { it.copy(undoName = null) }
-    val repository = graph.current.value?.repository
-    if (repository == null) {
+    val store = source.open()
+    if (store == null) {
       dialogs.update {
         it.copy(undoName = null, error = appContext.getString(R.string.contacts_session_closed))
       }
@@ -174,8 +255,8 @@ class ContactDetailViewModel(
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the dialog the user confirmed already promised it.
     undoScope.launch {
-      repository
-          .archiveContact(contactId, ARCHIVE_REASON)
+      store
+          .archive(contactId, ARCHIVE_REASON)
           .fold(
               onSuccess = {
                 dialogs.update { current -> current.copy(undoName = null, done = true) }
@@ -191,18 +272,78 @@ class ContactDetailViewModel(
 
   fun clearError() = dialogs.update { it.copy(error = null) }
 
+  fun askDeleteMovement(movementId: String) = dialogs.update {
+    it.copy(deleting = movementId, deleteFinal = false)
+  }
+
+  fun dismissDeleteMovement() = dialogs.update { it.copy(deleting = null, deleteFinal = false) }
+
+  /** The first accept only opens the final dialog; the second one deletes. */
+  fun confirmDeleteMovement() {
+    val current = dialogs.value
+    val movementId = current.deleting ?: return
+    if (current.deleteFinal) {
+      dismissDeleteMovement()
+      deleteMovement(movementId)
+    } else {
+      dialogs.update { it.copy(deleteFinal = true) }
+    }
+  }
+
+  /**
+   * History on the server is append-only, so a delete is the ledger's own undo. A Debt is corrected
+   * to zero, refused while Payments or credit stand on it. A Payment reverses every part of the
+   * compound, then zeroes the credit Debt it left, refused once any of that credit was used.
+   */
+  private fun deleteMovement(movementId: String) {
+    val movement = mutable.value.movements.firstOrNull { it.id == movementId } ?: return
+    if (!movement.canDelete) return
+    val scope = source.open() ?: return
+    if (!scope.isOnline()) {
+      dialogs.update {
+        it.copy(error = appContext.getString(R.string.contacts_delete_entry_offline))
+      }
+      return
+    }
+    val origin = scope.origin() ?: return
+    val view = currentView
+    val at = Instant.now()
+    fun zeroed(debtId: String?) =
+        view
+            ?.debts
+            ?.firstOrNull { it.id == debtId }
+            ?.let { debt ->
+              Commands.debtCorrect(origin, at, debt.id, debt.version, Cents.ZERO, DELETE_REASON)
+            }
+    val commands =
+        if (movement.kind == MovementKind.DEBT) {
+          listOfNotNull(zeroed(movement.id))
+        } else {
+          movement.parts.map { Commands.paymentReverse(origin, at, it, DELETE_REASON) } +
+              listOfNotNull(zeroed(movement.creditDebtId))
+        }
+    dialogs.update { it.copy(deleted = it.deleted + movementId) }
+    // One short write, like the archive: the user already confirmed it, so it outlives the screen.
+    undoScope.launch {
+      scope.append(commands)
+    }
+  }
+
   fun reportError(text: String) = dialogs.update { it.copy(error = text) }
 
   /**
-   * The digits WhatsApp needs, or null when the Contact's phone is not a full international number;
-   * opening `wa.me` with a partial number sends the message nowhere.
+   * The digits `wa.me` needs: the WhatsApp code, then the phone without its 0; null without one.
    */
   fun whatsAppNumber(): String? =
-      mutable.value.phone.filter(Char::isDigit).takeIf { it.length in 7..15 }
+      mutable.value.phone
+          .takeIf { it.isNotBlank() }
+          ?.let {
+            WhatsAppPhone.waNumber(it, mutable.value.whatsappCode)
+          }
 
   suspend fun share(context: Context) {
     val view = currentView ?: return
-    val account = graph.current.value?.account
+    val account = source.account()
     val header =
         StatementHeader(
             store =
@@ -211,9 +352,7 @@ class ContactDetailViewModel(
             owner = account?.ownerName.orEmpty(),
             periodLabel = context.getString(R.string.contacts_all_periods),
         )
-    runCatching {
-      StatementExport.sharePdf(context, header, view, contactId, from = null, to = null)
-    }
+    runCatching { shareStatement(context, header, view, contactId, null, null) }
         .onFailure { failure ->
           if (failure is CancellationException) throw failure
           dialogs.update { current ->
@@ -222,20 +361,42 @@ class ContactDetailViewModel(
         }
   }
 
-  private fun view(): Flow<LedgerView?> =
-      graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
-
-  private fun permissions(): Flow<Map<String, Boolean>> =
-      graph.current.flatMapLatest { scope ->
-        val storeUserId = scope?.account?.storeUserId
-        graph.accounts.accounts.map { accounts ->
-          accounts
-              .firstOrNull { it.storeUserId == storeUserId }
-              ?.installation
-              ?.permissions
-              .orEmpty()
+  /** One row per saved payment, including its allocations and any excess kept as credit. */
+  private fun paymentRows(
+      groups: Collection<List<PaymentView>>,
+      credits: Map<Instant, DebtView>,
+      debts: Map<String, DebtView>,
+      allowedPayments: Boolean,
+      allowedRecords: Boolean,
+  ): List<ContactMovement> = groups.map { parts ->
+    val first = parts.first()
+    val credit =
+        credits[first.createdAt]?.takeIf {
+          debts.getValue(first.debtId).direction == Direction.RECEIVABLE &&
+              it.createdBy == first.createdBy
         }
-      }
+    val settled = parts.fold(Cents.ZERO) { total, part -> total + part.amount }
+    val pending = parts.any { it.pending } || credit?.pending == true
+    // An offset, or a correction, out of the credit means the delete belongs to a later step.
+    val spent = credit != null && credit.remaining < credit.amount
+    ContactMovement(
+        id = first.id,
+        kind = MovementKind.PAYMENT,
+        direction = debts.getValue(first.debtId).direction,
+        amount = settled + (credit?.amount ?: Cents.ZERO),
+        method = first.method,
+        note = first.note,
+        createdAt = first.createdAt,
+        pending = pending,
+        parts = parts.map { it.id },
+        creditDebtId = credit?.id,
+        settled = settled.takeIf { credit != null },
+        credit = credit?.amount,
+        canDelete = allowedPayments && (credit == null || allowedRecords) && !pending && !spent,
+        blockedReason =
+            if (spent) appContext.getString(R.string.contacts_delete_credit_used) else null,
+    )
+  }
 
   private fun project(
       view: LedgerView?,
@@ -244,6 +405,7 @@ class ContactDetailViewModel(
   ): ContactDetailState {
     val allowedPayments = permissions["registerPayments"] != false
     val allowedDelete = permissions["deleteContacts"] != false
+    val allowedRecords = permissions["deleteRecords"] != false
     val contact = view?.contacts?.firstOrNull { it.id == contactId }
     if (contact == null) {
       return ContactDetailState(
@@ -267,50 +429,63 @@ class ContactDetailViewModel(
         own.filter { it.direction == Direction.PAYABLE }
             .fold(Cents.ZERO) { total, debt -> total + debt.remaining }
     val ownById = own.associateBy { it.id }
+    // A credit Debt is the second half of the payment that left it, never a row of its own: the
+    // quick-add flow writes both commands at one instant, and that instant is how they pair here.
+    val credits =
+        own.filter { it.origin == DebtOrigin.OVERPAYMENT && it.amount > Cents.ZERO }
+            .associateBy { it.createdAt }
+    val visible = view.payments.filter { it.contactId == contactId && !it.reversed }
+    val groups = paymentGroups(visible, ownById)
+    val paymentTimes = visible.mapTo(HashSet()) { it.createdAt }
     val movements =
-        own.map { debt ->
-          ContactMovement(
-              id = debt.id,
-              kind = MovementKind.DEBT,
-              direction = debt.direction,
-              amount = debt.amount,
-              method = null,
-              note = debt.note,
-              createdAt = debt.createdAt,
-              pending = debt.pending || debt.hasPendingPayments,
-          )
-        } +
-            view.payments
-                .filter { it.contactId == contactId && !it.reversed }
-                .map { payment ->
-                  ContactMovement(
-                      id = payment.id,
-                      kind = MovementKind.PAYMENT,
-                      direction = ownById.getValue(payment.debtId).direction,
-                      amount = payment.amount,
-                      method = payment.method,
-                      note = payment.note,
-                      createdAt = payment.createdAt,
-                      pending = payment.pending,
-                  )
-                }
-    val ordered =
-        movements.sortedWith(
-            if (dialogs.newestFirst) {
-              compareByDescending<ContactMovement> { it.createdAt }.thenBy { it.id }
-            } else {
-              compareBy<ContactMovement> { it.createdAt }.thenBy { it.id }
+        own.filter { debt ->
+              debt.amount > Cents.ZERO &&
+                  !(debt.origin == DebtOrigin.OVERPAYMENT && debt.createdAt in paymentTimes)
             }
-        )
+            .map { debt ->
+              val pending = debt.pending || debt.hasPendingPayments
+              val blocked =
+                  when {
+                    debt.paid > Cents.ZERO -> R.string.contacts_delete_debt_paid
+                    debt.offsetted > Cents.ZERO -> R.string.contacts_delete_debt_offset
+                    else -> null
+                  }
+              ContactMovement(
+                  id = debt.id,
+                  kind = MovementKind.DEBT,
+                  direction = debt.direction,
+                  amount = debt.amount,
+                  method = null,
+                  note = debt.note,
+                  createdAt = debt.createdAt,
+                  pending = pending,
+                  offsetted = debt.offsetted.takeIf { it > Cents.ZERO },
+                  canDelete = allowedRecords && !pending && blocked == null,
+                  blockedReason = blocked?.let(appContext::getString),
+              )
+            } + paymentRows(groups, credits, ownById, allowedPayments, allowedRecords)
+    val ordered =
+        movements
+            .filter { it.id !in dialogs.deleted }
+            .sortedWith(
+                if (dialogs.newestFirst) {
+                  compareByDescending<ContactMovement> { it.createdAt }.thenBy { it.id }
+                } else {
+                  compareBy<ContactMovement> { it.createdAt }.thenBy { it.id }
+                }
+            )
     return ContactDetailState(
         loaded = true,
         name = contact.name,
         phone = contact.phone,
+        whatsappCode = contact.whatsappCode,
         category = contact.category,
         note = contact.note,
         balance = balance,
         payable = payable,
         movements = ordered,
+        deleting = ordered.firstOrNull { it.id == dialogs.deleting },
+        deleteFinal = dialogs.deleteFinal,
         newestFirst = dialogs.newestFirst,
         canRegisterPayments = allowedPayments,
         canDeleteContacts = allowedDelete,
@@ -333,6 +508,9 @@ class ContactDetailViewModel(
 
   private companion object {
     const val ARCHIVE_REASON = "حذف الزبون من التطبيق"
+
+    /** The reason a delete carries on the wire, so the log says why. */
+    const val DELETE_REASON = "حذف قيد من التطبيق"
 
     /** The Java banner's undo window. */
     const val UNDO_WINDOW_MS = 5_000L

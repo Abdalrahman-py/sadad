@@ -93,7 +93,10 @@ constructor(
                       stage,
                       clock.millis(),
                   )
-              if (reminders.record(event)) post(event)
+              // Record only what was actually shown: a denied permission must stay unrecorded so
+              // the next run can post it instead of the reminder disappearing as "already sent".
+              if (reminders.wasShown(event)) continue
+              if (post(event)) reminders.record(event)
             }
           }
           Result.success()
@@ -102,7 +105,8 @@ constructor(
         }
       }
 
-  private fun post(event: Reminder) {
+  /** Returns false when nothing was posted, so the caller can leave the reminder unsent. */
+  private fun post(event: Reminder): Boolean {
     val context = applicationContext
     val manager = context.getSystemService(NotificationManager::class.java)
     if (Build.VERSION.SDK_INT >= 26) {
@@ -119,13 +123,11 @@ constructor(
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED
     )
-        return
+        return false
     val intent =
         Intent(context, MainActivity::class.java)
             .setData(Uri.parse("sadad://reminder/${Uri.encode(event.id)}"))
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(EXTRA_STORE, event.storeUserId)
-            .putExtra(EXTRA_CONTACT, event.contactId)
     val pending =
         PendingIntent.getActivity(
             context,
@@ -133,6 +135,13 @@ constructor(
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+    // The full text stays in the shade after unlocking; the lock screen shows a generic line.
+    val public =
+        NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.reminder_public))
+            .setContentText(context.getString(R.string.reminder_public))
+            .build()
     val notification =
         NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -140,14 +149,15 @@ constructor(
             .setContentText(reminderText(context, event))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
             .build()
     manager.notify(event.id, 0, notification)
+    return true
   }
 
   companion object {
     const val CHANNEL_ID = "sadad_due_dates"
-    const val EXTRA_STORE = "storeUserId"
-    const val EXTRA_CONTACT = "contactId"
 
     fun schedule(context: Context, now: ZonedDateTime = ZonedDateTime.now()) {
       val request =

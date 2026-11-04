@@ -9,8 +9,8 @@
 //   SADAD_SEED=sadad-perf-1 \
 //   deno run --allow-env --allow-net --allow-read --allow-write tools/seed-store.ts
 //
-// The admin must set the store's debtorLimit to at least 5,000 first (the schema caps active
-// Contacts at 100 by default). The first run enrolls an installation (label seed-tool) and
+// The admin must set the store's debtorLimit to at least 5,000 first (new stores default to 200
+// active Contacts). The first run enrolls an installation (label seed-tool) and
 // waits for approval in the dashboard, then saves its id, generation and P-256 private key to
 // ~/.sadad/seed-<project ref>-<username>-<seed>.json (mode 0600, outside the repo). A later run
 // with the same project, username and seed reuses that file and skips enrolling; delete it to
@@ -149,7 +149,7 @@ export function buildCommands(seed: string, origin: Origin): SeedCommand[] {
         name: `زبون ${String(index + 1).padStart(4, "0")}`,
         // apply_one requires kind on every contact; the store this seeds is all customers.
         kind: "customer",
-        phone: `+970599${String(index + 1).padStart(6, "0")}`,
+        phone: `0599${String(index + 1).padStart(6, "0")}`,
       },
     });
   }

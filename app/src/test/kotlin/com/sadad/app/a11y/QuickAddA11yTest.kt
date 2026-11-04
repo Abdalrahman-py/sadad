@@ -8,9 +8,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.SavedStateHandle
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.quickadd.QuickAddNewPersonTags
 import com.sadad.app.feature.quickadd.QuickAddScreen
 import com.sadad.app.feature.quickadd.QuickAddTags
 import com.sadad.app.feature.quickadd.QuickAddViewModel
+import com.sadad.app.feature.quickadd.quickAddSource
 import com.sadad.app.ui.UiTestApplication
 import kotlinx.coroutines.flow.first
 import org.junit.After
@@ -72,6 +74,35 @@ class QuickAddA11yTest {
     )
   }
 
+  @Test fun newPersonStep() = newPersonStep(NORMAL_FONT)
+
+  @Test fun newPersonStepAtLargestFont() = newPersonStep(LARGEST_FONT)
+
+  @Test
+  fun theContactsSectionAsksForThePermissionWithAReachableRow() = compose.withStore { fixture ->
+    val model = modelFor(fixture, seedPerson = true)
+    compose.showAt(NORMAL_FONT) { screen(model) }
+    compose.runOnIdle { model.onQueryChange("منى") }
+    compose.waitForIdle()
+
+    compose.assertAccessible(
+        hasTestTag(QuickAddTags.ADD_NEW),
+        hasTestTag(QuickAddNewPersonTags.ALLOW_CONTACTS),
+    )
+  }
+
+  private fun newPersonStep(fontScale: Float) = compose.withStore { fixture ->
+    val model = modelFor(fixture, seedPerson = true)
+    compose.showAt(fontScale) { screen(model) }
+    compose.runOnIdle {
+      model.onQueryChange("منى")
+      model.addNewPerson()
+    }
+    compose.waitForIdle()
+
+    compose.assertAccessible(hasTestTag(QuickAddNewPersonTags.CONTINUE))
+  }
+
   private fun picker(fontScale: Float) = compose.withStore { fixture ->
     val model = modelFor(fixture, seedPerson = true)
     compose.showAt(fontScale) { screen(model) }
@@ -87,12 +118,12 @@ class QuickAddA11yTest {
       awaiting {
         checkNotNull(fixture.graph.current.value)
             .repository
-            .addContact("خالد يوسف", "+970599123482", null, null, null)
+            .addContact("خالد يوسف", "0599123482", null, null, null)
             .getOrThrow()
         fixture.settleAll()
       }
     }
-    val model = QuickAddViewModel(fixture.graph, null, false, SavedStateHandle())
+    val model = QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle())
     awaiting { model.state.first { it.loaded && it.people.isNotEmpty() } }
     return model
   }
@@ -104,6 +135,7 @@ class QuickAddA11yTest {
         payment = false,
         onClose = {},
         onOpenContact = {},
+        onOpenTrash = {},
         viewModel = model,
     )
   }

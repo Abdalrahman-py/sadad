@@ -3,9 +3,8 @@
     <string name="lock_title">التطبيق مقفل</string>
     <string name="lock_hint">أدخل رمز القفل، أو استخدم البصمة.</string>
     <string name="lock_hint_pin">أدخل رمز القفل.</string>
-    <string name="lock_pin_range">من 4 إلى 12 رقمًا</string>
+    <string name="lock_pin_range">4 أرقام</string>
     <string name="lock_pin_entered">%1$d أرقام مُدخلة</string>
-    <string name="lock_open">فتح التطبيق</string>
     <string name="lock_wrong">رمز القفل غير صحيح</string>
     <string name="lock_wait">محاولات كثيرة؛ انتظر %1$d ثانية.</string>
     <string name="lock_use_biometric">استخدام البصمة أو الوجه</string>

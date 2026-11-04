@@ -20,6 +20,10 @@ folded into `LedgerState` and projected with the outbox into `LedgerView`.
 Its `kind` (`زبون` / `مورد`, `ContactKind`) is required and decides a Debt's direction
 (`ContactKind.debtDirection`); it is editable and existing Debts keep their direction. Balances are
 derived, never stored: `LedgerView.net` is open receivable minus open payable for the person.
+Its phone is optional and stored as owners write it: a 10-digit mobile number, `05` plus 8 digits
+(`WhatsAppPhone.parse` reads anything typed or imported into that form). Its WhatsApp code
+(`whatsappCode`, `970` or `972`, default `970`) is a separate field; the `wa.me` link is the code
+plus the number without its leading 0.
 
 **Debt** (`دين`) — an amount owed in one direction (`Direction.RECEIVABLE` / `receivable` = the
 contact owes the store, `Direction.PAYABLE` / `payable` = the store owes the contact; `sadid_debts`,
@@ -28,6 +32,18 @@ contact owes the store, `Direction.PAYABLE` / `payable` = the store owes the con
 **Payment** (`دفعة`) — a settlement against a debt (`sadid_payments`, `PaymentRow`, `PaymentView`).
 Can be reversed (`sadid_reversals`); a reversed payment stays listed but stops counting toward the
 debt's remaining balance.
+
+**Credit** (`رصيد له`) — money the store holds for a customer because they paid more than they owed.
+It is a `payable` Debt whose `origin` is `overpayment` (`DebtOrigin.OVERPAYMENT`, `sadid_debts.origin`,
+the column default `manual` for every Debt typed in by hand); `PaymentAllocation.allocateWithCredit`
+splits a payment into the parts that settle Debts plus the excess that becomes the credit.
+
+**Offset** (`خصم من الرصيد`) — the one command that spends a credit: `debt.offset`
+(`CommandType.DEBT_OFFSET`, payload `DebtOffset { receivableDebtId, payableDebtId, amountCents }`,
+row `sadid_offsets`, `OffsetRow`). Both Debts belong to the same Contact and face opposite ways, the
+amount is at most the remaining of each, and an offset is **not cash**: Activity's «تحصيل» and «دُفع»
+and the payment counts never include it. A Debt's remaining is `amount − payments − offsets`
+(`DebtView.offsetted`).
 
 **Installation** — a device identity scoped to project and store: a non-exportable P-256 key in the
 Android Keystore plus a stable UUID (`installations`, `Origin`). Every mobile ledger request carries a

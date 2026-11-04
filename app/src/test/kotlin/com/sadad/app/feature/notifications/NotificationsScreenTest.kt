@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -22,11 +23,16 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class NotificationsScreenTest {
-  @get:Rule val compose = createComposeRule()
-  @get:Rule val temporary = TemporaryFolder()
+  private val compose = createComposeRule()
+  private val temporary = TemporaryFolder()
+
+  // JUnit does not order two @Rule fields; the folder must outlive the composition that writes it.
+  @get:Rule val rules: RuleChain = RuleChain.outerRule(temporary).around(compose)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-  @After fun close() = scope.cancel()
+  // Waits out a write still in flight, which would otherwise rename into a deleted folder and fail
+  // the test with "Unable to rename … .tmp".
+  @After fun close() = runBlocking { scope.coroutineContext.job.cancelAndJoin() }
 
   @Test
   fun emptyInboxExplainsThatThereAreNoDueReminders() {
@@ -52,7 +58,11 @@ class NotificationsScreenTest {
         )
     runBlocking { reminders.record(reminder) }
     compose.setContent { SadadTheme { NotificationsScreen(reminders, "store") } }
-    compose.waitUntil { compose.onAllNodesWithText("سامي").fetchSemanticsNodes().isNotEmpty() }
+    // The inbox arrives from DataStore on a coroutine; a 1 s default is enough on a fast machine
+    // and not on a loaded CI runner, so wait as long as the undo timer below does.
+    compose.waitUntil(10_000) {
+      compose.onAllNodesWithText("سامي").fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithText("تحديد الإشعار كمكتمل").performClick()
     compose.onNodeWithText("تم حذف الإشعار ونقله إلى سلة المحذوفات.").assertIsDisplayed()
     compose.onNodeWithText("تراجع").performClick()

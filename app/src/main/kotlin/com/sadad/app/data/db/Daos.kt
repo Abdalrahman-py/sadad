@@ -11,9 +11,21 @@ import kotlinx.coroutines.flow.Flow
 interface ContactDao {
   @Query("SELECT * FROM contacts ORDER BY createdSeq") suspend fun all(): List<ContactEntity>
 
+  @Query("SELECT * FROM contacts WHERE id = :id") suspend fun byId(id: String): ContactEntity?
+
+  @Query("SELECT * FROM contacts WHERE id IN (:ids)")
+  suspend fun byIds(ids: List<String>): List<ContactEntity>
+
+  @Query("SELECT * FROM contacts WHERE archived = 1 ORDER BY createdSeq")
+  suspend fun archived(): List<ContactEntity>
+
+  @Query("SELECT name FROM contacts WHERE id = :id") suspend fun name(id: String): String?
+
   @Upsert suspend fun upsert(row: ContactEntity)
 
   @Query("SELECT createdSeq FROM contacts WHERE id = :id") suspend fun createdSeq(id: String): Long?
+
+  @Query("DELETE FROM contacts WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
 
   @Query("DELETE FROM contacts") suspend fun clear()
 }
@@ -22,9 +34,29 @@ interface ContactDao {
 interface DebtDao {
   @Query("SELECT * FROM debts ORDER BY createdSeq") suspend fun all(): List<DebtEntity>
 
+  @Query("SELECT * FROM debts WHERE contactId = :contactId ORDER BY createdSeq")
+  suspend fun ofContact(contactId: String): List<DebtEntity>
+
+  /** The debts created in `[from, to)` and the debts of the payments created in it, in epoch ms. */
+  @Query(
+      """
+      SELECT * FROM debts
+      WHERE (createdAt >= :from AND createdAt < :to)
+      OR id IN (SELECT debtId FROM payments WHERE createdAt >= :from AND createdAt < :to)
+      """
+  )
+  suspend fun inPeriod(from: Long, to: Long): List<DebtEntity>
+
+  @Query("SELECT * FROM debts WHERE id IN (:ids)")
+  suspend fun byIds(ids: List<String>): List<DebtEntity>
+
+  @Query("SELECT contactId FROM debts WHERE id = :id") suspend fun contactId(id: String): String?
+
   @Upsert suspend fun upsert(row: DebtEntity)
 
   @Query("SELECT createdSeq FROM debts WHERE id = :id") suspend fun createdSeq(id: String): Long?
+
+  @Query("DELETE FROM debts WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
 
   @Query("DELETE FROM debts") suspend fun clear()
 }
@@ -33,11 +65,57 @@ interface DebtDao {
 interface PaymentDao {
   @Query("SELECT * FROM payments ORDER BY createdSeq") suspend fun all(): List<PaymentEntity>
 
+  /**
+   * The payments on one person's debts; the join is by contact, so it scales past the variable
+   * limit.
+   */
+  @Query(
+      "SELECT p.* FROM payments p JOIN debts d ON d.id = p.debtId WHERE d.contactId = :contactId ORDER BY p.createdSeq"
+  )
+  suspend fun ofContact(contactId: String): List<PaymentEntity>
+
+  @Query("SELECT * FROM payments WHERE debtId IN (:debtIds)")
+  suspend fun onDebts(debtIds: List<String>): List<PaymentEntity>
+
+  @Query("SELECT debtId FROM payments WHERE id = :id") suspend fun debtId(id: String): String?
+
   @Upsert suspend fun upsert(row: PaymentEntity)
 
   @Query("SELECT createdSeq FROM payments WHERE id = :id") suspend fun createdSeq(id: String): Long?
 
+  @Query("DELETE FROM payments WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
+
   @Query("DELETE FROM payments") suspend fun clear()
+}
+
+@Dao
+interface OffsetDao {
+  @Query("SELECT * FROM offsets ORDER BY createdSeq") suspend fun all(): List<OffsetEntity>
+
+  /** The offsets on either side of one person's debts, both sides joined by contact id. */
+  @Query(
+      """
+      SELECT o.* FROM offsets o
+      JOIN debts dr ON dr.id = o.receivableDebtId
+      JOIN debts dp ON dp.id = o.payableDebtId
+      WHERE dr.contactId = :contactId OR dp.contactId = :contactId
+      ORDER BY o.createdSeq
+      """
+  )
+  suspend fun ofContact(contactId: String): List<OffsetEntity>
+
+  @Query(
+      "SELECT * FROM offsets WHERE receivableDebtId IN (:debtIds) OR payableDebtId IN (:debtIds)"
+  )
+  suspend fun onDebts(debtIds: List<String>): List<OffsetEntity>
+
+  @Upsert suspend fun upsert(row: OffsetEntity)
+
+  @Query("SELECT createdSeq FROM offsets WHERE id = :id") suspend fun createdSeq(id: String): Long?
+
+  @Query("DELETE FROM offsets WHERE id IN (:ids)") suspend fun delete(ids: List<String>)
+
+  @Query("DELETE FROM offsets") suspend fun clear()
 }
 
 @Dao
@@ -62,6 +140,13 @@ interface EventDao {
   suspend fun trim(keep: Int)
 
   @Query("DELETE FROM events") suspend fun clear()
+}
+
+@Dao
+interface InstallationNameDao {
+  @Upsert suspend fun upsert(names: List<InstallationNameEntity>)
+
+  @Query("SELECT * FROM installation_names") fun observe(): Flow<List<InstallationNameEntity>>
 }
 
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */

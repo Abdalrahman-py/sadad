@@ -9,6 +9,7 @@ import com.sadad.app.feature.auth.AuthTags
 import com.sadad.app.feature.auth.LoginScreen
 import com.sadad.app.feature.auth.LoginViewModel
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.auth.authSource
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import org.junit.Rule
@@ -31,7 +32,7 @@ class AuthA11yTest {
 
   private fun login(fontScale: Float) {
     TestGraph.unsigned().use { fixture ->
-      val model = LoginViewModel(fixture.graph, SavedStateHandle(), context)
+      val model = LoginViewModel(fixture.graph.authSource(), SavedStateHandle(), context)
       compose.showAt(fontScale) { LoginScreen(viewModel = model, onNavigate = {}) }
       compose.assertAccessible(
           hasTestTag(AuthTags.USERNAME),

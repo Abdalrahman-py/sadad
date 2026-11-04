@@ -44,7 +44,8 @@ class LedgerCommandTest {
             origin,
             Instant.parse(contact.text("createdAt")),
             name = "أبو خالد",
-            phone = "+970599123456",
+            phone = "0599123456",
+            whatsappCode = "970",
             entityId = contact.text("entityId"),
             operationId = contact.text("operationId"),
         ),
@@ -104,7 +105,7 @@ class LedgerCommandTest {
   fun fixtureCommandsRoundTripThroughTypedPayloads() {
     val expected =
         listOf(
-            ContactCreate(name = "أبو خالد", phone = "+970599123456"),
+            ContactCreate(name = "أبو خالد", phone = "0599123456", whatsappCode = "970"),
             DebtCreate(
                 contactId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
                 direction = Direction.RECEIVABLE,
@@ -147,7 +148,8 @@ class LedgerCommandTest {
             contactId,
             1,
             name = "سامي",
-            phone = " +970599000000 ",
+            phone = " 0599000000 ",
+            whatsappCode = "972",
             note = " زبون ",
         )
     assertEquals(
@@ -156,7 +158,8 @@ class LedgerCommandTest {
                 "contactId" to JsonPrimitive(contactId),
                 "name" to JsonPrimitive("سامي"),
                 "kind" to JsonPrimitive("customer"),
-                "phone" to JsonPrimitive("+970599000000"),
+                "phone" to JsonPrimitive("0599000000"),
+                "whatsappCode" to JsonPrimitive("972"),
                 "note" to JsonPrimitive("زبون"),
             )
         ),
@@ -236,7 +239,6 @@ class LedgerCommandTest {
     val builders: List<(Cents) -> LedgerCommand> =
         listOf(
             { Commands.debtCreate(origin, at, contactId, Direction.RECEIVABLE, it) },
-            { Commands.debtCorrect(origin, at, debtId, 1, it, "تصحيح") },
             { Commands.paymentCreate(origin, at, debtId, it, PaymentMethod.CASH) },
         )
     for (build in builders) {
@@ -248,6 +250,15 @@ class LedgerCommandTest {
         assertFalse(amount.isString)
         assertEquals(good.value, amount.long)
       }
+    }
+    // A correction may zero an unused Debt, but never goes negative or above the wire range.
+    for (bad in listOf(Cents(-1), Cents.MAX_WIRE + Cents(1))) {
+      assertThrows(IllegalArgumentException::class.java) {
+        Commands.debtCorrect(origin, at, debtId, 1, bad, "تصحيح")
+      }
+    }
+    for (good in listOf(Cents(0), Cents(1), Cents.MAX_WIRE)) {
+      Commands.debtCorrect(origin, at, debtId, 1, good, "تصحيح")
     }
   }
 
@@ -334,7 +345,9 @@ class LedgerCommandTest {
             "contact.update",
             "contact.archive",
             "contact.restore",
+            "contact.delete",
             "debt.create",
+            "debt.offset",
             "debt.correct",
             "payment.create",
             "payment.reverse",
@@ -350,7 +363,7 @@ class LedgerCommandTest {
         names(PaymentMethod.entries.toTypedArray()) { serialName(PaymentMethod.serializer(), it) },
     )
     assertEquals(
-        setOf("contact.create", "debt.create", "payment.create"),
+        setOf("contact.create", "debt.create", "debt.offset", "payment.create"),
         CommandType.entries
             .filter { it.offline }
             .map { serialName(CommandType.serializer(), it) }

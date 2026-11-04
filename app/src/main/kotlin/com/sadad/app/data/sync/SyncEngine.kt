@@ -1,5 +1,6 @@
 package com.sadad.app.data.sync
 
+import com.sadad.app.data.db.toEntity
 import com.sadad.app.data.ledger.LedgerReset
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
@@ -42,6 +43,14 @@ class SyncEngine(
 
   fun status(storeUserId: String): StateFlow<SyncStatus> =
       progress(storeUserId).status.asStateFlow()
+
+  /**
+   * A pass that died outside [pass]'s own catches leaves the status on `Running`, which the visible
+   * poll reads as "do not ask again". Clear it so the next poll retries.
+   */
+  fun aborted(storeUserId: String) {
+    progress(storeUserId).status.compareAndSet(SyncStatus.Running, SyncStatus.Retry)
+  }
 
   suspend fun pass(scope: StoreScope): SyncStatus = scope.runWhileOpen {
     val id = scope.account.storeUserId
@@ -280,6 +289,7 @@ class SyncEngine(
         val page = call { api.changes(it, scope.signer, cursor, 500) }
         try {
           scope.repository.applyPage(page)
+          scope.database.installationNameDao().upsert(page.installations.map { it.toEntity() })
           scope.setEpoch(page.epoch)
         } catch (changed: LedgerReset) {
           scope.setEpoch(null)

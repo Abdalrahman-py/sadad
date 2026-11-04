@@ -7,22 +7,21 @@ import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
-import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactUpdate
-import com.sadad.ledger.DebtCreate
-import com.sadad.ledger.Direction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -35,6 +34,42 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class ContactFormViewModelTest {
+  @Test
+  fun aSuggestedNameDoesNotOverwriteTheRestoredDraft() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model =
+          ContactFormViewModel(
+              store.repository,
+              STORE_A,
+              context,
+              SavedStateHandle(mapOf("name" to "إبراهيم أحمد")),
+              initialName = "إبراهيم",
+          )
+      assertEquals("إبراهيم أحمد", model.state.value.name)
+    }
+  }
+
+  @Test
+  fun theShortPhoneFromTheReportedCaseCannotCreateAPerson() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val model =
+          ContactFormViewModel(
+              store.repository,
+              STORE_A,
+              context,
+              SavedStateHandle(),
+              initialName = "إبراهيم",
+          )
+      model.onPhoneChange("059669696")
+      model.saveOnly()
+      assertNotNull(model.state.value.phoneError)
+      assertNull(model.state.value.savedContactId)
+      assertTrue(fixture.rows().isEmpty())
+    }
+  }
+
   @get:Rule val main = MainDispatcherRule()
 
   private val context: Context = ApplicationProvider.getApplicationContext()
@@ -57,10 +92,9 @@ class ContactFormViewModelTest {
       model.onNameChange("   ")
       model.onPhoneChange("0599123456")
 
-      model.save()
+      model.saveOnly()
 
       assertNotNull(model.state.value.nameError)
-      assertNull(model.state.value.review)
       assertTrue(fixture.rows().isEmpty())
     }
   }
@@ -71,7 +105,7 @@ class ContactFormViewModelTest {
       val model = fixture.model()
       model.onNameChange("س".repeat(121))
 
-      model.save()
+      model.saveOnly()
 
       assertNotNull(model.state.value.nameError)
       assertTrue(fixture.rows().isEmpty())
@@ -85,13 +119,45 @@ class ContactFormViewModelTest {
       model.onNameChange("سامي")
       model.onPhoneChange("0599123456")
 
-      model.save()
-
-      assertEquals("+970599123456", model.state.value.review?.phone)
-      model.confirm()
+      model.saveOnly()
       model.state.first { it.savedContactId != null }
+
       val contact = fixture.rows().single { it.type == CommandType.CONTACT_CREATE }
-      assertEquals("+970599123456", (contact.command.payload() as ContactCreate).phone)
+      assertEquals("0599123456", (contact.command.payload() as ContactCreate).phone)
+      assertEquals("970", (contact.command.payload() as ContactCreate).whatsappCode)
+    }
+  }
+
+  @Test
+  fun theChosenCodeIsSentApartFromTheTenDigits() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+      model.onNameChange("سامي")
+      model.onPrefixChange("972")
+      model.onPhoneChange("+972 599 123 456")
+
+      model.saveOnly()
+      model.state.first { it.savedContactId != null }
+
+      val payload =
+          fixture.rows().single { it.type == CommandType.CONTACT_CREATE }.command.payload()
+              as ContactCreate
+      assertEquals("0599123456", payload.phone)
+      assertEquals("972", payload.whatsappCode)
+    }
+  }
+
+  @Test
+  fun aTypedCodeThatDisagreesWithTheChipIsRefused() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+      model.onNameChange("سامي")
+      model.onPhoneChange("+972599123456")
+
+      model.saveOnly()
+
+      assertEquals("مقدمة الرقم لا تطابق الاختيار.", model.state.value.phoneError)
+      assertTrue(fixture.rows().isEmpty())
     }
   }
 
@@ -102,89 +168,55 @@ class ContactFormViewModelTest {
       model.onNameChange("سامي")
       model.onPhoneChange("12345")
 
-      model.save()
+      model.saveOnly()
 
       assertEquals(
-          "أدخل رقم الجوال من 9 أرقام بعد المقدمة، أو 10 أرقام تبدأ بصفر.",
+          "أدخل رقم جوال من 10 أرقام يبدأ بـ05.",
           model.state.value.phoneError,
       )
-      assertNull(model.state.value.review)
       assertTrue(fixture.rows().isEmpty())
     }
   }
 
   @Test
-  fun theFirstDebtQueuesOneContactAndOneDebtThatDependsOnIt() = runTest {
+  fun savingAndRecordingQueuesOnlyTheContactWithNoDebtAndMarksTheRecordEnding() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = fixture.model()
       model.onNameChange("سامي")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("150.5")
-      model.onDebtDueChange("2026-11-01")
+      model.onPhoneChange("0599123456")
 
-      model.save()
-      assertNull(
-          "nothing is queued before the review is confirmed",
-          model.state.value.savedContactId,
-      )
-      assertTrue(fixture.rows().isEmpty())
-      assertEquals(Cents(15_050), model.state.value.review?.amount)
-
-      model.confirm()
+      model.saveAndRecord()
       model.state.first { it.savedContactId != null }
 
+      val state = model.state.value
+      assertTrue(state.record)
       val rows = fixture.rows()
-      val contact = rows.single { it.type == CommandType.CONTACT_CREATE }
-      val debt = rows.single { it.type == CommandType.DEBT_CREATE }
-      val payload = debt.command.payload() as DebtCreate
-      assertEquals(15_050L, payload.amountCents.value)
-      assertEquals(Direction.RECEIVABLE, payload.direction)
-      assertEquals(contact.entityId, payload.contactId)
-      assertEquals("2026-11-01", payload.dueDate)
-      assertEquals(listOf(contact.operationId), debt.command.dependsOn)
+      assertEquals(listOf(CommandType.CONTACT_CREATE), rows.map { it.type })
     }
   }
 
   @Test
-  fun aSupplierOpeningBalanceIsQueuedPayable() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val model = fixture.model()
-      model.onNameChange("مخبز الأمل")
-      model.onKindChange(ContactKind.SUPPLIER)
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("100")
-
-      model.save()
-      model.confirm()
-      model.state.first { it.savedContactId != null }
-
-      val debt = fixture.rows().single { it.type == CommandType.DEBT_CREATE }
-      assertEquals(Direction.PAYABLE, (debt.command.payload() as DebtCreate).direction)
-    }
-  }
-
-  @Test
-  fun aZeroFirstDebtIsRefused() = runTest {
+  fun savingOnlyQueuesTheContactAndKeepsThePersonsPageEnding() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = fixture.model()
       model.onNameChange("سامي")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("0")
+      model.onPhoneChange("0599123456")
 
-      model.save()
+      model.saveOnly()
+      val state = model.state.first { it.savedContactId != null }
 
-      assertEquals("يجب أن يكون مبلغ الدين أكبر من صفر.", model.state.value.debtError)
-      assertNull(model.state.value.review)
-      assertTrue(fixture.rows().isEmpty())
+      assertFalse(state.record)
+      val rows = fixture.rows()
+      assertEquals(listOf(CommandType.CONTACT_CREATE), rows.map { it.type })
     }
   }
 
   @Test
-  fun aPhoneAnotherVisibleContactHasOffersThatContactAndQueuesNothing() = runTest {
+  fun aDuplicatePhoneOffersThatContactAndQueuesNothing() = runTest {
     TestGraph.signedIn().use { fixture ->
       var existing: String? = null
       fixture.seed {
-        existing = addContact("سامي", "+970599123456", "عميل", null, null).getOrThrow()
+        existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow()
       }
       val repository = checkNotNull(fixture.graph.current.value).repository
       repository.view.first { view -> view?.contacts?.any { it.id == existing } == true }
@@ -192,10 +224,10 @@ class ContactFormViewModelTest {
       val model = fixture.model()
       model.onNameChange("شخص آخر")
       model.onPhoneChange("0599123456")
-      model.save()
+      model.saveOnly()
 
       assertEquals(existing, model.state.value.duplicate?.contactId)
-      assertNull(model.state.value.review)
+      assertNull(model.state.value.savedContactId)
       assertEquals(1, fixture.rows().size)
     }
   }
@@ -208,12 +240,9 @@ class ContactFormViewModelTest {
       first.onNameChange("سامي")
       first.onPrefixChange("972")
       first.onPhoneChange("0501234567")
+      first.onKindChange(ContactKind.SUPPLIER)
       first.onCategoryChange("مورد")
       first.onNoteChange("ملاحظة")
-      first.onFirstDebtChange(true)
-      first.onDebtAmountChange("20")
-      first.onDebtDueChange("2026-12-01")
-      first.onDebtNoteChange("سبب الدين")
 
       val second = fixture.model(saved = saved)
 
@@ -221,22 +250,20 @@ class ContactFormViewModelTest {
         assertEquals("سامي", name)
         assertEquals("972", prefix)
         assertEquals("0501234567", phone)
+        assertEquals(ContactKind.SUPPLIER, kind)
         assertEquals("مورد", category)
         assertEquals("ملاحظة", note)
-        assertTrue(withFirstDebt)
-        assertEquals("20", debtAmount)
-        assertEquals("2026-12-01", debtDue)
-        assertEquals("سبب الدين", debtNote)
       }
     }
   }
 
   @Test
-  fun editModeQueuesOneContactUpdateWithTheViewsVersion() = runTest {
+  fun editModeSavesDirectlyWithNoReviewAndQueuesTheUpdateWithTheViewsVersion() = runTest {
     TestGraph.signedIn().use { fixture ->
       var existing: String? = null
       fixture.seed {
-        existing = addContact("سامي", "+970599123456", "عميل", null, null).getOrThrow()
+        existing =
+            addContact("سامي", "0599123456", "عميل", null, null, whatsappCode = "972").getOrThrow()
       }
       fixture.settleAll()
       val repository = checkNotNull(fixture.graph.current.value).repository
@@ -248,18 +275,19 @@ class ContactFormViewModelTest {
 
       val model = fixture.model(contactId = existing)
       model.state.first { it.name == "سامي" }
-      assertEquals("599123456", model.state.value.phone)
+      assertEquals("0599123456", model.state.value.phone)
+      assertEquals("972", model.state.value.prefix)
       model.onNameChange("سامي الجديد")
       model.save()
-      assertTrue(model.state.value.review != null)
 
-      model.confirm()
-      model.state.first { it.savedContactId != null }
-
+      val state = model.state.first { it.savedContactId != null }
+      assertFalse(state.busy)
       val rows = fixture.rows()
       val update = rows.single { it.type == CommandType.CONTACT_UPDATE }
       assertEquals(contact.version, update.command.expectedVersion)
       assertEquals("سامي الجديد", (update.command.payload() as ContactUpdate).name)
+      assertEquals("0599123456", (update.command.payload() as ContactUpdate).phone)
+      assertEquals("972", (update.command.payload() as ContactUpdate).whatsappCode)
     }
   }
 
@@ -268,7 +296,7 @@ class ContactFormViewModelTest {
     TestGraph.signedIn().use { fixture ->
       var existing: String? = null
       fixture.seed {
-        existing = addContact("سامي", "+970599123456", "عميل", null, null).getOrThrow()
+        existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow()
       }
       fixture.settleAll()
       val saved = SavedStateHandle()
@@ -279,7 +307,7 @@ class ContactFormViewModelTest {
       val second = fixture.model(contactId = existing, saved = saved)
 
       assertEquals("سامي الجديد", second.state.value.name)
-      assertEquals("599123456", second.state.value.phone)
+      assertEquals("0599123456", second.state.value.phone)
     }
   }
 
@@ -306,26 +334,10 @@ class ContactFormViewModelTest {
       model.state.first { it.name == "سامي" }
       model.onNameChange("سامي الجديد")
       model.save()
-      model.confirm()
 
       val state = model.state.first { !it.busy && it.message != null }
       assertEquals("لا يمكن الحفظ بلا اتصال الآن؛ اتصل بالإنترنت.", state.message)
       assertTrue(fixture.rows().isEmpty())
-    }
-  }
-
-  @Test
-  fun aRefusalClearsTheReviewAndShowsTheReason() = runTest {
-    TestGraph.signedIn().use { fixture ->
-      val model = fixture.model()
-      model.onNameChange("سامي")
-      model.onFirstDebtChange(true)
-      model.onDebtAmountChange("abc")
-
-      model.save()
-
-      assertEquals("أدخل مبلغاً صحيحاً.", model.state.value.debtError)
-      assertNull(model.state.value.review)
     }
   }
 
@@ -344,7 +356,6 @@ class ContactFormViewModelTest {
       model.state.first { it.kind == ContactKind.SUPPLIER }
       model.onNameChange("شركة النور الجديدة")
       model.save()
-      model.confirm()
       model.state.first { it.savedContactId != null }
 
       val update = fixture.rows().single { it.type == CommandType.CONTACT_UPDATE }
@@ -353,17 +364,69 @@ class ContactFormViewModelTest {
   }
 
   @Test
-  fun creatingAContactSendsTheCustomerKindUntilQuickAddReplacesIt() = runTest {
+  fun creatingAContactSendsTheChosenKind() = runTest {
     TestGraph.signedIn().use { fixture ->
       val model = fixture.model()
-      model.onNameChange("سامي")
+      model.onNameChange("مخبز الأمل")
+      model.onKindChange(ContactKind.SUPPLIER)
 
-      model.save()
-      model.confirm()
+      model.saveOnly()
       model.state.first { it.savedContactId != null }
 
       val contact = fixture.rows().single { it.type == CommandType.CONTACT_CREATE }
-      assertEquals(ContactKind.CUSTOMER, (contact.command.payload() as ContactCreate).kind)
+      assertEquals(ContactKind.SUPPLIER, (contact.command.payload() as ContactCreate).kind)
+    }
+  }
+
+  @Test
+  fun aPickedContactFillsTheNamePhoneAndCode() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+
+      model.onPicked(PickedContact.New("سامي", "0599123456", "972"))
+
+      val state = model.state.value
+      assertEquals("سامي", state.name)
+      assertEquals("0599123456", state.phone)
+      assertEquals("972", state.prefix)
+      assertNull(state.openContactId)
+      assertFalse(state.openTrash)
+    }
+  }
+
+  @Test
+  fun aPickedNameOnlyContactLeavesThePhoneEmptyOnTheDefaultCode() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+
+      model.onPicked(PickedContact.New("نمر", null, "970"))
+
+      val state = model.state.value
+      assertEquals("نمر", state.name)
+      assertEquals("", state.phone)
+      assertEquals("970", state.prefix)
+      assertNull(state.phoneError)
+    }
+  }
+
+  @Test
+  fun anExistingPickOpensThatPersonAndAnArchivedPickOpensTheTrash() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val model = fixture.model()
+
+      model.onPicked(PickedContact.Existing("c9"))
+      assertEquals("c9", model.state.value.openContactId)
+      assertFalse(model.state.value.openTrash)
+
+      model.onPageHandled()
+      assertNull(model.state.value.openContactId)
+
+      model.onPicked(PickedContact.Archived("t1"))
+      assertTrue(model.state.value.openTrash)
+      assertNull(model.state.value.openContactId)
+
+      model.onPageHandled()
+      assertFalse(model.state.value.openTrash)
     }
   }
 }

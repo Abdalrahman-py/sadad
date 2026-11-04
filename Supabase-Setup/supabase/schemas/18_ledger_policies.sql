@@ -7,7 +7,7 @@ create policy audited_support_insert on sadid_private.admin_access_events
   );
 
 do $$ declare t text; begin
-  foreach t in array array['sadid_ledger_state', 'sadid_contacts', 'sadid_debts', 'sadid_payments', 'sadid_adjustments', 'sadid_reversals', 'sadid_operations', 'sadid_events'] loop
+  foreach t in array array['sadid_ledger_state', 'sadid_contacts', 'sadid_debts', 'sadid_payments', 'sadid_offsets', 'sadid_adjustments', 'sadid_reversals', 'sadid_operations', 'sadid_events'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('alter table public.%I force row level security', t);
     execute format('revoke all on public.%I from public, anon, authenticated, service_role', t);

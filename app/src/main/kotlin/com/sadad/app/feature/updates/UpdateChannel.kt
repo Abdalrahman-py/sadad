@@ -16,16 +16,30 @@ internal enum class UpdateChannel(
     val release: String,
     /** The name this channel's `update.json` must carry. */
     val channel: String,
+    /**
+     * `latest` is an alias, not a tag. Its bytes are at `releases/latest/download/<name>`; the tag
+     * shape with `latest` in it (`releases/latest/download` reversed) answers `404` even for a
+     * release that is published, which is how the first product release nearly shipped unable to
+     * update itself. `team-latest` is a real tag, so the team channel keeps the tag shape.
+     */
+    private val latestAlias: Boolean = false,
 ) {
-  STABLE(release = "latest", channel = "stable"),
+  STABLE(release = "latest", channel = "stable", latestAlias = true),
   TEAM(release = "team-latest", channel = "team");
 
   val manifestUrl: String
     get() = assetUrl(MANIFEST_ASSET)
 
-  /** `releases/<release>/download/<name>` is the same URL whether or not the asset exists yet. */
+  /** The download URL for an asset of this channel's release, with or without the alias. */
   fun assetUrl(name: String): String =
-      "https://github.com/${BuildConfig.UPDATE_REPO}/releases/$release/download/$name"
+      if (latestAlias) {
+        "https://github.com/${BuildConfig.UPDATE_REPO}/releases/latest/download/$name"
+      } else {
+        "https://github.com/${BuildConfig.UPDATE_REPO}/releases/$release/download/$name"
+      }
+
+  /** The API path that lists this channel's release: the alias, or a real tag. */
+  fun releaseApiPath(): String = if (latestAlias) "releases/latest" else "releases/tags/$release"
 
   /** An API path under the repository: `releases/tags/<tag>` or `releases/assets/<id>`. */
   fun apiUrl(path: String): String = "https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/$path"

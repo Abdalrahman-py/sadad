@@ -1,5 +1,6 @@
 package com.sadad.app.data.ledger
 
+import app.cash.turbine.test
 import com.sadad.app.data.crypto.Sealed
 import com.sadad.app.data.db.Events
 import com.sadad.ledger.Commands
@@ -8,8 +9,11 @@ import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.ReceiptStatus
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -19,6 +23,31 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class OutboxTest : LedgerTestCase() {
+
+  @Test
+  fun acceptedDeletionStaysPendingUntilItsChangesPageRemovesTheContact() = runTest {
+    val contact = contactCommand()
+    val archive = Commands.contactArchive(Events.origin, Events.at(1), contact.entityId, 1, "سلة")
+    val before =
+        LedgerState.EMPTY.apply(
+            Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
+        )
+    val deletion =
+        Commands.contactDelete(
+            Events.origin,
+            Events.at(2),
+            contact.entityId,
+            2,
+            "نهائي",
+            entityId = contact.entityId,
+        )
+    outbox.append(listOf(deletion))
+    outbox.settle(listOf(receiptOf(deletion, ReceiptStatus.ACCEPTED, sequence = 3)))
+    outbox.compact(before)
+    assertEquals(1, outbox.snapshot().size)
+    outbox.compact(before.apply(Events.page(listOf(Events.accepted(deletion, 3)))))
+    assertTrue(outbox.snapshot().isEmpty())
+  }
 
   @Test
   fun appendSealsThePayloadAndDoesNotContainTheName() = runTest {
@@ -125,6 +154,29 @@ class OutboxTest : LedgerTestCase() {
     assertEquals(OutboxState.QUEUED, row.state)
     assertEquals(command, row.command)
     assertEquals(command.type, row.type)
+  }
+
+  /**
+   * Room re-emits after any write to the table, even one that changes no row's words. The flow of
+   * [OutboxRow]s must not repeat such an emission: every idle re-emit re-runs the full per-screen
+   * projection.
+   */
+  @Test
+  fun aWriteThatLeavesEveryRowEqualDoesNotEmitAgain() = runTest {
+    val command = contactCommand()
+    outbox.append(listOf(command))
+
+    outbox.rows.test {
+      awaitItem()
+      // The first stamp is a real change: the row grows a recovery permit.
+      db.outboxDao().setRecoveryPermit(listOf(command.operationId), "permit-1")
+      awaitItem()
+      // The second stamp writes the same words: every row still equals itself.
+      db.outboxDao().setRecoveryPermit(listOf(command.operationId), "permit-1")
+      // Real time: give the equal emission somewhere to (wrongly) arrive.
+      withContext(Dispatchers.Default) { delay(300) }
+      expectNoEvents()
+    }
   }
 
   @Test

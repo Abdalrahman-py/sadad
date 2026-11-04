@@ -26,6 +26,27 @@ class DueRemindersTest {
   @After fun close() = scope.cancel()
 
   @Test
+  fun findAnswersTheRecordedReminderAndUnknownIdsHaveNone() = runTest {
+    val reminders = DueReminders(File(temporary.root, "reminders.preferences_pb"), scope)
+    val event =
+        Reminder(
+            "store",
+            "debt",
+            "contact",
+            "سامي",
+            "المتجر",
+            Cents(12000),
+            "2026-10-17",
+            "today",
+            1,
+        )
+    assertTrue(reminders.record(event))
+
+    assertEquals(event, reminders.find(event.id))
+    assertNull(reminders.find("store:debt-x:2026-10-17:today"))
+  }
+
+  @Test
   fun sentKeysStayUniqueWhileRemindersMoveBetweenInboxAndTrash() = runTest {
     val reminders = DueReminders(File(temporary.root, "reminders.preferences_pb"), scope)
     val event =

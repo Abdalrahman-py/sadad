@@ -21,22 +21,23 @@ class PasswordChangeViewModelTest {
 
   private val context: Context = ApplicationProvider.getApplicationContext()
 
-  private fun viewModel(fixture: TestGraph) = PasswordChangeViewModel(fixture.graph, context)
+  private fun viewModel(fixture: TestGraph) =
+      PasswordChangeViewModel(fixture.graph.authSource(), context)
 
   @Test
-  fun aNewPasswordOfElevenCharactersIsRefusedWithoutARequest() = runTest {
+  fun aNewPasswordOfSevenCharactersIsRefusedWithoutARequest() = runTest {
     TestGraph.unsigned().use { fixture ->
       fixture.signIn(STORE_A, forcePasswordChange = true)
       val requests = fixture.server.requestCount
       val model = viewModel(fixture)
       model.onCurrentChange("old-password-long")
-      model.onNewChange("12345678901")
-      model.onConfirmChange("12345678901")
+      model.onNewChange("1234567")
+      model.onConfirmChange("1234567")
 
       model.change()
 
       val state = model.state.first { !it.busy && it.error != null }
-      assertEquals("استخدم 12 إلى 128 خانة لكلمة المرور.", state.error)
+      assertEquals("استخدم 8 أحرف على الأقل لكلمة المرور.", state.error)
       assertEquals(requests, fixture.server.requestCount)
       assertNull(state.destination)
     }

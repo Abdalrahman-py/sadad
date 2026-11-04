@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@sentry/browser": "11.9.0",
     "@supabase/auth-js": "2.117.3",
     "lit-html": "3.3.3",
     "openapi-fetch": "0.17.0"

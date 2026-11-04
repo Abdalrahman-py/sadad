@@ -3,6 +3,7 @@ package com.sadad.app.testing
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.AppGraph
+import com.sadad.app.BuildConfig
 import com.sadad.app.data.crypto.Base64Url
 import com.sadad.app.data.crypto.DataKey
 import com.sadad.app.data.crypto.InstallationSigner
@@ -14,12 +15,14 @@ import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.ledger.receiptOf
 import com.sadad.app.data.net.AuthApi
+import com.sadad.app.data.net.LeaseVerifier
 import com.sadad.app.data.net.LedgerApi
 import com.sadad.app.data.session.Account
 import com.sadad.app.data.session.Accounts
 import com.sadad.app.data.session.Installations
 import com.sadad.app.data.session.StoreScope
 import com.sadad.app.data.session.StoredInstallation
+import com.sadad.app.data.sync.SyncScheduling
 import com.sadad.ledger.ReceiptStatus
 import java.io.File
 import java.security.KeyPair
@@ -99,7 +102,8 @@ private constructor(
   ): StoreScope {
     enqueueSession(storeUserId, expiresInSeconds, forcePasswordChange, refreshToken)
     graph.sessions.signIn(username, "password-$username")
-    return graph.current.value ?: error("sign-in did not open a store")
+    // Sign-in leaves opening the store to the route; tests that seed need it open.
+    return graph.openStore(checkNotNull(graph.accounts.account(storeUserId)))
   }
 
   /**
@@ -152,7 +156,13 @@ private constructor(
 
   companion object {
     /** No store yet: for sign-in, refresh and session tests. */
-    fun unsigned(online: () -> Boolean = { true }): TestGraph {
+    fun unsigned(
+        online: () -> Boolean = { true },
+        database: (Context, String) -> LedgerDatabase = { context, id ->
+          LedgerDatabase.open(context, id)
+        },
+        sync: SyncSettings = SyncSettings(),
+    ): TestGraph {
       val context = ApplicationProvider.getApplicationContext<Context>()
       val server = MockWebServer().apply { start() }
       val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -163,7 +173,7 @@ private constructor(
           }
       val dataKey =
           DataKey(SecretKeySpec(ByteArray(32).also { SecureRandom().nextBytes(it) }, "AES"))
-      val client = OkHttpClient()
+      val client = sync.client
       val base = server.url("/").toString()
       val graph =
           AppGraph(
@@ -174,11 +184,15 @@ private constructor(
               authApi = AuthApi(client, base, "publishable"),
               ledgerApi = LedgerApi(client, base, "publishable"),
               installations = SoftwareInstallations(),
-              openDatabase = { LedgerDatabase.open(context, it) },
+              openDatabase = { database(context, it) },
               deleteDatabase = { context.deleteDatabase("ledger-$it.db") },
               online = online,
               deviceLabel = "Test Device",
               scope = graphScope,
+              leaseVerifier = sync.leaseVerifier,
+              bootCount = sync.bootCount,
+              now = sync.now,
+              syncScheduler = sync.scheduler,
           )
       return TestGraph(graph, server, accountsFile, graphScope, dataStoreScope)
     }
@@ -188,14 +202,28 @@ private constructor(
         storeUserId: String = STORE_A,
         username: String = "store-$storeUserId",
         online: () -> Boolean = { true },
+        database: (Context, String) -> LedgerDatabase = { context, id ->
+          LedgerDatabase.open(context, id)
+        },
+        sync: SyncSettings = SyncSettings(),
     ): TestGraph {
-      val graph = unsigned(online)
+      val graph = unsigned(online, database, sync)
       graph.signIn(storeUserId, username)
       graph.activate(storeUserId)
       return graph
     }
   }
 }
+
+/** What the sync engine sees: the HTTP client, the lease key, the boot count and the clock. */
+data class SyncSettings(
+    val client: OkHttpClient = OkHttpClient(),
+    val leaseVerifier: LeaseVerifier =
+        LeaseVerifier(BuildConfig.LEASE_PUBLIC_KEY_X, BuildConfig.LEASE_PUBLIC_KEY_Y),
+    val bootCount: () -> Int = { -1 },
+    val now: () -> Long = System::currentTimeMillis,
+    val scheduler: SyncScheduling? = null,
+)
 
 /**
  * The Keystore stand-in: keeps each alias's software key pair in memory for the test's lifetime.

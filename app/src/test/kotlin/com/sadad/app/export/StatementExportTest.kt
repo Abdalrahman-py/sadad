@@ -41,6 +41,33 @@ class StatementExportTest {
   }
 
   @Test
+  fun aNewStatementRemovesThePreviousOneAndClearExportsEmptiesTheDirectory() = runBlocking {
+    // A missing contact fails writePdf right after its clearing step, before any PdfDocument
+    // exists. Robolectric's PdfDocument can never close (its native handle is 0), so building one
+    // here leaks a CloseGuard that StrictMode reports during some later test.
+    val directory =
+        File(context.cacheDir, "exports").apply {
+          mkdirs()
+          File(this, "statement-previous.pdf").writeBytes(byteArrayOf(1))
+        }
+    val result = runCatching {
+      StatementExport.writePdf(context, header, view, "missing", null, null)
+    }
+    assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+    assertTrue(
+        "a new statement must leave no predecessor behind",
+        directory.listFiles()!!.isEmpty(),
+    )
+
+    File(directory, "statement-a.pdf").writeBytes(byteArrayOf(1))
+    File(directory, "statement-b.pdf").writeBytes(byteArrayOf(1))
+
+    StatementExport.clearExports(context)
+
+    assertEquals(0, directory.listFiles()!!.size)
+  }
+
+  @Test
   fun refusesMissingContactBeforeTruncatingADocument() = runBlocking {
     val file = File.createTempFile("statement-unchanged", ".xlsx", context.cacheDir)
     try {

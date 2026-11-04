@@ -1,13 +1,12 @@
 package com.sadad.app.feature.people
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,31 +20,33 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -62,10 +63,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.SadadApplication
+import com.sadad.app.contactRecords
+import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceWord
-import com.sadad.app.ui.components.Chip
-import com.sadad.app.ui.components.ChipRow
+import com.sadad.app.ui.components.SadadButton
+import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.sadadPalette
 
@@ -74,8 +76,8 @@ internal object PeopleTags {
   const val SCREEN = "people:screen"
   const val TITLE = "people:title"
   const val COUNT = "people:count"
-  const val SORT = "people:sort"
   const val ADD = "people:add"
+  const val FILTER = "people:filter"
   const val SEARCH = "people:search"
   const val LIST = "people:list"
   const val TOTAL = "people:total"
@@ -83,11 +85,7 @@ internal object PeopleTags {
   fun row(id: String) = "people:row:$id"
 }
 
-/**
- * The الأشخاص tab: everyone the store holds, a fixed search, the five chips and one sort button
- * (`docs/ux-redesign/boards/People.dc.html`). Adding a person lives in quick add, so this screen
- * has no add button and no per-person action.
- */
+/** The people tab: search, add and filter controls, and the contact list. */
 @Composable
 fun PeopleScreen(
     onOpenContact: (String) -> Unit = {},
@@ -104,7 +102,6 @@ fun PeopleScreen(
       onOpenContact = onOpenContact,
       onQueryChange = viewModel::onQueryChange,
       onFilter = viewModel::onFilterChange,
-      onCycleSort = viewModel::cycleSort,
       onAdd = onAdd,
   )
 }
@@ -115,7 +112,6 @@ fun PeopleContent(
     onOpenContact: (String) -> Unit = {},
     onQueryChange: (String) -> Unit = {},
     onFilter: (PeopleFilter) -> Unit = {},
-    onCycleSort: () -> Unit = {},
     onAdd: () -> Unit = {},
 ) {
   val p = sadadPalette
@@ -124,23 +120,15 @@ fun PeopleContent(
         Modifier.padding(start = 18.dp, end = 18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      PeopleHeader(
-          registered = state.registered,
-          sort = state.sortChoice,
-          onCycleSort = onCycleSort,
-          onAdd = onAdd,
-      )
+      PeopleHeader(registered = state.registered)
+      if (state.incomplete > 0)
+          Text(
+              stringResource(R.string.people_incomplete_count, state.incomplete),
+              color = p.owes,
+              fontSize = 13.sp,
+          )
       PeopleSearch(value = state.queryInput, onValueChange = onQueryChange)
-    }
-    Box(Modifier.padding(top = 12.dp)) {
-      ChipRow(
-          chips =
-              PeopleFilter.entries.map { chip ->
-                Chip(chip, filterLabel(chip), state.counts[chip] ?: 0)
-              },
-          selected = state.filterChoice,
-          onSelect = onFilter,
-      )
+      PeopleActions(state, onAdd, onFilter)
     }
     val total = state.totalLine
     if (total != null) {
@@ -159,24 +147,15 @@ fun PeopleContent(
 
 /* ------------------------------------------------------------------ header */
 
-/** «الأشخاص» with the store's total, and the sort button that cycles the three orders. */
+/** «الأشخاص» with the store's total. */
 @Composable
-private fun PeopleHeader(
-    registered: Int,
-    sort: PeopleSort,
-    onCycleSort: () -> Unit,
-    onAdd: () -> Unit,
-) {
+private fun PeopleHeader(registered: Int) {
   val p = sadadPalette
-  val link = if (p.isDark) p.accent else p.primary
-  val sortText = sortLabel(sort)
-  val spoken = stringResource(R.string.people_sort_spoken, sortText)
   Row(
       Modifier.fillMaxWidth().heightIn(min = 64.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Row(
-        Modifier.weight(1f),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -197,104 +176,53 @@ private fun PeopleHeader(
           color = p.muted,
       )
     }
-    // «إضافة»: a new customer or supplier, the form's own type switch picks which.
-    Row(
-        modifier =
-            Modifier.minimumInteractiveComponentSize()
-                .heightIn(min = 40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(p.primary)
-                .clickable(role = Role.Button, onClick = onAdd)
-                .padding(horizontal = 12.dp)
-                .testTag(PeopleTags.ADD),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      Icon(
-          painterResource(R.drawable.ic_person_add),
-          contentDescription = null,
-          tint = Color.White,
-          modifier = Modifier.size(18.dp),
-      )
-      Text(
-          stringResource(R.string.people_add),
-          fontSize = 13.sp,
-          fontWeight = FontWeight.Bold,
-          color = Color.White,
-      )
-    }
-    Spacer(Modifier.width(8.dp))
-    Row(
-        modifier =
-            // A 40dp pill, as the board draws it, on the 48dp touch target the a11y gate wants.
-            Modifier.minimumInteractiveComponentSize()
-                .heightIn(min = 40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(p.card)
-                .border(BorderStroke(1.dp, p.line), RoundedCornerShape(20.dp))
-                .clickable(role = Role.Button, onClick = onCycleSort)
-                .semantics { contentDescription = spoken }
-                .padding(horizontal = 12.dp)
-                .testTag(PeopleTags.SORT),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-      SortGlyph(link)
-      Text(sortText, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = link)
-    }
   }
 }
 
-/** The board's two arrows: one down, one up, drawn rather than shipped as a second drawable. */
+/** Add a contact and choose one of the existing filters, directly below search. */
 @Composable
-private fun SortGlyph(tint: Color) {
-  Canvas(Modifier.size(18.dp).clearAndSetSemantics {}) {
-    val stroke = 1.8.dp.toPx()
-    val head = size.width * 0.16f
-    val downX = size.width * 0.3f
-    val upX = size.width * 0.7f
-    drawLine(
-        tint,
-        Offset(downX, size.height * 0.1f),
-        Offset(downX, size.height * 0.9f),
-        stroke,
-        StrokeCap.Round,
+private fun PeopleActions(
+    state: PeopleState,
+    onAdd: () -> Unit,
+    onFilter: (PeopleFilter) -> Unit,
+) {
+  var expanded by remember { mutableStateOf(false) }
+  Row(
+      Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    SadadButton(
+        text = stringResource(R.string.people_add),
+        onClick = onAdd,
+        leading = painterResource(R.drawable.ic_person_add),
+        modifier = Modifier.weight(1f).fillMaxHeight().testTag(PeopleTags.ADD),
     )
-    drawLine(
-        tint,
-        Offset(downX - head, size.height * 0.64f),
-        Offset(downX, size.height * 0.9f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(downX + head, size.height * 0.64f),
-        Offset(downX, size.height * 0.9f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(upX, size.height * 0.9f),
-        Offset(upX, size.height * 0.1f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(upX - head, size.height * 0.36f),
-        Offset(upX, size.height * 0.1f),
-        stroke,
-        StrokeCap.Round,
-    )
-    drawLine(
-        tint,
-        Offset(upX + head, size.height * 0.36f),
-        Offset(upX, size.height * 0.1f),
-        stroke,
-        StrokeCap.Round,
-    )
+    Box(Modifier.weight(1f).fillMaxHeight()) {
+      SadadButton(
+          text = stringResource(R.string.people_filter_selected, filterLabel(state.filterChoice)),
+          onClick = { expanded = true },
+          style = SadadButtonStyle.SURFACE,
+          trailing = painterResource(R.drawable.ic_chevron_down_wide),
+          modifier = Modifier.fillMaxSize().testTag(PeopleTags.FILTER),
+      )
+      DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        PeopleFilter.entries.forEach { filter ->
+          val chosen = filter == state.filterChoice
+          DropdownMenuItem(
+              text = { Text(filterLabel(filter)) },
+              leadingIcon = { Text((state.counts[filter] ?: 0).toString()) },
+              trailingIcon = {
+                if (chosen) Icon(painterResource(R.drawable.ic_check), contentDescription = null)
+              },
+              modifier = Modifier.semantics { selected = chosen },
+              onClick = {
+                expanded = false
+                onFilter(filter)
+              },
+          )
+        }
+      }
+    }
   }
 }
 
@@ -305,6 +233,10 @@ private fun SortGlyph(tint: Color) {
 private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
   val p = sadadPalette
   val hint = stringResource(R.string.people_search)
+  // The field owns its text: a value that comes back through the view model's flow arrives late,
+  // and the cursor jumps while the owner types. Only a reset to empty flows back in.
+  var text by rememberSaveable { mutableStateOf(value) }
+  LaunchedEffect(value) { if (value.isEmpty()) text = "" }
   Row(
       Modifier.fillMaxWidth()
           .height(48.dp)
@@ -323,8 +255,11 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
     )
     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
       BasicTextField(
-          value = value,
-          onValueChange = onValueChange,
+          value = text,
+          onValueChange = {
+            text = it
+            onValueChange(it)
+          },
           singleLine = true,
           textStyle = TextStyle(fontSize = 15.sp, color = p.text),
           cursorBrush = SolidColor(p.accent),
@@ -333,7 +268,7 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
                 contentDescription = hint
               },
           decorationBox = { field ->
-            if (value.isEmpty()) {
+            if (text.isEmpty()) {
               Text(hint, fontSize = 15.sp, color = p.muted, maxLines = 1)
             }
             field()
@@ -347,7 +282,12 @@ private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
 
 @Composable
 private fun PeopleList(state: PeopleState, onOpenContact: (String) -> Unit) {
+  val list = rememberLazyListState()
+  // A keyed list keeps the first visible person in place when the rows change, so clearing a search
+  // would leave everyone above them out of view; a new search, chip or order starts at the top.
+  LaunchedEffect(state.query, state.filter, state.sort) { list.scrollToItem(0) }
   LazyColumn(
+      state = list,
       modifier = Modifier.fillMaxSize().testTag(PeopleTags.LIST),
       contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 20.dp),
       verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -439,7 +379,11 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
       }
-      BalanceWord(row.net.value)
+      if (row.syncFailed) {
+        Text(stringResource(R.string.contacts_saved_draft), color = p.owes, fontSize = 12.sp)
+      } else {
+        BalanceWord(row.net.value)
+      }
     }
   }
 }
@@ -529,23 +473,15 @@ private fun filterLabel(filter: PeopleFilter): String =
         }
     )
 
-@Composable
-private fun sortLabel(sort: PeopleSort): String =
-    stringResource(
-        when (sort) {
-          PeopleSort.RECENT -> R.string.people_sort_recent
-          PeopleSort.BALANCE -> R.string.people_sort_balance
-          PeopleSort.NAME -> R.string.people_sort_name
-        }
-    )
+
 
 @Composable
 private fun peopleViewModel(): PeopleViewModel {
-  val app = LocalContext.current.applicationContext as SadadApplication
+  val graph = requireGraph()
   return viewModel(
       factory =
           viewModelFactory {
-            initializer { PeopleViewModel(app.graph, createSavedStateHandle()) }
+            initializer { PeopleViewModel(graph.contactRecords(), createSavedStateHandle()) }
           }
   )
 }

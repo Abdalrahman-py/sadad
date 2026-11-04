@@ -132,6 +132,11 @@ export async function adminHarness(
   ) {
     const userId = options.userId ?? crypto.randomUUID();
     const sessionId = crypto.randomUUID();
+    // The lease and every membership is keyed to an Auth user; a real admin has that row.
+    await database.query(
+      "insert into auth.users(id, email) values ($1, $2) on conflict (id) do nothing",
+      [userId, options.email ?? `${role}-${userId.slice(0, 8)}@sadad.invalid`],
+    );
     await database.query(
       "insert into auth.sessions(id, user_id) values ($1, $2)",
       [sessionId, userId],

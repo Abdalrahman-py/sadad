@@ -6,6 +6,7 @@ import { type AdminDeps, defaultDeps } from "./admin/common.ts";
 import { registerInstallationRoutes } from "./admin/installations.ts";
 import { registerLedgerRoutes } from "./admin/ledger.ts";
 import { registerRecoveryRoutes } from "./admin/recovery.ts";
+import { registerSessionRoutes, sessionLease } from "./admin/session.ts";
 import { registerStoreRoutes } from "./admin/stores.ts";
 import type { AppEnv } from "./auth.ts";
 
@@ -15,6 +16,9 @@ export function registerAdminRoutes(
   app: OpenAPIHono<AppEnv>,
   deps: AdminDeps = defaultDeps,
 ): void {
+  // Before the lease: signing out and the idle heartbeat must answer even when the seat was taken.
+  registerSessionRoutes(app, deps);
+  app.use("/admin/*", sessionLease(deps));
   registerStoreRoutes(app, deps);
   registerInstallationRoutes(app, deps);
   registerRecoveryRoutes(app, deps);

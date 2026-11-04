@@ -55,3 +55,6 @@ graphify-out/
 
 .DS_Store
 *.log
+
+# Kotlin compiler session markers (created by any build)
+.kotlin/

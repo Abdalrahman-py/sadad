@@ -7,8 +7,8 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,12 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -75,6 +71,10 @@ import com.sadad.app.feature.photo.PhotoStore
 import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.theme.sadadPalette
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -85,15 +85,15 @@ import kotlinx.coroutines.withContext
  */
 
 internal fun LazyListScope.storeCard(
-    state: SettingsState,
-    model: SettingsViewModel,
+    store: StoreSlice,
+    commands: StoreModule,
     storesOpen: Boolean,
     onToggleStores: () -> Unit,
     onOpenPhoto: () -> Unit,
     onAddStore: () -> Unit,
     onPickStore: () -> Unit,
 ) {
-  val open = state.accounts.firstOrNull { it.active }?.storeUserId
+  val open = store.accounts.firstOrNull { it.active }?.storeUserId
   item {
     val p = sadadPalette
     BoardCard(radius = 18.dp) {
@@ -109,7 +109,7 @@ internal fun LazyListScope.storeCard(
                 Modifier.weight(1f)
                     .heightIn(min = 48.dp)
                     .clickable(onClickLabel = description, role = Role.Button) {
-                      model.editProfile()
+                      commands.editProfile(store)
                     }
                     .semantics(mergeDescendants = true) {}
                     .testTag(SettingsTags.PROFILE)
@@ -117,7 +117,7 @@ internal fun LazyListScope.storeCard(
             verticalArrangement = Arrangement.Center,
         ) {
           Text(
-              text = state.storeName.ifBlank { stringResource(R.string.settings_default_store) },
+              text = store.storeName.ifBlank { stringResource(R.string.settings_default_store) },
               color = p.text,
               fontSize = 17.sp,
               lineHeight = 24.sp,
@@ -128,7 +128,7 @@ internal fun LazyListScope.storeCard(
           Text(
               // The owner as the account knows it; the part it does not know is left out.
               text =
-                  state.ownerName
+                  store.ownerName
                       .ifBlank { null }
                       ?.let { stringResource(R.string.settings_owner_line, it) }
                       ?: stringResource(R.string.settings_this_device),
@@ -159,11 +159,11 @@ internal fun LazyListScope.storeCard(
       if (storesOpen) {
         HorizontalDivider(color = p.line)
         Column(Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-          for (store in state.accounts) {
+          for (saved in store.accounts) {
             StoreRow(
-                store,
+                saved,
                 onPick = {
-                  if (!store.active) model.switchTo(store.storeUserId)
+                  if (!saved.active) commands.switchTo(saved.storeUserId)
                   onPickStore()
                 },
             )
@@ -285,7 +285,12 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
           },
           contentAlignment = Alignment.Center,
       ) {
-        Text("+", color = link, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Icon(
+            painterResource(R.drawable.ic_record),
+            contentDescription = null,
+            tint = link,
+            modifier = Modifier.size(18.dp),
+        )
       }
       Text(
           stringResource(R.string.settings_add_store),
@@ -297,14 +302,10 @@ private fun AddStoreRow(onAddStore: () -> Unit) {
   }
 }
 
-internal fun LazyListScope.devicesSection(
-    state: SettingsState,
-    model: SettingsViewModel,
-    navigation: SettingsNavigation,
-) {
+internal fun LazyListScope.devicesSection(devices: DevicesSlice, navigation: SettingsNavigation) {
   item {
     val p = sadadPalette
-    val waiting = state.unsent > 0
+    val waiting = devices.unsent > 0
     Section(stringResource(R.string.settings_devices_heading)) {
       BoardCard(radius = 13.dp) {
         Row(
@@ -315,20 +316,34 @@ internal fun LazyListScope.devicesSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-          Box(Modifier.size(10.dp).background(statusColor(state), CircleShape))
+          Box(Modifier.size(10.dp).background(statusColor(devices), CircleShape))
           Column(Modifier.weight(1f)) {
             Text(
                 text =
-                    if (waiting) waitingText(state.unsent)
+                    if (waiting) waitingText(devices.unsent)
                     else stringResource(R.string.settings_sync_all_sent),
                 color = p.text,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.Bold,
             )
-            syncDetail(state)?.let { detail ->
+            syncDetail(devices)?.let { detail ->
               Text(detail, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
             }
+            val lastSync = devices.lastSyncAt
+            Text(
+                if (lastSync == null) stringResource(R.string.settings_sync_never)
+                else
+                    stringResource(
+                        R.string.settings_sync_last,
+                        DateTimeFormatter.ofPattern("dd/MM/yyyy · HH:mm:ss", Locale.US)
+                            .withZone(ZoneId.systemDefault())
+                            .format(Instant.ofEpochMilli(lastSync)),
+                    ),
+                color = p.muted,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+            )
           }
           Surface(
               onClick = navigation.onSyncNow,
@@ -360,8 +375,8 @@ internal fun LazyListScope.devicesSection(
 }
 
 internal fun LazyListScope.securitySection(
-    state: SettingsState,
-    model: SettingsViewModel,
+    security: SecuritySlice,
+    commands: SecurityModule,
     navigation: SettingsNavigation,
 ) {
   item {
@@ -371,28 +386,28 @@ internal fun LazyListScope.securitySection(
         SwitchLine(
             title = stringResource(R.string.settings_lock_enable),
             detail = stringResource(R.string.settings_lock_enable_sub),
-            checked = state.lockOn,
-            onChange = model::setLockEnabled,
+            checked = security.lockOn,
+            onChange = commands::setLockEnabled,
         )
-        if (state.biometricAvailable) {
+        if (security.biometricAvailable) {
           HorizontalDivider(color = p.line)
           SwitchLine(
               title = stringResource(R.string.settings_lock_biometric),
               detail = stringResource(R.string.settings_lock_biometric_sub),
-              checked = state.biometricEnabled,
-              onChange = model::setBiometric,
+              checked = security.biometricEnabled,
+              onChange = commands::setBiometric,
           )
         }
         HorizontalDivider(color = p.line)
         LinkRow(
             title =
                 stringResource(
-                    if (state.pinSet) R.string.settings_lock_change_pin
+                    if (security.pinSet) R.string.settings_lock_change_pin
                     else R.string.settings_lock_create_pin
                 ),
             detail = null,
             tag = null,
-            onClick = model::requestPin,
+            onClick = commands::requestPin,
             minHeight = 52.dp,
         )
         LinkRow(
@@ -407,22 +422,17 @@ internal fun LazyListScope.securitySection(
   }
 }
 
-internal fun LazyListScope.dataSection(
-    state: SettingsState,
-    model: SettingsViewModel,
-    navigation: SettingsNavigation,
-    context: Context,
-) {
+internal fun LazyListScope.dataSection(data: DataSlice, navigation: SettingsNavigation) {
   // Q20/Q6: the trash exists to undo deletes, so a device that may delete neither records nor
   // Contacts cannot use it and does not see its section at all. Statements are exported from
   // «الحركات», where the entries they list are.
-  if (!state.canDelete) return
+  if (!data.canDelete) return
   item {
     Section(stringResource(R.string.settings_data_heading)) {
       BoardCard(radius = 13.dp) {
         LinkRow(
             title = stringResource(R.string.settings_trash),
-            detail = trashText(state.trashCount),
+            detail = trashText(data.trashCount),
             tag = SettingsTags.TRASH,
             onClick = navigation.onOpenTrash,
         )
@@ -432,8 +442,8 @@ internal fun LazyListScope.dataSection(
 }
 
 internal fun LazyListScope.appearanceSection(
-    state: SettingsState,
-    model: SettingsViewModel,
+    theme: ThemeChoice,
+    commands: AppearanceModule,
     context: Context,
 ) {
   item {
@@ -454,9 +464,9 @@ internal fun LazyListScope.appearanceSection(
                 ThemeChoice.LIGHT to stringResource(R.string.settings_theme_light),
                 ThemeChoice.DARK to stringResource(R.string.settings_theme_dark),
             )) {
-          val chosen = state.theme == choice
+          val chosen = theme == choice
           Surface(
-              onClick = { model.setTheme(choice) },
+              onClick = { commands.setTheme(choice) },
               shape = RoundedCornerShape(10.dp),
               color = if (chosen) p.primary else Color.Transparent,
               contentColor = if (chosen) Color.White else p.muted,
@@ -489,7 +499,11 @@ internal fun LazyListScope.appearanceSection(
   }
 }
 
-internal fun LazyListScope.accountSection(state: SettingsState, model: SettingsViewModel) {
+internal fun LazyListScope.accountSection(
+    commands: AccountModule,
+    busy: Boolean,
+    error: SettingsError?,
+) {
   item {
     val p = sadadPalette
     Section(stringResource(R.string.settings_account_heading)) {
@@ -498,18 +512,18 @@ internal fun LazyListScope.accountSection(state: SettingsState, model: SettingsV
             title = stringResource(R.string.settings_sign_out),
             detail = null,
             tag = SettingsTags.SIGN_OUT,
-            onClick = model::requestSignOut,
-            enabled = !state.busy,
+            onClick = commands::requestSignOut,
+            enabled = !busy,
         )
         HorizontalDivider(color = p.line)
         LinkRow(
             title = stringResource(R.string.settings_remove_store),
             detail = null,
             tag = SettingsTags.REMOVE,
-            onClick = model::requestRemove,
-            enabled = !state.busy,
+            onClick = commands::requestRemove,
+            enabled = !busy,
         )
-        state.error
+        error
             ?.takeIf { it == SettingsError.ACTION_FAILED }
             ?.let {
               Box(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) { ErrorLine(it) }
@@ -641,12 +655,12 @@ private fun Section(title: String, content: @Composable () -> Unit) {
   }
 }
 
-/** The icons the board puts before a row's label; drawn here so no new drawable is needed. */
-private enum class RowIcon {
-  LIST,
-  PHONE,
-  CHAT,
-  UPDATE,
+/** The icons the board puts before a row's label. */
+private enum class RowIcon(@DrawableRes val icon: Int) {
+  LIST(R.drawable.ic_list),
+  PHONE(R.drawable.ic_phone),
+  CHAT(R.drawable.ic_whatsapp),
+  UPDATE(R.drawable.ic_update),
 }
 
 /** A card row that leads somewhere: the label, an optional second line, then the chevron. */
@@ -692,93 +706,15 @@ private fun LinkRow(
   }
 }
 
-/** The board's 21 dp line icons: a list, a phone and a chat bubble, stroked in the link colour. */
+/** The 21 dp icon before a row's label, in the link colour. */
 @Composable
 private fun RowGlyph(kind: RowIcon) {
-  val color = linkColor()
-  Canvas(Modifier.size(21.dp)) {
-    val s = size.minDimension
-    val stroke = 1.9.dp.toPx()
-    when (kind) {
-      RowIcon.LIST -> {
-        for (index in 0..2) {
-          val y = s * (0.25f + 0.25f * index)
-          drawLine(color, Offset(s * 0.34f, y), Offset(s * 0.9f, y), stroke, StrokeCap.Round)
-          drawCircle(color, radius = stroke * 0.8f, center = Offset(s * 0.12f, y))
-        }
-      }
-      RowIcon.PHONE -> {
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(s * 0.30f, s * 0.06f),
-            size = Size(s * 0.40f, s * 0.88f),
-            cornerRadius = CornerRadius(s * 0.10f),
-            style = Stroke(width = stroke),
-        )
-        drawLine(
-            color,
-            Offset(s * 0.44f, s * 0.80f),
-            Offset(s * 0.56f, s * 0.80f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-      RowIcon.CHAT -> {
-        drawCircle(
-            color = color,
-            radius = s * 0.33f,
-            center = Offset(s * 0.5f, s * 0.40f),
-            style = Stroke(width = stroke),
-        )
-        // The bubble's tail, toward the bottom-start corner.
-        drawLine(
-            color,
-            Offset(s * 0.32f, s * 0.63f),
-            Offset(s * 0.20f, s * 0.88f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.20f, s * 0.88f),
-            Offset(s * 0.46f, s * 0.72f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-      // An arrow into a tray: the download an update is.
-      RowIcon.UPDATE -> {
-        drawLine(
-            color,
-            Offset(s * 0.5f, s * 0.08f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.32f, s * 0.44f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.68f, s * 0.44f),
-            Offset(s * 0.5f, s * 0.62f),
-            stroke,
-            StrokeCap.Round,
-        )
-        drawLine(
-            color,
-            Offset(s * 0.18f, s * 0.86f),
-            Offset(s * 0.82f, s * 0.86f),
-            stroke,
-            StrokeCap.Round,
-        )
-      }
-    }
-  }
+  Icon(
+      painterResource(kind.icon),
+      contentDescription = null,
+      tint = linkColor(),
+      modifier = Modifier.size(21.dp),
+  )
 }
 
 /** A labelled switch: the whole row toggles, the switch only draws the state. */
@@ -824,15 +760,12 @@ private fun SwitchLine(
 /** The board's 18 dp muted chevron, pointing left: toward the screen the row opens. */
 @Composable
 private fun Chevron() {
-  val color = sadadPalette.muted
-  Canvas(Modifier.size(18.dp)) {
-    val stroke = 2.dp.toPx()
-    val start = Offset(size.width * 0.62f, size.height * 0.18f)
-    val elbow = Offset(size.width * 0.32f, size.height * 0.5f)
-    val end = Offset(size.width * 0.62f, size.height * 0.82f)
-    drawLine(color, start, elbow, stroke, StrokeCap.Round)
-    drawLine(color, elbow, end, stroke, StrokeCap.Round)
-  }
+  Icon(
+      painterResource(R.drawable.ic_chevron_start),
+      contentDescription = null,
+      tint = sadadPalette.muted,
+      modifier = Modifier.size(18.dp),
+  )
 }
 
 /** The 32 dp soft block with a store's initials, as the switcher draws each saved store. */
@@ -864,14 +797,14 @@ internal fun linkColor(): Color {
 
 /** The second line under the waiting count: the newest entry, then what sync is doing. */
 @Composable
-private fun syncDetail(state: SettingsState): String? {
-  val phrase = statusPhrase(state.sync)
+private fun syncDetail(devices: DevicesSlice): String? {
+  val phrase = statusPhrase(devices.sync)
   val parts = buildList {
-    state.newest?.let { add(queuedText(it)) }
+    devices.newest?.let { add(queuedText(it)) }
     when {
       phrase != null -> add(phrase)
       // Nothing special to report: say the queue sends itself.
-      state.unsent > 0 -> add(stringResource(R.string.settings_sync_auto))
+      devices.unsent > 0 -> add(stringResource(R.string.settings_sync_auto))
     }
   }
   return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
@@ -884,6 +817,7 @@ private fun queuedText(entry: QueuedEntry): String {
     QueuedKind.DEBT -> stringResource(R.string.settings_queued_debt, entry.name, amount)
     QueuedKind.DEBT_CORRECT ->
         stringResource(R.string.settings_queued_debt_correct, entry.name, amount)
+    QueuedKind.OFFSET -> stringResource(R.string.settings_queued_offset, entry.name, amount)
     QueuedKind.PAYMENT -> stringResource(R.string.settings_queued_payment, entry.name, amount)
     QueuedKind.PAYMENT_REVERSE ->
         stringResource(R.string.settings_queued_payment_reverse, entry.name)
@@ -891,6 +825,7 @@ private fun queuedText(entry: QueuedEntry): String {
     QueuedKind.CONTACT_EDIT -> stringResource(R.string.settings_queued_contact_edit, entry.name)
     QueuedKind.CONTACT_ARCHIVE ->
         stringResource(R.string.settings_queued_contact_archive, entry.name)
+    QueuedKind.CONTACT_DELETE -> stringResource(R.string.settings_queued_contact_delete, entry.name)
     QueuedKind.CONTACT_RESTORE ->
         stringResource(R.string.settings_queued_contact_restore, entry.name)
   }
@@ -913,15 +848,15 @@ internal fun statusPhrase(line: SyncLine): String? =
     }
 
 @Composable
-private fun statusColor(state: SettingsState): Color {
+private fun statusColor(devices: DevicesSlice): Color {
   val p = sadadPalette
-  return when (state.sync) {
+  return when (devices.sync) {
     SyncLine.SignedOut,
     SyncLine.Revoked,
     SyncLine.Suspended,
     SyncLine.PasswordChangeRequired,
     is SyncLine.Failed -> p.debt
-    else -> if (state.unsent > 0 || state.sync == SyncLine.Offline) p.warn else p.primary
+    else -> if (devices.unsent > 0 || devices.sync == SyncLine.Offline) p.warn else p.primary
   }
 }
 
