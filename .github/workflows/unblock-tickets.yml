@@ -1,6 +1,6 @@
 name: Unblock tickets
 
-# When a ticket issue closes (its PR merged into main with "Closes #N"), every open `blocked` issue
+# When a ticket issue closes (by hand after its PR merges into dev, since "Closes #N" acts only on main), every open `blocked` issue
 # whose "**Blocked by:**" issues are all closed becomes `ready-for-agent`. The scan is idempotent,
 # so it also runs on merged PRs (an issue closed by a merge may not fire `issues`) and by hand.
 
@@ -22,6 +22,7 @@ jobs:
   unblock:
     if: github.event_name != 'pull_request' || github.event.pull_request.merged
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}

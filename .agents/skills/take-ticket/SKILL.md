@@ -9,7 +9,7 @@ One ticket per run, from claim to merge. The issue body is the ticket. The rules
 
 **CI is the test runner.** This machine has only Git, `gh` and Codex: no JDK, Android SDK, Deno or Node. Every test and check runs in GitHub Actions on the PR, and its results are the ticket's proofs. Every command below works in PowerShell and in bash.
 
-In the commands, replace `<N>` with the issue number, `<NN>` with the ticket number (issue title `NN: ...`), `<pr>` with the PR number, and `<base>` with `main`, or with `ticket-MM` when stacking on your own open PR for ticket MM.
+In the commands, replace `<N>` with the issue number, `<NN>` with the ticket number (issue title `NN: ...`), `<pr>` with the PR number, and `<base>` with `dev`, or with `ticket-MM` when stacking on your own open PR for ticket MM.
 
 ## 1. Pick and claim
 
@@ -40,7 +40,7 @@ Done when `ci-ok` and `scope` pass and every "Steps" item is done. Keep the gree
 
 Edit the body (`gh pr edit <pr> -R Abdalrahman-py/sadad --body-file <file>`; write the file outside the repo or delete it after) so it holds:
 
-- `Closes #<N>` (the merge into `main` closes the issue). Stacked: also "Stacked on #<pr>".
+- `Closes #<N>` (it links the issue; GitHub closes issues only on merges into `main`, so step 6 closes it). Stacked: also "Stacked on #<pr>".
 - The red and green run links with the key lines, plus any sizes or other proofs the ticket asks for.
 - `./tools/check.sh`: "run by CI (`ci-ok`)".
 - Device checks (`app/src/androidTest`): "not run, needs the maintainer's phone".
@@ -61,7 +61,8 @@ Done when every finding is fixed or answered and the last review raised nothing 
 
 - Wait for the required checks: `gh pr checks <pr> -R Abdalrahman-py/sadad --watch --required`. Both `ci-ok` and `scope` must pass.
 - `scope` red: a file outside "Files you may edit" changed. Remove that change. If the ticket cannot be done without it, stop: comment on the issue naming the file and why, and leave the PR open for the maintainer.
-- Green: `gh pr merge <pr> -R Abdalrahman-py/sadad --merge --delete-branch`. Merge stacked PRs bottom first: deleting the merged base branch moves the next PR onto `main`, where its checks run again before you merge it.
+- Green: `gh pr merge <pr> -R Abdalrahman-py/sadad --merge --delete-branch`. Merge stacked PRs bottom first: deleting the merged base branch moves the next PR onto `dev`, where its checks run again before you merge it.
+- Close the issue: `gh issue close <N> -R Abdalrahman-py/sadad --reason completed`.
 
 Done when the PR is merged and issue #<N> is closed. The `Unblock tickets` workflow then labels every issue whose blockers are all closed `ready-for-agent`.
 
@@ -71,4 +72,4 @@ Tell the human: the PR link, the merge commit, the review findings and what you 
 
 ## Guardrails
 
-Change `main` only through a merged PR, and merge only your own ticket PR. Deploys and every Supabase cloud command belong to the maintainer.
+Change `dev` only through a merged PR, and merge only your own ticket PR. The maintainer promotes `dev` to `main`. Deploys and every Supabase cloud command belong to the maintainer.
