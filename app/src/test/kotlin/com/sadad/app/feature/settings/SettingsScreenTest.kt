@@ -67,6 +67,11 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun theSwitcherStaysHiddenWithOneStore() {
+    show { _, _, _ -> compose.onNodeWithTag(SettingsTags.SWITCHER).assertDoesNotExist() }
+  }
+
+  @Test
   fun theSwitcherListsTheSavedStoresAndAddStoreAsksForALogin() {
     show(twoStores = true) { _, _, nav ->
       scrollTo(hasText("تبديل المتجر"))
