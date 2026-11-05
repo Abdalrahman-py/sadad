@@ -136,19 +136,23 @@ internal fun LazyListScope.storeCard(
               overflow = TextOverflow.Ellipsis,
           )
         }
-        // The board draws this 40 dp tall; the 48 dp touch target is the shell's rule.
-        Surface(
-            onClick = onToggleStores,
-            shape = RoundedCornerShape(12.dp),
-            color = p.surface,
-            contentColor = linkColor(),
-            modifier = Modifier.heightIn(min = 48.dp).testTag(SettingsTags.SWITCHER),
-        ) {
-          Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), Alignment.Center) {
-            Text(
-                stringResource(R.string.settings_switcher),
-                style = MaterialTheme.typography.labelLarge,
-            )
+        // Hidden with one store: nothing to switch to, and adding a second one waits on #296. A
+        // phone that already holds two keeps it, or it could not reach the other store.
+        if (store.accounts.size > 1) {
+          // The board draws this 40 dp tall; the 48 dp touch target is the shell's rule.
+          Surface(
+              onClick = onToggleStores,
+              shape = RoundedCornerShape(12.dp),
+              color = p.surface,
+              contentColor = linkColor(),
+              modifier = Modifier.heightIn(min = 48.dp).testTag(SettingsTags.SWITCHER),
+          ) {
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), Alignment.Center) {
+              Text(
+                  stringResource(R.string.settings_switcher),
+                  style = MaterialTheme.typography.labelLarge,
+              )
+            }
           }
         }
       }
