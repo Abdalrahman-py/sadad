@@ -1,5 +1,5 @@
 // Subscription wording and the two rules the screens share: which stores need a decision now, and
-// which stores a filter chip shows. Pure functions — the views and the controller both use them.
+// which stores a filter shows. Pure functions — the views and the controller both use them.
 import type { Store, StoreRow } from "./api";
 import { DAY_MS, day, daysLeft, fmt, fullDay } from "./format";
 import type { StoreFilter } from "./model";
@@ -10,7 +10,7 @@ export const EXPIRING_MS = 7 * DAY_MS;
 export type Tone = "ok" | "warn" | "danger" | "muted";
 
 export interface SubscriptionState {
-  /** A pill or a table cell: "متبقي 6 أيام" · "انتهى قبل 5 أيام" · "فعال دائمًا". */
+  /** A state word or a table cell: "متبقي 6 أيام" · "انتهى قبل 5 أيام" · "فعال دائمًا". */
   label: string;
   /** One sentence for the store page: "ينتهي في 31 أكتوبر 2026." */
   detail: string;
@@ -92,8 +92,7 @@ export function subscriptionState(store: Store): SubscriptionState {
 export const statusText = (store: Store): string =>
   store.archived ? "مؤرشف" : store.status === "active" ? "نشط" : "مجمّد";
 
-export const statusTone = (store: Store): Tone =>
-  store.archived ? "muted" : store.status === "active" ? "ok" : "danger";
+export const statusTone = (store: Store): Tone => (store.archived ? "muted" : "ok");
 
 /** Ends within a week or already ended: the admin has to extend or let it lapse. */
 export function needsDecision(store: StoreRow): boolean {

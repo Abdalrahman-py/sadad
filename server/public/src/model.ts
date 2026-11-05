@@ -40,7 +40,7 @@ export const STORE_TAB_LABELS: Record<StoreTab, string> = {
   audit: "سجل النشاط",
 };
 
-/** Chips above the store table. `over` is a timed subscription that already ran out. */
+/** Filters above the store table. `over` is a timed subscription that already ran out. */
 export type StoreFilter = "all" | "active" | "soon" | "over" | "suspended" | "archived";
 
 export const STORE_FILTERS: [StoreFilter, string][] = [
@@ -71,17 +71,22 @@ export const emptyPage = <T>(): Paged<T> => ({
 
 /**
  * The store list is loaded whole — every page, up to a cap — because the tasks queue and the
- * filter chips need the full set, and the api can only filter by name. Cursors are not kept: the
- * view paginates nothing.
+ * filters need the full set, and the api can only filter by name. Cursors are not kept: the view
+ * paginates nothing.
  */
-export interface StoreList {
+export interface StoreRows {
   rows: StoreRow[];
-  q: string;
-  filter: StoreFilter;
   loading: boolean;
   error: string;
   /** False when the cap was reached with more pages waiting on the server. */
   complete: boolean;
+}
+
+export interface StoreList extends StoreRows {
+  q: string;
+  filter: StoreFilter;
+  /** The server's matches for `q`, for the stores table only: `rows` stays whole for the queue. */
+  search: StoreRows | null;
 }
 
 export interface LedgerState {
@@ -194,7 +199,15 @@ export function initialModel(): Model {
     notice: null,
     screen: "tasks",
     overview: null,
-    stores: { rows: [], q: "", filter: "all", loading: false, error: "", complete: true },
+    stores: {
+      rows: [],
+      q: "",
+      filter: "all",
+      search: null,
+      loading: false,
+      error: "",
+      complete: true,
+    },
     pending: { rows: [], loading: false, error: "", complete: true },
     audit: { ...emptyPage(), source: "control", q: "" },
     store: null,

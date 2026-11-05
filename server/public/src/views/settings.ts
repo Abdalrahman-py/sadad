@@ -3,7 +3,7 @@ import type { StoreDetail } from "../api";
 import { fmt } from "../format";
 import type { StoreActions } from "../model";
 import { statusText, statusTone } from "../subscription";
-import { onSubmit, permissionBoxes, pill } from "./common";
+import { onSubmit, permissionBoxes, state } from "./common";
 
 interface DangerAction {
   label: string;
@@ -79,8 +79,8 @@ export function settingsView(detail: StoreDetail, write: boolean, actions: Store
   const locked = !write || store.archived;
   return html`
     <section class="columns">
-      <form class="card main stack" data-settings @submit=${onSubmit(actions.saveSettings)}>
-        <h2 class="section-title">بيانات الحساب وصلاحياته</h2>
+      <form class="section" data-settings @submit=${onSubmit(actions.saveSettings)}>
+        <h2>بيانات الحساب وصلاحياته</h2>
         <fieldset class="stack" ?disabled=${locked}>
           <div class="field-row">
             <label class="field">اسم المتجر
@@ -106,7 +106,7 @@ export function settingsView(detail: StoreDetail, write: boolean, actions: Store
             store.archived
               ? html`<p class="small muted">الحساب مؤرشف: أعد الحساب من الأرشيف لتعديل الإعدادات.</p>`
               : write
-                ? html`<button class="btn btn-primary start">حفظ التغييرات</button>`
+                ? html`<div><button class="btn btn-primary">حفظ التغييرات</button></div>`
                 : html`<p class="small muted">التعديل للإدارة فقط.</p>`
           }
         </fieldset>
@@ -114,27 +114,31 @@ export function settingsView(detail: StoreDetail, write: boolean, actions: Store
 
       ${
         write
-          ? html`<section class="danger-card aside" aria-labelledby="danger-h">
-              <h2 id="danger-h">إجراءات حساسة</h2>
-              <p class="small muted push-sm">
-                كل إجراء هنا يُسجَّل باسمك وسببه، ويحتاج كتابة اسم الدخول للتأكيد.
-              </p>
-              ${dangerActions(detail).map(
-                (action) => html`<div class="danger-row">
-                  <div class="grow">
-                    <b>${action.label}</b>
-                    <p class="small muted">${action.why}</p>
-                  </div>
-                  <button type="button" class=${`btn btn-sm ${action.strong ? "btn-danger" : "btn-outline"}`}
-                    @click=${() => action.run(actions)}>${action.button}</button>
-                </div>`,
-              )}
+          ? html`<section class="section" aria-labelledby="danger-h">
+              <div>
+                <h2 id="danger-h">إجراءات حساسة</h2>
+                <p class="small muted">
+                  كل إجراء هنا يُسجَّل باسمك وسببه، ويحتاج كتابة اسم الدخول للتأكيد.
+                </p>
+              </div>
+              <div class="list">
+                ${dangerActions(detail).map(
+                  (action) => html`<div class="list-row">
+                    <div class="grow">
+                      <b>${action.label}</b>
+                      <p class="small muted">${action.why}</p>
+                    </div>
+                    <button type="button" class=${`btn ${action.strong ? "btn-danger" : ""}`}
+                      @click=${() => action.run(actions)}>${action.button}</button>
+                  </div>`,
+                )}
+              </div>
             </section>`
-          : html`<section class="card aside stack">
-              <h2 class="section-title">حالة الحساب</h2>
+          : html`<section class="section">
+              <h2>حالة الحساب</h2>
               <div class="row">
-                ${pill(statusText(store), statusTone(store))}
-                ${pill(store.verified ? "موثّق" : "غير موثّق", store.verified ? "ok" : "muted")}
+                ${state(statusText(store), statusTone(store))}
+                ${state(store.verified ? "موثّق" : "غير موثّق", store.verified ? "ok" : "muted")}
               </div>
               <p class="small muted">
                 الإجراءات الحساسة (التجميد والأرشفة وإلغاء الأجهزة) للإدارة فقط.

@@ -57,7 +57,7 @@ describe("untrusted text", () => {
       set(model);
       render(view(model, noActions), root);
 
-      // Only the brand logo is an image; the hostile name made none.
+      // The dashboard ships no images; the hostile name made none.
       for (const img of root.querySelectorAll("img")) expect(img.getAttribute("src")).not.toBe("x");
       expect(root.querySelectorAll("[onerror]")).toHaveLength(0);
       expect(root.textContent).toContain(HOSTILE);

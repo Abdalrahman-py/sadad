@@ -26,6 +26,7 @@ import {
   type RecoveryState,
   STORE_TABS,
   type StoreFilter,
+  type StoreRows,
   type StoreState,
   type StoreTab,
 } from "./model";
@@ -303,24 +304,26 @@ export class Controller implements Actions {
     }
   }
 
-  /** Every page of the store list, so the chips and the queue can filter honestly. */
+  /** Pushes pages into `rows` up to the cap; true when the server had no more. */
+  private async storePages(q: string, signal: AbortSignal, rows: StoreRow[]) {
+    let cursor: string | undefined;
+    for (let page = 0; page < STORE_PAGE_CAP; page++) {
+      const result = await this.api.stores({ q, cursor, includeArchived: true }, signal);
+      rows.push(...result.stores);
+      cursor = result.nextCursor ?? undefined;
+      if (!cursor) return true;
+    }
+    return false;
+  }
+
+  /** Every page of the store list, never narrowed by a search, so the queue stays honest. */
   private async loadStores() {
     const signal = this.channel("stores");
     this.set({ stores: { ...this.model.stores, loading: true, error: "" } });
-    const q = this.model.stores.q;
+    if (this.model.stores.q) void this.loadSearch();
     const rows: StoreRow[] = [];
-    let cursor: string | undefined;
-    let complete = false;
     try {
-      for (let page = 0; page < STORE_PAGE_CAP; page++) {
-        const result = await this.api.stores({ q, cursor, includeArchived: true }, signal);
-        rows.push(...result.stores);
-        cursor = result.nextCursor ?? undefined;
-        if (!cursor) {
-          complete = true;
-          break;
-        }
-      }
+      const complete = await this.storePages("", signal, rows);
       this.set({ stores: { ...this.model.stores, rows, loading: false, complete } });
       this.fillStoreSummary(rows);
     } catch (error) {
@@ -334,6 +337,24 @@ export class Controller implements Actions {
           error: messageOf(error),
         },
       });
+    }
+  }
+
+  /** The matches for the store search, kept apart from the whole list the queue reads. */
+  private async loadSearch() {
+    const signal = this.channel("storeSearch");
+    const q = this.model.stores.q;
+    const show = (search: StoreRows) => this.set({ stores: { ...this.model.stores, search } });
+    const shown = this.model.stores.search?.rows ?? [];
+    show({ rows: shown, loading: true, error: "", complete: true });
+    const rows: StoreRow[] = [];
+    try {
+      const complete = await this.storePages(q, signal, rows);
+      show({ rows, loading: false, error: "", complete });
+    } catch (error) {
+      if (!isAbort(error)) {
+        show({ rows, loading: false, error: messageOf(error), complete: false });
+      }
     }
   }
 
@@ -401,8 +422,9 @@ export class Controller implements Actions {
   }
 
   searchStores = (q: string) => {
-    this.set({ stores: { ...this.model.stores, q } });
-    void this.loadStores();
+    this.channels.get("storeSearch")?.abort();
+    this.set({ stores: { ...this.model.stores, q, search: null } });
+    if (q) void this.loadSearch();
   };
 
   setStoreFilter = (filter: StoreFilter) => {

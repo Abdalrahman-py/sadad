@@ -19,20 +19,27 @@ import {
   subscriptionState,
   type Tone,
 } from "../subscription";
-import { auditList, sourceChips } from "./audit";
-import { copyButton, DEVICE_TONE, INSTALLATION_STATE, loadState, metric, pill } from "./common";
+import { auditList, sourceFilter } from "./audit";
+import {
+  copyButton,
+  DEVICE_TONE,
+  INSTALLATION_STATE,
+  loadState,
+  metric,
+  state as stateWord,
+} from "./common";
 import { ledgerView } from "./ledger";
 import { recoveryView } from "./recovery";
 import { settingsView } from "./settings";
 
-const tabLink = (storeId: number, tab: StoreTab, current: StoreTab, alert: boolean) => html`
+const tabLink = (storeId: number, tab: StoreTab, current: StoreTab, count: number) => html`
   <a class="tab" href=${`#/stores/${storeId}/${tab}`} aria-current=${current === tab ? "page" : "false"}>
-    ${STORE_TAB_LABELS[tab]}${alert ? html`<span class="dot" aria-label="يحتاج إجراء"></span>` : nothing}
+    ${STORE_TAB_LABELS[tab]}${count ? html`<span class="count" aria-label=${`${fmt(count)} يحتاج إجراء`}>${fmt(count)}</span>` : nothing}
   </a>`;
 
 const tabs = (storeId: number, current: StoreTab, pending: number) => html`
   <nav class="tabs" aria-label="أقسام المتجر">
-    ${STORE_TABS.map((tab) => tabLink(storeId, tab, current, tab === "devices" && pending > 0))}
+    ${STORE_TABS.map((tab) => tabLink(storeId, tab, current, tab === "devices" ? pending : 0))}
   </nav>
 `;
 
@@ -44,57 +51,50 @@ const overviewTab = (detail: StoreDetail, state: StoreState, write: boolean) => 
   const active = detail.installations.filter((device) => device.status === "active").length;
   return html`
     <section class="section">
-      <div class="grid-cards">
-        <article class="card">
-          ${metric(
-            "الأشخاص النشطون",
-            summary?.initialized ? fmt(summary.activeContacts ?? summary.contacts) : "—",
-            `من حد ${fmt(store.debtorLimit)}`,
-          )}
-        </article>
-        <article class="card">
-          ${metric(
-            "ديون مفتوحة",
-            summary?.initialized ? fmt(summary.openDebts) : "—",
-            summary?.initialized ? money(summary.debtTotalCents) : undefined,
-          )}
-        </article>
-        <article class="card">
-          ${metric("الأجهزة", fmt(active), `من ${fmt(store.allowedDevices)}`)}
-        </article>
-        <article class="card">
-          ${metric(
-            "الاشتراك",
-            html`<span class=${sub.tone === "danger" ? "tone-danger" : sub.tone === "warn" ? "tone-warn" : ""}>${
-              store.subscriptionMode === "timed"
-                ? arabicDays(daysLeft(store.subscriptionRemainingMs))
-                : sub.label
-            }</span>`,
-            store.subscriptionExpiresAt ? `حتى ${day(store.subscriptionExpiresAt)}` : undefined,
-          )}
-        </article>
+      <div class="facts">
+        ${metric(
+          "الأشخاص النشطون",
+          summary?.initialized ? fmt(summary.activeContacts ?? summary.contacts) : "—",
+          `من حد ${fmt(store.debtorLimit)}`,
+        )}
+        ${metric(
+          "ديون مفتوحة",
+          summary?.initialized ? fmt(summary.openDebts) : "—",
+          summary?.initialized ? money(summary.debtTotalCents) : undefined,
+        )}
+        ${metric("الأجهزة", fmt(active), `من ${fmt(store.allowedDevices)}`)}
+        ${metric(
+          "الاشتراك",
+          stateWord(
+            store.subscriptionMode === "timed"
+              ? arabicDays(daysLeft(store.subscriptionRemainingMs))
+              : sub.label,
+            sub.tone,
+          ),
+          store.subscriptionExpiresAt ? `حتى ${day(store.subscriptionExpiresAt)}` : undefined,
+        )}
       </div>
 
       ${
         pending.length
-          ? html`<div class="notice-card">
-              <div class="spread">
+          ? html`<div class="list">
+              <div class="list-row">
                 <div class="grow">
-                  <b class="row-title">${pending.length === 1 ? "جهاز ينتظر الاعتماد" : `${fmt(pending.length)} أجهزة تنتظر الاعتماد`}</b>
+                  <b class="mark">${pending.length === 1 ? "جهاز ينتظر الاعتماد" : `${fmt(pending.length)} أجهزة تنتظر الاعتماد`}</b>
                   <p class="small muted">
                     ${pending
                       .slice(0, 2)
                       .map(
                         (device) =>
-                          [device.staffName, device.label].filter(Boolean).join(" · ") || "جهاز",
-                      )
-                      .join(" · ")} · ${dateTime(pending[0]?.createdAt)}
+                          html`<bdi>${[device.staffName, device.label].filter(Boolean).join(" · ") || "جهاز"}</bdi> · `,
+                      )}
+                    <bdi>${dateTime(pending[0]?.createdAt)}</bdi>
                   </p>
                 </div>
                 ${
                   write
                     ? html`<a class="btn btn-primary" href=${`#/stores/${store.id}/devices`}>مراجعة واعتماد</a>`
-                    : html`<a class="btn btn-soft" href=${`#/stores/${store.id}/devices`}>عرض الأجهزة</a>`
+                    : html`<a class="btn" href=${`#/stores/${store.id}/devices`}>عرض الأجهزة</a>`
                 }
               </div>
             </div>`
@@ -109,7 +109,7 @@ const overviewTab = (detail: StoreDetail, state: StoreState, write: boolean) => 
   `;
 };
 
-const deviceCard = (
+const deviceRow = (
   phone: DetailInstallation,
   store: Store,
   write: boolean,
@@ -126,14 +126,14 @@ const deviceCard = (
     .filter(Boolean)
     .join(" · ");
   return html`
-    <article class="device">
+    <div class="list-row">
       <div class="grow">
         <div class="row">
-          <b class="row-title">${who}</b>
-          ${pill(INSTALLATION_STATE[phone.status], tone)}
+          <b>${who}</b>
+          ${stateWord(INSTALLATION_STATE[phone.status], tone)}
         </div>
-        <span class="small muted">${meta}</span>
-        <code>${phone.installationId}</code>
+        <span class="sub">${meta}</span>
+        <span class="sub"><code dir="ltr">${phone.installationId}</code></span>
       </div>
       ${
         write && phone.status === "revoked"
@@ -149,13 +149,13 @@ const deviceCard = (
                       @click=${() => actions.approveDevice(phone.installationId, store.id)}>اعتماد</button>`
                   : nothing
               }
-              <button class="btn btn-ghost" type="button" ?disabled=${store.archived}
+              <button class="btn" type="button" ?disabled=${store.archived}
                 @click=${() => actions.revokeDevice(phone.installationId, store.id)}>
                 ${phone.status === "pending" ? "رفض" : "إلغاء الاعتماد"}</button>
             </div>`
             : nothing
       }
-    </article>
+    </div>
   `;
 };
 
@@ -165,19 +165,19 @@ const devicesTab = (detail: StoreDetail, write: boolean, actions: StoreActions) 
   return html`
     <section class="section">
       <div class="spread">
-        <p class="small muted flat">
-          مسموح <b class="ink">${arabicCount(store.allowedDevices, "بجهاز واحد", "بجهازين", "أجهزة", "جهازًا")}</b>
+        <p>
+          مسموح <b>${arabicCount(store.allowedDevices, "بجهاز واحد", "بجهازين", "أجهزة", "جهازًا")}</b>
           (المعتمد الآن ${fmt(active)}). الاعتماد لا يلغي جهازًا آخر تلقائيًا.
         </p>
         ${
           write
-            ? html`<a class="btn btn-outline btn-sm" href=${`#/stores/${store.id}/settings`}>تغيير الحد</a>`
+            ? html`<a class="btn" href=${`#/stores/${store.id}/settings`}>تغيير الحد</a>`
             : nothing
         }
       </div>
       ${
         detail.installations.length
-          ? detail.installations.map((phone) => deviceCard(phone, store, write, actions))
+          ? html`<div class="list">${detail.installations.map((phone) => deviceRow(phone, store, write, actions))}</div>`
           : html`<p class="empty">لا توجد أجهزة. يسجل صاحب المتجر الدخول ويغيّر كلمة المرور المؤقتة ثم يظهر طلب جهازه هنا.</p>`
       }
     </section>
@@ -192,9 +192,9 @@ const subscriptionTab = (detail: StoreDetail, write: boolean, actions: StoreActi
     <button type="button" aria-pressed=${mode === id} ?disabled=${!write || store.archived}
       @click=${() => id !== "timed" && actions.saveSubscription(id)}>${label}</button>`;
   return html`
-    <section class="card narrow">
+    <section class="section narrow">
       <div class="stack">
-        <p class="row-title">${sub.detail}</p>
+        <p class="lead">${stateWord(sub.detail, sub.tone)}</p>
         ${
           store.archived
             ? html`<p class="small muted">الحساب مؤرشف: أعد الحساب من الأرشيف أولًا من «الإعدادات».</p>`
@@ -204,18 +204,16 @@ const subscriptionTab = (detail: StoreDetail, write: boolean, actions: StoreActi
           write && !store.archived
             ? html`
               <div class="stack">
-                <span class="field">تمديد سريع</span>
+                <h3>تمديد سريع</h3>
                 <div class="btn-group">
                   ${[30, 90, 365].map(
-                    (
-                      days,
-                    ) => html`<button class="btn btn-soft" type="button" ?disabled=${store.archived}
+                    (days) => html`<button class="btn" type="button" ?disabled=${store.archived}
                       @click=${() => actions.quickExtend(store, days)}>+ ${arabicDays(days)}</button>`,
                   )}
                 </div>
               </div>
               <div class="stack">
-                <span id="mode-l" class="field">نوع الاشتراك</span>
+                <h3 id="mode-l">نوع الاشتراك</h3>
                 <div class="seg" role="group" aria-labelledby="mode-l">
                   ${seg(["permanent", "دائم"])}
                   ${seg(["timed", "بعدد أيام"])}
@@ -224,7 +222,7 @@ const subscriptionTab = (detail: StoreDetail, write: boolean, actions: StoreActi
                 <span class="small muted">
                   «إيقاف مؤقت» ينهي جلسات المتجر ويحفظ المدة المتبقية، ويعيدها عند التفعيل من جديد.
                 </span>
-                <form class="inline-form" @submit=${(event: SubmitEvent) => {
+                <form class="stack" @submit=${(event: SubmitEvent) => {
                   event.preventDefault();
                   const form = new FormData(event.currentTarget as HTMLFormElement);
                   const days = Number(form.get("days") ?? 0);
@@ -234,7 +232,7 @@ const subscriptionTab = (detail: StoreDetail, write: boolean, actions: StoreActi
                   <label class="field">عدد أيام التفعيل
                     <input name="days" inputmode="numeric" value="30" ?disabled=${store.archived}>
                   </label>
-                  <button class="btn btn-primary" ?disabled=${store.archived}>تفعيل بعدد الأيام</button>
+                  <div><button class="btn btn-primary" ?disabled=${store.archived}>تفعيل بعدد الأيام</button></div>
                 </form>
               </div>`
             : !write
@@ -268,7 +266,7 @@ function body(
       return recoveryView(detail, state.recovery, write, tabActions);
     case "audit":
       return html`<section class="section">
-        ${sourceChips(state.audit.source, tabActions.setStoreAuditSource)}
+        ${sourceFilter(state.audit.source, tabActions.setStoreAuditSource)}
         ${auditList(state.audit, false, "صفحات سجل المتجر", tabActions.pageStoreAudit)}
       </section>`;
   }
@@ -283,8 +281,8 @@ export function storeView(model: Model, actions: StoreActions, tabActions: Store
   if (!detail) {
     return html`
       <main class="page">
-        <a class="back-link" href="#/stores">‹ المتاجر</a>
-        <section class="card">${loadState(state)}</section>
+        <a href="#/stores">المتاجر</a>
+        ${loadState(state)}
       </main>`;
   }
   const store = detail.store;
@@ -294,31 +292,31 @@ export function storeView(model: Model, actions: StoreActions, tabActions: Store
   const secret = model.secret?.storeId === store.id ? model.secret : null;
   return html`
     <main class="page">
-      <a class="back-link" href="#/stores">‹ المتاجر</a>
       ${
         write
           ? nothing
-          : html`<div class="notice-inline" role="note">
+          : html`<div class="note" role="note">
               حسابك للدعم: تعرض كل شيء، والتعديل للإدارة فقط. قراءة الدفتر تُسجَّل باسمك مع السبب.
             </div>`
       }
-      <header class="store-head">
-        <div class="title-group">
+      <header class="page-head">
+        <div>
+          <a href="#/stores">المتاجر</a>
           <h1>${store.name}</h1>
-          <div class="store-meta">
+          <div class="meta">
+            <span>رقم ${fmt(store.id)}</span>
             <span dir="ltr">${store.username}</span>
-            <span aria-hidden="true">·</span>
             <span>أُنشئ ${dateTime(store.createdAt)}</span>
-            ${pill(statusText(store), statusTone(store))}
-            ${pill(sub.label, sub.tone)}
+            ${stateWord(statusText(store), statusTone(store))}
+            ${stateWord(sub.label, sub.tone)}
           </div>
         </div>
         ${
           write
             ? html`<div class="btn-group">
-                <button class="btn btn-primary btn-lg" type="button" ?disabled=${store.archived}
+                <button class="btn btn-primary" type="button" ?disabled=${store.archived}
                   @click=${() => actions.quickExtend(store, 30)}>تمديد 30 يومًا</button>
-                <button class="btn btn-soft btn-lg" type="button" ?disabled=${store.archived}
+                <button class="btn" type="button" ?disabled=${store.archived}
                   @click=${actions.resetPassword}>كلمة مرور مؤقتة</button>
               </div>`
             : nothing
@@ -329,15 +327,15 @@ export function storeView(model: Model, actions: StoreActions, tabActions: Store
         secret
           ? html`<div class="secret" role="status">
               <div class="grow">
-                <b class="row-title">كلمة المرور المؤقتة لـ <span dir="ltr">${secret.username}</span></b>
-                <p class="small muted">
+                <b>كلمة المرور المؤقتة لـ <span dir="ltr">${secret.username}</span></b>
+                <p class="small">
                   تظهر مرة واحدة فقط. انسخها وأرسلها لصاحب المتجر بطريقة آمنة. انتهت جلساته الحالية،
                   وسيُطلب منه تغييرها عند الدخول.
                 </p>
               </div>
               <code>${secret.password}</code>
               ${copyButton(secret.password)}
-              <button class="btn btn-ghost" type="button" @click=${actions.dismissSecret}>تم، إخفاء</button>
+              <button class="btn" type="button" @click=${actions.dismissSecret}>تم، إخفاء</button>
             </div>`
           : nothing
       }

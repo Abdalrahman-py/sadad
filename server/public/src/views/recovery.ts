@@ -16,14 +16,14 @@ export function recoveryChoices(detail: StoreDetail) {
 const permits = (detail: StoreDetail) =>
   detail.recoveryPermits.length
     ? html`<div class="stack">
-        <h3 class="row-title">تصاريح الاسترداد السابقة</h3>
+        <h3>تصاريح الاسترداد السابقة</h3>
         <div class="list">
           ${detail.recoveryPermits.map(
             (permit) => html`<div class="list-row">
               <div class="grow">
                 <b>${permit.approvedBy} · ${new Date(permit.expiresAt) > new Date() ? "صالح" : "منتهٍ"}</b>
                 <small class="small muted">${permit.reason} · ينتهي ${dateTime(permit.expiresAt)}</small>
-                <code class="permit-code" dir="ltr">${permit.permitId}</code>
+                <span class="sub"><code dir="ltr">${permit.permitId}</code></span>
               </div>
             </div>`,
           )}
@@ -50,19 +50,19 @@ function preview(state: RecoveryState, detail: StoreDetail) {
     view: html`
       <div class="stack">
         <div class="spread">
-          <h3 class="row-title">معاينة قبل الاعتماد</h3>
+          <h3>معاينة قبل الاعتماد</h3>
           <span class="small muted" role="status">${verdict}</span>
         </div>
         ${
           stats
             ? html`
-              <div class="grid-cards">
-                <article class="card">${metric("الإدخالات", fmt(stats.total))}</article>
-                <article class="card">${metric("أشخاص", fmt(stats.byType["contact.create"] ?? 0))}</article>
-                <article class="card">${metric("ديون", fmt(stats.byType["debt.create"] ?? 0))}</article>
-                <article class="card">${metric("دفعات", fmt(stats.byType["payment.create"] ?? 0))}</article>
-                <article class="card">${metric("إجمالي الديون", money(stats.debtCents))}</article>
-                <article class="card">${metric("إجمالي الدفعات", money(stats.paymentCents))}</article>
+              <div class="facts">
+                ${metric("الإدخالات", fmt(stats.total))}
+                ${metric("أشخاص", fmt(stats.byType["contact.create"] ?? 0))}
+                ${metric("ديون", fmt(stats.byType["debt.create"] ?? 0))}
+                ${metric("دفعات", fmt(stats.byType["payment.create"] ?? 0))}
+                ${metric("إجمالي الديون", money(stats.debtCents))}
+                ${metric("إجمالي الدفعات", money(stats.paymentCents))}
               </div>
               ${
                 stats.first !== null && stats.last !== null
@@ -85,7 +85,7 @@ function preview(state: RecoveryState, detail: StoreDetail) {
         </div>
         <details>
           <summary>تفاصيل الإدخالات</summary>
-          <div class="list push-sm">
+          <div class="list">
             ${report.details.slice(0, 200).map(
               (detailRow) => html`<div class="list-row"><div class="grow">
                 <b>${detailRow.at}</b><small class="small muted">${detailRow.text} · ${detailRow.sub}</small></div></div>`,
@@ -110,10 +110,10 @@ export function recoveryView(
   const optionLabel = (phone: (typeof active)[number]) =>
     `${fmt(phone.generation)} · ${phone.staffName || phone.label || phone.installationId}`;
   return html`
-    <section class="card stack narrow">
+    <section class="section narrow">
       <div class="stack">
-        <h2 class="section-title">استرداد إدخالات الهاتف السابق</h2>
-        <p class="muted small">
+        <h2>استرداد إدخالات الهاتف السابق</h2>
+        <p>
           حين يغيّر صاحب المتجر هاتفه وعليه إدخالات لم تُرسل، يرسل لك «قائمة اعتماد» من التطبيق. تعتمدها
           هنا فتُقبل إدخالات الهاتف القديم. التصريح صالح 24 ساعة؛ يُدخله الهاتف المعتمد عبر «إدخال تصريح
           الاسترداد».
@@ -153,14 +153,14 @@ export function recoveryView(
                     ${
                       permitted
                         ? nothing
-                        : html`<span class="small tone-warn">
+                        : html`<span class="small state-warn">
                             يحتاج الاسترداد هاتفًا قديمًا ملغى وهاتفًا معتمدًا حاليًا على الأقل.
                           </span>`
                     }
                   </li>
                   <li>
                     <b>2 · قائمة الاعتماد</b>
-                    <label class="drop">
+                    <label class="file-pick">
                       اختر ملف القائمة (JSON)
                       <input type="file" accept="application/json,.json" class="sr-only"
                         @change=${(event: Event) => {
@@ -179,8 +179,8 @@ export function recoveryView(
                       <textarea rows="2" maxlength="2000" required .value=${state.reason}
                         @input=${set("reason")} placeholder="مثال: تغيير هاتف صاحب المتجر بعد عطل"></textarea>
                     </label>
-                    <button class="btn btn-primary start"
-                      ?disabled=${!check.ready}>اعتماد الاسترداد</button>
+                    <div><button class="btn btn-primary"
+                      ?disabled=${!check.ready}>اعتماد الاسترداد</button></div>
                   </li>
                 </ol>
               </fieldset>
@@ -189,9 +189,9 @@ export function recoveryView(
             ${check.view}
             ${
               state.permit
-                ? html`<div class="notice-inline" role="status">
+                ? html`<div class="note" role="status">
                     <b>تم اعتماد الاسترداد</b>
-                    <p class="permit-id">${state.permit.permitId}</p>
+                    <p><code dir="ltr">${state.permit.permitId}</code></p>
                     <p class="small">
                       ينتهي ${dateTime(state.permit.expiresAt)}. انسخ رقم التصريح إلى الهاتف المعتمد ←
                       مزامنة السجلات والاسترداد ← إدخال تصريح الاسترداد.

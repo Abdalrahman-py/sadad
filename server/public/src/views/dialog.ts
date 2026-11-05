@@ -2,9 +2,6 @@ import { html, nothing } from "lit-html";
 import type { Dialog, DialogActions } from "../model";
 import { onSubmit } from "./common";
 
-const close = (actions: DialogActions) => html`
-  <button type="button" class="btn-icon" aria-label="إغلاق" @click=${actions.closeDialog}>×</button>`;
-
 const submit = (
   dialog: Dialog,
   actions: DialogActions,
@@ -14,7 +11,7 @@ const submit = (
 ) => html`
   <p class="form-error" role="alert">${dialog.error}</p>
   <div class="dialog-actions">
-    <button type="button" class="btn btn-soft" @click=${actions.closeDialog}>إلغاء</button>
+    <button type="button" class="btn" @click=${actions.closeDialog}>إلغاء</button>
     <button class=${`btn ${danger ? "btn-danger-solid" : "btn-primary"}`}
       ?disabled=${dialog.busy || disabled}>${label}</button>
   </div>
@@ -24,9 +21,9 @@ function body(dialog: Dialog, actions: DialogActions) {
   switch (dialog.kind) {
     case "reason":
       return html`
-        <form class="dialog-card stack" @submit=${onSubmit(() => actions.submitDialog())}>
-          <div class="dialog-head"><h2 id="dlg-title">${dialog.title}</h2>${close(actions)}</div>
-          <p class="muted">${dialog.description}</p>
+        <form class="dialog-body stack" @submit=${onSubmit(() => actions.submitDialog())}>
+          <h2 id="dlg-title">${dialog.title}</h2>
+          <p>${dialog.description}</p>
           <label class="field">سبب الإجراء
             <textarea name="reason" rows="3" maxlength="2000" required autofocus .value=${dialog.value}
               @input=${(event: InputEvent) =>
@@ -39,11 +36,9 @@ function body(dialog: Dialog, actions: DialogActions) {
         </form>`;
     case "danger":
       return html`
-        <form class="dialog-card stack" @submit=${onSubmit(() => actions.submitDialog())}>
-          <div class="dialog-head">
-            <h2 id="dlg-title">${dialog.title}</h2>${close(actions)}
-          </div>
-          <p class="muted">${dialog.description}</p>
+        <form class="dialog-body stack" @submit=${onSubmit(() => actions.submitDialog())}>
+          <h2 id="dlg-title">${dialog.title}</h2>
+          <p>${dialog.description}</p>
           ${
             dialog.needsReason
               ? html`<label class="field">سبب الإجراء
@@ -66,14 +61,15 @@ function body(dialog: Dialog, actions: DialogActions) {
             actions,
             dialog.confirm,
             true,
-            dialog.typed.trim() !== dialog.username || dialog.reason.trim() === "",
+            dialog.typed.trim() !== dialog.username ||
+              (dialog.needsReason && dialog.reason.trim() === ""),
           )}
         </form>`;
     case "confirm":
       return html`
-        <form class="dialog-card stack" @submit=${onSubmit(() => actions.submitDialog())}>
-          <div class="dialog-head"><h2 id="dlg-title">${dialog.title}</h2>${close(actions)}</div>
-          <p class="muted">${dialog.description}</p>
+        <form class="dialog-body stack" @submit=${onSubmit(() => actions.submitDialog())}>
+          <h2 id="dlg-title">${dialog.title}</h2>
+          <p>${dialog.description}</p>
           ${submit(dialog, actions, dialog.confirm, true)}
         </form>`;
     default:
@@ -81,7 +77,7 @@ function body(dialog: Dialog, actions: DialogActions) {
   }
 }
 
-/** controller.ts opens it with showModal() after render; Escape and × both close it. */
+/** controller.ts opens it with showModal() after render; Escape and «إلغاء» both close it. */
 export const dialogView = (dialog: Dialog, actions: DialogActions) => html`
   <dialog class="dialog" aria-labelledby="dlg-title" @close=${actions.closeDialog}>
     ${body(dialog, actions)}

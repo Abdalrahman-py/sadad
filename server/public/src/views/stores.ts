@@ -9,35 +9,24 @@ import {
   statusTone,
   subscriptionState,
 } from "../subscription";
-import { empty, loadState, pill, searchBox } from "./common";
-
-const verifiedTick = () => html`
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="tone-ok" stroke="currentColor" stroke-width="1.5"
-    stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="موثّق">
-    <path d="M5 12.5l4.5 4.5L19 7"/>
-  </svg>`;
+import { empty, loadState, searchBox, state } from "./common";
 
 const row = (store: StoreRow) => {
   const sub = subscriptionState(store);
   const summary = store.summary;
   return html`
-    <tr class="is-link">
+    <tr>
+      <td class="num">${fmt(store.id)}</td>
       <td>
-        <a class="cell-link" href=${`#/stores/${store.id}`}>
-          <b>${store.name}${store.verified ? verifiedTick() : nothing}</b>
-          <small class="cell-sub" dir="ltr">${store.username}</small>
-        </a>
+        <a href=${`#/stores/${store.id}`}><b>${store.name}</b></a>
+        <span class="sub"><span dir="ltr">${store.username}</span>${store.verified ? " · موثّق" : ""}</span>
+        ${store.pendingDevices ? html`<span class="sub">${state("طلب ينتظر", "warn")}</span>` : nothing}
       </td>
-      <td>${pill(statusText(store), statusTone(store))}</td>
-      <td>
-        <span class=${sub.tone === "ok" ? "" : `loud-${sub.tone}`}>${sub.label}</span>
-      </td>
-      <td>
-        <span class="num">${fmt(store.activeDevices)} / ${fmt(store.allowedDevices)}</span>
-        ${store.pendingDevices ? html`<span class="pill pill-warn pill-gap">طلب ينتظر</span>` : nothing}
-      </td>
-      <td class="num">${summary.initialized ? fmt(summary.activeContacts ?? summary.contacts) : "—"}</td>
-      <td class="num">
+      <td>${state(statusText(store), statusTone(store))}</td>
+      <td>${state(sub.label, sub.tone)}</td>
+      <td class="num opt">${fmt(store.activeDevices)} / ${fmt(store.allowedDevices)}</td>
+      <td class="num opt">${summary.initialized ? fmt(summary.activeContacts ?? summary.contacts) : "—"}</td>
+      <td class="num opt">
         ${summary.initialized ? html`${fmt(summary.openDebts)} · ${money(summary.debtTotalCents)}` : "—"}
       </td>
     </tr>
@@ -46,17 +35,18 @@ const row = (store: StoreRow) => {
 
 export function storesView(model: Model, actions: StoresActions) {
   const page = model.stores;
+  const list = page.search ?? page;
   const counts = (filter: (typeof STORE_FILTERS)[number][0]) =>
-    page.rows.filter((store) => matchesFilter(store, filter)).length;
-  const rows = page.rows.filter((store) => matchesFilter(store, page.filter));
+    list.rows.filter((store) => matchesFilter(store, filter)).length;
+  const rows = list.rows.filter((store) => matchesFilter(store, page.filter));
   return html`
     <main class="page">
       <div class="page-head">
-        <div class="title-group">
+        <div>
           <h1>المتاجر</h1>
-          <p class="muted">
+          <p class="lead">
             ${arabicCount(
-              page.rows.filter((store) => !store.archived).length,
+              list.rows.filter((store) => !store.archived).length,
               "متجر واحد",
               "متجران",
               "متاجر",
@@ -64,48 +54,40 @@ export function storesView(model: Model, actions: StoresActions) {
             )} غير مؤرشفة.
           </p>
         </div>
-        ${
-          canWrite(model)
-            ? html`<a class="btn btn-primary btn-lg" href="#/create">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                  stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                إنشاء حساب متجر</a>`
-            : nothing
-        }
+        ${canWrite(model) ? html`<a class="btn" href="#/create">إنشاء حساب متجر</a>` : nothing}
       </div>
 
-      <div class="row">
-        ${searchBox("بحث باسم المتجر أو اسم الدخول", page.q, actions.searchStores)}
-        <div class="chips" role="group" aria-label="تصفية المتاجر">
-          ${STORE_FILTERS.map(
-            ([
-              id,
-              label,
-            ]) => html`<button class="chip" type="button" aria-pressed=${page.filter === id}
-              @click=${() => actions.setStoreFilter(id)}>${label} <span>${fmt(counts(id))}</span></button>`,
-          )}
+      <section class="section">
+        <div class="toolbar">
+          ${searchBox("بحث باسم المتجر أو اسم الدخول", page.q, actions.searchStores)}
+          <div class="seg" role="group" aria-label="تصفية المتاجر">
+            ${STORE_FILTERS.map(
+              ([id, label]) => html`<button type="button" aria-pressed=${page.filter === id}
+                @click=${() => actions.setStoreFilter(id)}>${label} ${fmt(counts(id))}</button>`,
+            )}
+          </div>
         </div>
-      </div>
 
-      ${loadState(page)}
-      ${
-        rows.length
-          ? html`<div class="table-wrap"><table>
-              <thead><tr>
-                <th scope="col">المتجر</th><th scope="col">الحالة</th><th scope="col">الاشتراك</th>
-                <th scope="col">الأجهزة</th><th scope="col">الأشخاص</th><th scope="col">الديون المفتوحة</th>
-              </tr></thead>
-              <tbody>${rows.map((store) => row(store))}</tbody>
-            </table></div>`
-          : !page.loading && !page.error
-            ? empty(
-                page.q ? "لا توجد متاجر مطابقة للبحث." : "لا توجد متاجر بعد. أنشئ أول حساب متجر.",
-              )
-            : nothing
-      }
-      <p class="small muted">
-        الأحدث إنشاءً أولًا · البحث على الخادم · اضغط اسم المتجر لفتح صفحته.
-      </p>
+        ${loadState(list)}
+        ${
+          rows.length
+            ? html`<div class="table-wrap"><table>
+                <thead><tr>
+                  <th scope="col">الرقم</th><th scope="col">المتجر</th>
+                  <th scope="col">الحالة</th><th scope="col">الاشتراك</th>
+                  <th scope="col" class="opt">الأجهزة</th><th scope="col" class="opt">الأشخاص</th>
+                  <th scope="col" class="opt">الديون المفتوحة</th>
+                </tr></thead>
+                <tbody>${rows.map((store) => row(store))}</tbody>
+              </table></div>`
+            : !list.loading && !list.error
+              ? empty(
+                  page.q ? "لا توجد متاجر مطابقة للبحث." : "لا توجد متاجر بعد. أنشئ أول حساب متجر.",
+                )
+              : nothing
+        }
+        <p class="small muted">الأحدث إنشاءً أولًا. البحث على الخادم.</p>
+      </section>
     </main>
   `;
 }

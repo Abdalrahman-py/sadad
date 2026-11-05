@@ -1,9 +1,13 @@
+import { render } from "lit-html";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Api, AuditEvent } from "../../src/api";
 import { Controller } from "../../src/controller";
+import type { Dialog } from "../../src/model";
 import type { SessionPort } from "../../src/session";
-import { auditEvent, STORE_ID } from "../data";
-import { ledgerState, loadedModel } from "./support";
+import { dialogView } from "../../src/views/dialog";
+import { taskCount } from "../../src/views/tasks";
+import { auditEvent, STORE_ID, storeRow } from "../data";
+import { ledgerState, loadedModel, noActions } from "./support";
 
 const session: SessionPort = {
   current: async () => null,
@@ -58,17 +62,81 @@ afterEach(() => {
 });
 
 describe("controller: one action mutates and renders", () => {
-  it("filters the store list and repaints the chip", () => {
+  it("filters the store list and repaints the filter", () => {
     const { controller, root } = setup({});
     controller.model.screen = "stores";
 
     controller.setStoreFilter("suspended");
 
     expect(controller.model.stores.filter).toBe("suspended");
-    const pressed = [...root.querySelectorAll<HTMLElement>(".chip[aria-pressed=true]")];
-    expect(pressed.map((chip) => chip.textContent?.trim())).toEqual([
+    const pressed = [...root.querySelectorAll<HTMLElement>(".seg button[aria-pressed=true]")];
+    expect(pressed.map((button) => button.textContent?.trim())).toEqual([
       expect.stringContaining("مجمّدة"),
     ]);
+  });
+});
+
+describe("controller: store search", () => {
+  const expiring = { ...storeRow("بقالة النور"), subscriptionRemainingMs: 86_400_000 };
+  const other = { ...storeRow("مخبز السلام"), id: 8, subscriptionRemainingMs: 90 * 86_400_000 };
+  const stores = (async ({ q }: { q?: string }) => ({
+    ok: true,
+    stores: q ? [other] : [expiring, other],
+    nextCursor: null,
+  })) as unknown as Api["stores"];
+
+  it("keeps every store in the queue while a search narrows the stores table", async () => {
+    const { controller, root } = setup({ stores });
+    controller.model.pending.rows = [];
+    controller.model.stores.rows = [expiring, other];
+
+    controller.searchStores("مخبز");
+    await settled();
+
+    expect(controller.model.stores.search?.rows).toEqual([other]);
+    expect(controller.model.stores.rows).toEqual([expiring, other]);
+    expect(taskCount(controller.model)).toBe(1);
+    expect(root.textContent).toContain("بقالة النور");
+  });
+
+  it("drops the results when the search box is emptied", async () => {
+    const { controller } = setup({ stores });
+
+    controller.searchStores("مخبز");
+    await settled();
+    controller.searchStores("");
+    await settled();
+
+    expect(controller.model.stores.search).toBeNull();
+  });
+});
+
+describe("danger dialog", () => {
+  const dialog = (needsReason: boolean): Dialog => ({
+    kind: "danger",
+    title: "تجميد الحساب؟",
+    description: "",
+    confirm: "تجميد",
+    username: "corner-shop",
+    typed: "corner-shop",
+    needsReason,
+    reason: "",
+    error: "",
+    busy: false,
+    run: async () => undefined,
+  });
+  const confirmDisabled = (value: Dialog) => {
+    const root = document.createElement("div");
+    render(dialogView(value, noActions), root);
+    return root.querySelector<HTMLButtonElement>("button:not([type=button])")?.disabled;
+  };
+
+  it("confirms on the typed username alone when the action records no reason", () => {
+    expect(confirmDisabled(dialog(false))).toBe(false);
+  });
+
+  it("still waits for a reason when the action records one", () => {
+    expect(confirmDisabled(dialog(true))).toBe(true);
   });
 });
 

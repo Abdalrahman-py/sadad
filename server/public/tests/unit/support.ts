@@ -86,7 +86,15 @@ export function loadedModel(role: "admin" | "support", text?: string): Model {
   model.booting = false;
   model.caller = callerFromJwt(jwtFor(role));
   model.overview = overview;
-  model.stores = { rows: [row], q: "", filter: "all", loading: false, error: "", complete: true };
+  model.stores = {
+    rows: [row],
+    q: "",
+    filter: "all",
+    search: null,
+    loading: false,
+    error: "",
+    complete: true,
+  };
   model.pending = { rows: [pending(text)], loading: false, error: "", complete: true };
   model.audit = {
     rows: [auditEvent(text)],

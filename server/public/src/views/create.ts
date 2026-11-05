@@ -17,15 +17,15 @@ const doneStep = (done: NonNullable<CreateState["done"]>, actions: CreateActions
   <div class="stack">
     <div class="secret" role="status">
       <div class="grow">
-        <b class="row-title">بيانات الدخول لـ ${done.username}. تظهر كلمة المرور الآن فقط.</b>
-        <p class="small muted">يُطلب تغييرها عند أول دخول.</p>
+        <b>بيانات الدخول لـ ${done.username}. تظهر كلمة المرور الآن فقط.</b>
+        <p class="small">يُطلب تغييرها عند أول دخول.</p>
       </div>
       <code dir="ltr">${done.username}</code>
       <code dir="ltr">${done.password}</code>
       ${copyButton(`${done.username}\n${done.password}`, "نسخ الاثنين")}
     </div>
     <div class="stack">
-      <b class="row-title">ما يحدث بعد ذلك</b>
+      <h2>ما يحدث بعد ذلك</h2>
       <ol class="step-list">
         <li>أرسل البيانات لصاحب المتجر بطريقة آمنة.</li>
         <li>يدخل من التطبيق ويغيّر كلمة المرور المؤقتة.</li>
@@ -33,8 +33,8 @@ const doneStep = (done: NonNullable<CreateState["done"]>, actions: CreateActions
       </ol>
     </div>
     <div class="btn-group">
-      <a class="btn btn-primary btn-lg" href=${`#/stores/${done.storeId}`}>فتح صفحة المتجر</a>
-      <button class="btn btn-soft btn-lg" type="button" @click=${actions.restartCreate}>إنشاء متجر آخر</button>
+      <a class="btn btn-primary" href=${`#/stores/${done.storeId}`}>فتح صفحة المتجر</a>
+      <button class="btn" type="button" @click=${actions.restartCreate}>إنشاء متجر آخر</button>
     </div>
   </div>
 `;
@@ -42,11 +42,11 @@ const doneStep = (done: NonNullable<CreateState["done"]>, actions: CreateActions
 export function createView(model: Model, actions: CreateActions) {
   if (!canWrite(model)) {
     return html`<main class="page">
-      <a class="back-link" href="#/stores">‹ المتاجر</a>
-      <section class="card stack">
-        <h1 class="section-title">إنشاء حساب متجر</h1>
-        <p class="muted">هذا القسم للإدارة فقط؛ حسابك للدعم يقرأ ويعرض بلا تعديل.</p>
-      </section>
+      <div>
+        <a href="#/stores">المتاجر</a>
+        <h1>إنشاء حساب متجر</h1>
+        <p class="lead">هذا القسم للإدارة فقط؛ حسابك للدعم يقرأ ويعرض بلا تعديل.</p>
+      </div>
     </main>`;
   }
   const state = model.create;
@@ -55,14 +55,11 @@ export function createView(model: Model, actions: CreateActions) {
   const done = state.done;
   return html`
     <main class="page">
-      <a class="back-link" href="#/stores">‹ المتاجر</a>
-      <section class="card stack center-x">
-        <div class="stack">
-          <span class="eyebrow">${done ? "تم الإنشاء" : "حساب جديد"}</span>
-          <h1 class="auth-title">
-            ${done ? "سلّم البيانات لصاحب المتجر" : "إنشاء حساب متجر"}
-          </h1>
-        </div>
+      <div>
+        <a href="#/stores">المتاجر</a>
+        <h1>${done ? "سلّم البيانات لصاحب المتجر" : "إنشاء حساب متجر"}</h1>
+      </div>
+      <section class="section narrow">
         ${
           done
             ? doneStep(done, actions)
@@ -88,7 +85,7 @@ export function createView(model: Model, actions: CreateActions) {
                 </div>
 
                 <div class="stack">
-                  <span id="mode-l" class="field">الاشتراك</span>
+                  <h2 id="mode-l">الاشتراك</h2>
                   <div class="seg" role="group" aria-labelledby="mode-l">
                     ${seg(state.mode, "timed", "بعدد أيام", actions)}
                     ${seg(state.mode, "permanent", "دائم", actions)}
@@ -96,7 +93,7 @@ export function createView(model: Model, actions: CreateActions) {
                   </div>
                   ${
                     state.mode === "timed"
-                      ? html`<label class="field narrow-field">المدة
+                      ? html`<label class="field">المدة
                           <input name="subscriptionDays" inputmode="numeric" value="30" required>
                           <span class="hint">تُحسب من اليوم.</span>
                         </label>`
@@ -113,15 +110,14 @@ export function createView(model: Model, actions: CreateActions) {
                   </label>
                 </div>
 
-                <details class="card details-box">
-                  <summary>
-                    الصلاحيات <span class="small muted">كلها مفعّلة — اضغط للتعديل</span>
-                  </summary>
-                  <div>${permissionBoxes({})}</div>
+                <details>
+                  <summary>الصلاحيات</summary>
+                  <p class="small muted">كلها مفعّلة ما لم تعدّلها.</p>
+                  ${permissionBoxes({})}
                 </details>
 
                 <p class="form-error" role="alert">${state.error}</p>
-                <button class="btn btn-primary btn-lg" ?disabled=${!ready}>إنشاء الحساب</button>
+                <div><button class="btn btn-primary" ?disabled=${!ready}>إنشاء الحساب</button></div>
                 <p class="small muted">
                   ينشئ الخادم كلمة مرور مؤقتة تظهر مرة واحدة بعد الإنشاء. احتفظ بالصفحة مفتوحة حتى
                   تنسخها؛ لا يمكن عرضها مرة أخرى.

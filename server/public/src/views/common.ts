@@ -17,10 +17,10 @@ export const pager = (
   step: (step: PageStep) => void,
 ): TemplateResult => html`
   <nav class="pager" aria-label=${label}>
-    <button type="button" class="btn btn-soft btn-sm" ?disabled=${page.cursors.length <= 1 || page.loading}
+    <button type="button" class="btn" ?disabled=${page.cursors.length <= 1 || page.loading}
       @click=${() => step("prev")}>السابق</button>
     <span class="small muted" role="status">صفحة ${fmt(page.cursors.length)}</span>
-    <button type="button" class="btn btn-soft btn-sm" ?disabled=${!page.next || page.loading}
+    <button type="button" class="btn" ?disabled=${!page.next || page.loading}
       @click=${() => step("next")}>التالي</button>
   </nav>
 `;
@@ -34,8 +34,9 @@ export const loadState = (state: { loading: boolean; error: string }) =>
 
 export const empty = (text: string) => html`<p class="empty">${text}</p>`;
 
-export const pill = (text: string, tone: Tone = "ok") =>
-  html`<span class=${`pill pill-${tone}`}>${text}</span>`;
+/** State is a plain word; only `warn` and `danger` are red. */
+export const state = (text: string, tone: Tone = "ok") =>
+  html`<span class=${`state-${tone}`}>${text}</span>`;
 
 /** A number with its label above; `note` is the small line beside the number. */
 export const metric = (label: string, value: TemplateResult | string, note?: string) =>
@@ -46,8 +47,6 @@ const searchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** A search box that asks once the typing pauses. */
 export function searchBox(label: string, value: string, search: (q: string) => void) {
   return html`<label class="search">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-      stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input type="search" aria-label=${label} placeholder=${label} .value=${value} maxlength="120"
       @input=${(event: InputEvent) => {
         const q = (event.currentTarget as HTMLInputElement).value.trim();
@@ -65,7 +64,7 @@ export const copyButton = (text: string, label = "نسخ") => {
   const reset = (button: HTMLButtonElement) => {
     button.textContent = label;
   };
-  return html`<button type="button" class="btn btn-primary btn-sm" @click=${(event: Event) => {
+  return html`<button type="button" class="btn btn-primary" @click=${(event: Event) => {
     const button = event.currentTarget as HTMLButtonElement;
     button.textContent = "…";
     navigator.clipboard

@@ -61,7 +61,7 @@ export const LEDGER_COLUMNS: Record<LedgerKind, [string, (row: Row) => string][]
 
 function table(kind: LedgerKind, rows: Row[]): TemplateResult {
   const columns = LEDGER_COLUMNS[kind];
-  return html`<div class="table-wrap"><table>
+  return html`<div class="table-wrap"><table class="wide">
     <thead><tr>${columns.map(([label]) => html`<th scope="col">${label}</th>`)}</tr></thead>
     <tbody>${
       rows.length
@@ -73,23 +73,17 @@ function table(kind: LedgerKind, rows: Row[]): TemplateResult {
   </table></div>`;
 }
 
-const lock = () => html`
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="tone-ok" stroke="currentColor" stroke-width="1.5"
-    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
-  </svg>`;
-
 export function ledgerView(detail: StoreDetail, state: LedgerState | null, actions: LedgerActions) {
   if (!detail.ledgerInitialized) {
-    return html`<section class="card stack">
-      <h2 class="section-title">دفتر المتجر</h2>
+    return html`<section class="section">
+      <h2>دفتر المتجر</h2>
       <p class="muted">لم يُهيأ الدفتر بعد؛ يبدأ بعد تسجيل جهاز واعتماده.</p>
     </section>`;
   }
   if (!state) {
-    return html`<section class="card stack narrow">
-      <div class="row">${lock()}<h2 class="section-title">دفتر المتجر خاص بصاحبه</h2></div>
-      <p class="muted reading">
+    return html`<section class="section narrow">
+      <h2>دفتر المتجر خاص بصاحبه</h2>
+      <p>
         كل قراءة تُسجَّل باسمك مع السبب في «سجل النشاط» تحت «قراءات الدفتر». التصحيحات المالية يجريها
         صاحب المتجر من الهاتف.
       </p>
@@ -102,7 +96,7 @@ export function ledgerView(detail: StoreDetail, state: LedgerState | null, actio
           <textarea name="reason" rows="2" maxlength="2000" required
             placeholder="مثال: شكوى من صاحب المتجر حول رصيد زبون"></textarea>
         </label>
-        <button class="btn btn-primary start">عرض الدفتر وتسجيل القراءة</button>
+        <div><button class="btn btn-primary">عرض الدفتر وتسجيل القراءة</button></div>
       </form>
     </section>`;
   }
@@ -111,13 +105,13 @@ export function ledgerView(detail: StoreDetail, state: LedgerState | null, actio
     <section class="section">
       <div class="spread">
         <span class="small muted">سُجّلت القراءة · السبب: ${state.reason}</span>
-        <button class="btn btn-outline btn-sm" type="button" ?disabled=${state.loading}
+        <button class="btn" type="button" ?disabled=${state.loading}
           @click=${actions.downloadLedger}>تنزيل CSV</button>
       </div>
-      <div class="row">
-        <div class="chips" role="group" aria-label="أقسام الدفتر">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="أقسام الدفتر">
           ${(Object.keys(LEDGER_KINDS) as LedgerKind[]).map(
-            (kind) => html`<button class="chip" type="button" aria-pressed=${state.kind === kind}
+            (kind) => html`<button type="button" aria-pressed=${state.kind === kind}
               @click=${() => actions.setLedgerKind(kind)}>${LEDGER_KINDS[kind]}</button>`,
           )}
         </div>
@@ -127,12 +121,12 @@ export function ledgerView(detail: StoreDetail, state: LedgerState | null, actio
       ${
         page && page.kind === state.kind
           ? html`
-            <div class="grid-cards">
-              <article class="card">${metric("مستحق للمتجر", money(page.totals.receivableCents))}</article>
-              <article class="card">${metric("مستحق على المتجر", money(page.totals.payableCents))}</article>
-              <article class="card">${metric("صافي الرصيد", money(page.totals.netCents))}</article>
+            <div class="facts">
+              ${metric("مستحق للمتجر", money(page.totals.receivableCents))}
+              ${metric("مستحق على المتجر", money(page.totals.payableCents))}
+              ${metric("صافي الرصيد", money(page.totals.netCents))}
+              ${metric("آخر حركة", fmt(page.latestSequence))}
             </div>
-            <p class="small muted">آخر حركة رقم ${fmt(page.latestSequence)}</p>
             ${table(page.kind, page.rows)}
             ${pager("صفحات الدفتر", state, actions.pageLedger)}`
           : state.loading
