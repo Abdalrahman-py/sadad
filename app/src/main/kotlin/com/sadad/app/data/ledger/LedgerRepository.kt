@@ -301,7 +301,11 @@ class LedgerRepository(
       val next = old.apply(page)
       val rows = outbox.snapshot()
       val view = confirmedOf(next, "").view(pendingCommands(rows), failedOperations(rows))
-      val touched = touchedPeople(page, next)
+      // After a reset the table is empty, and no page names a person who exists only in the outbox.
+      val queued =
+          if (old.storeId == null) view.contacts.filter { it.pending }.map { it.id }
+          else emptyList()
+      val touched = touchedPeople(page, next) + queued
       val upserts = mutableListOf<ContactSummaryEntity>()
       val deletions = mutableListOf<String>()
       for (id in touched) {
