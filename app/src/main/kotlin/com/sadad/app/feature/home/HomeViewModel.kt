@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** One person on «تحتاج متابعة»: what they owe, and how late — `null` means due today. */
@@ -125,18 +126,7 @@ fun homeUiState(
       }
     }
   }
-      .sortedWith(
-          compareByDescending<HomeFollowUp> { it.lateDays ?: 0 }
-              .thenByDescending { it.amount.value }
-              .thenBy { it.name }
-      )
-
-  val share =
-      if (monthDebts.value > 0L) {
-        ((monthPayments.value * 100L + monthDebts.value / 2) / monthDebts.value).coerceAtMost(100L)
-      } else {
-        0L
-      }
+      .sortedWith(followUpOrder)
 
   return HomeUiState(
       storeName = storeName,
@@ -146,7 +136,7 @@ fun homeUiState(
       monthDebts = monthDebts,
       monthPayments = monthPayments,
       monthPaymentsCount = monthPaymentsCount,
-      collectionPercent = share.toInt(),
+      collectionPercent = collectionPercent(monthDebts, monthPayments),
       followUps = chasing.take(FOLLOW_UP_ROWS),
       followUpCount = chasing.size,
       empty = view.contacts.isEmpty() && view.debts.isEmpty() && view.payments.isEmpty(),
@@ -157,9 +147,27 @@ fun homeUiState(
 /** At most this many rows on «تحتاج متابعة»; the rest are behind «عرض الكل». */
 const val FOLLOW_UP_ROWS: Int = 5
 
+/** Most days late first, then the largest amount, then the name. */
+private val followUpOrder: Comparator<HomeFollowUp> =
+    compareByDescending<HomeFollowUp> { it.lateDays ?: 0 }
+        .thenByDescending { it.amount.value }
+        .thenBy { it.name }
+
+/** Collection ÷ month debts, capped at 100; no debts means no share. */
+private fun collectionPercent(monthDebts: Cents, monthPayments: Cents): Int =
+    if (monthDebts.value > 0L) {
+          ((monthPayments.value * 100L + monthDebts.value / 2) / monthDebts.value).coerceAtMost(
+              100L
+          )
+        } else {
+          0L
+        }
+        .toInt()
+
 /**
- * Follows the open store: its [LedgerView], the queue, the connection, and the store's name. The
- * totals are derived once per view and day; the rest only changes the banner. Off screen it stops.
+ * Follows the open store: its stored summary, the queue, the connection, and the store's name. Once
+ * `summaryReady` the totals come from Room; while it is false they are derived once per view and
+ * day. The rest only changes the banner. Off screen it stops.
  */
 class HomeViewModel
 internal constructor(
@@ -204,19 +212,66 @@ internal constructor(
 
   @Volatile private var derived: Derived? = null
 
-  // The heavy part reads only the view and the day; a sync status flip or a queued row never
-  // reaches it.
+  // Once summaryReady is true the heavy part reads only Room; a sync status flip never reaches
+  // it. While it is false (the fill wait) it reads the view, cached while view and day stay.
   private val totals: Flow<HomeUiState> =
-      combine(source.current.flatMapLatest { it?.repository?.view ?: flowOf(null) }, period) {
-          view,
-          period ->
-        if (view == null) return@combine HomeUiState(month = period.month, loaded = false)
-        val last = derived
-        if (last != null && last.view === view && last.period == period) return@combine last.state
-        derive(view, period.month, period.zone, period.today).also {
-          derived = Derived(view, period, it)
-        }
-      }
+      combine(source.current, period) { scope, period -> scope to period }
+          .flatMapLatest { (scope, period) ->
+            if (scope == null) {
+              flowOf(HomeUiState(month = period.month, loaded = false))
+            } else {
+              source.summaryReady(scope).flatMapLatest { ready ->
+                if (!ready) {
+                  source.view(scope).map { view ->
+                    if (view == null) {
+                      HomeUiState(month = period.month, loaded = false)
+                    } else {
+                      val last = derived
+                      if (last != null && last.view === view && last.period == period) {
+                        last.state
+                      } else {
+                        derive(view, period.month, period.zone, period.today).also {
+                          derived = Derived(view, period, it)
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  source.roomData(scope, period.month, period.zone, period.today).map { data ->
+                    roomState(data, period)
+                  }
+                }
+              }
+            }
+          }
+
+  private fun roomState(data: HomeRoomData, period: Period): HomeUiState {
+    val followUps =
+        data.followUpCandidates
+            .map { candidate ->
+              val due = LocalDate.parse(candidate.earliestOpenDue)
+              val days = ChronoUnit.DAYS.between(due, period.today).toInt()
+              HomeFollowUp(
+                  candidate.contactId,
+                  candidate.name,
+                  if (days > 0) days else null,
+                  candidate.net,
+              )
+            }
+            .sortedWith(followUpOrder)
+    return HomeUiState(
+        month = period.month,
+        owedToStore = data.owed,
+        storeOwes = data.owes,
+        monthDebts = data.monthDebts,
+        monthPayments = data.monthPayments,
+        monthPaymentsCount = data.monthPaymentsCount,
+        collectionPercent = collectionPercent(data.monthDebts, data.monthPayments),
+        followUps = followUps.take(FOLLOW_UP_ROWS),
+        followUpCount = followUps.size,
+        empty = data.empty,
+    )
+  }
 
   private data class Banner(
       val storeName: String,

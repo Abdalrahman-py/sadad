@@ -50,6 +50,19 @@ interface DebtDao {
   @Query("SELECT * FROM debts WHERE id IN (:ids)")
   suspend fun byIds(ids: List<String>): List<DebtEntity>
 
+  /**
+   * Home's month, confirmed part: the sum of `amount` of RECEIVABLE debts whose contact is not
+   * archived and whose `createdAt` is in `[from, to)`, in epoch ms.
+   */
+  @Query(
+      """
+      SELECT COALESCE(SUM(d.amountCents), 0) FROM debts d
+      JOIN contacts c ON c.id = d.contactId
+      WHERE d.direction = 'receivable' AND c.archived = 0 AND d.createdAt >= :from AND d.createdAt < :to
+      """
+  )
+  fun monthReceivableDebts(from: Long, to: Long): Flow<Long>
+
   @Query("SELECT contactId FROM debts WHERE id = :id") suspend fun contactId(id: String): String?
 
   @Upsert suspend fun upsert(row: DebtEntity)
@@ -76,6 +89,30 @@ interface PaymentDao {
 
   @Query("SELECT * FROM payments WHERE debtId IN (:debtIds)")
   suspend fun onDebts(debtIds: List<String>): List<PaymentEntity>
+
+  /**
+   * Home's month, confirmed part: the sum and count of non-reversed payments whose debt is
+   * RECEIVABLE, whose contact is not archived and whose `createdAt` is in `[from, to)`.
+   */
+  @Query(
+      """
+      SELECT COALESCE(SUM(p.amountCents), 0) FROM payments p
+      JOIN debts d ON d.id = p.debtId JOIN contacts c ON c.id = d.contactId
+      WHERE d.direction = 'receivable' AND c.archived = 0 AND p.reversed = 0
+        AND p.createdAt >= :from AND p.createdAt < :to
+      """
+  )
+  fun monthReceivablePayments(from: Long, to: Long): Flow<Long>
+
+  @Query(
+      """
+      SELECT COUNT(*) FROM payments p
+      JOIN debts d ON d.id = p.debtId JOIN contacts c ON c.id = d.contactId
+      WHERE d.direction = 'receivable' AND c.archived = 0 AND p.reversed = 0
+        AND p.createdAt >= :from AND p.createdAt < :to
+      """
+  )
+  fun monthReceivablePaymentsCount(from: Long, to: Long): Flow<Int>
 
   @Query("SELECT debtId FROM payments WHERE id = :id") suspend fun debtId(id: String): String?
 
@@ -160,7 +197,30 @@ interface ContactSummaryDao {
 
   @Query("SELECT COUNT(*) FROM contact_summary") suspend fun count(): Int
 
+  @Query("SELECT COUNT(*) FROM contact_summary") fun observeCount(): Flow<Int>
+
   @Query("SELECT * FROM contact_summary") suspend fun all(): List<ContactSummaryEntity>
+
+  /** Home's «لك عند الناس»: `SUM(net)` over the positive nets. */
+  @Query("SELECT COALESCE(SUM(net), 0) FROM contact_summary WHERE net > 0")
+  fun owedTotal(): Flow<Long>
+
+  /** Home's «عليك للناس»: `-SUM(net)` over the negative nets. */
+  @Query("SELECT COALESCE(-SUM(net), 0) FROM contact_summary WHERE net < 0")
+  fun owesTotal(): Flow<Long>
+
+  /**
+   * Home's follow-up candidates: `net > 0` and `earliestOpenDue <= today` (ISO dates compare as
+   * text). Earliest due first is `homeUiState`'s late-days order.
+   */
+  @Query(
+      """
+      SELECT * FROM contact_summary
+      WHERE net > 0 AND earliestOpenDue IS NOT NULL AND earliestOpenDue <= :today
+      ORDER BY earliestOpenDue ASC, net DESC, name ASC
+      """
+  )
+  fun followUpCandidates(today: String): Flow<List<ContactSummaryEntity>>
 }
 
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */
