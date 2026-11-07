@@ -2,7 +2,10 @@ package com.sadad.app.data.ledger
 
 import android.os.Build
 import android.os.Trace
+import androidx.room.withTransaction
+import com.sadad.app.data.db.ContactSummaryDao
 import com.sadad.app.data.db.ContactSummaryEntity
+import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ChangeEvent
@@ -51,6 +54,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 private val traceCookies = AtomicInteger()
 
@@ -194,6 +198,76 @@ class LedgerRepository(
   suspend fun awaitLoaded() {
     if (loaded.value) return
     scope.async { loaded.first { it } }.await()
+  }
+
+  /**
+   * Follows the outbox: every added, removed or state-changed row rewrites the summary of the one
+   * person it names, from that person's [PersonLedger] view, in one Room transaction per emission.
+   * The first emission is diffed against an empty list, so opening a store rewrites every person
+   * the outbox names. Waits for [summaryReady] first, so a row never lands in a table the fill is
+   * still writing, and rewrites under the same [mutex] as [applyPage], so the two never interleave
+   * inside one person's rewrite. Launched by `StoreScope`; the tests launch it themselves.
+   */
+  suspend fun followOutbox(
+      database: LedgerDatabase,
+      summaries: ContactSummaryDao = database.contactSummaryDao(),
+  ) =
+      withContext(Dispatchers.Default) {
+        summaryReady.first { it }
+        val personLedger = PersonLedger(store, outbox, session)
+        var previous: List<OutboxRow> = emptyList()
+        outbox.rows.collect { current ->
+          mutex.withLock {
+            val people = changedPeople(previous, current, database)
+            previous = current
+            if (people.isEmpty()) return@withLock
+            val upserts = mutableListOf<ContactSummaryEntity>()
+            val deletions = mutableListOf<String>()
+            for (id in people) {
+              val summary = personLedger.records(id)?.ledger?.let { summaryOf(it, id) }
+              if (summary != null) upserts += summary else deletions += id
+            }
+            database.withTransaction {
+              if (upserts.isNotEmpty()) summaries.upsert(upserts)
+              if (deletions.isNotEmpty()) summaries.delete(deletions)
+            }
+          }
+        }
+      }
+
+  /** The people named by rows added, removed or state-changed between two outbox emissions. */
+  private suspend fun changedPeople(
+      previous: List<OutboxRow>,
+      current: List<OutboxRow>,
+      database: LedgerDatabase,
+  ): Set<String> {
+    val previousById = previous.associateBy { it.operationId }
+    val currentIds = current.mapTo(HashSet()) { it.operationId }
+    val changed = mutableListOf<OutboxRow>()
+    for (row in current) {
+      val before = previousById[row.operationId]
+      if (before == null || before.state != row.state) changed += row
+    }
+    for (row in previous) if (row.operationId !in currentIds) changed += row
+    if (changed.isEmpty()) return emptySet()
+    // A debt or payment that is itself queued names its owner from the queued create; check both
+    // snapshots, so a removed row's owner is still found in the previous one.
+    val queuedDebtOwner = mutableMapOf<String, String>()
+    val queuedPaymentDebt = mutableMapOf<String, String>()
+    for (row in current + previous) {
+      when (val payload = row.command.payload()) {
+        is DebtCreate -> queuedDebtOwner[row.command.entityId] = payload.contactId
+        is PaymentCreate -> queuedPaymentDebt[row.command.entityId] = payload.debtId
+        else -> Unit
+      }
+    }
+    val debtOwner: suspend (String) -> String? = { debtId ->
+      queuedDebtOwner[debtId] ?: database.debtDao().contactId(debtId)
+    }
+    val paymentDebt: suspend (String) -> String? = { paymentId ->
+      queuedPaymentDebt[paymentId] ?: database.paymentDao().debtId(paymentId)
+    }
+    return changed.mapNotNull { personOf(it.command, debtOwner, paymentDebt) }.toSet()
   }
 
   /**

@@ -26,6 +26,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -914,6 +915,123 @@ class LedgerRepositoryTest : LedgerTestCase() {
     val rows = db.contactSummaryDao().all()
     assertEquals(1, rows.size)
     assertEquals(Cents(9_000).value, rows.single().net)
+  }
+
+  // Ticket 161: the summary follows the outbox.
+  @Test
+  fun outboxChangesRewriteOnlyTheNamedPersonsSummaries() = runTest {
+    val counting = CountingSummaryDao(db.contactSummaryDao())
+    val repo =
+        LedgerRepository(LedgerStore(db, summaries = counting), outbox, session, countedScope)
+    repo.load()
+    repo.seed(
+        contactCommand(name = "أ", id = CONTACT_ID, minute = 0),
+        debtCommand(amount = 10_000, id = DEBT_ID, minute = 1),
+        contactCommand(name = "ب", id = OTHER_CONTACT_ID, minute = 2),
+        debtCommand(
+            contactId = OTHER_CONTACT_ID,
+            amount = 4_000,
+            id = OTHER_DEBT_ID,
+            minute = 3,
+        ),
+    )
+    assertEquals(2, db.contactSummaryDao().all().size)
+    counting.reset()
+    countedScope.launch { repo.followOutbox(db, counting) }
+
+    // Queue a debt for A offline: A's row grows, B's row is not written.
+    val bBefore = db.contactSummaryDao().all().single { it.contactId == OTHER_CONTACT_ID }
+    val queuedDebt =
+        repo.addDebt(CONTACT_ID, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+    awaitSummary { rows ->
+      rows.singleOrNull { it.contactId == CONTACT_ID }?.net == Cents(15_000).value
+    }
+    assertEquals("only A is named", 1, counting.upserted)
+    assertEquals(0, counting.deleted)
+    assertEquals(bBefore, db.contactSummaryDao().all().single { it.contactId == OTHER_CONTACT_ID })
+    assertRowsEqualView(repo)
+
+    // Queue a new person with a first debt: a new pending row.
+    counting.reset()
+    val newPerson = repo.addContact("ج", null, null, null, FirstDebt(Cents(2_000))).getOrThrow()
+    awaitSummary { rows ->
+      val row = rows.singleOrNull { it.contactId == newPerson }
+      row != null && row.pending && row.net == 2_000L
+    }
+    assertEquals("one new person, one row", 1, counting.upserted)
+    assertRowsEqualView(repo)
+
+    // Settle A's queued debt as REJECTED: A's row returns to the old net.
+    counting.reset()
+    val queuedRow = outbox.snapshot().single { it.entityId == queuedDebt }
+    outbox.settle(listOf(receiptOf(queuedRow.command, ReceiptStatus.REJECTED, code = "refused")))
+    awaitSummary { rows ->
+      rows.singleOrNull { it.contactId == CONTACT_ID }?.net == Cents(10_000).value
+    }
+    assertEquals(1, counting.upserted)
+    assertRowsEqualView(repo)
+
+    // Cancel a queued payment: the owner's row returns to the old open balance.
+    val paymentId = repo.payDebt(DEBT_ID, Cents(1_000), PaymentMethod.CASH, null).getOrThrow()
+    awaitSummary { rows ->
+      rows.singleOrNull { it.contactId == CONTACT_ID }?.openReceivable == Cents(9_000).value
+    }
+    assertRowsEqualView(repo)
+    counting.reset()
+    val paymentRow = outbox.snapshot().single { it.entityId == paymentId }
+    outbox.cancel(paymentRow.operationId)
+    awaitSummary { rows ->
+      rows.singleOrNull { it.contactId == CONTACT_ID }?.openReceivable == Cents(10_000).value
+    }
+    assertEquals(1, counting.upserted)
+    assertRowsEqualView(repo)
+  }
+
+  @Test
+  fun openingAStoreWithAQueuedDebtRewritesThatPersonsRow() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand(), debtCommand(amount = 10_000, id = DEBT_ID, minute = 1))
+    // A queued debt written before the crash, with no collector running: the row is stale.
+    val queuedDebt =
+        repo.addDebt(CONTACT_ID, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+    assertEquals(
+        Cents(10_000).value,
+        db.contactSummaryDao().all().single { it.contactId == CONTACT_ID }.net,
+    )
+
+    // Reopen the store: the first outbox emission rewrites A before any other change.
+    val reopened = LedgerRepository(LedgerStore(db), outbox, session, countedScope)
+    reopened.load()
+    reopened.summaryReady.first { it }
+    countedScope.launch { reopened.followOutbox(db) }
+    awaitSummary { rows ->
+      rows.singleOrNull { it.contactId == CONTACT_ID }?.net == Cents(15_000).value
+    }
+    assertEquals(
+        queuedDebt,
+        outbox.snapshot().single { it.type == CommandType.DEBT_CREATE }.entityId,
+    )
+    assertRowsEqualView(reopened)
+  }
+
+  /** Waits (real time, on Default) until the summary table satisfies [predicate]. */
+  private suspend fun awaitSummary(predicate: suspend (List<ContactSummaryEntity>) -> Boolean) {
+    withContext(Dispatchers.Default) {
+      withTimeout(5_000) {
+        while (!predicate(db.contactSummaryDao().all())) delay(20)
+      }
+    }
+  }
+
+  /** Every stored row equals `summaryOf(wholeStoreView, id)` for the current view. */
+  private suspend fun assertRowsEqualView(repo: LedgerRepository) {
+    val view = repo.view.first { it != null }!!
+    val rows = db.contactSummaryDao().all()
+    assertEquals(view.contacts.map { it.id }.toSet(), rows.map { it.contactId }.toSet())
+    for (row in rows) {
+      assertEquals("row ${row.contactId}", summaryOf(view, row.contactId), row)
+    }
   }
 
   /** A helper id that is a valid UUID for payment entities. */
