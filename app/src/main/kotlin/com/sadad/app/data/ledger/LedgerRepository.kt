@@ -2,22 +2,35 @@ package com.sadad.app.data.ledger
 
 import android.os.Build
 import android.os.Trace
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
+import com.sadad.ledger.ChangeEvent
 import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ConfirmedLedger
+import com.sadad.ledger.ContactArchive
 import com.sadad.ledger.ContactCreate
+import com.sadad.ledger.ContactDelete
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.ContactRestore
+import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.ContactView
+import com.sadad.ledger.DebtCorrect
+import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
+import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
+import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.PaymentReverse
+import com.sadad.ledger.ReceiptStatus
 import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
 import java.time.Instant
@@ -29,11 +42,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -117,6 +132,10 @@ class LedgerRepository(
   private val loaded = MutableStateFlow(false)
   private val mutex = Mutex()
 
+  // The summary table is ready when no fill is needed, or when the one-time fill ends.
+  private val _summaryReady = MutableStateFlow(false)
+  val summaryReady: StateFlow<Boolean> = _summaryReady.asStateFlow()
+
   // The confirmed half depends on the state and the staff name only, so a queued command, or a
   // write's check, reuses it; a new state drops it. The writes pass no staff name, hence the map.
   private val confirmedFor = HashMap<String, ConfirmedLedger>()
@@ -136,10 +155,36 @@ class LedgerRepository(
   val view: StateFlow<LedgerView?> =
       contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
 
-  /** Reads the confirmed rows once, when the store opens. */
+  /**
+   * Reads the confirmed rows once, when the store opens. On an updated phone the table is empty and
+   * the rows are already here, so the fill runs in the background under [mutex] and opening does
+   * not wait; a page sent in the meantime waits on that lock. On failure the lock stays held, so no
+   * page writes a partial table and the next open retries.
+   */
   suspend fun load() {
-    state.value = traced("ledger_load") { store.load() }
+    val current = traced("ledger_load") { store.load() }
+    state.value = current
+    if (current.contacts.isEmpty() || store.summaryCount() > 0) {
+      _summaryReady.value = true
+      loaded.value = true
+      return
+    }
+    mutex.lock()
     loaded.value = true
+    scope.launch(Dispatchers.Default) {
+      // A second load that started while this fill ran passes the check above (count still 0) and
+      // refills here unless it re-checks under the lock.
+      if (store.summaryCount() > 0) {
+        _summaryReady.value = true
+        mutex.unlock()
+      } else {
+        val rows = outbox.snapshot()
+        val view = confirmedOf(current, "").view(pendingCommands(rows), failedOperations(rows))
+        store.fillSummaries(view.contacts.mapNotNull { summaryOf(view, it.id) })
+        _summaryReady.value = true
+        mutex.unlock()
+      }
+    }
   }
 
   /**
@@ -154,6 +199,7 @@ class LedgerRepository(
   /**
    * Folds one page under the write lock. A page from another epoch or store empties the state and
    * the rows, keeps the outbox, and throws [LedgerReset]; any other refusal leaves the state alone.
+   * The page and the summaries of the people it touches are persisted in one transaction.
    */
   suspend fun applyPage(page: Changes) {
     mutex.withLock {
@@ -179,10 +225,50 @@ class LedgerRepository(
         return
       }
       val next = old.apply(page)
-      store.persist(old, next, page)
+      val rows = outbox.snapshot()
+      val view = confirmedOf(next, "").view(pendingCommands(rows), failedOperations(rows))
+      val touched = touchedPeople(page, next)
+      val upserts = mutableListOf<ContactSummaryEntity>()
+      val deletions = mutableListOf<String>()
+      for (id in touched) {
+        val summary = summaryOf(view, id)
+        if (summary != null) upserts += summary else deletions += id
+      }
+      store.persistWithSummaries(old, next, page, upserts, deletions)
       state.value = next
       outbox.compact(next)
     }
+  }
+
+  /**
+   * The people one page touches: accepted events only, reversed via the new state. A person not in
+   * the next view (archived, deleted, or excluded) has no summary, so the caller deletes the row.
+   */
+  private fun touchedPeople(page: Changes, next: LedgerState): Set<String> {
+    val debtToContact = next.debts.mapValues { it.value.contactId }
+    val paymentToDebt = next.payments.mapValues { it.value.debtId }
+    val touched = LinkedHashSet<String>()
+    for (event in page.events) {
+      if (event.kind == ChangeEvent.REJECTED_KIND || event.result.status == ReceiptStatus.REJECTED)
+          continue
+      val command = LedgerJson.decodeFromJsonElement(LedgerCommand.serializer(), event.command)
+      when (val payload = command.payload()) {
+        is ContactCreate -> touched += command.entityId
+        is ContactUpdate -> touched += payload.contactId
+        is ContactArchive -> touched += payload.contactId
+        is ContactRestore -> touched += payload.contactId
+        is ContactDelete -> touched += payload.contactId
+        is DebtCreate -> touched += payload.contactId
+        is DebtCorrect -> debtToContact[payload.debtId]?.let { touched += it }
+        is DebtOffset -> debtToContact[payload.receivableDebtId]?.let { touched += it }
+        is PaymentCreate -> debtToContact[payload.debtId]?.let { touched += it }
+        is PaymentReverse ->
+            paymentToDebt[payload.paymentId]?.let { debtId ->
+              debtToContact[debtId]?.let { touched += it }
+            }
+      }
+    }
+    return touched
   }
 
   suspend fun addContact(
@@ -237,7 +323,7 @@ class LedgerRepository(
   ): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
-    val contact = currentView().contact(contactId)
+    val contact = currentView().contactOrThrow(contactId)
     enqueue(
         listOf(
             Commands.contactUpdate(
@@ -262,7 +348,7 @@ class LedgerRepository(
     val origin = origin()
     requireOnline()
     val current = currentView()
-    val contact = current.contact(contactId)
+    val contact = current.contactOrThrow(contactId)
     if (current.debts.any { it.contactId == contactId && it.remaining > Cents.ZERO }) {
       throw Refusal.Invalid("سدّد الدين المتبقي على هذا الشخص أولاً.")
     }
@@ -284,7 +370,7 @@ class LedgerRepository(
   suspend fun restoreContact(contactId: String, reason: String): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
-    val contact = currentView().contact(contactId)
+    val contact = currentView().contactOrThrow(contactId)
     enqueue(
         listOf(
             Commands.contactRestore(
@@ -466,8 +552,8 @@ class LedgerRepository(
   /**
    * The Contact a write names, from either side of the trash; anything else is [Refusal.Unknown].
    */
-  private fun LedgerView.contact(contactId: String): ContactView =
-      contacts.firstOrNull { it.id == contactId }
+  private fun LedgerView.contactOrThrow(contactId: String): ContactView =
+      contact(contactId)
           ?: archivedContacts.firstOrNull { it.id == contactId }
           ?: throw Refusal.Unknown
 
@@ -481,7 +567,7 @@ class LedgerRepository(
    * both name the version the first one consumes, and the server refuses the second.
    */
   private suspend fun nextVersion(contactId: String): Long {
-    val confirmed = currentView().contact(contactId).version
+    val confirmed = currentView().contactOrThrow(contactId).version
     val queued =
         outbox.snapshot().count {
           it.state == OutboxState.QUEUED && it.entityId == contactId && it.type in EDITS
