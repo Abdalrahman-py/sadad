@@ -602,6 +602,36 @@ class LedgerStoreTest {
     assertEquals(LedgerState.EMPTY, store.load())
   }
 
+  @Test
+  fun resetAlsoClearsSummaries() = runTest {
+    val store = LedgerStore(db)
+    db.contactSummaryDao()
+        .upsert(
+            listOf(
+                ContactSummaryEntity(
+                    contactId = CONTACT_ID,
+                    name = "أ",
+                    phone = "",
+                    kind = ContactKind.CUSTOMER,
+                    category = "",
+                    pending = false,
+                    createdAt = Events.at(0),
+                    net = 100,
+                    openReceivable = 100,
+                    openPayable = 0,
+                    earliestOpenDue = null,
+                    lastEntryAt = Events.at(0),
+                    searchKey = "a",
+                )
+            )
+        )
+    assertEquals(1, db.contactSummaryDao().all().size)
+
+    store.reset()
+
+    assertTrue(db.contactSummaryDao().all().isEmpty())
+  }
+
   private fun contact(name: String, id: String) =
       Commands.contactCreate(Events.origin, Events.at(0), name = name, entityId = id)
 

@@ -2,22 +2,35 @@ package com.sadad.app.data.ledger
 
 import android.os.Build
 import android.os.Trace
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
+import com.sadad.ledger.ChangeEvent
 import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ConfirmedLedger
+import com.sadad.ledger.ContactArchive
 import com.sadad.ledger.ContactCreate
+import com.sadad.ledger.ContactDelete
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.ContactRestore
+import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.ContactView
+import com.sadad.ledger.DebtCorrect
+import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
+import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
+import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.PaymentReverse
+import com.sadad.ledger.ReceiptStatus
 import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
 import java.time.Instant
@@ -154,6 +167,7 @@ class LedgerRepository(
   /**
    * Folds one page under the write lock. A page from another epoch or store empties the state and
    * the rows, keeps the outbox, and throws [LedgerReset]; any other refusal leaves the state alone.
+   * The page and the summaries of the people it touches are persisted in one transaction.
    */
   suspend fun applyPage(page: Changes) {
     mutex.withLock {
@@ -179,10 +193,50 @@ class LedgerRepository(
         return
       }
       val next = old.apply(page)
-      store.persist(old, next, page)
+      val rows = outbox.snapshot()
+      val view = confirmedOf(next, "").view(pendingCommands(rows), failedOperations(rows))
+      val touched = touchedPeople(page, next)
+      val upserts = mutableListOf<ContactSummaryEntity>()
+      val deletions = mutableListOf<String>()
+      for (id in touched) {
+        val summary = summaryOf(view, id)
+        if (summary != null) upserts += summary else deletions += id
+      }
+      store.persistWithSummaries(old, next, page, upserts, deletions)
       state.value = next
       outbox.compact(next)
     }
+  }
+
+  /**
+   * The people one page touches: accepted events only, reversed via the new state. A person not in
+   * the next view (archived, deleted, or excluded) has no summary, so the caller deletes the row.
+   */
+  private fun touchedPeople(page: Changes, next: LedgerState): Set<String> {
+    val debtToContact = next.debts.mapValues { it.value.contactId }
+    val paymentToDebt = next.payments.mapValues { it.value.debtId }
+    val touched = LinkedHashSet<String>()
+    for (event in page.events) {
+      if (event.kind == ChangeEvent.REJECTED_KIND || event.result.status == ReceiptStatus.REJECTED)
+          continue
+      val command = LedgerJson.decodeFromJsonElement(LedgerCommand.serializer(), event.command)
+      when (val payload = command.payload()) {
+        is ContactCreate -> touched += command.entityId
+        is ContactUpdate -> touched += payload.contactId
+        is ContactArchive -> touched += payload.contactId
+        is ContactRestore -> touched += payload.contactId
+        is ContactDelete -> touched += payload.contactId
+        is DebtCreate -> touched += payload.contactId
+        is DebtCorrect -> debtToContact[payload.debtId]?.let { touched += it }
+        is DebtOffset -> debtToContact[payload.receivableDebtId]?.let { touched += it }
+        is PaymentCreate -> debtToContact[payload.debtId]?.let { touched += it }
+        is PaymentReverse ->
+            paymentToDebt[payload.paymentId]?.let { debtId ->
+              debtToContact[debtId]?.let { touched += it }
+            }
+      }
+    }
+    return touched
   }
 
   suspend fun addContact(

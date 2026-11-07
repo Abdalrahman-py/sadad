@@ -1,16 +1,20 @@
 package com.sadad.app.data.ledger
 
 import app.cash.turbine.test
+import com.sadad.app.data.db.ContactSummaryDao
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.db.LedgerMetaDao
 import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
+import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
 import java.lang.reflect.Proxy
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -442,6 +446,285 @@ class LedgerRepositoryTest : LedgerTestCase() {
       assertEquals(Cents(9_000), after.debts.single().remaining)
       // The same object, not an equal copy: showing the entry rebuilt nothing confirmed.
       assertSame(before.contacts.single(), after.contacts.single())
+    }
+  }
+
+  @Test
+  fun aPaymentPageUpsertsExactlyOneSummaryRow() = runTest {
+    val counting = CountingSummaryDao(db.contactSummaryDao())
+    val repo =
+        LedgerRepository(LedgerStore(db, summaries = counting), outbox, session, countedScope)
+    repo.load()
+    repo.seed(contactCommand(), debtCommand(amount = 10_000, id = DEBT_ID, minute = 1))
+    assertEquals(1, db.contactSummaryDao().all().size)
+    counting.reset()
+
+    val payment = paymentCommand(debtId = DEBT_ID, amount = 1_000, id = PAYMENT_ID, minute = 2)
+    repo.applyPage(Events.page(listOf(Events.accepted(payment, 3))))
+
+    assertEquals("one payment touches one person", 1, counting.upserted)
+    assertEquals(0, counting.deleted)
+    val rows = db.contactSummaryDao().all()
+    assertEquals(1, rows.size)
+    assertEquals(CONTACT_ID, rows.single().contactId)
+    assertEquals(Cents(9_000).value, rows.single().net)
+    assertEquals(Cents(9_000).value, rows.single().openReceivable)
+  }
+
+  @Test
+  fun anOffsetPageRewritesOnePersonsRow() = runTest {
+    val counting = CountingSummaryDao(db.contactSummaryDao())
+    val repo =
+        LedgerRepository(LedgerStore(db, summaries = counting), outbox, session, countedScope)
+    repo.load()
+    repo.seed(
+        contactCommand(),
+        debtCommand(amount = 10_000, id = DEBT_ID, minute = 1),
+        debtCommand(amount = 3_000, id = OTHER_DEBT_ID, minute = 2, direction = Direction.PAYABLE),
+    )
+    counting.reset()
+
+    val offsetId = UUID.randomUUID().toString()
+    val offset =
+        Commands.debtOffset(
+            Events.origin,
+            Events.at(3),
+            receivableDebtId = DEBT_ID,
+            payableDebtId = OTHER_DEBT_ID,
+            amount = Cents(1_000),
+            entityId = offsetId,
+            operationId = newOperationId(),
+        )
+    repo.applyPage(Events.page(listOf(Events.accepted(offset, 4))))
+
+    assertEquals("one offset touches one person", 1, counting.upserted)
+    assertEquals(0, counting.deleted)
+    val row = db.contactSummaryDao().all().single()
+    assertEquals(CONTACT_ID, row.contactId)
+    // 10_000 receivable less 1_000 offset is 9_000; 3_000 payable less 1_000 is 2_000.
+    assertEquals(Cents(7_000).value, row.net)
+    assertEquals(Cents(9_000).value, row.openReceivable)
+    assertEquals(Cents(2_000).value, row.openPayable)
+  }
+
+  @Test
+  fun aContactDeletePageDeletesTheRow() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand())
+    assertEquals(1, db.contactSummaryDao().all().size)
+
+    val archive =
+        Commands.contactArchive(
+            Events.origin,
+            Events.at(1),
+            CONTACT_ID,
+            expectedVersion = 1,
+            reason = "ترحيل",
+            entityId = CONTACT_ID,
+            operationId = newOperationId(),
+        )
+    repo.applyPage(Events.page(listOf(Events.accepted(archive, 2))))
+    assertTrue(db.contactSummaryDao().all().isEmpty())
+
+    // A stale row (e.g. left by an older build) must still be removed by the delete page alone.
+    val stale =
+        db.contactSummaryDao().all().singleOrNull()?.let {
+          return@let it
+        }
+            ?: kotlin.run {
+              // Seed one stale row the delete page must remove.
+              db.contactSummaryDao()
+                  .upsert(
+                      listOf(
+                          ContactSummaryEntity(
+                              contactId = CONTACT_ID,
+                              name = "stale",
+                              phone = "",
+                              kind = com.sadad.ledger.ContactKind.CUSTOMER,
+                              category = "",
+                              pending = false,
+                              createdAt = Events.at(0),
+                              net = 0,
+                              openReceivable = 0,
+                              openPayable = 0,
+                              earliestOpenDue = null,
+                              lastEntryAt = null,
+                              searchKey = "stale",
+                          )
+                      )
+                  )
+              db.contactSummaryDao().all().single()
+            }
+    assertEquals(CONTACT_ID, stale.contactId)
+
+    val delete =
+        Commands.contactDelete(
+            Events.origin,
+            Events.at(2),
+            CONTACT_ID,
+            expectedVersion = 2,
+            reason = "حذف",
+            entityId = CONTACT_ID,
+            operationId = newOperationId(),
+        )
+    repo.applyPage(Events.page(listOf(Events.accepted(delete, 3))))
+
+    assertTrue(db.contactSummaryDao().all().isEmpty())
+  }
+
+  @Test
+  fun aFailingPageLeavesSummariesUnchanged() = runTest {
+    val repo = repository()
+    repo.load()
+    repo.seed(contactCommand(), debtCommand(amount = 10_000, id = DEBT_ID, minute = 1))
+    val before = db.contactSummaryDao().all()
+
+    // A payment on a debt the state never held is refused by the fold.
+    val bad =
+        Commands.paymentCreate(
+            Events.origin,
+            Events.at(2),
+            debtId = UUID.randomUUID().toString(),
+            amount = Cents(100),
+            method = PaymentMethod.CASH,
+            entityId = UUID.randomUUID().toString(),
+            operationId = newOperationId(),
+        )
+    val failure = runCatching { repo.applyPage(Events.page(listOf(Events.accepted(bad, 3)))) }
+    assertTrue(failure.isFailure)
+    assertEquals(before, db.contactSummaryDao().all())
+  }
+
+  @Test
+  fun afterThreePagesEveryRowEqualsWholeStoreView() = runTest {
+    val repo = repository()
+    repo.load()
+    val thirdContact = UUID.randomUUID().toString()
+    val thirdDebt = UUID.randomUUID().toString()
+    val payableDebt = OTHER_DEBT_ID
+
+    repo.applyPage(
+        Events.page(
+            listOf(
+                Events.accepted(contactCommand(), 1),
+                Events.accepted(
+                    Commands.contactCreate(
+                        Events.origin,
+                        Events.at(1),
+                        name = "ثاني",
+                        entityId = OTHER_CONTACT_ID,
+                        operationId = newOperationId(),
+                    ),
+                    2,
+                ),
+                Events.accepted(
+                    Commands.contactCreate(
+                        Events.origin,
+                        Events.at(2),
+                        name = "ثالث",
+                        entityId = thirdContact,
+                        operationId = newOperationId(),
+                    ),
+                    3,
+                ),
+            )
+        )
+    )
+
+    repo.applyPage(
+        Events.page(
+            listOf(
+                Events.accepted(debtCommand(amount = 10_000, id = DEBT_ID, minute = 3), 4),
+                Events.accepted(
+                    debtCommand(
+                        amount = 5_000,
+                        id = thirdDebt,
+                        minute = 4,
+                        contactId = thirdContact,
+                    ),
+                    5,
+                ),
+                Events.accepted(
+                    debtCommand(
+                        amount = 3_000,
+                        id = payableDebt,
+                        minute = 5,
+                        direction = Direction.PAYABLE,
+                    ),
+                    6,
+                ),
+            )
+        )
+    )
+
+    // A queued payment that must count in every later summary.
+    repo.payDebt(DEBT_ID, Cents(500), PaymentMethod.CASH, "مؤجل").getOrThrow()
+
+    val offsetId = UUID.randomUUID().toString()
+    val offset =
+        Commands.debtOffset(
+            Events.origin,
+            Events.at(6),
+            receivableDebtId = DEBT_ID,
+            payableDebtId = payableDebt,
+            amount = Cents(1_000),
+            entityId = offsetId,
+            operationId = newOperationId(),
+        )
+    val archiveThird =
+        Commands.contactArchive(
+            Events.origin,
+            Events.at(7),
+            thirdContact,
+            expectedVersion = 1,
+            reason = "ترحيل",
+            entityId = thirdContact,
+            operationId = newOperationId(),
+        )
+    repo.applyPage(
+        Events.page(listOf(Events.accepted(offset, 7), Events.accepted(archiveThird, 8)))
+    )
+
+    val view =
+        repo.view.first {
+          it != null && it.contacts.size == 2 && it.debts.any { row -> row.id == DEBT_ID }
+        } ?: error("no view")
+    val rows = db.contactSummaryDao().all()
+    assertEquals(
+        "only the two visible people have rows",
+        view.contacts.map { it.id }.toSet(),
+        rows.map { it.contactId }.toSet(),
+    )
+    assertTrue("archived person has no row", rows.none { it.contactId == thirdContact })
+    for (row in rows) {
+      assertEquals(
+          "row ${row.contactId} equals summaryOf(wholeStoreView)",
+          summaryOf(view, row.contactId),
+          row,
+      )
+    }
+  }
+
+  /** A counting wrapper, to see how many summary rows one page writes. */
+  private class CountingSummaryDao(private val real: ContactSummaryDao) :
+      ContactSummaryDao by real {
+    var upserted = 0
+    var deleted = 0
+
+    fun reset() {
+      upserted = 0
+      deleted = 0
+    }
+
+    override suspend fun upsert(rows: List<ContactSummaryEntity>) {
+      upserted += rows.size
+      real.upsert(rows)
+    }
+
+    override suspend fun delete(ids: List<String>) {
+      deleted += ids.size
+      real.delete(ids)
     }
   }
 

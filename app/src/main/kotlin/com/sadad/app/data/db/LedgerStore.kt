@@ -22,6 +22,7 @@ class LedgerStore(
     private val offsets: OffsetDao = db.offsetDao(),
     private val meta: LedgerMetaDao = db.metaDao(),
     private val events: EventDao = db.eventDao(),
+    private val summaries: ContactSummaryDao = db.contactSummaryDao(),
 ) {
   /** The stored rows, ordered by `createdSeq`, which is the event order the maps must keep. */
   suspend fun load(): LedgerState =
@@ -207,6 +208,24 @@ class LedgerStore(
     }
   }
 
+  /**
+   * [persist] plus the summaries of the people [page] touches, in one transaction: a failed persist
+   * leaves neither. [persist] joins this transaction, so both land together.
+   */
+  suspend fun persistWithSummaries(
+      old: LedgerState,
+      new: LedgerState,
+      page: Changes,
+      upserts: List<ContactSummaryEntity>,
+      deletions: List<String>,
+  ) {
+    db.withTransaction {
+      persist(old, new, page)
+      if (upserts.isNotEmpty()) summaries.upsert(upserts)
+      if (deletions.isNotEmpty()) summaries.delete(deletions)
+    }
+  }
+
   /** Empties the Ledger when a page comes from another epoch or store. The outbox stays. */
   suspend fun reset() {
     db.withTransaction {
@@ -216,6 +235,7 @@ class LedgerStore(
       offsets.clear()
       events.clear()
       meta.clear()
+      summaries.clear()
     }
   }
 

@@ -149,6 +149,18 @@ interface InstallationNameDao {
   @Query("SELECT * FROM installation_names") fun observe(): Flow<List<InstallationNameEntity>>
 }
 
+@Dao
+interface ContactSummaryDao {
+  @Upsert suspend fun upsert(rows: List<ContactSummaryEntity>)
+
+  @Query("DELETE FROM contact_summary WHERE contactId IN (:ids)")
+  suspend fun delete(ids: List<String>)
+
+  @Query("DELETE FROM contact_summary") suspend fun clear()
+
+  @Query("SELECT * FROM contact_summary") suspend fun all(): List<ContactSummaryEntity>
+}
+
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */
 data class OutboxAnswer(val operationId: String, val state: String, val code: String?)
 

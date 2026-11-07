@@ -268,3 +268,25 @@ fun InstallationNameEntity.toName(): InstallationName = InstallationName(id, lab
 
 fun InstallationName.toEntity(): InstallationNameEntity =
     InstallationNameEntity(id, label, staffName)
+
+/**
+ * One visible person's stored summary (ticket 160): the facts Home, People and quick add show,
+ * computed from their one-person view, so pages rewrite it instead of recomputing on every screen.
+ * Money is cents, instants follow [Converters], and [earliestOpenDue] is an ISO date.
+ */
+@Entity(tableName = "contact_summary")
+data class ContactSummaryEntity(
+    @PrimaryKey val contactId: String,
+    val name: String,
+    val phone: String,
+    val kind: ContactKind,
+    val category: String,
+    val pending: Boolean,
+    val createdAt: Instant,
+    val net: Long,
+    val openReceivable: Long,
+    val openPayable: Long,
+    val earliestOpenDue: String?,
+    val lastEntryAt: Instant?,
+    val searchKey: String,
+)
