@@ -226,6 +226,18 @@ class LedgerStore(
     }
   }
 
+  /** How many summary rows are stored; the fill fires only when this is zero. */
+  suspend fun summaryCount(): Int = summaries.count()
+
+  /**
+   * The one-time fill after the schema 6 update: [rows] are [summaryOf] for every visible person,
+   * in one transaction, so a crash cannot leave a half-filled table.
+   */
+  suspend fun fillSummaries(rows: List<ContactSummaryEntity>) {
+    if (rows.isEmpty()) return
+    db.withTransaction { summaries.upsert(rows) }
+  }
+
   /** Empties the Ledger when a page comes from another epoch or store. The outbox stays. */
   suspend fun reset() {
     db.withTransaction {

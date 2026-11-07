@@ -14,7 +14,7 @@ import java.time.LocalDate
  * excluded), so the caller deletes the row.
  */
 fun summaryOf(view: LedgerView, contactId: String): ContactSummaryEntity? {
-  val person = view.contacts.firstOrNull { it.id == contactId } ?: return null
+  val person = view.contact(contactId) ?: return null
   val debts = view.debtsOf(contactId)
   val earliestOpenDue =
       debts
@@ -25,9 +25,7 @@ fun summaryOf(view: LedgerView, contactId: String): ContactSummaryEntity? {
           .minOrNull()
           ?.toString()
   val lastEntryAt =
-      (debts.map { it.createdAt } +
-              view.payments.filter { it.contactId == contactId }.map { it.createdAt })
-          .maxOrNull()
+      (debts.map { it.createdAt } + view.paymentsOf(contactId).map { it.createdAt }).maxOrNull()
   return ContactSummaryEntity(
       contactId = contactId,
       name = person.name,

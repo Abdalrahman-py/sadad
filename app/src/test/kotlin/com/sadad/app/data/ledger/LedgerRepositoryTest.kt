@@ -11,15 +11,18 @@ import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
+import com.sadad.ledger.LedgerState
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
 import java.lang.reflect.Proxy
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -703,6 +706,229 @@ class LedgerRepositoryTest : LedgerTestCase() {
           summaryOf(view, row.contactId),
           row,
       )
+    }
+  }
+
+  @Test
+  fun loadFillsEmptySummariesFromExistingRows() = runTest {
+    val thirdContact = UUID.randomUUID().toString()
+    val thirdDebt = UUID.randomUUID().toString()
+    val queuedContact = UUID.randomUUID().toString()
+    val queuedDebt = UUID.randomUUID().toString()
+    val queuedPayment = UUID.randomUUID().toString()
+    val reversed = UUID.randomUUID().toString()
+    val reverse = UUID.randomUUID().toString()
+    val offsetId = UUID.randomUUID().toString()
+    val payable = UUID.randomUUID().toString()
+
+    // Seed confirmed rows through the store directly, so no summaries are written yet.
+    val seedStore = LedgerStore(db)
+    val commands =
+        listOf(
+            contactCommand(name = "أ", id = CONTACT_ID, minute = 0),
+            Commands.contactCreate(
+                Events.origin,
+                Events.at(1),
+                name = "ب",
+                entityId = OTHER_CONTACT_ID,
+                operationId = newOperationId(),
+            ),
+            Commands.contactCreate(
+                Events.origin,
+                Events.at(2),
+                name = "ج",
+                entityId = thirdContact,
+                operationId = newOperationId(),
+            ),
+            debtCommand(amount = 10_000, id = DEBT_ID, minute = 3),
+            debtCommand(
+                amount = 4_000,
+                id = OTHER_DEBT_ID,
+                minute = 4,
+                contactId = OTHER_CONTACT_ID,
+            ),
+            debtCommand(amount = 3_000, id = payable, minute = 5, direction = Direction.PAYABLE),
+            paymentCommand(debtId = DEBT_ID, amount = 4_000, id = paymentCommandId(), minute = 6),
+            paymentCommand(debtId = DEBT_ID, amount = 2_000, id = reversed, minute = 7),
+            Commands.paymentReverse(
+                Events.origin,
+                Events.at(8),
+                reversed,
+                "خطأ",
+                entityId = reverse,
+                operationId = newOperationId(),
+            ),
+            debtCommand(amount = 5_000, id = thirdDebt, minute = 9, contactId = thirdContact),
+            Commands.contactArchive(
+                Events.origin,
+                Events.at(10),
+                thirdContact,
+                expectedVersion = 1,
+                reason = "ترحيل",
+                entityId = thirdContact,
+                operationId = newOperationId(),
+            ),
+            Commands.debtOffset(
+                Events.origin,
+                Events.at(11),
+                receivableDebtId = DEBT_ID,
+                payableDebtId = payable,
+                amount = Cents(1_000),
+                entityId = offsetId,
+                operationId = newOperationId(),
+            ),
+        )
+    val page =
+        Events.page(commands.mapIndexed { index, command -> Events.accepted(command, index + 1L) })
+    seedStore.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(page), page)
+    assertTrue(db.contactSummaryDao().all().isEmpty())
+
+    // Queued entries that must count in the fill.
+    val queuedContactCmd =
+        Commands.contactCreate(
+            Events.origin,
+            Events.at(20),
+            name = "د",
+            entityId = queuedContact,
+            operationId = newOperationId(),
+        )
+    val queuedDebtCmd =
+        Commands.debtCreate(
+            Events.origin,
+            Events.at(20),
+            contactId = queuedContact,
+            direction = Direction.RECEIVABLE,
+            amount = Cents(2_000),
+            entityId = queuedDebt,
+            operationId = newOperationId(),
+            dependsOn = listOf(queuedContactCmd.operationId),
+        )
+    val queuedPaymentCmd =
+        Commands.paymentCreate(
+            Events.origin,
+            Events.at(21),
+            debtId = DEBT_ID,
+            amount = Cents(500),
+            method = PaymentMethod.CASH,
+            entityId = queuedPayment,
+            operationId = newOperationId(),
+        )
+    outbox.append(listOf(queuedContactCmd, queuedDebtCmd, queuedPaymentCmd))
+
+    val repo = LedgerRepository(LedgerStore(db), outbox, session, countedScope)
+    repo.load()
+    repo.summaryReady.first { it }
+
+    val view =
+        repo.view.first {
+          it != null &&
+              it.contacts.any { person -> person.id == queuedContact } &&
+              it.debts.firstOrNull { row -> row.id == DEBT_ID }?.remaining == Cents(4_500)
+        } ?: error("no view")
+    val rows = db.contactSummaryDao().all()
+    assertEquals(
+        "every visible person incl. queued has a row",
+        view.contacts.map { it.id }.toSet(),
+        rows.map { it.contactId }.toSet(),
+    )
+    assertTrue("archived person has no row", rows.none { it.contactId == thirdContact })
+    for (row in rows) {
+      assertEquals(
+          "row ${row.contactId} equals summaryOf(wholeStoreView)",
+          summaryOf(view, row.contactId),
+          row,
+      )
+    }
+  }
+
+  @Test
+  fun anEmptyStoreWritesNothingAndIsReady() = runTest {
+    val counting = CountingSummaryDao(db.contactSummaryDao())
+    val repo =
+        LedgerRepository(LedgerStore(db, summaries = counting), outbox, session, countedScope)
+    repo.load()
+    repo.summaryReady.first { it }
+    assertEquals(0, counting.upserted)
+    assertTrue(db.contactSummaryDao().all().isEmpty())
+  }
+
+  @Test
+  fun aSecondLoadWithRowsWritesNothing() = runTest {
+    val seedStore = LedgerStore(db)
+    val page =
+        Events.page(
+            listOf(
+                Events.accepted(contactCommand(), 1),
+                Events.accepted(debtCommand(amount = 10_000, id = DEBT_ID, minute = 1), 2),
+            )
+        )
+    seedStore.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(page), page)
+
+    val counting = CountingSummaryDao(db.contactSummaryDao())
+    val repo =
+        LedgerRepository(LedgerStore(db, summaries = counting), outbox, session, countedScope)
+    repo.load()
+    repo.summaryReady.first { it }
+    assertTrue("first load fills", counting.upserted > 0)
+    val filled = db.contactSummaryDao().all()
+    assertTrue(filled.isNotEmpty())
+
+    counting.reset()
+    repo.load()
+    repo.summaryReady.first { it }
+    assertEquals("second load writes nothing", 0, counting.upserted)
+    assertEquals(filled, db.contactSummaryDao().all())
+  }
+
+  @Test
+  fun aPageDuringFillWaitsForIt() = runTest {
+    val seedStore = LedgerStore(db)
+    val page =
+        Events.page(
+            listOf(
+                Events.accepted(contactCommand(), 1),
+                Events.accepted(debtCommand(amount = 10_000, id = DEBT_ID, minute = 1), 2),
+            )
+        )
+    seedStore.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(page), page)
+
+    val blocking = BlockingSummaryDao(db.contactSummaryDao())
+    val repo =
+        LedgerRepository(LedgerStore(db, summaries = blocking), outbox, session, countedScope)
+    repo.load()
+    blocking.started.await()
+
+    val payment =
+        paymentCommand(debtId = DEBT_ID, amount = 1_000, id = paymentCommandId(), minute = 2)
+    val duringFill =
+        async(Dispatchers.Default) {
+          repo.applyPage(Events.page(listOf(Events.accepted(payment, 3))))
+        }
+    withContext(Dispatchers.Default) { delay(300) }
+    assertFalse("the page must wait for the fill", duringFill.isCompleted)
+
+    blocking.release.complete(Unit)
+    duringFill.await()
+    repo.summaryReady.first { it }
+
+    val rows = db.contactSummaryDao().all()
+    assertEquals(1, rows.size)
+    assertEquals(Cents(9_000).value, rows.single().net)
+  }
+
+  /** A helper id that is a valid UUID for payment entities. */
+  private fun paymentCommandId(): String = UUID.randomUUID().toString()
+
+  /** A DAO that blocks its first upsert until [release], to hold the fill open. */
+  private class BlockingSummaryDao(private val real: ContactSummaryDao) :
+      ContactSummaryDao by real {
+    val started = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+
+    override suspend fun upsert(rows: List<ContactSummaryEntity>) {
+      started.complete(Unit)
+      release.await()
+      real.upsert(rows)
     }
   }
 

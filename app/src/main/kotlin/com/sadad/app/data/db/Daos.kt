@@ -158,6 +158,8 @@ interface ContactSummaryDao {
 
   @Query("DELETE FROM contact_summary") suspend fun clear()
 
+  @Query("SELECT COUNT(*) FROM contact_summary") suspend fun count(): Int
+
   @Query("SELECT * FROM contact_summary") suspend fun all(): List<ContactSummaryEntity>
 }
 
