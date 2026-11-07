@@ -247,4 +247,238 @@ class PersonSummaryTest {
       assertEquals("2026-10-16", summaryOf(view, b)!!.earliestOpenDue)
     }
   }
+
+  // Ticket 161: each outbox command names exactly one person.
+  @Test
+  fun personOfNamesTheOnePersonEachCommandTouches() = runTest {
+    val a = contactId(1)
+    val b = contactId(2)
+    val debtA = contactId(11)
+    val debtB = contactId(12)
+    val queuedDebtA = contactId(13)
+    val payableA = contactId(14)
+    val paymentA = contactId(21)
+    val otherEntity = contactId(99)
+
+    // Owners as the collector resolves them: confirmed debts from Room, a queued debt from the
+    // queued debt.create in the same outbox snapshot.
+    val debtOwner: suspend (String) -> String? = { debtId ->
+      mapOf(debtA to a, debtB to b, queuedDebtA to a, payableA to a)[debtId]
+    }
+    val paymentDebt: suspend (String) -> String? = { paymentId ->
+      mapOf(paymentA to debtA)[paymentId]
+    }
+    fun op() = UUID.randomUUID().toString()
+
+    // contact.create names its entityId; the others name the payload contactId, not entityId.
+    assertEquals(
+        a,
+        personOf(
+            Commands.contactCreate(
+                Events.origin,
+                Events.at(0),
+                name = "أ",
+                entityId = a,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    assertEquals(
+        a,
+        personOf(
+            Commands.contactUpdate(
+                Events.origin,
+                Events.at(1),
+                contactId = a,
+                expectedVersion = 1,
+                name = "أ",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    assertEquals(
+        a,
+        personOf(
+            Commands.contactArchive(
+                Events.origin,
+                Events.at(2),
+                a,
+                expectedVersion = 1,
+                reason = "ترحيل",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    assertEquals(
+        a,
+        personOf(
+            Commands.contactRestore(
+                Events.origin,
+                Events.at(3),
+                a,
+                expectedVersion = 2,
+                reason = "استرجاع",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    assertEquals(
+        a,
+        personOf(
+            Commands.contactDelete(
+                Events.origin,
+                Events.at(4),
+                a,
+                expectedVersion = 2,
+                reason = "حذف",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    assertEquals(
+        b,
+        personOf(
+            Commands.debtCreate(
+                Events.origin,
+                Events.at(5),
+                contactId = b,
+                direction = Direction.RECEIVABLE,
+                amount = Cents(1_000),
+                entityId = debtB,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    // debt.correct and payment.create name the owner of debtId.
+    assertEquals(
+        a,
+        personOf(
+            Commands.debtCorrect(
+                Events.origin,
+                Events.at(6),
+                debtId = debtA,
+                expectedVersion = 1,
+                amount = Cents(9_000),
+                reason = "تصحيح",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    assertEquals(
+        a,
+        personOf(
+            Commands.paymentCreate(
+                Events.origin,
+                Events.at(7),
+                debtId = debtA,
+                amount = Cents(500),
+                method = PaymentMethod.CASH,
+                entityId = paymentA,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    // A payment on a queued debt: the owner comes from the queued debt.create.
+    assertEquals(
+        a,
+        personOf(
+            Commands.paymentCreate(
+                Events.origin,
+                Events.at(8),
+                debtId = queuedDebtA,
+                amount = Cents(500),
+                method = PaymentMethod.CASH,
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    // payment.reverse names the owner through the payment's debt.
+    assertEquals(
+        a,
+        personOf(
+            Commands.paymentReverse(
+                Events.origin,
+                Events.at(9),
+                paymentId = paymentA,
+                reason = "خطأ",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    // debt.offset names the owner of receivableDebtId (its payable debt is the same person).
+    assertEquals(
+        a,
+        personOf(
+            Commands.debtOffset(
+                Events.origin,
+                Events.at(10),
+                receivableDebtId = debtA,
+                payableDebtId = payableA,
+                amount = Cents(300),
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        ),
+    )
+    // An unknown debt or payment owner names nobody.
+    assertNull(
+        personOf(
+            Commands.debtCorrect(
+                Events.origin,
+                Events.at(11),
+                debtId = contactId(77),
+                expectedVersion = 1,
+                amount = Cents(1),
+                reason = "تصحيح",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        )
+    )
+    assertNull(
+        personOf(
+            Commands.paymentReverse(
+                Events.origin,
+                Events.at(12),
+                paymentId = contactId(78),
+                reason = "خطأ",
+                entityId = otherEntity,
+                operationId = op(),
+            ),
+            debtOwner,
+            paymentDebt,
+        )
+    )
+  }
 }
