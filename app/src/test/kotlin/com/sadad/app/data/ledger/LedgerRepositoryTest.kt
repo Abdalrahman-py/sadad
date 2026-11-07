@@ -1015,6 +1015,39 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertRowsEqualView(reopened)
   }
 
+  /** No pulled page names a queued new person, and the outbox did not change to rewrite them. */
+  @Test
+  fun aPullAfterAResetKeepsAQueuedPersonsSummary() = runTest {
+    val repo = repository()
+    repo.load()
+    val confirmed =
+        listOf(
+            Events.accepted(contactCommand(), 1),
+            Events.accepted(debtCommand(amount = 10_000, id = DEBT_ID, minute = 1), 2),
+        )
+    repo.applyPage(Events.page(confirmed))
+    countedScope.launch { repo.followOutbox(db) }
+    val queued = repo.addContact("معلق", null, null, null, FirstDebt(Cents(2_000))).getOrThrow()
+    awaitSummary { rows -> rows.any { it.contactId == queued } }
+
+    val epoch = "11111111-2222-4333-8444-555555555555"
+    val failure = runCatching {
+      repo.applyPage(Events.page(emptyList()).copy(epoch = epoch))
+    }
+        .exceptionOrNull()
+    assertTrue(failure is LedgerReset)
+    assertTrue(db.contactSummaryDao().all().isEmpty())
+    repo.view.first { it?.contacts?.size == 1 }
+
+    repo.applyPage(Events.page(confirmed).copy(epoch = epoch))
+
+    repo.view.first { it?.contacts?.size == 2 }
+    assertRowsEqualView(repo)
+    val row = db.contactSummaryDao().all().single { it.contactId == queued }
+    assertTrue(row.pending)
+    assertEquals(2_000L, row.net)
+  }
+
   /** Waits (real time, on Default) until the summary table satisfies [predicate]. */
   private suspend fun awaitSummary(predicate: suspend (List<ContactSummaryEntity>) -> Boolean) {
     withContext(Dispatchers.Default) {
