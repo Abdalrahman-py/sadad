@@ -1,6 +1,11 @@
 package com.sadad.app.data.sync
 
 import com.sadad.app.data.db.Events
+import com.sadad.ledger.Cents
+import com.sadad.ledger.Commands
+import com.sadad.ledger.Direction
+import com.sadad.ledger.PaymentMethod
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import mockwebserver3.SocketEffect
@@ -89,6 +94,48 @@ class SyncPullTest {
       assertEquals("/auth/v1/token?grant_type=refresh_token", f.server.takeRequest().target)
       assertEquals("/v1/mobile/changes?after=0&limit=500", f.server.takeRequest().target)
       assertEquals("rotated", f.test.graph.accounts.refreshToken(f.scope.account.storeUserId))
+    }
+  }
+
+  @Test
+  fun multiPagePullViewEqualsWholeStoreView() = runTest {
+    SyncFixture.create().use { f ->
+      val contactId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+      val debtId = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"
+      val paymentId = "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f"
+      val contact =
+          Commands.contactCreate(Events.origin, Events.at(0), "سامي", entityId = contactId)
+      val debt =
+          Commands.debtCreate(
+              Events.origin,
+              Events.at(1),
+              contactId,
+              Direction.RECEIVABLE,
+              Cents(10_000),
+              entityId = debtId,
+          )
+      val payment =
+          Commands.paymentCreate(
+              Events.origin,
+              Events.at(2),
+              debtId,
+              Cents(3_000),
+              PaymentMethod.CASH,
+              entityId = paymentId,
+          )
+      f.page(
+          Events.page(listOf(Events.accepted(contact, 1), Events.accepted(debt, 2)))
+              .copy(hasMore = true)
+      )
+      f.page(Events.page(listOf(Events.accepted(payment, 3))))
+      assertEquals(SyncStatus.Idle, f.engine.pass(f.scope))
+      val view = f.scope.repository.view.first { it != null }!!
+      assertEquals(listOf(contactId), view.contacts.map { it.id })
+      assertEquals(debtId, view.debts.single().id)
+      assertEquals(Cents(10_000), view.debts.single().amount)
+      assertEquals(paymentId, view.payments.single().id)
+      assertEquals(Cents(7_000), view.receivable)
+      assertEquals(3L, f.scope.database.metaDao().get()!!.cursor)
     }
   }
 

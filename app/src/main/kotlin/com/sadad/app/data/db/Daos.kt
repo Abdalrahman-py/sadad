@@ -90,6 +90,9 @@ interface PaymentDao {
   @Query("SELECT * FROM payments WHERE debtId IN (:debtIds)")
   suspend fun onDebts(debtIds: List<String>): List<PaymentEntity>
 
+  @Query("SELECT * FROM payments WHERE id IN (:ids)")
+  suspend fun byIds(ids: List<String>): List<PaymentEntity>
+
   /**
    * Home's month, confirmed part: the sum and count of non-reversed payments whose debt is
    * RECEIVABLE, whose contact is not archived and whose `createdAt` is in `[from, to)`.
@@ -145,6 +148,9 @@ interface OffsetDao {
       "SELECT * FROM offsets WHERE receivableDebtId IN (:debtIds) OR payableDebtId IN (:debtIds)"
   )
   suspend fun onDebts(debtIds: List<String>): List<OffsetEntity>
+
+  @Query("SELECT * FROM offsets WHERE id IN (:ids)")
+  suspend fun byIds(ids: List<String>): List<OffsetEntity>
 
   @Upsert suspend fun upsert(row: OffsetEntity)
 

@@ -18,24 +18,29 @@ import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactDelete
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactRestore
+import com.sadad.ledger.ContactRow
 import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
+import com.sadad.ledger.DebtRow
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.LedgerView
+import com.sadad.ledger.OffsetRow
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
+import com.sadad.ledger.PaymentRow
 import com.sadad.ledger.ReceiptStatus
 import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
+import com.sadad.ledger.workingSetIds
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -298,23 +303,26 @@ class LedgerRepository(
       ) {
         return
       }
-      val next = old.apply(page)
+      val ids = page.workingSetIds()
+      val workingSet = store.loadWorkingSet(ids)
+      val next = workingSet.apply(page)
       val rows = outbox.snapshot()
-      val view = confirmedOf(next, "").view(pendingCommands(rows), failedOperations(rows))
+      val pending = pendingCommands(rows)
+      val failed = failedOperations(rows)
       // After a reset the table is empty, and no page names a person who exists only in the outbox.
       val queued =
-          if (old.storeId == null) view.contacts.filter { it.pending }.map { it.id }
+          if (old.storeId == null)
+              pending.filter { it.type == CommandType.CONTACT_CREATE }.map { it.entityId }
           else emptyList()
       val touched = touchedPeople(page, next) + queued
-      val upserts = mutableListOf<ContactSummaryEntity>()
-      val deletions = mutableListOf<String>()
-      for (id in touched) {
-        val summary = summaryOf(view, id)
-        if (summary != null) upserts += summary else deletions += id
+      store.persistWithSummariesFromRoom(workingSet, next, page, touched) { contactId ->
+        val personState = store.loadPerson(contactId) ?: return@persistWithSummariesFromRoom null
+        val personView = personState.view(pending, failed, session.selfInstallationId, "")
+        summaryOf(personView, contactId)
       }
-      store.persistWithSummaries(old, next, page, upserts, deletions)
-      state.value = next
-      outbox.compact(next)
+      val patched = patch(old, workingSet, next)
+      state.value = patched
+      outbox.compact(patched)
     }
   }
 
@@ -347,6 +355,28 @@ class LedgerRepository(
       }
     }
     return touched
+  }
+
+  /**
+   * Patches the cached state with only the ids in [next]'s maps and the ids in [ws] that
+   * disappeared, plus the new cursor. Empty maps are replaced; the rest are mutated in place, so
+   * the cache costs the page, not the store.
+   */
+  @Suppress("UNCHECKED_CAST")
+  private fun patch(old: LedgerState, ws: LedgerState, next: LedgerState): LedgerState {
+    val contacts = old.contacts as? MutableMap<String, ContactRow> ?: LinkedHashMap(old.contacts)
+    val debts = old.debts as? MutableMap<String, DebtRow> ?: LinkedHashMap(old.debts)
+    val payments = old.payments as? MutableMap<String, PaymentRow> ?: LinkedHashMap(old.payments)
+    val offsets = old.offsets as? MutableMap<String, OffsetRow> ?: LinkedHashMap(old.offsets)
+    for ((id, row) in next.contacts) contacts[id] = row
+    for (id in ws.contacts.keys - next.contacts.keys) contacts.remove(id)
+    for ((id, row) in next.debts) debts[id] = row
+    for (id in ws.debts.keys - next.debts.keys) debts.remove(id)
+    for ((id, row) in next.payments) payments[id] = row
+    for (id in ws.payments.keys - next.payments.keys) payments.remove(id)
+    for ((id, row) in next.offsets) offsets[id] = row
+    for (id in ws.offsets.keys - next.offsets.keys) offsets.remove(id)
+    return LedgerState(next.storeId, next.epoch, next.cursor, contacts, debts, payments, offsets)
   }
 
   suspend fun addContact(
