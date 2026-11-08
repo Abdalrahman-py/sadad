@@ -1,13 +1,17 @@
 package com.sadad.app.feature.home
 
 import androidx.lifecycle.viewModelScope
+import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.Account
 import com.sadad.app.data.session.StoreScope
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contacts.contactId
+import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
+import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtView
@@ -26,6 +30,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -256,17 +261,28 @@ class HomeViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val status = MutableSharedFlow<SyncStatus>(replay = 1).apply { tryEmit(SyncStatus.Idle) }
       val refreshed = AtomicInteger()
+      val real = fixture.graph.homeSource()
       val source =
-          object : HomeSource {
-            override val current = fixture.graph.current
-            override val accounts = fixture.graph.accounts.accounts
-
+          object : HomeSource by real {
             override fun syncStatus(storeUserId: String) = status
 
             override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
 
             override fun refresh() {
               refreshed.incrementAndGet()
+            }
+
+            override fun summaryReady(scope: StoreScope) = flowOf(false)
+
+            override fun view(scope: StoreScope) = scope.repository.view
+
+            override fun roomData(
+                scope: StoreScope,
+                month: YearMonth,
+                zone: ZoneId,
+                today: LocalDate,
+            ): Flow<HomeRoomData> = flow {
+              throw AssertionError("roomData must not be read while summaryReady is false")
             }
           }
       val model =
@@ -288,6 +304,255 @@ class HomeViewModelTest {
     }
   }
 
+  @Test
+  fun roomRowsGiveTotalsFollowUpAndMonthWithoutTheView() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val a = contactId(1)
+      val b = contactId(2)
+      val supplier = contactId(3)
+      val dA = contactId(11)
+      val dB = contactId(12)
+      val dSupplier = contactId(13)
+      val paymentA = contactId(21)
+      fixture.seedCommands(
+          listOf(
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "سامي", entityId = a),
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "ليلى", entityId = b),
+              Commands.contactCreate(
+                  Events.origin,
+                  at(2026, 10, 1),
+                  name = "مخبز الأمل",
+                  kind = ContactKind.SUPPLIER,
+                  entityId = supplier,
+              ),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 2),
+                  contactId = a,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(10_000),
+                  dueDate = "2026-10-22",
+                  entityId = dA,
+              ),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 2),
+                  contactId = b,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(4_000),
+                  dueDate = "2026-10-25",
+                  entityId = dB,
+              ),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 3),
+                  contactId = supplier,
+                  direction = Direction.PAYABLE,
+                  amount = Cents(7_000),
+                  entityId = dSupplier,
+              ),
+              Commands.paymentCreate(
+                  Events.origin,
+                  at(2026, 10, 5),
+                  debtId = dA,
+                  amount = Cents(3_000),
+                  method = PaymentMethod.CASH,
+                  entityId = paymentA,
+              ),
+          )
+      )
+      val view = store.repository.view.first { it != null && it.contacts.size == 3 }!!
+      val expected = homeUiState(view, october, zone, today = today)
+
+      val clock = MovableClock(at(2026, 10, 25), zone)
+      val model = fixture.roomHome(clock)
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      val state = model.state.first { it.loaded }
+
+      assertEquals(expected.owedToStore, state.owedToStore)
+      assertEquals(expected.storeOwes, state.storeOwes)
+      assertEquals(expected.monthDebts, state.monthDebts)
+      assertEquals(expected.monthPayments, state.monthPayments)
+      assertEquals(expected.monthPaymentsCount, state.monthPaymentsCount)
+      assertEquals(expected.collectionPercent, state.collectionPercent)
+      assertEquals(expected.followUps, state.followUps)
+      assertEquals(expected.followUpCount, state.followUpCount)
+      assertEquals(expected.empty, state.empty)
+      assertTrue(state.loaded)
+    }
+  }
+
+  @Test
+  fun queuedDebtAndQueuedPaymentInTheMonthEqualTheWholeStoreView() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val a = contactId(1)
+      val dA = contactId(11)
+      fixture.seedCommands(
+          listOf(
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "سامي", entityId = a),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 16),
+                  contactId = a,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(10_000),
+                  dueDate = "2026-10-20",
+                  entityId = dA,
+              ),
+          )
+      )
+      store.repository
+          .addDebt(a, Direction.RECEIVABLE, Cents(3_000), null, "2026-10-20")
+          .getOrThrow()
+      store.repository.payDebt(dA, Cents(2_000), PaymentMethod.CASH, null).getOrThrow()
+      val view =
+          store.repository.view.first {
+            it != null && it.debts.any { debt -> debt.pending } && it.payments.any { it.pending }
+          }!!
+      // The queued rows are created at Instant.now() (November), so the month is November.
+      val november = YearMonth.of(2026, 11)
+      val novemberToday = LocalDate.of(2026, 11, 7)
+      val expected = homeUiState(view, november, zone, today = novemberToday)
+      // Wait for the summary collector to rewrite the row, so the room totals include the queue.
+      val deadline = System.currentTimeMillis() + 5_000
+      while (System.currentTimeMillis() < deadline) {
+        val rows = store.database.contactSummaryDao().all()
+        if (rows.any { it.contactId == a && it.net == 11_000L }) break
+        Thread.sleep(10)
+      }
+      assertTrue(
+          store.database.contactSummaryDao().all().any { it.contactId == a && it.net == 11_000L }
+      )
+
+      val clock = MovableClock(at(2026, 11, 7), zone)
+      val model = fixture.roomHome(clock)
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      val state = model.state.first { it.loaded && it.owedToStore == expected.owedToStore }
+
+      assertEquals(expected.owedToStore, state.owedToStore)
+      assertEquals(expected.storeOwes, state.storeOwes)
+      assertEquals(expected.monthDebts, state.monthDebts)
+      assertEquals(expected.monthPayments, state.monthPayments)
+      assertEquals(expected.monthPaymentsCount, state.monthPaymentsCount)
+      assertEquals(expected.collectionPercent, state.collectionPercent)
+      assertEquals(expected.followUps, state.followUps)
+      assertEquals(expected.followUpCount, state.followUpCount)
+      assertEquals(expected.empty, state.empty)
+    }
+  }
+
+  @Test
+  fun whileSummaryIsNotReadyHomeShowsTheViewAndNeverAnEmptyStore() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val a = contactId(1)
+      val dA = contactId(11)
+      fixture.seedCommands(
+          listOf(
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "سامي", entityId = a),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 2),
+                  contactId = a,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(5_000),
+                  entityId = dA,
+              ),
+          )
+      )
+      val view = store.repository.view.first { it != null && it.contacts.size == 1 }!!
+      val expected = homeUiState(view, october, zone, today = today)
+      // The fill wait: the summary table is still empty, but the ledger is full.
+      store.database.contactSummaryDao().clear()
+
+      val clock = MovableClock(at(2026, 10, 25), zone)
+      val model = fixture.home(MutableStateFlow(SyncStatus.Idle), AtomicInteger(), clock)
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      val state = model.state.first { it.loaded }
+
+      assertEquals(expected.owedToStore, state.owedToStore)
+      assertEquals(expected.monthDebts, state.monthDebts)
+      assertFalse("a full ledger never reads as an empty store", state.empty)
+    }
+  }
+
+  @Test
+  fun roomStateEqualsHomeUiStateAtThreeDifferentDays() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val store = checkNotNull(fixture.graph.current.value)
+      val a = contactId(1)
+      val b = contactId(2)
+      val c = contactId(3)
+      val dA = contactId(11)
+      val dB = contactId(12)
+      val dC = contactId(13)
+      fixture.seedCommands(
+          listOf(
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "سامي", entityId = a),
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "ليلى", entityId = b),
+              Commands.contactCreate(Events.origin, at(2026, 10, 1), name = "كريم", entityId = c),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 2),
+                  contactId = a,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(10_000),
+                  dueDate = "2026-10-20",
+                  entityId = dA,
+              ),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 2),
+                  contactId = b,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(4_000),
+                  dueDate = "2026-10-25",
+                  entityId = dB,
+              ),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 2),
+                  contactId = c,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(6_000),
+                  dueDate = "2026-10-10",
+                  entityId = dC,
+              ),
+          )
+      )
+      val view = store.repository.view.first { it != null && it.contacts.size == 3 }!!
+
+      for (day in
+          listOf(
+              LocalDate.of(2026, 10, 19),
+              LocalDate.of(2026, 10, 20),
+              LocalDate.of(2026, 10, 25),
+          )) {
+        val expected = homeUiState(view, october, zone, today = day)
+        val clock = MovableClock(day.atTime(12, 0).atZone(zone).toInstant(), zone)
+        val model = fixture.roomHome(clock)
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+        val state = model.state.first { it.loaded }
+
+        assertEquals("owed on $day", expected.owedToStore, state.owedToStore)
+        assertEquals("owes on $day", expected.storeOwes, state.storeOwes)
+        assertEquals("month debts on $day", expected.monthDebts, state.monthDebts)
+        assertEquals("month payments on $day", expected.monthPayments, state.monthPayments)
+        assertEquals(
+            "month payments count on $day",
+            expected.monthPaymentsCount,
+            state.monthPaymentsCount,
+        )
+        assertEquals("collection on $day", expected.collectionPercent, state.collectionPercent)
+        assertEquals("follow-ups on $day", expected.followUps, state.followUps)
+        assertEquals("follow-up count on $day", expected.followUpCount, state.followUpCount)
+        assertEquals("empty on $day", expected.empty, state.empty)
+      }
+    }
+  }
+
   /* ------------------------------------------------------------------ builders */
 
   @Test
@@ -302,6 +567,23 @@ class HomeViewModelTest {
           override fun offlineUntil(account: Account): Long? = null
 
           override fun refresh() {}
+
+          override fun summaryReady(scope: StoreScope): Flow<Boolean> = flow {
+            throw AssertionError("no store, no summaryReady")
+          }
+
+          override fun view(scope: StoreScope): Flow<LedgerView?> = flow {
+            throw AssertionError("no store, no view")
+          }
+
+          override fun roomData(
+              scope: StoreScope,
+              month: YearMonth,
+              zone: ZoneId,
+              today: LocalDate,
+          ): Flow<HomeRoomData> = flow {
+            throw AssertionError("no store, no roomData")
+          }
         }
     assertFalse(HomeViewModel(source).state.value.loaded)
 
@@ -337,7 +619,10 @@ class HomeViewModelTest {
         status.emit(SyncStatus.Idle)
       }
       status.emit(SyncStatus.Offline)
-      assertEquals(HomeOffline(2, LEASE_END), model.state.first { it.offline != null }.offline)
+      assertEquals(
+          HomeOffline(2, LEASE_END),
+          model.state.first { it.offline?.queued == 2 }.offline,
+      )
       status.emit(SyncStatus.Idle)
       model.state.first { it.offline == null }
 
@@ -370,26 +655,52 @@ class HomeViewModelTest {
     }
   }
 
+  // The summaryReady=false path (the fill wait): the view is the only totals source.
   private fun TestGraph.home(
       status: Flow<SyncStatus>,
       calls: AtomicInteger,
       clock: Clock? = null,
   ): HomeViewModel {
-    val graph = graph
+    val real = graph.homeSource()
     val source =
-        object : HomeSource {
-          override val current = graph.current
-          override val accounts = graph.accounts.accounts
-
+        object : HomeSource by real {
           override fun syncStatus(storeUserId: String) = status
 
           override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
 
           override fun refresh() {}
+
+          override fun summaryReady(scope: StoreScope) = flowOf(false)
+
+          override fun view(scope: StoreScope) = scope.repository.view
+
+          override fun roomData(
+              scope: StoreScope,
+              month: YearMonth,
+              zone: ZoneId,
+              today: LocalDate,
+          ): Flow<HomeRoomData> = flow {
+            throw AssertionError("roomData must not be read while summaryReady is false")
+          }
         }
     return HomeViewModel(source, clock) { view, month, zone, today ->
           calls.incrementAndGet()
           homeUiState(view = view, month = month, zone = zone, today = today)
+        }
+        .also { closeWithStore(it.viewModelScope) }
+  }
+
+  // The room path: the whole-store view and the derivation must never be touched.
+  private fun TestGraph.roomHome(clock: Clock): HomeViewModel {
+    val real = graph.homeSource()
+    val source =
+        object : HomeSource by real {
+          override fun view(scope: StoreScope): Flow<LedgerView?> = flow {
+            throw AssertionError("repository.view must not be collected after summaryReady")
+          }
+        }
+    return HomeViewModel(source, clock) { _, _, _, _ ->
+          throw AssertionError("derive must not run after summaryReady")
         }
         .also { closeWithStore(it.viewModelScope) }
   }
