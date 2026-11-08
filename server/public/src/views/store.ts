@@ -53,11 +53,7 @@ const overviewTab = (detail: StoreDetail, state: StoreState, write: boolean) => 
           )}
         </article>
         <article class="card">
-          ${metric(
-            "ديون مفتوحة",
-            summary?.initialized ? fmt(summary.openDebts) : "—",
-            summary?.initialized ? money(summary.debtTotalCents) : undefined,
-          )}
+          ${metric("مستحق للمتجر", summary?.initialized ? money(summary.receivableCents) : "—")}
         </article>
         <article class="card">
           ${metric("الأجهزة", fmt(active), `من ${fmt(store.allowedDevices)}`)}
