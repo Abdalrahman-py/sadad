@@ -221,6 +221,8 @@ interface ContactSummaryDao {
       """
   )
   fun followUpCandidates(today: String): Flow<List<ContactSummaryEntity>>
+
+  @Query("SELECT * FROM contact_summary") fun observe(): Flow<List<ContactSummaryEntity>>
 }
 
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */

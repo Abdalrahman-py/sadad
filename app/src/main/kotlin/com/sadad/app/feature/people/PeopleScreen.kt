@@ -62,7 +62,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
-import com.sadad.app.contactRecords
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.SadadButton
@@ -466,7 +465,7 @@ private fun peopleViewModel(): PeopleViewModel {
   return viewModel(
       factory =
           viewModelFactory {
-            initializer { PeopleViewModel(graph.contactRecords(), createSavedStateHandle()) }
+            initializer { PeopleViewModel(graph.peopleSource(), createSavedStateHandle()) }
           }
   )
 }

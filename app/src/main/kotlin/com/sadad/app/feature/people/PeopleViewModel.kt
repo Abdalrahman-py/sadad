@@ -3,10 +3,13 @@ package com.sadad.app.feature.people
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.ledger.ContactRecords
+import com.sadad.app.feature.quickadd.PersonSearch
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.ContactView
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import java.text.Collator
@@ -26,7 +29,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -84,8 +90,8 @@ data class PeopleRow(
     val syncFailed: Boolean = false,
 ) {
   /** The folded name and the phone's digits, folded once per row instead of per keystroke. */
-  internal val nameKey: String = searchText(name)
-  internal val phoneDigits: String = searchText(phone).filter(Char::isDigit)
+  internal val nameKey: String = PersonSearch.normalize(name)
+  internal val phoneDigits: String = PersonSearch.normalize(phone).filter(Char::isDigit)
 
   /** The last three digits the row shows after «…»; "" when the person has no number. */
   val phoneTail: String
@@ -143,6 +149,77 @@ fun peopleUiState(
         filter,
         sort,
     )
+
+/**
+ * Everyone in the stored summary, under the same search, chip and order as [peopleUiState] from the
+ * view: it is the list People shows once the summary is filled.
+ */
+fun peopleUiState(
+    summaries: List<ContactSummaryEntity>,
+    drafts: List<ContactView>,
+    zone: ZoneId,
+    today: LocalDate,
+    query: String = "",
+    filter: PeopleFilter = PeopleFilter.ALL,
+    sort: PeopleSort = PeopleSort.RECENT,
+): PeopleState =
+    peopleUiState(
+        sortRows(summaryRows(summaries, drafts, zone, today), sort),
+        summaries.size,
+        query,
+        filter,
+        sort,
+    )
+
+/**
+ * Every person's row from the stored summary: the same figures `peopleRows` reads off the view. A
+ * rejected `contact.create` the summary does not know stays listed, with `syncFailed` and no net —
+ * the directory's row for it under [ContactRecords] had no debts either.
+ */
+internal fun summaryRows(
+    summaries: List<ContactSummaryEntity>,
+    drafts: List<ContactView>,
+    zone: ZoneId,
+    today: LocalDate,
+): List<PeopleRow> {
+  val rows = summaries.map { row ->
+    val net = Cents(row.net)
+    val last = maxOf(row.createdAt, row.lastEntryAt ?: row.createdAt)
+    val lateDays =
+        row.earliestOpenDue
+            ?.let(::parseDue)
+            ?.let { ChronoUnit.DAYS.between(it, today).toInt() }
+            ?.takeIf { net > Cents.ZERO && it > 0 }
+    PeopleRow(
+        id = row.contactId,
+        name = row.name,
+        phone = row.phone,
+        supplier = row.kind == ContactKind.SUPPLIER,
+        net = net,
+        lastActiveAt = last,
+        activity = if (lateDays == null) activityText(last, today, zone) else lateText(lateDays),
+        lateDays = lateDays,
+        category = row.category,
+    )
+  }
+
+  val failed = drafts.map { draft ->
+    PeopleRow(
+        id = draft.id,
+        name = draft.name,
+        phone = draft.phone,
+        supplier = draft.kind == ContactKind.SUPPLIER,
+        net = Cents.ZERO,
+        lastActiveAt = draft.createdAt,
+        activity = activityText(draft.createdAt, today, zone),
+        lateDays = null,
+        category = draft.category,
+        syncFailed = true,
+    )
+  }
+
+  return rows + failed
+}
 
 /**
  * Every person's row: the one pass over the whole ledger. It depends only on the view and the day,
@@ -215,7 +292,7 @@ internal fun peopleUiState(
     filter: PeopleFilter,
     sort: PeopleSort,
 ): PeopleState {
-  val needle = searchText(query)
+  val needle = PersonSearch.normalize(query)
   val searched = if (needle.isEmpty()) sorted else sorted.filter { matches(it, needle) }
   val counts = PeopleFilter.entries.associateWith { chip -> searched.count(chip::keeps) }
   val shown = searched.filter(filter::keeps)
@@ -264,26 +341,6 @@ private fun matches(row: PeopleRow, needle: String): Boolean {
   return row.phoneDigits.contains(digits)
 }
 
-/**
- * The search's folding, its own copy because features do not import from one another: Arabic-Indic
- * and Persian digits become Latin, أ إ آ become ا, ة becomes ه and ى becomes ي, so «احمد» finds
- * «أحمد» and a number typed on an Arabic keyboard finds the stored phone.
- */
-internal fun searchText(value: String): String =
-    buildString(value.length) {
-          for (character in value.trim()) {
-            when {
-              character in '\u0660'..'\u0669' -> append('0' + (character - '\u0660'))
-              character in '\u06F0'..'\u06F9' -> append('0' + (character - '\u06F0'))
-              character == 'أ' || character == 'إ' || character == 'آ' -> append('ا')
-              character == 'ة' -> append('ه')
-              character == 'ى' -> append('ي')
-              else -> append(character)
-            }
-          }
-        }
-        .lowercase(Locale.ROOT)
-
 /** «اليوم 10:24»، «أمس»، «قبل 5 أيام»، «قبل أسبوع»، «الشهر الماضي»: when they last moved. */
 internal fun activityText(at: Instant, today: LocalDate, zone: ZoneId): String {
   val days = ChronoUnit.DAYS.between(at.atZone(zone).toLocalDate(), today).toInt()
@@ -317,16 +374,28 @@ private fun compareByArabicName(): Comparator<PeopleRow> {
 }
 
 /**
- * The list, projected on [Dispatchers.Default] from the one [LedgerView]. The search, the chip and
- * the order live in the [SavedStateHandle], so a recreated screen keeps them; [followDay] moves
- * «اليوم» and «متأخر 3 أيام» on at midnight while the tab stays open.
+ * The list, projected on [Dispatchers.Default] from the stored summary once it is filled, and from
+ * the one [LedgerView] while the summary is still filling. The search, the chip and the order live
+ * in the [SavedStateHandle], so a recreated screen keeps them; [followDay] moves «اليوم» and «متأخر
+ * 3 أيام» on at midnight while the tab stays open.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PeopleViewModel(
-    private val records: Flow<ContactRecords?>,
+    private val source: PeopleSource,
     private val saved: SavedStateHandle,
     private val clock: Clock? = null,
 ) : ViewModel() {
+
+  /**
+   * The screen tests build the model against the open store's records; it never sees a filled
+   * summary, so this is the filling window's list, for the life of this constructor.
+   */
+  constructor(
+      records: Flow<ContactRecords?>,
+      saved: SavedStateHandle,
+      clock: Clock? = null,
+  ) : this(fillSource(records), saved, clock)
+
   private data class Day(val zone: ZoneId, val today: LocalDate)
 
   private val query = MutableStateFlow(saved.get<String>(QUERY).orEmpty())
@@ -353,16 +422,31 @@ class PeopleViewModel(
 
   init {
     val rows =
-        combine(records, day) { records, current ->
-              val view = records?.directory ?: return@combine null
-              val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
-              Rows(
-                  peopleRows(view, current.zone, current.today).map {
-                    if (it.id in failedIds) it.copy(syncFailed = true) else it
-                  },
-                  records.ledger.contacts.size,
-                  records.failed.size,
-              )
+        combine(source.summaryReady, day) { ready, current -> ready to current }
+            .flatMapLatest { (ready, current) ->
+              if (ready) {
+                combine(source.summaries, source.failedDrafts) { summaries, drafts ->
+                  summaries?.let {
+                    Rows(
+                        summaryRows(it, drafts, current.zone, current.today),
+                        it.size,
+                        drafts.size,
+                    )
+                  }
+                }
+              } else {
+                source.records.map { records ->
+                  val view = records?.directory ?: return@map null
+                  val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
+                  Rows(
+                      peopleRows(view, current.zone, current.today).map {
+                        if (it.id in failedIds) it.copy(syncFailed = true) else it
+                      },
+                      records.ledger.contacts.size,
+                      records.failed.size,
+                  )
+                }
+              }
             }
             .flowOn(Dispatchers.Default)
     // Sorting is the costly comparison (an Arabic collator), so it runs per order, not per letter.
@@ -451,5 +535,14 @@ private const val SORT = "people:sort"
 
 /** The `filter` argument of the `People(filter)` route, in the same handle. */
 private const val ROUTE_FILTER = "filter"
+
+/** A source whose summary never fills, so the records constructor reads today's list for ever. */
+private fun fillSource(records: Flow<ContactRecords?>): PeopleSource =
+    object : PeopleSource {
+      override val summaries = flowOf<List<ContactSummaryEntity>?>(null)
+      override val summaryReady = flowOf(false)
+      override val failedDrafts = flowOf<List<ContactView>>(emptyList())
+      override val records = records
+    }
 
 private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
