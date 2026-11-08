@@ -18,7 +18,7 @@ begin
       continue;
     end if;
     with balances as (
-      select d.id, d.direction,
+      select d.id, d.contact_id, d.direction,
              coalesce(a.amount_cents, d.amount_cents) as principal,
              coalesce(a.amount_cents, d.amount_cents) - coalesce(p.paid, 0) - coalesce(o.offsetted, 0) as remaining
       from public.sadid_debts d
@@ -36,6 +36,14 @@ begin
         where x.store_id = d.store_id and (x.receivable_debt_id = d.id or x.payable_debt_id = d.id)
       ) o on true
       where d.store_id = store_number
+    ), per_person as (
+      select sum(case when b.direction = 'receivable' then b.remaining
+                      when b.direction = 'payable' then -b.remaining
+                      else 0 end) as net
+      from balances b
+      join public.sadid_contacts c
+        on c.store_id = store_number and c.id = b.contact_id and not c.archived
+      group by b.contact_id
     )
     select jsonb_build_object(
       'storeId', store_number,
@@ -45,8 +53,8 @@ begin
       'debts', count(*),
       'openDebts', count(*) filter (where remaining > 0),
       'debtTotalCents', coalesce(sum(principal), 0),
-      'receivableCents', coalesce(sum(remaining) filter (where direction = 'receivable'), 0),
-      'payableCents', coalesce(sum(remaining) filter (where direction = 'payable'), 0),
+      'receivableCents', coalesce((select sum(greatest(net, 0)) from per_person), 0),
+      'payableCents', coalesce((select sum(greatest(-net, 0)) from per_person), 0),
       'payments', (select count(*) from public.sadid_payments where store_id = store_number)
     ) into summary from balances;
 
