@@ -3,6 +3,7 @@ package com.sadad.app.data.db
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.ledger.summaryOf
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
@@ -11,6 +12,8 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import com.sadad.ledger.view
+import com.sadad.ledger.workingSetIds
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -632,6 +635,348 @@ class LedgerStoreTest {
     assertTrue(db.contactSummaryDao().all().isEmpty())
   }
 
+  @Test
+  fun loadWorkingSetForOnePaymentReadsOnlyItsRows() = runTest {
+    val seedStore = LedgerStore(db)
+    val a = contactId(1)
+    val b = contactId(2)
+    val dA = contactId(11)
+    val dB = contactId(13)
+    val pA = contactId(21)
+    val pB = contactId(22)
+    val seed =
+        Events.page(
+            listOf(
+                Events.accepted(contact("A", a), 1),
+                Events.accepted(contact("B", b), 2),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(1),
+                        contactId = a,
+                        Direction.RECEIVABLE,
+                        Cents(10_000),
+                        entityId = dA,
+                    ),
+                    3,
+                ),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(2),
+                        contactId = b,
+                        Direction.RECEIVABLE,
+                        Cents(4_000),
+                        entityId = dB,
+                    ),
+                    4,
+                ),
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(3),
+                        debtId = dA,
+                        Cents(2_000),
+                        PaymentMethod.CASH,
+                        entityId = pA,
+                    ),
+                    5,
+                ),
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(4),
+                        debtId = dB,
+                        Cents(1_000),
+                        PaymentMethod.CASH,
+                        entityId = pB,
+                    ),
+                    6,
+                ),
+            )
+        )
+    seedStore.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(seed), seed)
+
+    val pNew = contactId(31)
+    val payPage =
+        Events.page(
+            listOf(
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(5),
+                        debtId = dA,
+                        Cents(500),
+                        PaymentMethod.CASH,
+                        entityId = pNew,
+                    ),
+                    7,
+                )
+            )
+        )
+    val countingContacts = CountingContactDao(db.contactDao())
+    val countingDebts = CountingDebtDao(db.debtDao())
+    val countingPayments = CountingPaymentDao(db.paymentDao())
+    val countingOffsets = CountingOffsetDao(db.offsetDao())
+    val store =
+        LedgerStore(
+            db,
+            contacts = countingContacts,
+            debts = countingDebts,
+            payments = countingPayments,
+            offsets = countingOffsets,
+        )
+
+    val ws = store.loadWorkingSet(payPage.workingSetIds())
+    assertEquals(setOf(a), ws.contacts.keys)
+    assertEquals(setOf(dA), ws.debts.keys)
+    assertTrue(ws.payments.isEmpty())
+    assertTrue(ws.offsets.isEmpty())
+    val allCalls =
+        countingContacts.allCalls +
+            countingDebts.allCalls +
+            countingPayments.allCalls +
+            countingOffsets.allCalls
+    assertEquals(0, allCalls)
+    assertEquals(1, countingContacts.byIdsCalls)
+    assertEquals(1, countingDebts.byIdsCalls)
+    assertEquals(1, countingPayments.byIdsCalls)
+    assertEquals(0, countingOffsets.byIdsCalls)
+
+    val next = ws.apply(payPage)
+    store.persist(ws, next, payPage)
+    assertEquals(3, db.paymentDao().all().size)
+    assertEquals(1, countingPayments.upserts)
+    assertEquals(0, countingContacts.upserts)
+    assertEquals(0, countingDebts.upserts)
+  }
+
+  @Test
+  fun workingSetSummaryIsWrittenFromRoomAfterPersist() = runTest {
+    val store = LedgerStore(db)
+    val a = contactId(1)
+    val dA = contactId(11)
+    val seed =
+        Events.page(
+            listOf(
+                Events.accepted(contact("A", a), 1),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(1),
+                        contactId = a,
+                        Direction.RECEIVABLE,
+                        Cents(10_000),
+                        entityId = dA,
+                    ),
+                    2,
+                ),
+            )
+        )
+    store.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(seed), seed)
+    val payPage =
+        Events.page(
+            listOf(
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(2),
+                        debtId = dA,
+                        Cents(1_000),
+                        PaymentMethod.CASH,
+                        entityId = contactId(31),
+                    ),
+                    3,
+                )
+            )
+        )
+    val ws = store.loadWorkingSet(payPage.workingSetIds())
+    val next = ws.apply(payPage)
+    store.persistWithSummariesFromRoom(ws, next, payPage, setOf(a)) { contactId ->
+      val person = store.loadPerson(contactId) ?: return@persistWithSummariesFromRoom null
+      summaryOf(person.view(emptyList(), emptySet(), Events.INSTALLATION_ID, ""), contactId)
+    }
+    val rows = db.contactSummaryDao().all()
+    assertEquals(1, rows.size)
+    assertEquals(a, rows.single().contactId)
+    assertEquals(Cents(9_000).value, rows.single().net)
+  }
+
+  @Test
+  fun contactDeleteWorkingSetRemovesAllItsRows() = runTest {
+    val store = LedgerStore(db)
+    val a = contactId(1)
+    val b = contactId(2)
+    val dA1 = contactId(11)
+    val dA2 = contactId(12)
+    val dB = contactId(13)
+    val pA = contactId(21)
+    val pB = contactId(22)
+    val oA = contactId(31)
+    fun archive(id: String, sequence: Long, minute: Int) =
+        Events.accepted(
+            Commands.contactArchive(
+                Events.origin,
+                Events.at(minute),
+                id,
+                expectedVersion = 1,
+                reason = "سلة",
+                entityId = id,
+            ),
+            sequence,
+        )
+    val seed =
+        Events.page(
+            listOf(
+                Events.accepted(contact("A", a), 1),
+                Events.accepted(contact("B", b), 2),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(1),
+                        contactId = a,
+                        Direction.RECEIVABLE,
+                        Cents(10_000),
+                        entityId = dA1,
+                    ),
+                    3,
+                ),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(2),
+                        contactId = a,
+                        Direction.PAYABLE,
+                        Cents(3_000),
+                        entityId = dA2,
+                    ),
+                    4,
+                ),
+                Events.accepted(
+                    Commands.debtCreate(
+                        Events.origin,
+                        Events.at(3),
+                        contactId = b,
+                        Direction.RECEIVABLE,
+                        Cents(4_000),
+                        entityId = dB,
+                    ),
+                    5,
+                ),
+                Events.accepted(
+                    Commands.debtOffset(
+                        Events.origin,
+                        Events.at(4),
+                        receivableDebtId = dA1,
+                        payableDebtId = dA2,
+                        Cents(1_000),
+                        entityId = oA,
+                    ),
+                    6,
+                ),
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(5),
+                        debtId = dA1,
+                        Cents(1_000),
+                        PaymentMethod.CASH,
+                        entityId = pA,
+                    ),
+                    7,
+                ),
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(6),
+                        debtId = dB,
+                        Cents(500),
+                        PaymentMethod.CASH,
+                        entityId = pB,
+                    ),
+                    8,
+                ),
+                archive(a, 9, 7),
+            )
+        )
+    store.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(seed), seed)
+
+    val deletePage =
+        Events.page(
+            listOf(
+                Events.accepted(
+                    Commands.contactDelete(
+                        Events.origin,
+                        Events.at(8),
+                        a,
+                        expectedVersion = 2,
+                        reason = "نهائي",
+                        entityId = a,
+                    ),
+                    10,
+                )
+            )
+        )
+    val ws = store.loadWorkingSet(deletePage.workingSetIds())
+    // The delete's working set holds A's contact with all its debts, payments and offsets.
+    assertEquals(setOf(a), ws.contacts.keys)
+    assertEquals(setOf(dA1, dA2), ws.debts.keys)
+    assertEquals(setOf(pA), ws.payments.keys)
+    assertEquals(setOf(oA), ws.offsets.keys)
+
+    val next = ws.apply(deletePage)
+    assertTrue(next.contacts.isEmpty())
+    assertTrue(next.debts.isEmpty())
+    assertTrue(next.payments.isEmpty())
+    assertTrue(next.offsets.isEmpty())
+    store.persist(ws, next, deletePage)
+
+    assertEquals(setOf(b), db.contactDao().all().map { it.id }.toSet())
+    assertEquals(setOf(dB), db.debtDao().all().map { it.id }.toSet())
+    assertEquals(setOf(pB), db.paymentDao().all().map { it.id }.toSet())
+    assertTrue(db.offsetDao().all().isEmpty())
+  }
+
+  @Test
+  fun aWorkingSetPageThatFailsLeavesEveryTableAsItWas() = runTest {
+    val store = LedgerStore(db)
+    val a = contactId(1)
+    val seed = Events.page(listOf(Events.accepted(contact("A", a), 1)))
+    store.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(seed), seed)
+    val beforeContacts = db.contactDao().all()
+    val beforeMeta = db.metaDao().get()
+    val beforeEvents = db.eventDao().all()
+
+    val unknownDebt = "d0000000-0000-4000-8000-0000000000de"
+    val bad =
+        Events.page(
+            listOf(
+                Events.accepted(
+                    Commands.paymentCreate(
+                        Events.origin,
+                        Events.at(1),
+                        debtId = unknownDebt,
+                        Cents(100),
+                        PaymentMethod.CASH,
+                        entityId = contactId(99),
+                    ),
+                    2,
+                )
+            )
+        )
+    val ws = store.loadWorkingSet(bad.workingSetIds())
+    var threw = false
+    try {
+      ws.apply(bad)
+    } catch (e: IllegalStateException) {
+      threw = true
+    }
+    assertTrue(threw)
+    assertEquals(beforeContacts, db.contactDao().all())
+    assertEquals(beforeMeta, db.metaDao().get())
+    assertEquals(beforeEvents, db.eventDao().all())
+  }
+
   private fun contact(name: String, id: String) =
       Commands.contactCreate(Events.origin, Events.at(0), name = name, entityId = id)
 
@@ -654,10 +999,85 @@ class LedgerStoreTest {
   /** A counting wrapper, to see how many rows one page writes. */
   private class CountingContactDao(private val real: ContactDao) : ContactDao by real {
     var upserts = 0
+    var allCalls = 0
+    var byIdsCalls = 0
 
     override suspend fun upsert(row: ContactEntity) {
       upserts++
       real.upsert(row)
+    }
+
+    override suspend fun all(): List<ContactEntity> {
+      allCalls++
+      return real.all()
+    }
+
+    override suspend fun byIds(ids: List<String>): List<ContactEntity> {
+      byIdsCalls++
+      return real.byIds(ids)
+    }
+  }
+
+  private class CountingDebtDao(private val real: DebtDao) : DebtDao by real {
+    var upserts = 0
+    var allCalls = 0
+    var byIdsCalls = 0
+
+    override suspend fun upsert(row: DebtEntity) {
+      upserts++
+      real.upsert(row)
+    }
+
+    override suspend fun all(): List<DebtEntity> {
+      allCalls++
+      return real.all()
+    }
+
+    override suspend fun byIds(ids: List<String>): List<DebtEntity> {
+      byIdsCalls++
+      return real.byIds(ids)
+    }
+  }
+
+  private class CountingPaymentDao(private val real: PaymentDao) : PaymentDao by real {
+    var upserts = 0
+    var allCalls = 0
+    var byIdsCalls = 0
+
+    override suspend fun upsert(row: PaymentEntity) {
+      upserts++
+      real.upsert(row)
+    }
+
+    override suspend fun all(): List<PaymentEntity> {
+      allCalls++
+      return real.all()
+    }
+
+    override suspend fun byIds(ids: List<String>): List<PaymentEntity> {
+      byIdsCalls++
+      return real.byIds(ids)
+    }
+  }
+
+  private class CountingOffsetDao(private val real: OffsetDao) : OffsetDao by real {
+    var upserts = 0
+    var allCalls = 0
+    var byIdsCalls = 0
+
+    override suspend fun upsert(row: OffsetEntity) {
+      upserts++
+      real.upsert(row)
+    }
+
+    override suspend fun all(): List<OffsetEntity> {
+      allCalls++
+      return real.all()
+    }
+
+    override suspend fun byIds(ids: List<String>): List<OffsetEntity> {
+      byIdsCalls++
+      return real.byIds(ids)
     }
   }
 

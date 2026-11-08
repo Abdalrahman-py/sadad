@@ -37,9 +37,7 @@ const row = (store: StoreRow) => {
         ${store.pendingDevices ? html`<span class="pill pill-warn pill-gap">طلب ينتظر</span>` : nothing}
       </td>
       <td class="num">${summary.initialized ? fmt(summary.activeContacts ?? summary.contacts) : "—"}</td>
-      <td class="num">
-        ${summary.initialized ? html`${fmt(summary.openDebts)} · ${money(summary.debtTotalCents)}` : "—"}
-      </td>
+      <td class="num">${summary.initialized ? money(summary.receivableCents) : "—"}</td>
     </tr>
   `;
 };
@@ -93,7 +91,7 @@ export function storesView(model: Model, actions: StoresActions) {
           ? html`<div class="table-wrap"><table>
               <thead><tr>
                 <th scope="col">المتجر</th><th scope="col">الحالة</th><th scope="col">الاشتراك</th>
-                <th scope="col">الأجهزة</th><th scope="col">الأشخاص</th><th scope="col">الديون المفتوحة</th>
+                <th scope="col">الأجهزة</th><th scope="col">الأشخاص</th><th scope="col">مستحق للمتجر</th>
               </tr></thead>
               <tbody>${rows.map((store) => row(store))}</tbody>
             </table></div>`

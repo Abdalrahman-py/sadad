@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.sadad.ledger.Changes
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.ReceiptStatus
+import com.sadad.ledger.WorkingSetIds
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -37,6 +38,86 @@ class LedgerStore(
             debts.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
             payments.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
             offsets.all().associateTo(LinkedHashMap()) { it.id to it.toRow() },
+        )
+      }
+
+  /**
+   * The rows one page names, in `createdSeq` order, under [stored] meta: the contacts, debts,
+   * payments and offsets by id, each payment's debt, each debt's contact, and for every contact in
+   * [WorkingSetIds.withAllRows] all its debts with their payments and offsets.
+   */
+  suspend fun loadWorkingSet(ids: WorkingSetIds): LedgerState =
+      // One transaction: a sync page that lands between the reads must not tear the working set.
+      db.withTransaction {
+        val stored = meta.get() ?: return@withTransaction LedgerState.EMPTY
+        val contactEntities =
+            (ids.contacts + ids.withAllRows)
+                .chunked(ID_CHUNK)
+                .flatMap { contacts.byIds(it) }
+                .toMutableList()
+        val debtEntities = ids.debts.chunked(ID_CHUNK).flatMap { debts.byIds(it) }.toMutableList()
+        val paymentEntities =
+            ids.payments.chunked(ID_CHUNK).flatMap { payments.byIds(it) }.toMutableList()
+        val offsetEntities =
+            ids.offsets.chunked(ID_CHUNK).flatMap { offsets.byIds(it) }.toMutableList()
+
+        // A payment id already stored names its debt; load that debt.
+        val knownDebtIds = debtEntities.mapTo(HashSet()) { it.id }
+        val missingDebtIds = paymentEntities.map { it.debtId }.toSet() - knownDebtIds
+        if (missingDebtIds.isNotEmpty()) {
+          debtEntities += missingDebtIds.chunked(ID_CHUNK).flatMap { debts.byIds(it) }
+        }
+        // A debt id names its contact; load that contact.
+        val knownContactIds = contactEntities.mapTo(HashSet()) { it.id }
+        val missingContactIds = debtEntities.map { it.contactId }.toSet() - knownContactIds
+        if (missingContactIds.isNotEmpty()) {
+          contactEntities += missingContactIds.chunked(ID_CHUNK).flatMap { contacts.byIds(it) }
+        }
+        if (ids.withAllRows.isNotEmpty()) {
+          val knownPayments = paymentEntities.mapTo(HashSet()) { it.id }
+          val knownOffsets = offsetEntities.mapTo(HashSet()) { it.id }
+          val withAllDebts = mutableListOf<DebtEntity>()
+          for (cid in ids.withAllRows) withAllDebts += debts.ofContact(cid)
+          val presentDebtIds = debtEntities.mapTo(HashSet()) { it.id }
+          for (debt in withAllDebts) {
+            if (debt.id !in presentDebtIds) {
+              debtEntities += debt
+              presentDebtIds += debt.id
+            }
+          }
+          val withAllDebtIds = withAllDebts.map { it.id }.toSet()
+          if (withAllDebtIds.isNotEmpty()) {
+            for (pay in withAllDebtIds.chunked(ID_CHUNK).flatMap { payments.onDebts(it) }) {
+              if (pay.id !in knownPayments) {
+                paymentEntities += pay
+                knownPayments += pay.id
+              }
+            }
+            for (off in withAllDebtIds.chunked(ID_CHUNK).flatMap { offsets.onDebts(it) }) {
+              if (off.id !in knownOffsets) {
+                offsetEntities += off
+                knownOffsets += off.id
+              }
+            }
+          }
+        }
+
+        LedgerState(
+            stored.storeId,
+            stored.epoch,
+            stored.cursor,
+            contactEntities
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            debtEntities
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            paymentEntities
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
+            offsetEntities
+                .sortedBy { it.createdSeq }
+                .associateTo(LinkedHashMap()) { it.id to it.toRow() },
         )
       }
 
@@ -209,20 +290,29 @@ class LedgerStore(
   }
 
   /**
-   * [persist] plus the summaries of the people [page] touches, in one transaction: a failed persist
-   * leaves neither. [persist] joins this transaction, so both land together.
+   * [persist] plus the summaries of [touched] people rewritten from Room inside the same
+   * transaction, after the rows are written: [summarize] reads each person back from Room (so it
+   * sees the page's rows) with the caller's outbox on top.
    */
-  suspend fun persistWithSummaries(
+  suspend fun persistWithSummariesFromRoom(
       old: LedgerState,
       new: LedgerState,
       page: Changes,
-      upserts: List<ContactSummaryEntity>,
-      deletions: List<String>,
+      touched: Set<String>,
+      summarize: suspend (String) -> ContactSummaryEntity?,
   ) {
     db.withTransaction {
       persist(old, new, page)
-      if (upserts.isNotEmpty()) summaries.upsert(upserts)
-      if (deletions.isNotEmpty()) summaries.delete(deletions)
+      if (touched.isNotEmpty()) {
+        val upserts = mutableListOf<ContactSummaryEntity>()
+        val deletions = mutableListOf<String>()
+        for (id in touched) {
+          val summary = summarize(id)
+          if (summary != null) upserts += summary else deletions += id
+        }
+        if (upserts.isNotEmpty()) summaries.upsert(upserts)
+        if (deletions.isNotEmpty()) summaries.delete(deletions)
+      }
     }
   }
 
