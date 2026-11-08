@@ -602,8 +602,35 @@ class ContactDetailViewModelTest {
       val correction = awaitOutbox(fixture, 1).single().command.payload() as DebtCorrect
       assertEquals(open.entityId, correction.debtId)
       assertEquals(Cents.ZERO, correction.amountCents)
+      val waiting = model.state.first { it.movements.singleOrNull()?.deletePending == true }
+      assertEquals(Cents(10_000), waiting.balance)
+      assertFalse(waiting.movements.single().canDelete)
+      fixture.settleAll()
       val after = model.state.first { it.movements.isEmpty() }
+      assertEquals(Cents.ZERO, after.balance)
       assertNull(after.deleting)
+    }
+  }
+
+  @Test
+  fun deletingAThirtyShekelPaymentRestoresItToTheBalanceAfterSync() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سمير", contactId(1), minute = 0)
+      val original = debt(person.entityId, 13_000, id = contactId(11), minute = 1)
+      val paid = payment(original.entityId, 3_000, id = contactId(12), minute = 2)
+      fixture.seedCommands(listOf(person, original, paid))
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also { fixture.closeWithStore(it.viewModelScope) }
+      val before = model.state.first { it.movements.size == 2 }
+      val row = before.movements.first { it.id == paid.entityId }
+      assertEquals(Cents(10_000), before.balance)
+      assertEquals(13_000L, before.netAfterDeleting(row))
+      model.deleteConfirmed(row.id)
+      awaitOutbox(fixture, 1)
+      fixture.settleAll()
+      val after = model.state.first { it.balance == Cents(13_000) }
+      assertEquals(listOf(original.entityId), after.movements.map { it.id })
     }
   }
 
