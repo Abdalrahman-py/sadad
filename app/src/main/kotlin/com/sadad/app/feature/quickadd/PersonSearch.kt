@@ -1,7 +1,10 @@
 package com.sadad.app.feature.quickadd
 
+import com.sadad.app.ui.components.BalanceWordText
+import com.sadad.app.ui.components.balanceWord
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
+import java.time.Duration
 import java.time.Instant
 import java.util.Locale
 
@@ -15,6 +18,8 @@ data class QuickAddPerson(
     val net: Cents,
     /** When the store last recorded anything with them; null for a person with no entries yet. */
     val lastActivity: Instant?,
+    /** The projection's moment: what [detailLine] counts days from. */
+    val asOf: Instant,
 ) {
   /**
    * The folded name, computed once when the person is built. Outside the constructor, so it is not
@@ -24,6 +29,13 @@ data class QuickAddPerson(
 
   /** The phone's digits, taken once when the person is built: what the phone search compares. */
   val phoneDigits: String = phone.filter { it.isDigit() }
+
+  /** Ready-made row strings, built where the person is built and read by the row unchanged. */
+  val initials: String = PersonSearch.initials(name)
+
+  val balance: BalanceWordText = balanceWord(net.value)
+
+  val detailLine: String = PersonSearch.detailLine(this, asOf)
 }
 
 /**
@@ -100,5 +112,41 @@ internal object PersonSearch {
                 .thenBy { it.id }
         )
         .take(limit)
+  }
+
+  /** The picker's tile: the first letters of the first two words, two letters for one word. */
+  fun initials(name: String): String {
+    val words = name.trim().split(' ').filter { it.isNotEmpty() }
+    return when {
+      words.size > 1 -> "${words[0].first()}${words[1].first()}"
+      words.size == 1 -> words[0].take(2)
+      else -> "؟"
+    }
+  }
+
+  /** «…342 · اليوم»: the phone's last three digits and when the store last dealt with them. */
+  fun detailLine(person: QuickAddPerson, now: Instant): String {
+    val tail = person.phone.filter { it.isDigit() }.takeLast(3)
+    val activity = lastActivityText(person.lastActivity, now)
+    return when {
+      tail.isEmpty() -> activity
+      activity.isEmpty() -> "…$tail"
+      else -> "…$tail · $activity"
+    }
+  }
+
+  /** Day-granularity, in the app's own words: the picker only needs "recently" or "a while ago". */
+  fun lastActivityText(activity: Instant?, now: Instant): String {
+    if (activity == null) return ""
+    val days = Duration.between(activity, now).toDays()
+    return when {
+      days <= 0 -> "اليوم"
+      days == 1L -> "أمس"
+      days < 7 -> "قبل $days أيام"
+      days < 14 -> "قبل أسبوع"
+      days < 30 -> "قبل ${days / 7} أسابيع"
+      days < 60 -> "قبل شهر"
+      else -> "قبل ${days / 30} أشهر"
+    }
   }
 }

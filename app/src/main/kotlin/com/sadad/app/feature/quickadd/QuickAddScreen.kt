@@ -99,7 +99,6 @@ import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.PaymentMethod
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -413,7 +412,7 @@ private fun PersonRow(person: QuickAddPerson, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Initials(person.name, supplier)
+      Initials(person.initials, supplier)
       Column(Modifier.weight(1f)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -422,12 +421,11 @@ private fun PersonRow(person: QuickAddPerson, onClick: () -> Unit) {
           Text(person.name, style = MaterialTheme.typography.titleSmall, color = p.text)
           if (supplier) SupplierBadge()
         }
-        val detail = detailLine(person, Instant.now())
-        if (detail.isNotEmpty()) {
-          Text(detail, fontSize = 12.sp, color = p.muted)
+        if (person.detailLine.isNotEmpty()) {
+          Text(person.detailLine, fontSize = 12.sp, color = p.muted)
         }
       }
-      BalanceWord(person.net.value)
+      BalanceWord(person.balance)
     }
   }
 }
@@ -512,7 +510,7 @@ private fun AmountStep(
       ) {
         BackGlyph(p.text)
       }
-      Initials(person?.name.orEmpty(), supplier == true)
+      Initials(person?.initials ?: "؟", supplier == true)
       Column(Modifier.weight(1f)) {
         Text(
             person?.name.orEmpty(),
@@ -1093,19 +1091,12 @@ private fun RoundIconButton(
 }
 
 @Composable
-private fun Initials(name: String, supplier: Boolean) {
+private fun Initials(initials: String, supplier: Boolean) {
   val p = sadadPalette
-  val words = name.trim().split(' ').filter { it.isNotEmpty() }
-  val text =
-      when {
-        words.size > 1 -> "${words[0].first()}${words[1].first()}"
-        words.size == 1 -> words[0].take(2)
-        else -> "؟"
-      }
   val shape = if (supplier) RoundedCornerShape(12.dp) else CircleShape
   Box(Modifier.size(40.dp).clip(shape).background(p.soft), contentAlignment = Alignment.Center) {
     Text(
-        text,
+        initials,
         color = if (p.isDark) p.accent else p.primary,
         style = MaterialTheme.typography.titleSmall,
     )
@@ -1213,32 +1204,6 @@ private fun CheckGlyph(color: Color) {
 private fun listLabelText(state: QuickAddState): String =
     if (state.query.isBlank()) stringResource(R.string.quickadd_recent)
     else "${state.people.size} " + stringResource(R.string.quickadd_result)
-
-/** «…342 · اليوم»: the phone's last three digits and when the store last dealt with them. */
-private fun detailLine(person: QuickAddPerson, now: Instant): String {
-  val tail = person.phone.filter { it.isDigit() }.takeLast(3)
-  val activity = lastActivityText(person.lastActivity, now)
-  return when {
-    tail.isEmpty() -> activity
-    activity.isEmpty() -> "…$tail"
-    else -> "…$tail · $activity"
-  }
-}
-
-/** Day-granularity, in the app's own words: the picker only needs "recently" or "a while ago". */
-internal fun lastActivityText(activity: Instant?, now: Instant): String {
-  if (activity == null) return ""
-  val days = Duration.between(activity, now).toDays()
-  return when {
-    days <= 0 -> "اليوم"
-    days == 1L -> "أمس"
-    days < 7 -> "قبل $days أيام"
-    days < 14 -> "قبل أسبوع"
-    days < 30 -> "قبل ${days / 7} أسابيع"
-    days < 60 -> "قبل شهر"
-    else -> "قبل ${days / 30} أشهر"
-  }
-}
 
 private fun firstWord(name: String): String = name.trim().split(' ').firstOrNull().orEmpty()
 

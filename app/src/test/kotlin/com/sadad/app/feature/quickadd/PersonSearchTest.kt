@@ -14,6 +14,9 @@ import org.junit.Test
  * here rather than assumed.
  */
 class PersonSearchTest {
+  /** The projection's moment every test person is built at, so no test reads the clock. */
+  private val now = Instant.parse("2026-10-25T10:00:00Z")
+
   private fun person(name: String, phone: String = "", net: Long = 0L, last: Instant? = null) =
       QuickAddPerson(
           id = name,
@@ -22,6 +25,7 @@ class PersonSearchTest {
           kind = ContactKind.CUSTOMER,
           net = Cents(net),
           lastActivity = last,
+          asOf = now,
       )
 
   /**
@@ -161,6 +165,108 @@ class PersonSearchTest {
             person("قديم", last = base),
         )
     assertEquals(listOf("قديم", "بلا حركة"), PersonSearch.search(people, "").map { it.name })
+  }
+
+  /* ------------------------------------------------- row strings (ticket 176) */
+
+  @Test
+  fun thePickerInitialsTakeTwoLettersForOneWord() {
+    assertEquals("خي", person("خالد يوسف").initials)
+    assertEquals("سا", person("سامي").initials)
+    assertEquals("؟", person("   ").initials)
+  }
+
+  @Test
+  fun aSettledPickerRowHasNoAmount() {
+    val found = person("سارة محمود", net = 0L)
+    assertEquals("مسدد", found.balance.word)
+    assertEquals(null, found.balance.amount)
+    assertEquals("مسدد", found.balance.spoken)
+  }
+
+  @Test
+  fun aPickerRowInCreditNamesItsCredit() {
+    val found = person("أحمد ناصر", net = -15_000L)
+    assertEquals("له", found.balance.word)
+    assertEquals("₪ 150", found.balance.amount)
+    assertEquals("له 150 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aPickerRowThatOwesNamesItsDebt() {
+    val found = person("خالد يوسف", net = 25_000L)
+    assertEquals("عليه", found.balance.word)
+    assertEquals("₪ 250", found.balance.amount)
+    assertEquals("عليه 250 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aSupplierPickerRowCarriesItsInitialsAndCredit() {
+    val found =
+        QuickAddPerson(
+            id = "s1",
+            name = "أبو رامي للخضار",
+            phone = "0595118076",
+            kind = ContactKind.SUPPLIER,
+            net = Cents(-124_000L),
+            lastActivity = null,
+            asOf = now,
+        )
+    assertEquals("أر", found.initials)
+    assertEquals("له", found.balance.word)
+    assertEquals("₪ 1,240", found.balance.amount)
+    assertEquals("له 1,240 شيكل", found.balance.spoken)
+    assertEquals("…076", found.detailLine)
+  }
+
+  @Test
+  fun theDetailLineJoinsThePhoneTailAndTheActivity() {
+    val found =
+        person(
+            "خالد يوسف",
+            phone = "0599123482",
+            last = Instant.parse("2026-10-23T10:00:00Z"),
+        )
+    assertEquals("…482 · قبل 2 أيام", PersonSearch.detailLine(found, now))
+  }
+
+  @Test
+  fun theDetailLineWithNoPhoneIsOnlyWhenTheyMoved() {
+    val found = person("خالد يوسف", phone = "", last = Instant.parse("2026-10-24T10:00:00Z"))
+    assertEquals("أمس", PersonSearch.detailLine(found, now))
+  }
+
+  @Test
+  fun theDetailLineWithNoActivityIsOnlyThePhoneTail() {
+    val found = person("خالد يوسف", phone = "0599123482", last = null)
+    assertEquals("…482", PersonSearch.detailLine(found, now))
+    assertEquals("…482", found.detailLine)
+  }
+
+  @Test
+  fun theDetailLineWithNeitherIsEmpty() {
+    val found = person("خالد يوسف", phone = "", last = null)
+    assertEquals("", PersonSearch.detailLine(found, now))
+    assertEquals("", found.detailLine)
+  }
+
+  @Test
+  fun theBuiltLineJoinsThePhoneTailAndTheActivityAtTheProjectionsMoment() {
+    val found = person("خالد يوسف", phone = "0599123482", last = now.minusSeconds(2L * 86_400))
+    assertEquals("…482 · قبل 2 أيام", found.detailLine)
+  }
+
+  @Test
+  fun theBuiltLineWithNoPhoneIsOnlyWhenTheyMovedAtTheProjectionsMoment() {
+    val found = person("خالد يوسف", phone = "", last = now.minusSeconds(86_400))
+    assertEquals("أمس", found.detailLine)
+  }
+
+  @Test
+  fun theDetailLineReadsTheSameAtTheSameMoment() {
+    val found =
+        person("خالد يوسف", phone = "0599123482", last = Instant.parse("2026-10-25T08:00:00Z"))
+    assertEquals(PersonSearch.detailLine(found, now), found.detailLine)
   }
 
   @Test

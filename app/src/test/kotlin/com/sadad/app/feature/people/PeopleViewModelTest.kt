@@ -304,6 +304,103 @@ class PeopleViewModelTest {
     )
   }
 
+  /* ------------------------------------------------- row strings (ticket 176) */
+
+  private fun row(
+      name: String = "خالد يوسف",
+      phone: String = "0599123482",
+      supplier: Boolean = false,
+      net: Long = 8500L,
+      category: String = "عميل دائم",
+      lateDays: Int? = null,
+      activity: String = "اليوم 10:24",
+  ): PeopleRow =
+      PeopleRow(
+          id = "row-1",
+          name = name,
+          phone = phone,
+          supplier = supplier,
+          net = Cents(net),
+          lastActiveAt = Instant.parse("2026-10-25T07:24:00Z"),
+          activity = activity,
+          lateDays = lateDays,
+          category = category,
+      )
+
+  @Test
+  fun aRowWithNoPhoneShowsOnlyTheCategory() {
+    val found = row(phone = "")
+    assertEquals("عميل دائم", found.identityLine)
+    assertEquals("خي", found.initials)
+    assertEquals("عليه", found.balance.word)
+    assertEquals("₪ 85", found.balance.amount)
+    assertEquals("عليه 85 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aRowWithNoCategoryHasNoIdentityLine() {
+    val found = row(category = "")
+    assertEquals("", found.identityLine)
+    assertEquals("خي", found.initials)
+    assertEquals("عليه 85 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aRowWithBlankCategoryHasNoIdentityLine() {
+    assertEquals("", row(category = "   ").identityLine)
+  }
+
+  @Test
+  fun aSupplierRowCarriesItsInitialsAndCredit() {
+    val found =
+        row(name = "أبو رامي للخضار", phone = "0595118076", supplier = true, net = -124_000L)
+    assertEquals("أر", found.initials)
+    assertEquals("له", found.balance.word)
+    assertEquals("₪ 1,240", found.balance.amount)
+    assertEquals("له 1,240 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aSettledRowHasNoAmount() {
+    val found = row(net = 0L)
+    assertEquals("مسدد", found.balance.word)
+    assertNull(found.balance.amount)
+    assertEquals("مسدد", found.balance.spoken)
+  }
+
+  @Test
+  fun aRowInCreditNamesItsCredit() {
+    val found = row(net = -15_000L)
+    assertEquals("له", found.balance.word)
+    assertEquals("₪ 150", found.balance.amount)
+    assertEquals("له 150 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aLateRowSaysHowLateAndStillOwes() {
+    val found = row(net = 112_000L, lateDays = 3, activity = "متأخر 3 أيام")
+    assertEquals("متأخر 3 أيام", found.activity)
+    assertEquals("عليه", found.balance.word)
+    assertEquals("₪ 1,120", found.balance.amount)
+    assertEquals("عليه 1,120 شيكل", found.balance.spoken)
+  }
+
+  @Test
+  fun aSingleWordNameHasOnePeopleInitial() {
+    assertEquals("س", row(name = "سامي").initials)
+  }
+
+  @Test
+  fun theBoardRowsCarryTheirReadyMadeStrings() {
+    val rows = state().rows.associateBy { it.name }
+    assertEquals("خي", rows.getValue("خالد يوسف").initials)
+    assertEquals("عليه 85 شيكل", rows.getValue("خالد يوسف").balance.spoken)
+    assertEquals("مسدد", rows.getValue("سارة محمود").balance.word)
+    assertNull(rows.getValue("سارة محمود").balance.amount)
+    assertEquals("له 150 شيكل", rows.getValue("أحمد ناصر").balance.spoken)
+    assertEquals("متأخر 3 أيام", rows.getValue("مريم حسن").activity)
+  }
+
   @Test
   fun aThousandPeopleFilterAndSortInsideTheBudget() {
     val many =
