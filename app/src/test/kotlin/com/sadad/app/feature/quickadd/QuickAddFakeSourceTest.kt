@@ -203,11 +203,45 @@ class QuickAddFakeSourceTest {
     }
   }
 
+  @Test
+  fun aSaveTappedBeforeThePersonsViewLandsWaitsWithoutBlockingAndThenSaves() = runBlocking {
+    withTimeout(5_000) {
+      val gate = CompletableDeferred<Unit>()
+      val source =
+          SummarySource(
+              jobs,
+              listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2)),
+              person = ledger(contact(C1, "خالد")),
+              personGate = gate,
+          )
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+      model.press("8")
+      model.press("5")
+
+      model.save(context)
+      assertEquals(
+          "the save returns at once and waits for the view",
+          QuickAddStep.AMOUNT,
+          model.state.value.step,
+      )
+      assertFalse(source.appended.isCompleted)
+
+      gate.complete(Unit)
+      model.state.first { it.step == QuickAddStep.DONE }
+      val payload = source.appended.await().single().payload() as DebtCreate
+      assertEquals(Cents(8_500), payload.amountCents)
+      assertEquals(C1, payload.contactId)
+    }
+  }
+
   /** A summary-ready source whose [view] fails the test if the ViewModel ever collects it. */
   private class SummarySource(
       val jobs: CoroutineScope,
       summaries: List<ContactSummaryEntity>,
       val person: LedgerView? = null,
+      val personGate: CompletableDeferred<Unit>? = null,
   ) : QuickAddSource {
     val appended = CompletableDeferred<List<LedgerCommand>>()
     override val view: Flow<LedgerView?> =
@@ -218,7 +252,11 @@ class QuickAddFakeSourceTest {
     override val permissions = flowOf(emptyMap<String, Boolean>())
     override val blocked = flowOf(false)
 
-    override fun personView(contactId: String): Flow<LedgerView?> = flowOf(person)
+    override fun personView(contactId: String): Flow<LedgerView?> =
+        kotlinx.coroutines.flow.flow {
+          personGate?.await()
+          emit(person)
+        }
 
     override fun open(): QuickAddStore =
         object : QuickAddStore {

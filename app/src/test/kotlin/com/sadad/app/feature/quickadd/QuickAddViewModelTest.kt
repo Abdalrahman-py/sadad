@@ -119,7 +119,8 @@ class QuickAddViewModelTest {
       )
 
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      // The save waits off the main thread for the person's own view when it has not landed yet.
+      model.state.first { it.step == QuickAddStep.DONE }
       assertEquals("سجّل ₪85 على خالد", model.state.value.done?.sentence)
       assertTrue("the undo window holds the command", store.outbox.snapshot().isEmpty())
 
@@ -187,6 +188,7 @@ class QuickAddViewModelTest {
       model.press("8")
       model.press("5")
       model.save(context)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       model.undo(context)
       Thread.sleep(600)
@@ -375,7 +377,7 @@ class QuickAddViewModelTest {
 
       for (key in listOf("4", "9", "9", "9", ".", "9", "9")) model.press(key)
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       model.another(context)
       model.pick(contact)
@@ -511,7 +513,7 @@ class QuickAddViewModelTest {
       model.press("4")
       model.press("0")
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       // System back, «الرئيسية», «فتح الشخص»: every way out goes through leave().
       model.leave(context)
@@ -532,7 +534,7 @@ class QuickAddViewModelTest {
       model.press("6")
       model.press("5")
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       // What LockGate does when it swaps content() for UnlockScreen: the NavHost leaves
       // composition and its NavBackStackEntry ViewModelStore is cleared. feature/lock belongs to
@@ -594,7 +596,7 @@ class QuickAddViewModelTest {
       model.press("0")
       model.press("0")
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       model.undo(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)

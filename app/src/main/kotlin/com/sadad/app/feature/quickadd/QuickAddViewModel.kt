@@ -39,14 +39,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 /** Where the one recording flow stands. */
 enum class QuickAddStep {
@@ -152,13 +151,17 @@ class QuickAddViewModel(
 
   /**
    * The chosen person's own ledger view, for the save: allocations read it, never the whole store.
+   * Null until the first read for the watched person lands.
    */
-  @Volatile private var currentPersonView: LedgerView? = null
+  private val personView = MutableStateFlow<PersonView?>(null)
 
   /** The person the person view is being read for; prefetched when they are picked. */
   @Volatile private var watchedId: String? = null
 
   private var personJob: Job? = null
+
+  /** A save waiting for the chosen person's first read; a new pick or save replaces it. */
+  private var saveJob: Job? = null
 
   /** Every visible person, for the new-person checks and the phone-contacts lookup. */
   @Volatile private var allContacts: List<ContactView> = emptyList()
@@ -301,6 +304,7 @@ class QuickAddViewModel(
           error = null,
       )
     }
+    saveJob?.cancel()
     watchPerson(personId)
   }
 
@@ -520,6 +524,26 @@ class QuickAddViewModel(
     if (!current.canSave || amount == null) return
     if (amount >= ANOMALY_LIMIT && anomalyApproved != current.amount) {
       mutable.update { it.copy(anomaly = amount) }
+      return
+    }
+    // The commands read the chosen person's own view; until its first read lands, wait off the main
+    // thread and save then. A person created in this flow has no view yet and needs none.
+    val chosen = current.selected
+    if (chosen != null && current.newPerson == null && personView.value?.id != chosen.id) {
+      watchPerson(chosen.id)
+      saveJob?.cancel()
+      saveJob = viewModelScope.launch {
+        personView.first { it?.id == chosen.id }
+        // Save what was tapped: an edit made while waiting needs its own tap.
+        val now = mutable.value
+        if (
+            now.selected?.id == chosen.id &&
+                now.amount == current.amount &&
+                now.payment == current.payment
+        ) {
+          save(context)
+        }
+      }
       return
     }
     val commands = commandsFor(current, amount, context.getString(R.string.quickadd_credit_note))
@@ -943,26 +967,21 @@ class QuickAddViewModel(
     )
   }
 
-  /** The person the save is about: their own ledger view, prefetched on the pick. */
-  private fun personViewOf(id: String): LedgerView? {
-    if (watchedId == id)
-        currentPersonView?.let {
-          return it
-        }
-    val fetched = runBlocking(Dispatchers.IO) { source.personView(id).firstOrNull() }
-    if (watchedId == id) currentPersonView = fetched
-    return fetched
-  }
+  /** The person the save is about: their own ledger view, read since the pick; null until then. */
+  private fun personViewOf(id: String): LedgerView? = personView.value?.takeIf { it.id == id }?.view
 
   private fun watchPerson(id: String) {
     if (watchedId == id) return
     watchedId = id
-    currentPersonView = null
+    personView.value = null
     personJob?.cancel()
     personJob = viewModelScope.launch {
-      source.personView(id).collect { if (watchedId == id) currentPersonView = it }
+      source.personView(id).collect { if (watchedId == id) personView.value = PersonView(id, it) }
     }
   }
+
+  /** One person's own ledger view, tagged with whose it is; [view] is null when there is none. */
+  private data class PersonView(val id: String, val view: LedgerView?)
 
   /** A summary row as a Contact: only the id, name and phone the checks read are real. */
   private fun ContactSummaryEntity.asContactView(): ContactView =
