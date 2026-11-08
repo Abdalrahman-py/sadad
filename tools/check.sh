@@ -131,7 +131,7 @@ changed_sections() {
   while IFS= read -r f; do
     case "$f" in
       '') ;;
-      tools/check.sh) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
+      tools/check.sh | .github/workflows/*) for s in "${all_sections[@]}"; do want[$s]=1; done ;;
       tools/*.ts) want[format]=1 want[edge]=1 ;;
       tools/apk_budget.py | tools/test_apk_budget.py | tools/apk-budget.txt) want[android]=1 ;;
       # Only the docs gate reads these.

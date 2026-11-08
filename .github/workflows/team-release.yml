@@ -16,17 +16,22 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: team-release
-  cancel-in-progress: true
-
+# A newer dev push cancels an older run's checks, but never its publish: cancelling `team` while it
+# replaces the team-latest assets would leave the prerelease half-updated. A publish that is still
+# running finishes; the newest waiting one runs after it.
 jobs:
   checks:
     uses: ./.github/workflows/android-ci.yml
+    concurrency:
+      group: team-release-checks
+      cancel-in-progress: true
 
   team:
     needs: checks
     if: github.repository == 'Abdalrahman-py/sadad'
+    concurrency:
+      group: team-release-publish
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -35,16 +40,18 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set signing key path
         run: echo "TEAM_KEYSTORE_FILE=$RUNNER_TEMP/team.jks" >> "$GITHUB_ENV"
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
       - name: Install packaging tools
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"'
       - name: Unpack the signing key
