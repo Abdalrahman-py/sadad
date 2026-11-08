@@ -18,6 +18,8 @@ data class QuickAddPerson(
     val net: Cents,
     /** When the store last recorded anything with them; null for a person with no entries yet. */
     val lastActivity: Instant?,
+    /** The projection's moment: what [detailLine] counts days from. */
+    val asOf: Instant,
 ) {
   /**
    * The folded name, computed once when the person is built. Outside the constructor, so it is not
@@ -33,8 +35,7 @@ data class QuickAddPerson(
 
   val balance: BalanceWordText = balanceWord(net.value)
 
-  /** Built from the projection's moment, so the text is fixed for the row's life. */
-  val detailLine: String = PersonSearch.detailLine(this, Instant.now())
+  val detailLine: String = PersonSearch.detailLine(this, asOf)
 }
 
 /**

@@ -14,6 +14,9 @@ import org.junit.Test
  * here rather than assumed.
  */
 class PersonSearchTest {
+  /** The projection's moment every test person is built at, so no test reads the clock. */
+  private val now = Instant.parse("2026-10-25T10:00:00Z")
+
   private fun person(name: String, phone: String = "", net: Long = 0L, last: Instant? = null) =
       QuickAddPerson(
           id = name,
@@ -22,6 +25,7 @@ class PersonSearchTest {
           kind = ContactKind.CUSTOMER,
           net = Cents(net),
           lastActivity = last,
+          asOf = now,
       )
 
   /**
@@ -206,6 +210,7 @@ class PersonSearchTest {
             kind = ContactKind.SUPPLIER,
             net = Cents(-124_000L),
             lastActivity = null,
+            asOf = now,
         )
     assertEquals("أر", found.initials)
     assertEquals("له", found.balance.word)
@@ -216,7 +221,6 @@ class PersonSearchTest {
 
   @Test
   fun theDetailLineJoinsThePhoneTailAndTheActivity() {
-    val now = Instant.parse("2026-10-25T10:00:00Z")
     val found =
         person(
             "خالد يوسف",
@@ -228,14 +232,12 @@ class PersonSearchTest {
 
   @Test
   fun theDetailLineWithNoPhoneIsOnlyWhenTheyMoved() {
-    val now = Instant.parse("2026-10-25T10:00:00Z")
     val found = person("خالد يوسف", phone = "", last = Instant.parse("2026-10-24T10:00:00Z"))
     assertEquals("أمس", PersonSearch.detailLine(found, now))
   }
 
   @Test
   fun theDetailLineWithNoActivityIsOnlyThePhoneTail() {
-    val now = Instant.parse("2026-10-25T10:00:00Z")
     val found = person("خالد يوسف", phone = "0599123482", last = null)
     assertEquals("…482", PersonSearch.detailLine(found, now))
     assertEquals("…482", found.detailLine)
@@ -243,30 +245,28 @@ class PersonSearchTest {
 
   @Test
   fun theDetailLineWithNeitherIsEmpty() {
-    val now = Instant.parse("2026-10-25T10:00:00Z")
     val found = person("خالد يوسف", phone = "", last = null)
     assertEquals("", PersonSearch.detailLine(found, now))
     assertEquals("", found.detailLine)
   }
 
   @Test
-  fun theBuiltLineJoinsThePhoneTailAndTheActivityForToday() {
-    val now = Instant.now()
+  fun theBuiltLineJoinsThePhoneTailAndTheActivityAtTheProjectionsMoment() {
     val found = person("خالد يوسف", phone = "0599123482", last = now.minusSeconds(2L * 86_400))
     assertEquals("…482 · قبل 2 أيام", found.detailLine)
   }
 
   @Test
-  fun theBuiltLineWithNoPhoneIsOnlyWhenTheyMovedForToday() {
-    val now = Instant.now()
+  fun theBuiltLineWithNoPhoneIsOnlyWhenTheyMovedAtTheProjectionsMoment() {
     val found = person("خالد يوسف", phone = "", last = now.minusSeconds(86_400))
     assertEquals("أمس", found.detailLine)
   }
 
   @Test
   fun theDetailLineReadsTheSameAtTheSameMoment() {
-    val found = person("خالد يوسف", phone = "0599123482", last = Instant.now())
-    assertEquals(PersonSearch.detailLine(found, Instant.now()), found.detailLine)
+    val found =
+        person("خالد يوسف", phone = "0599123482", last = Instant.parse("2026-10-25T08:00:00Z"))
+    assertEquals(PersonSearch.detailLine(found, now), found.detailLine)
   }
 
   @Test
