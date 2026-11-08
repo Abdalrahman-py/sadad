@@ -36,6 +36,7 @@ import com.sadad.ledger.PaymentReverse
 import com.sadad.ledger.ReceiptStatus
 import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
+import com.sadad.ledger.workingSetIds
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
@@ -298,23 +299,26 @@ class LedgerRepository(
       ) {
         return
       }
-      val next = old.apply(page)
+      val ids = page.workingSetIds()
+      val workingSet = store.loadWorkingSet(ids)
+      val next = workingSet.apply(page)
       val rows = outbox.snapshot()
-      val view = confirmedOf(next, "").view(pendingCommands(rows), failedOperations(rows))
+      val pending = pendingCommands(rows)
+      val failed = failedOperations(rows)
       // After a reset the table is empty, and no page names a person who exists only in the outbox.
       val queued =
-          if (old.storeId == null) view.contacts.filter { it.pending }.map { it.id }
+          if (old.storeId == null)
+              pending.filter { it.type == CommandType.CONTACT_CREATE }.map { it.entityId }
           else emptyList()
       val touched = touchedPeople(page, next) + queued
-      val upserts = mutableListOf<ContactSummaryEntity>()
-      val deletions = mutableListOf<String>()
-      for (id in touched) {
-        val summary = summaryOf(view, id)
-        if (summary != null) upserts += summary else deletions += id
+      store.persistWithSummariesFromRoom(workingSet, next, page, touched) { contactId ->
+        val personState = store.loadPerson(contactId) ?: return@persistWithSummariesFromRoom null
+        val personView = personState.view(pending, failed, session.selfInstallationId, "")
+        summaryOf(personView, contactId)
       }
-      store.persistWithSummaries(old, next, page, upserts, deletions)
-      state.value = next
-      outbox.compact(next)
+      val patched = patch(old, workingSet, next)
+      state.value = patched
+      outbox.compact(patched)
     }
   }
 
@@ -347,6 +351,29 @@ class LedgerRepository(
       }
     }
     return touched
+  }
+
+  /**
+   * The cached state with [next]'s rows put in and the [ws] rows the page removed taken out, at the
+   * new cursor. Copies the maps instead of patching them in place: the view flow and the write
+   * checks read the old state on other threads without the lock.
+   */
+  // shortcut: copies the store's maps per page (no fold, no Room); ticket 168 drops the cache.
+  private fun patch(old: LedgerState, ws: LedgerState, next: LedgerState): LedgerState {
+    fun <T> patched(old: Map<String, T>, ws: Map<String, T>, next: Map<String, T>) =
+        LinkedHashMap(old).apply {
+          putAll(next)
+          keys.removeAll(ws.keys - next.keys)
+        }
+    return LedgerState(
+        next.storeId,
+        next.epoch,
+        next.cursor,
+        patched(old.contacts, ws.contacts, next.contacts),
+        patched(old.debts, ws.debts, next.debts),
+        patched(old.payments, ws.payments, next.payments),
+        patched(old.offsets, ws.offsets, next.offsets),
+    )
   }
 
   suspend fun addContact(
