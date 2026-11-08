@@ -127,6 +127,7 @@ export async function adminHarness(
     options: {
       userId?: string;
       forcePasswordChange?: boolean;
+      unlimitedSessions?: boolean;
       email?: string | null;
     } = {},
   ) {
@@ -150,6 +151,7 @@ export async function adminHarness(
       app_metadata: {
         role,
         ...(options.forcePasswordChange ? { force_password_change: true } : {}),
+        ...(options.unlimitedSessions ? { unlimited_sessions: true } : {}),
       },
     });
     return { jwt, userId, sessionId };

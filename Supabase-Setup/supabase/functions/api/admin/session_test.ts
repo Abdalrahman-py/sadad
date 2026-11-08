@@ -90,3 +90,25 @@ dbTest(
     });
   },
 );
+
+dbTest(
+  "an account with unlimited_sessions opens many sessions and never blocks or is blocked",
+  async () => {
+    const user = crypto.randomUUID();
+    const first = await h.jwtFor("admin", {
+      userId: user,
+      unlimitedSessions: true,
+    });
+    const second = await h.jwtFor("admin", {
+      userId: user,
+      unlimitedSessions: true,
+    });
+
+    assertEqual((await claim(first.jwt)).status, 200);
+    assertEqual((await claim(second.jwt)).status, 200);
+    assertEqual((await h.send(first.jwt, "GET", "/admin/stores")).status, 200);
+    assertEqual((await h.send(second.jwt, "GET", "/admin/stores")).status, 200);
+    assertEqual((await release(first.jwt)).status, 200);
+    assertEqual((await h.send(second.jwt, "GET", "/admin/stores")).status, 200);
+  },
+);
