@@ -63,6 +63,7 @@ data class ContactMovement(
     val canDelete: Boolean = false,
     /** Why it may not, when [canDelete] is false for a reason worth naming. */
     val blockedReason: String? = null,
+    val deletePending: Boolean = false,
 )
 
 data class ContactDetailState(
@@ -96,7 +97,14 @@ data class ContactDetailState(
     val error: String? = null,
     /** The archive was queued: the screen goes back to the list. */
     val done: Boolean = false,
-)
+) {
+  internal fun netAfterDeleting(movement: ContactMovement): Long {
+    val receivable = movement.direction == Direction.RECEIVABLE
+    val removesDebt = movement.kind == MovementKind.DEBT
+    val delta = if (receivable == removesDebt) -movement.amount.value else movement.amount.value
+    return balance.value - payable.value + delta
+  }
+}
 
 /**
  * One Contact's balance and history from the one [LedgerView], its delete flow (settle first, then
@@ -131,12 +139,7 @@ class ContactDetailViewModel(
       val confirmDiscard: Boolean = false,
       val deleting: String? = null,
       val deleteFinal: Boolean = false,
-      /**
-       * Rows deleted here: a queued delete is online-only, so the view keeps them until the pull.
-       * shortcut: a refused delete stays hidden until the page reopens, fine while refusals need a
-       * second device racing this one.
-       */
-      val deleted: Set<String> = emptySet(),
+      val submittingDelete: String? = null,
       val undoName: String? = null,
       val error: String? = null,
       val done: Boolean = false,
@@ -155,7 +158,8 @@ class ContactDetailViewModel(
       combine(source.records(contactId), dialogs, source.permissions) { records, ui, allowed ->
             currentView = records?.ledger
             val draft = records?.failed?.firstOrNull { it.contact.id == contactId }
-            if (draft == null) project(records?.ledger, ui, allowed)
+            if (draft == null)
+                project(records?.ledger, ui, allowed, records?.pendingMovementDeletes.orEmpty())
             else
                 ContactDetailState(
                     loaded = true,
@@ -273,7 +277,12 @@ class ContactDetailViewModel(
   fun clearError() = dialogs.update { it.copy(error = null) }
 
   fun askDeleteMovement(movementId: String) = dialogs.update {
-    it.copy(deleting = movementId, deleteFinal = false)
+    if (
+        it.submittingDelete == null &&
+            mutable.value.movements.any { row -> row.id == movementId && row.canDelete }
+    ) {
+      it.copy(deleting = movementId, deleteFinal = false)
+    } else it
   }
 
   fun dismissDeleteMovement() = dialogs.update { it.copy(deleting = null, deleteFinal = false) }
@@ -297,7 +306,7 @@ class ContactDetailViewModel(
    */
   private fun deleteMovement(movementId: String) {
     val movement = mutable.value.movements.firstOrNull { it.id == movementId } ?: return
-    if (!movement.canDelete) return
+    if (!movement.canDelete || dialogs.value.submittingDelete != null) return
     val scope = source.open() ?: return
     if (!scope.isOnline()) {
       dialogs.update {
@@ -322,10 +331,19 @@ class ContactDetailViewModel(
           movement.parts.map { Commands.paymentReverse(origin, at, it, DELETE_REASON) } +
               listOfNotNull(zeroed(movement.creditDebtId))
         }
-    dialogs.update { it.copy(deleted = it.deleted + movementId) }
+    if (commands.isEmpty()) return
+    dialogs.update { it.copy(submittingDelete = movementId) }
     // One short write, like the archive: the user already confirmed it, so it outlives the screen.
     undoScope.launch {
-      scope.append(commands)
+      try {
+        scope.append(commands)
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        reportError(appContext.getString(R.string.contacts_delete_failed))
+      } finally {
+        dialogs.update { it.copy(submittingDelete = null) }
+      }
     }
   }
 
@@ -402,6 +420,7 @@ class ContactDetailViewModel(
       view: LedgerView?,
       dialogs: Dialogs,
       permissions: Map<String, Boolean>,
+      pendingMovementDeletes: Set<String>,
   ): ContactDetailState {
     val allowedPayments = permissions["registerPayments"] != false
     val allowedDelete = permissions["deleteContacts"] != false
@@ -466,7 +485,13 @@ class ContactDetailViewModel(
             } + paymentRows(groups, credits, ownById, allowedPayments, allowedRecords)
     val ordered =
         movements
-            .filter { it.id !in dialogs.deleted }
+            .map { movement ->
+              val deleting =
+                  movement.id == dialogs.submittingDelete ||
+                      movement.parts.any { it in pendingMovementDeletes } ||
+                      movement.creditDebtId in pendingMovementDeletes
+              if (deleting) movement.copy(canDelete = false, deletePending = true) else movement
+            }
             .sortedWith(
                 if (dialogs.newestFirst) {
                   compareByDescending<ContactMovement> { it.createdAt }.thenBy { it.id }
@@ -484,7 +509,7 @@ class ContactDetailViewModel(
         balance = balance,
         payable = payable,
         movements = ordered,
-        deleting = ordered.firstOrNull { it.id == dialogs.deleting },
+        deleting = ordered.firstOrNull { it.id == dialogs.deleting && it.canDelete },
         deleteFinal = dialogs.deleteFinal,
         newestFirst = dialogs.newestFirst,
         canRegisterPayments = allowedPayments,

@@ -15,10 +15,12 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.session.StoredInstallation
@@ -27,7 +29,9 @@ import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.ui.UiTestApplication
+import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.theme.SadadTheme
+import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import java.io.File
 import java.time.Duration
@@ -49,6 +53,37 @@ class ContactDetailScreenTest {
   @get:Rule val main = MainDispatcherRule()
 
   private val context: Context = ApplicationProvider.getApplicationContext()
+
+  @Test
+  fun holdingADebtRevealsDeleteAndPreviewsTheRemainingBalance() {
+    val person = contact("سامي", contactId(1), minute = 0)
+    val old = debt(person.entityId, 7_000, id = contactId(11), minute = 1)
+    val mistake = debt(person.entityId, 3_000, id = contactId(12), minute = 2)
+    runBlocking { TestGraph.signedIn() }
+        .use { fixture ->
+          runBlocking { fixture.seedCommands(listOf(person, old, mistake)) }
+          val model =
+              ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+                  .also { fixture.closeWithStore(it.viewModelScope) }
+          compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
+          compose.waitUntil(5_000) { model.state.value.movements.size == 2 }
+          compose.onNodeWithText("حذف الدين").assertDoesNotExist()
+          val amount = formatShekels(Cents(3_000))
+          compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToNode(hasText(amount))
+          compose.onNodeWithText(amount).performTouchInput {
+            down(center)
+            advanceEventTime(1_000)
+            up()
+          }
+          compose.onNodeWithText("حذف الدين").assertDoesNotExist()
+          compose.onNodeWithText(amount).performTouchInput { longClick(durationMillis = 2_100) }
+          compose.onNodeWithText("حذف الدين").performClick()
+          compose.waitUntil(5_000) { model.state.value.deleting?.id == mistake.entityId }
+          compose
+              .onNodeWithText("الرصيد المتوقع بعد الحذف: عليه 70 شيكل", substring = true)
+              .assertIsDisplayed()
+        }
+  }
 
   @Test
   fun refusedContactShowsItsSavedInputsAndReasonInsteadOfMissingOrSettled() {
