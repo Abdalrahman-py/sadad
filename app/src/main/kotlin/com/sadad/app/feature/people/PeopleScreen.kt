@@ -308,7 +308,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      PersonAvatar(row.name, row.supplier)
+      PersonAvatar(row.initials, row.supplier)
       Column(Modifier.weight(1f)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -324,11 +324,11 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
           if (row.supplier) SupplierBadge()
         }
         // What the person is, then the number to reach them, then what happened last.
-        val identity = listOf(row.category).filter { it.isNotBlank() }
+        val identity = row.identityLine
         Row(verticalAlignment = Alignment.CenterVertically) {
           if (identity.isNotEmpty()) {
             Text(
-                identity.joinToString(" · "),
+                identity,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 color = p.muted,
@@ -372,7 +372,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
       if (row.syncFailed) {
         Text(stringResource(R.string.contacts_saved_draft), color = p.owes, fontSize = 12.sp)
       } else {
-        BalanceWord(row.net.value)
+        BalanceWord(row.balance)
       }
     }
   }
@@ -380,7 +380,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
 
 /** The 42dp initials tile: a circle for a customer, the board's rounded square for a supplier. */
 @Composable
-private fun PersonAvatar(name: String, supplier: Boolean) {
+private fun PersonAvatar(initials: String, supplier: Boolean) {
   val p = sadadPalette
   Box(
       Modifier.size(40.dp)
@@ -390,7 +390,7 @@ private fun PersonAvatar(name: String, supplier: Boolean) {
       contentAlignment = Alignment.Center,
   ) {
     Text(
-        initialsOf(name),
+        initials,
         color = if (p.isDark) p.accent else p.primary,
         style = MaterialTheme.typography.titleSmall,
     )
@@ -436,16 +436,6 @@ private fun NoResults() {
 }
 
 /* -------------------------------------------------------------------- text */
-
-/** The first letter of the first two words, as the board's «خ ي» tiles. */
-internal fun initialsOf(name: String): String =
-    name
-        .trim()
-        .split(' ')
-        .filter { it.isNotEmpty() }
-        .take(2)
-        .joinToString("") { it.take(1) }
-        .ifEmpty { "؟" }
 
 @Composable
 private fun filterLabel(filter: PeopleFilter): String =

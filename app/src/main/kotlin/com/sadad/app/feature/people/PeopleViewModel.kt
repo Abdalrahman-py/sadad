@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.feature.quickadd.PersonSearch
+import com.sadad.app.ui.components.BalanceWordText
+import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
@@ -96,7 +98,25 @@ data class PeopleRow(
   /** The last three digits the row shows after «…»; "" when the person has no number. */
   val phoneTail: String
     get() = if (phone.isBlank()) "" else phone.filter(Char::isDigit).takeLast(3)
+
+  /** Ready-made row strings, built where the row is built and read by the row unchanged. */
+  val initials: String = initialsOf(name)
+
+  val balance: BalanceWordText = balanceWord(net.value)
+
+  /** The category as the row's identity line shows it; "" when there is none. */
+  val identityLine: String = if (category.isBlank()) "" else category
 }
+
+/** The first letter of the first two words, as the board's «خ ي» tiles. */
+internal fun initialsOf(name: String): String =
+    name
+        .trim()
+        .split(' ')
+        .filter { it.isNotEmpty() }
+        .take(2)
+        .joinToString("") { it.take(1) }
+        .ifEmpty { "؟" }
 
 data class PeopleState(
     val loaded: Boolean = false,

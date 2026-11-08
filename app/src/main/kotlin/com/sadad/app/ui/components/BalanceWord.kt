@@ -51,7 +51,12 @@ fun balanceWord(netCents: Long): BalanceWordText {
 /** The word over an arrow and the amount; never colour alone. */
 @Composable
 fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
-  val text = balanceWord(netCents)
+  BalanceWord(balanceWord(netCents), modifier)
+}
+
+/** Ready-made [text]: the row already formatted its amount once, so nothing is formatted here. */
+@Composable
+fun BalanceWord(text: BalanceWordText, modifier: Modifier = Modifier) {
   val p = sadadPalette
   val color =
       when (text.tone) {
@@ -64,7 +69,7 @@ fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
       horizontalAlignment = Alignment.End,
   ) {
     Text(text.word, color = color, style = MaterialTheme.typography.labelMedium)
-    if (text.amount == null) return@Column
+    val amount = text.amount ?: return@Column
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -79,7 +84,7 @@ fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
           modifier = Modifier.size(16.dp),
       )
       MoneyText(
-          Cents(Math.abs(netCents)),
+          amount,
           style = MaterialTheme.typography.titleSmall,
           color = color,
       )
