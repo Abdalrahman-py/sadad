@@ -64,14 +64,14 @@ export const auditList = (
   ${loadState(page)}
   ${
     page.rows.length
-      ? html`<div class="table-wrap"><table>
+      ? html`<table>
           <thead><tr>
             <th scope="col" class="opt">الوقت</th><th scope="col">الإجراء</th><th scope="col" class="opt">المنفذ</th>
             ${showStore ? html`<th scope="col">المتجر</th>` : nothing}
             <th scope="col">السبب</th>
           </tr></thead>
           <tbody>${page.rows.map((item) => event(item, showStore))}</tbody>
-        </table></div>`
+        </table>`
       : page.loading
         ? nothing
         : html`<p class="empty">لا توجد أحداث مسجلة</p>`

@@ -29,12 +29,12 @@ const SCREENS: Screen[] = [
     controls: ["إنشاء حساب متجر"],
   },
   {
-    name: "الأجهزة",
+    name: "الحساب",
     set: (m) => {
       m.screen = "store";
-      if (m.store) m.store.tab = "devices";
+      if (m.store) m.store.tab = "account";
     },
-    controls: ["اعتماد", "رفض"],
+    controls: ["اعتماد", "رفض", "تفعيل بعدد الأيام"],
   },
   {
     name: "الإعدادات",
@@ -44,14 +44,6 @@ const SCREENS: Screen[] = [
     },
     controls: ["حفظ التغييرات", "تجميد", "إنهاء الجلسات", "إلغاء الكل", "أرشفة"],
     hasSettings: true,
-  },
-  {
-    name: "الاشتراك",
-    set: (m) => {
-      m.screen = "store";
-      if (m.store) m.store.tab = "subscription";
-    },
-    controls: ["تفعيل بعدد الأيام"],
   },
   {
     name: "الاسترداد",

@@ -23,14 +23,16 @@ const deviceTask = (
   device: PendingInstallation,
   store: StoreRow | undefined,
   write: boolean,
+  working: string[],
   actions: QueueActions,
 ) => {
   const slot = slots(store);
+  const busy = working.includes(`device:${device.installationId}`);
   return html`
     <li class="task">
       <span class="mark">جهاز ينتظر الاعتماد</span>
       <span>
-        <a href=${`#/stores/${device.storeId}/devices`}><b>${device.storeName}</b></a>
+        <a href=${`#/stores/${device.storeId}`}><b>${device.storeName}</b></a>
         <span class="sub">رقم ${fmt(device.storeId)}</span>
       </span>
       <span>
@@ -43,15 +45,16 @@ const deviceTask = (
           ? html`<div class="btn-group task-actions">
               ${
                 slot?.full && store
-                  ? html`<button class="btn btn-primary" type="button"
+                  ? html`<button class="btn btn-primary" type="button" ?disabled=${busy}
                       @click=${() => actions.raiseLimitAndApprove(device, store)}>رفع الحد إلى ${fmt(store.allowedDevices + 1)} واعتماد</button>`
-                  : html`<button class="btn btn-primary" type="button"
-                      @click=${() => actions.quickApprove(device)}>اعتماد الجهاز</button>`
+                  : html`<button class="btn btn-primary" type="button" ?disabled=${busy}
+                      @click=${() => actions.quickApprove(device)}>${busy ? "جارٍ الحفظ…" : "اعتماد الجهاز"}</button>`
               }
-              <button class="btn" type="button" @click=${() => actions.quickReject(device)}>رفض</button>
+              <button class="btn" type="button" ?disabled=${busy}
+                @click=${() => actions.quickReject(device)}>رفض</button>
               ${
                 slot?.full
-                  ? html`<a href=${`#/stores/${device.storeId}/devices`}>استبدال جهاز قديم</a>`
+                  ? html`<a href=${`#/stores/${device.storeId}`}>استبدال جهاز قديم</a>`
                   : nothing
               }
             </div>`
@@ -60,23 +63,29 @@ const deviceTask = (
     </li>`;
 };
 
-const subscriptionTask = (store: StoreRow, write: boolean, actions: QueueActions) => {
+const subscriptionTask = (
+  store: StoreRow,
+  write: boolean,
+  working: string[],
+  actions: QueueActions,
+) => {
   const sub = subscriptionState(store);
   const ended = sub.tone === "danger";
+  const busy = working.includes(`extend:${store.id}`);
   return html`
     <li class="task">
       <span class=${ended ? "mark" : "state-warn"}>${ended ? "اشتراك انتهى" : "اشتراك ينتهي قريبًا"}</span>
       <span>
-        <a href=${`#/stores/${store.id}/subscription`}><b>${store.name}</b></a>
+        <a href=${`#/stores/${store.id}`}><b>${store.name}</b></a>
         <span class="sub">رقم ${fmt(store.id)}</span>
       </span>
       <span>${sub.queue}</span>
       ${
         write
           ? html`<div class="btn-group task-actions">
-              <button class=${`btn ${ended ? "btn-primary" : ""}`} type="button"
+              <button class=${`btn ${ended ? "btn-primary" : ""}`} type="button" ?disabled=${busy}
                 @click=${() => actions.quickExtend(store, 30)}>
-                ${ended ? "تجديد 30 يومًا وتفعيل" : "تمديد 30 يومًا"}</button>
+                ${busy ? "جارٍ الحفظ…" : ended ? "تجديد 30 يومًا وتفعيل" : "تمديد 30 يومًا"}</button>
             </div>`
           : nothing
       }
@@ -85,7 +94,7 @@ const subscriptionTask = (store: StoreRow, write: boolean, actions: QueueActions
 
 const platformNumbers = (model: Model) => {
   const overview = model.overview;
-  if (!overview) return html`<p class="loading">جارٍ التحميل…</p>`;
+  if (!overview) return nothing;
   return html`<p class="line">
     <span>متاجر نشطة ${fmt(overview.active)} من ${fmt(overview.stores)}</span>
     <span>موثّقة ${fmt(overview.verified)}</span>
@@ -155,10 +164,11 @@ export function tasksView(model: Model, actions: QueueActions) {
                     device,
                     model.stores.rows.find((store) => store.id === device.storeId),
                     write,
+                    model.working,
                     actions,
                   ),
                 )}
-                ${subs.map((store) => subscriptionTask(store, write, actions))}
+                ${subs.map((store) => subscriptionTask(store, write, model.working, actions))}
               </ol>`
             : !loading && !failed
               ? empty(

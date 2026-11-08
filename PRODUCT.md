@@ -24,7 +24,7 @@ Used mostly on a laptop, in work sessions between other tasks. A phone must stil
 
 ## Capabilities and Constraints
 
-- Screens: tasks (landing), stores, store page (overview, devices, subscription, settings, ledger, recovery, audit), create store, admin audit log, sign-in.
+- Screens: tasks (landing), stores with the open store beside the list (account, ledger, activity log; settings and recovery open from the account), create store, admin audit log, sign-in.
 - Arabic first, right to left. English appears in usernames, IDs and emails.
 - Vite, TypeScript and lit-html. Views are pure functions of the model; `controller.ts` owns state.
 - Hosted on GitHub Pages under a strict CSP: `style-src 'self'`, `font-src 'self'`, `img-src 'self'`. Fonts and images ship with the build. No inline styles and no external assets.

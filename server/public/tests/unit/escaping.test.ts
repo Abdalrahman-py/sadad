@@ -29,7 +29,7 @@ const SCREENS: [string, (model: Model) => void][] = [
     "الأجهزة",
     (m) => {
       m.screen = "store";
-      if (m.store) m.store.tab = "devices";
+      if (m.store) m.store.tab = "account";
     },
   ],
   [

@@ -11,7 +11,7 @@ colors:
 typography:
   display:
     fontFamily: "Tajawal, \"Noto Sans Arabic\", system-ui, sans-serif"
-    fontSize: "3rem"
+    fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1.2
   headline:
@@ -58,8 +58,8 @@ spacing:
   gap: "1rem"
   dialog: "1.5rem"
   page-inline: "2rem"
-  gap-lg: "2.5rem"
-  control: "2.5rem"
+  gap-lg: "1.5rem"
+  control: "2.25rem"
 components:
   button-primary:
     backgroundColor: "{colors.ink}"
@@ -151,7 +151,7 @@ This record covers the admin dashboard in `server/public/` only. The Android app
 
 **Creative North Star: "The Marked Report"**
 
-The dashboard is a plain black-and-white report that a reviewer marks in red. It has no sidebar, no stat tiles and no soft cards. Pages read from the top down: a large heading, one sentence that says what is waiting, then full-width rows with the action at the end of each row.
+The dashboard is a plain black-and-white report that a reviewer marks in red. It has no side menu, no stat tiles and no soft cards. Pages are dense: a compact heading, one sentence that says what is waiting, then rows with the action at the end of each row. Stores use a split view: the list stays on screen and a store opens beside it.
 
 Colour is a debt of attention. Red appears only where a person has to act or where an action destroys something, so clearing the queue removes the red from the Tasks screen. Everything else is black text on white, separated by thin rules. The page changes in instant steps, the way a marked sheet is replaced by a cleaner one.
 
@@ -192,7 +192,7 @@ Black on white with one red, and two greys that do quiet work.
 **Character:** One family carries the whole report. Hierarchy comes from a large jump in size and from bold against regular. Tajawal ships with the build as four woff2 files, Arabic and Latin in regular and bold. Numbers are tabular everywhere, so counts line up in columns.
 
 ### Hierarchy
-- **Display** (700, 3rem, 1.2): The one page heading. Drops to 2rem on a phone.
+- **Display** (700, 1.5rem, 1.2): The one page heading.
 - **Headline** (700, 1.25rem, 1.3): Section headings and dialog titles. Also the brand name and the numbers in store facts.
 - **Lead** (400, 1.25rem, 1.6): The one sentence under the page heading.
 - **Title** (700, 1rem, 1.6): Sub-headings, field labels, button text and store names in rows.
@@ -210,7 +210,7 @@ Black on white with one red, and two greys that do quiet work.
 
 ## Layout
 
-The page is one centred column with a 76rem text measure, held by a 2rem side margin inside an 80rem page. The top bar and the toast use the same measure, so their content lines up with the page edges. Sections stack with a 2.5rem gap, and items inside a section with a 1rem gap.
+Pages use the full window width with a 1.5rem side margin, shared by the top bar and the toast. Sections stack with a 1.5rem gap. Stores split into a list pane (24 to 34rem) and a detail pane, each with its own scroll, so the list keeps its place. With no store open the list takes the full width and shows every column. At 60rem and below only one pane shows at a time.
 
 Every page starts the same way: heading and lead sentence at the start edge, page actions at the end edge, and on inner pages a plain link back to the parent above the heading. Forms sit in a 40rem column or in a 3 to 2 split. Task rows use a four-part grid: what is needed, the store, the details, and the actions in a fixed 24rem column.
 
@@ -232,7 +232,9 @@ The system is flat. Nothing casts a shadow, and depth comes from rules and from 
 ### Named Rules
 **The No Cast Shadow Rule.** A surface is separated by a rule or by inversion, never by a shadow beneath it.
 
-**The Instant Step Rule.** There are no transitions and no animation. Hover, selection, disclosure and row removal all happen in one step.
+**The Instant Step Rule.** There are no transitions. Hover, selection, disclosure and row removal all happen in one step. The one moving thing is the 2px progress line at the top of the window, shown while data refreshes; reduced motion holds it still.
+
+**The No-Jump Rule.** Content never moves because data is loading. A first load shows placeholder rows at row height. A refresh keeps the old rows on screen. A store opens at once from its list row and from the in-memory cache, then refreshes behind the view. A one-tap action disables its row, says it is saving, and clears the row as soon as the server agrees.
 
 ## Shapes
 
@@ -267,7 +269,7 @@ Column heads are bold label text over a 1px ink rule. Cells are top-aligned with
 - **File picker:** Drawn as an outline button, with the focus ring on its wrapper.
 
 ### Navigation
-The top bar holds the brand, three text links, then the role, email, refresh and sign out at the end edge. Store tabs sit on a 1px ink rule. Filters are segmented text buttons. All three share one behaviour: plain text at rest, underlined on hover, inverted when selected. On a phone the bar wraps to two lines.
+The top bar holds the brand, three text links, then the role, email, refresh and sign out at the end edge. Store tabs (account, ledger, activity log) sit on a 1px ink rule; settings and recovery open as links from the store header. Filters are segmented text buttons. All three share one behaviour: plain text at rest, underlined on hover, inverted when selected. On a phone the bar wraps to two lines.
 
 **The Inversion Rule.** Selected is an inverted black bar and nothing else. No underline tab, no tinted pill, no accent colour.
 
@@ -310,6 +312,6 @@ A 32rem white sheet with a 2px ink frame over the scrim. Title, one sentence, fi
 - **Don't** put a tinted panel behind content. The Row Tint is for table row hover only.
 - **Don't** add a transition or an animation.
 - **Don't** add icons where a word works. The drawn disclosure arrow is the only one the build needs.
-- **Don't** add a sidebar or a row of stat tiles.
+- **Don't** add a side menu or a row of stat tiles.
 - **Don't** add letter spacing or uppercase styling.
 - **Don't** add a font weight other than 400 or 700.

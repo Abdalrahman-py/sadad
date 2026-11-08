@@ -5,6 +5,7 @@ import {
   arabicDays,
   matchesFilter,
   needsDecision,
+  sortStores,
   subscriptionState,
 } from "../../src/subscription";
 import { storeRow } from "../data";
@@ -23,12 +24,12 @@ describe("hash routing", () => {
   });
 
   it("opens a store on the tab in the hash, and falls back to the overview", () => {
-    expect(parseHash("#/stores/12/devices")).toEqual({ screen: "store", id: 12, tab: "devices" });
-    expect(parseHash("#/stores/12")).toEqual({ screen: "store", id: 12, tab: "overview" });
+    expect(parseHash("#/stores/12/ledger")).toEqual({ screen: "store", id: 12, tab: "ledger" });
+    expect(parseHash("#/stores/12")).toEqual({ screen: "store", id: 12, tab: "account" });
     expect(parseHash("#/stores/12/nonsense")).toEqual({
       screen: "store",
       id: 12,
-      tab: "overview",
+      tab: "account",
     });
   });
 
@@ -81,5 +82,32 @@ describe("the queue and the filter chips", () => {
     expect(matchesFilter(fine, "soon")).toBe(false);
     expect(matchesFilter(archived, "all")).toBe(false);
     expect(matchesFilter(archived, "archived")).toBe(true);
+  });
+});
+
+describe("sorting the stores table", () => {
+  const row = (id: number, name: string, remaining: number | null) => ({
+    ...storeRow(name),
+    id,
+    subscriptionRemainingMs: remaining,
+  });
+  const rows = [row(1, "بقالة", 5), row(2, "أمل", 1), row(3, "مخبز", 9)];
+  const ids = (sort: Parameters<typeof sortStores>[1]) => sortStores(rows, sort).map((r) => r.id);
+
+  it("sorts names by Arabic order and numbers in either direction", () => {
+    expect(ids({ key: "name", desc: false })).toEqual([2, 1, 3]);
+    expect(ids({ key: "id", desc: true })).toEqual([3, 2, 1]);
+    expect(ids({ key: "subscription", desc: false })).toEqual([2, 1, 3]);
+  });
+
+  it("puts a store with no end date after every timed one", () => {
+    const permanent = { ...row(4, "دائم", null), subscriptionMode: "permanent" as const };
+    const sorted = sortStores([permanent, ...rows], { key: "subscription", desc: false });
+    expect(sorted.at(-1)?.id).toBe(4);
+  });
+
+  it("leaves the model's rows in place", () => {
+    sortStores(rows, { key: "id", desc: true });
+    expect(rows.map((r) => r.id)).toEqual([1, 2, 3]);
   });
 });

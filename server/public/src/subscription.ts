@@ -2,7 +2,7 @@
 // which stores a filter shows. Pure functions — the views and the controller both use them.
 import type { Store, StoreRow } from "./api";
 import { DAY_MS, day, daysLeft, fmt, fullDay } from "./format";
-import type { StoreFilter } from "./model";
+import type { Model, StoreFilter, StoreSort } from "./model";
 
 /** A timed subscription this close to its end is a decision for the admin. */
 export const EXPIRING_MS = 7 * DAY_MS;
@@ -103,6 +103,28 @@ export function needsDecision(store: StoreRow): boolean {
 /** Urgent first: ended accounts, then the ones closest to their end. */
 export const byUrgency = (a: StoreRow, b: StoreRow): number =>
   (a.subscriptionRemainingMs ?? 0) - (b.subscriptionRemainingMs ?? 0);
+
+const SORT_VALUE: Record<Exclude<StoreSort, "name">, (store: StoreRow) => number> = {
+  id: (store) => store.id,
+  subscription: (store) =>
+    store.subscriptionMode === "timed"
+      ? (store.subscriptionRemainingMs ?? 0)
+      : Number.MAX_SAFE_INTEGER,
+  devices: (store) => store.activeDevices,
+  people: (store) =>
+    store.summary.initialized ? (store.summary.activeContacts ?? store.summary.contacts ?? 0) : -1,
+  debts: (store) => (store.summary.initialized ? (store.summary.debtTotalCents ?? 0) : -1),
+};
+
+/** A sorted copy; the stores table sorts in the browser because the api has one order. */
+export function sortStores(rows: StoreRow[], sort: Model["stores"]["sort"]): StoreRow[] {
+  const { key, desc } = sort;
+  const order =
+    key === "name"
+      ? (a: StoreRow, b: StoreRow) => a.name.localeCompare(b.name, "ar")
+      : (a: StoreRow, b: StoreRow) => SORT_VALUE[key](a) - SORT_VALUE[key](b);
+  return [...rows].sort((a, b) => (desc ? order(b, a) : order(a, b)));
+}
 
 export function matchesFilter(store: StoreRow, filter: StoreFilter): boolean {
   const sub = subscriptionState(store);

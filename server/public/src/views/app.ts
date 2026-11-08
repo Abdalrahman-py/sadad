@@ -1,6 +1,7 @@
 import { html, nothing } from "lit-html";
 import type { Actions, Model } from "../model";
 import { auditView } from "./audit";
+import { skeleton } from "./common";
 import { createView } from "./create";
 import { dialogView } from "./dialog";
 import { signInView } from "./signin";
@@ -15,23 +16,33 @@ const link = (href: string, label: string, active: boolean, count = 0) => html`
 
 export function app(model: Model, actions: Actions) {
   if (model.booting) {
-    return html`<main class="page"><p class="loading" role="status">جارٍ التحميل…</p></main>`;
+    return html`<div class="progress"></div><main class="page">${skeleton()}</main>`;
   }
   if (!model.caller) return signInView(model, actions);
   const caller = model.caller;
   const support = caller.role === "support";
   const tasks = taskCount(model);
+  const open = model.screen === "store";
   const screen =
-    model.screen === "store"
-      ? storeView(model, actions, actions)
+    open || model.screen === "stores"
+      ? html`<main class=${`split ${open ? "open" : ""}`}>
+          <section class="pane list-pane" aria-label="المتاجر">${storesView(model, actions)}</section>
+          ${open ? html`<section class="pane detail">${storeView(model, actions, actions)}</section>` : nothing}
+        </main>`
       : model.screen === "create"
         ? createView(model, actions)
         : model.screen === "audit"
           ? auditView(model, actions)
-          : model.screen === "stores"
-            ? storesView(model, actions)
-            : tasksView(model, actions);
+          : tasksView(model, actions);
+  const refreshing =
+    model.stores.loading ||
+    model.stores.search?.loading ||
+    model.audit.loading ||
+    model.store?.loading ||
+    model.store?.audit.loading ||
+    model.store?.ledger?.loading;
   return html`
+    ${refreshing ? html`<div class="progress"></div>` : nothing}
     <header class="bar">
       <a class="bar-brand" href="#/tasks" aria-label="سدد، لوحة الإدارة">سدد</a>
       <nav class="bar-nav" aria-label="أقسام اللوحة">

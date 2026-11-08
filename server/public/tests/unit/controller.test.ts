@@ -6,7 +6,7 @@ import type { Dialog } from "../../src/model";
 import type { SessionPort } from "../../src/session";
 import { dialogView } from "../../src/views/dialog";
 import { taskCount } from "../../src/views/tasks";
-import { auditEvent, STORE_ID, storeRow } from "../data";
+import { auditEvent, overview, STORE_ID, storeRow } from "../data";
 import { ledgerState, loadedModel, noActions } from "./support";
 
 const session: SessionPort = {
@@ -108,6 +108,81 @@ describe("controller: store search", () => {
     await settled();
 
     expect(controller.model.stores.search).toBeNull();
+  });
+});
+
+describe("controller: one-tap queue actions", () => {
+  const device = { installationId: "a", storeId: STORE_ID };
+
+  it("sends a double tap once and clears the row as soon as the server agrees", async () => {
+    let finish = () => {};
+    const decideInstallation = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { controller } = setup({
+      decideInstallation: decideInstallation as unknown as Api["decideInstallation"],
+    });
+    controller.model.pending.rows = [
+      { ...controller.model.pending.rows[0], installationId: "a" },
+    ] as typeof controller.model.pending.rows;
+
+    void controller.quickApprove(device);
+    void controller.quickApprove(device);
+    expect(decideInstallation).toHaveBeenCalledTimes(1);
+    expect(controller.model.working).toEqual(["device:a"]);
+
+    finish();
+    await settled();
+    expect(controller.model.pending.rows).toEqual([]);
+    expect(controller.model.working).toEqual([]);
+  });
+
+  it("moves an extended subscription out of the queue before the reload lands", async () => {
+    const row = { ...storeRow(), subscriptionRemainingMs: 86_400_000 };
+    const { controller } = setup({
+      subscription: (async () => ({ ok: true })) as unknown as Api["subscription"],
+    });
+    controller.model.pending.rows = [];
+    controller.model.stores.rows = [row];
+
+    await controller.quickExtend(row, 30);
+
+    expect(taskCount(controller.model)).toBe(0);
+  });
+});
+
+describe("controller: sign-in", () => {
+  it("asks for the lists without waiting for the seat claim", async () => {
+    let claimed = () => {};
+    const stores = vi.fn(async () => ({ ok: true, stores: [], nextCursor: null }));
+    const root = document.createElement("div");
+    const signedIn = { ...session, current: async () => loadedModel("admin").caller };
+    const controller = new Controller(
+      root,
+      signedIn as SessionPort,
+      {
+        claimSession: () =>
+          new Promise<void>((resolve) => {
+            claimed = resolve;
+          }),
+        stores,
+        overview: async () => overview,
+        pendingInstallations: async () => ({ ok: true, installations: [], nextCursor: null }),
+        audit: async () => ({ ok: true, events: [], nextCursor: null }),
+      } as unknown as Api,
+    );
+
+    void controller.start();
+    await settled();
+
+    expect(stores).toHaveBeenCalled();
+    expect(controller.model.caller).toBeNull();
+    claimed();
+    await settled();
+    expect(controller.model.caller).not.toBeNull();
   });
 });
 

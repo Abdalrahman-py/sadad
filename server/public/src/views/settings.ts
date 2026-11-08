@@ -78,7 +78,7 @@ export function settingsView(detail: StoreDetail, write: boolean, actions: Store
   const store = detail.store;
   const locked = !write || store.archived;
   return html`
-    <section class="columns">
+    <section class="section-gap">
       <form class="section" data-settings @submit=${onSubmit(actions.saveSettings)}>
         <h2>بيانات الحساب وصلاحياته</h2>
         <fieldset class="stack" ?disabled=${locked}>

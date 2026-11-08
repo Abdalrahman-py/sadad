@@ -10,10 +10,11 @@ import type {
   PendingInstallation,
   Store,
   StoreAction,
+  StoreDetail,
   StoreRow,
 } from "./api";
 import { ApiFailure, failure, messageOf } from "./errors";
-import { fmt, integer } from "./format";
+import { DAY_MS, fmt, integer } from "./format";
 import {
   type Actions,
   type Dialog,
@@ -27,11 +28,12 @@ import {
   STORE_TABS,
   type StoreFilter,
   type StoreRows,
+  type StoreSort,
   type StoreState,
   type StoreTab,
 } from "./model";
 import { inspectManifest, MAX_MANIFEST_BYTES } from "./recovery-manifest";
-import { checkCaller, type SessionPort } from "./session";
+import { type Caller, checkCaller, type SessionPort } from "./session";
 import { app as view } from "./views/app";
 import { readPermissions } from "./views/common";
 import { LEDGER_COLUMNS, LEDGER_KINDS } from "./views/ledger";
@@ -108,7 +110,7 @@ export function parseHash(hash: string): Route {
       return {
         screen: "store",
         id: storeId,
-        tab: STORE_TABS.includes(tab as StoreTab) ? (tab as StoreTab) : "overview",
+        tab: STORE_TABS.includes(tab as StoreTab) ? (tab as StoreTab) : "account",
       };
     }
     return { screen: "stores" };
@@ -124,6 +126,9 @@ export class Controller implements Actions {
   private heartbeat: number | null = null;
   /** Set while a dialog is being opened, so focus lands in its first field. */
   private focusDialog = false;
+  /** Details already fetched, so a store reopens at once and refreshes behind the view. */
+  private storeCache = new Map<number, StoreDetail>();
+  private prefetchTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -151,6 +156,8 @@ export class Controller implements Actions {
 
   /** Back to the signed-out screen, dropping everything the signed-in board held. */
   private reset(signIn: Model["signIn"] = { error: "", busy: false }) {
+    clearTimeout(this.prefetchTimer);
+    this.storeCache.clear();
     this.set({ ...initialModel(), booting: false, signIn });
   }
 
@@ -184,6 +191,14 @@ export class Controller implements Actions {
     }
   }
 
+  /** A one-tap action: its row shows it working, and a second tap cannot send it twice. */
+  private async once(key: string, run: () => Promise<unknown>) {
+    if (this.model.working.includes(key)) return;
+    this.set({ working: [...this.model.working, key] });
+    await this.attempt(run);
+    this.set({ working: this.model.working.filter((item) => item !== key) });
+  }
+
   // ---- session ----
 
   async start() {
@@ -193,30 +208,38 @@ export class Controller implements Actions {
     try {
       checkCaller(caller);
       // A reload keeps the tab's session; the account may still have been opened elsewhere.
-      await this.api.claimSession();
-      this.set({ booting: false, caller });
-      this.startHeartbeat();
-      this.applyRoute();
-      this.loadAll();
+      await this.enter(caller);
+      this.set({ booting: false });
     } catch (error) {
-      await this.session.signOut();
-      this.set({ booting: false, signIn: { error: messageOf(error), busy: false } });
+      await this.refuse(error);
     }
+  }
+
+  /**
+   * The lists start together with the seat claim: the api claims the seat on every admin request,
+   * so waiting for it only costs a round trip. Nothing shows until the claim answers.
+   */
+  private async enter(caller: Caller) {
+    this.loadAll();
+    await this.api.claimSession();
+    this.set({ caller, signIn: { error: "", busy: false } });
+    this.startHeartbeat();
+    this.applyRoute();
+  }
+
+  private async refuse(error: unknown) {
+    this.abortAll();
+    await this.session.signOut();
+    this.reset({ error: messageOf(error), busy: false });
   }
 
   signIn = async (email: string, password: string) => {
     this.set({ signIn: { error: "", busy: true } });
     try {
-      const caller = checkCaller(await this.session.signIn(email, password));
       // One account, one session: the api refuses a second one with session_in_use.
-      await this.api.claimSession();
-      this.set({ caller, signIn: { error: "", busy: false } });
-      this.startHeartbeat();
-      this.applyRoute();
-      this.loadAll();
+      await this.enter(checkCaller(await this.session.signIn(email, password)));
     } catch (error) {
-      await this.session.signOut();
-      this.set({ signIn: { error: messageOf(error), busy: false } });
+      await this.refuse(error);
     }
   };
 
@@ -245,6 +268,8 @@ export class Controller implements Actions {
       void this.api.claimSession().catch((error: unknown) => {
         if (error instanceof ApiFailure && error.code === "session_in_use") this.sessionTaken();
       });
+      // A store owner may be waiting on a phone, so new requests appear without a reload.
+      if (!document.hidden) void this.loadPending();
     }, HEARTBEAT_MS);
   }
 
@@ -268,19 +293,21 @@ export class Controller implements Actions {
   private applyRoute() {
     if (!this.model.caller) return;
     const route = parseHash(window.location.hash);
+    const moved = route.screen !== this.model.screen;
     if (route.screen === "store") {
       this.set({ screen: "store" });
       this.openStore(route.id, route.tab);
-      return;
+    } else {
+      this.leaveStore();
+      this.set({
+        screen: route.screen,
+        store: null,
+        secret: null,
+        ...(route.screen === "create" ? { create: initialModel().create } : {}),
+      });
+      if (route.screen === "audit") this.loadAudit(this.model.audit.cursors);
     }
-    this.leaveStore();
-    this.set({
-      screen: route.screen,
-      store: null,
-      secret: null,
-      ...(route.screen === "create" ? { create: initialModel().create } : {}),
-    });
-    if (route.screen === "audit") this.loadAudit(this.model.audit.cursors);
+    if (moved) window.scrollTo(0, 0);
   }
 
   // ---- lists ----
@@ -431,6 +458,24 @@ export class Controller implements Actions {
     this.set({ stores: { ...this.model.stores, filter } });
   };
 
+  setStoreSort = (key: StoreSort) => {
+    const { sort } = this.model.stores;
+    // Names read best A to Z; numbers read best largest first.
+    const desc = sort.key === key ? !sort.desc : key !== "name" && key !== "subscription";
+    this.set({ stores: { ...this.model.stores, sort: { key, desc } } });
+  };
+
+  prefetchStore = (id: number) => {
+    clearTimeout(this.prefetchTimer);
+    if (this.storeCache.has(id)) return;
+    this.prefetchTimer = setTimeout(() => {
+      this.api
+        .store(id, this.channel("prefetch"))
+        .then((detail) => this.storeCache.set(id, detail))
+        .catch(() => undefined); // opening the store asks again and shows any error
+    }, 150);
+  };
+
   searchAudit = (q: string) => {
     this.set({ audit: { ...this.model.audit, q } });
     void this.loadAudit([undefined]);
@@ -455,36 +500,59 @@ export class Controller implements Actions {
     if (this.model.store?.id === storeId) this.reloadStore();
   }
 
+  /** The row leaves the queue as soon as the server agrees; the reload only confirms it. */
+  private dropPending(installationId: string) {
+    const rows = this.model.pending.rows.filter((row) => row.installationId !== installationId);
+    this.set({ pending: { ...this.model.pending, rows } });
+  }
+
   quickApprove = (device: { installationId: string; storeId: number }) =>
-    this.attempt(async () => {
+    this.once(`device:${device.installationId}`, async () => {
       await this.api.decideInstallation(device.installationId, "approve", QUICK_REASON.approve);
+      this.dropPending(device.installationId);
       this.afterDeviceChange(device.storeId);
       this.notify("اعتُمد الجهاز. يستطيع البدء الآن.");
     });
 
   quickReject = (device: { installationId: string; storeId: number }) =>
-    this.attempt(async () => {
+    this.once(`device:${device.installationId}`, async () => {
       await this.api.decideInstallation(device.installationId, "revoke", QUICK_REASON.reject);
+      this.dropPending(device.installationId);
       this.afterDeviceChange(device.storeId);
       this.notify("رُفض طلب الجهاز.");
     });
 
   raiseLimitAndApprove = (device: { installationId: string; storeId: number }, store: Store) =>
-    this.attempt(async () => {
+    this.once(`device:${device.installationId}`, async () => {
       await this.api.updateStore(store.id, { allowedDevices: store.allowedDevices + 1 });
       await this.api.decideInstallation(device.installationId, "approve", QUICK_REASON.approve);
+      this.dropPending(device.installationId);
       this.afterDeviceChange(device.storeId);
       this.notify(`رُفع الحد إلى ${fmt(store.allowedDevices + 1)} واعتُمد الجهاز.`);
     });
 
   quickExtend = (store: Store, days: number) =>
-    this.attempt(async () => {
+    this.once(`extend:${store.id}`, async () => {
       await this.api.subscription(store.id, { mode: "timed", days, extend: true });
+      this.markExtended(store.id, days);
       this.loadOverview();
       void this.loadStores();
       if (this.model.store?.id === store.id) this.reloadStore();
       this.notify(`تم تمديد اشتراك ${store.name} ${fmt(days)} يومًا.`);
     });
+
+  /** Moves the row out of the queue now; the reload that follows brings the server's dates. */
+  private markExtended(id: number, days: number) {
+    const rows = this.model.stores.rows.map((row) =>
+      row.id === id
+        ? {
+            ...row,
+            subscriptionRemainingMs: Math.max(row.subscriptionRemainingMs ?? 0, 0) + days * DAY_MS,
+          }
+        : row,
+    );
+    this.set({ stores: { ...this.model.stores, rows } });
+  }
 
   // ---- one store ----
 
@@ -493,12 +561,13 @@ export class Controller implements Actions {
     if (existing?.id === id) {
       if (existing.tab !== tab) this.patchStore({ tab });
       if (!existing.detail && !existing.loading) this.reloadStore();
+      if (tab === "audit" && !existing.audit.rows.length) this.loadStoreAudit([undefined]);
       return;
     }
     const row = this.model.stores.rows.find((store) => store.id === id);
     const state: StoreState = {
       id,
-      detail: null,
+      detail: this.storeCache.get(id) ?? null,
       summary: row?.summary ?? null,
       loading: true,
       error: "",
@@ -512,8 +581,9 @@ export class Controller implements Actions {
       store: state,
       secret: this.model.secret?.storeId === id ? this.model.secret : null,
     });
+    this.root.querySelector(".detail")?.scrollTo?.(0, 0);
     this.reloadStore();
-    this.loadStoreAudit([undefined]);
+    if (tab === "audit") this.loadStoreAudit([undefined]);
   }
 
   private leaveStore() {
@@ -528,6 +598,7 @@ export class Controller implements Actions {
     this.patchStore({ loading: true, error: "" });
     try {
       const detail = await this.api.store(id, signal);
+      this.storeCache.set(id, detail);
       this.patchStore({ detail, loading: false }, id);
       if (!this.model.store?.summary) await this.fetchSummary(id, detail.store.username);
     } catch (error) {
@@ -561,7 +632,7 @@ export class Controller implements Actions {
     this.reloadStore();
     this.loadOverview();
     void this.loadStores();
-    if (this.model.store) this.loadStoreAudit(this.model.store.audit.cursors);
+    if (this.model.store?.tab === "audit") this.loadStoreAudit(this.model.store.audit.cursors);
   }
 
   private currentStore(): Store {

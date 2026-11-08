@@ -17,28 +17,23 @@ import type { Caller } from "./session";
 
 export type Screen = "tasks" | "stores" | "store" | "create" | "audit";
 
-/** The store page's tabs, in the order the design shows them. */
-export const STORE_TABS = [
-  "overview",
-  "devices",
-  "subscription",
-  "settings",
-  "ledger",
-  "recovery",
-  "audit",
-] as const;
+/** Every store route. Settings and recovery open from the account tab, not from the tab bar. */
+export const STORE_TABS = ["account", "ledger", "audit", "settings", "recovery"] as const;
 
 export type StoreTab = (typeof STORE_TABS)[number];
 
+/** The tab bar. */
+export const STORE_NAV: StoreTab[] = ["account", "ledger", "audit"];
+
 export const STORE_TAB_LABELS: Record<StoreTab, string> = {
-  overview: "نظرة عامة",
-  devices: "الأجهزة",
-  subscription: "الاشتراك",
-  settings: "الإعدادات",
+  account: "الحساب",
   ledger: "الدفتر",
-  recovery: "الاسترداد",
   audit: "سجل النشاط",
+  settings: "الإعدادات",
+  recovery: "الاسترداد",
 };
+
+export type StoreSort = "id" | "name" | "subscription" | "devices" | "people" | "debts";
 
 /** Filters above the store table. `over` is a timed subscription that already ran out. */
 export type StoreFilter = "all" | "active" | "soon" | "over" | "suspended" | "archived";
@@ -87,6 +82,7 @@ export interface StoreList extends StoreRows {
   filter: StoreFilter;
   /** The server's matches for `q`, for the stores table only: `rows` stays whole for the queue. */
   search: StoreRows | null;
+  sort: { key: StoreSort; desc: boolean };
 }
 
 export interface LedgerState {
@@ -189,6 +185,8 @@ export interface Model {
   dialog: Dialog | null;
   /** A temporary password, shown once. */
   secret: { storeId: number; username: string; password: string } | null;
+  /** Keys of the one-tap actions still on their way to the server; see `workKey` in the views. */
+  working: string[];
 }
 
 export function initialModel(): Model {
@@ -204,6 +202,7 @@ export function initialModel(): Model {
       q: "",
       filter: "all",
       search: null,
+      sort: { key: "id", desc: true },
       loading: false,
       error: "",
       complete: true,
@@ -214,6 +213,7 @@ export function initialModel(): Model {
     create: { name: "", username: "", mode: "timed", busy: false, error: "", done: null },
     dialog: null,
     secret: null,
+    working: [],
   };
 }
 
@@ -236,7 +236,10 @@ export interface ShellActions {
 
 export interface StoresActions {
   setStoreFilter(filter: StoreFilter): void;
+  setStoreSort(key: StoreSort): void;
   searchStores(q: string): void;
+  /** Warms the store's detail while the pointer rests on its row. */
+  prefetchStore(id: number): void;
 }
 
 export interface QueueActions {

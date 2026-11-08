@@ -25,11 +25,23 @@ export const pager = (
   </nav>
 `;
 
-export const loadState = (state: { loading: boolean; error: string }) =>
+/** Placeholder lines at row height, so the first rows arrive without moving the page. */
+export const skeleton = (lines = 6) => html`
+  <div class="skeleton" role="status" aria-label="جارٍ التحميل">
+    ${Array.from({ length: lines }, () => html`<span></span>`)}
+  </div>`;
+
+/** An error, or the first load only: a refresh keeps the old rows on screen. */
+export const loadState = (state: {
+  loading: boolean;
+  error: string;
+  rows?: unknown[];
+  page?: unknown;
+}) =>
   state.error
     ? html`<p class="form-error" role="alert">${state.error}</p>`
-    : state.loading
-      ? html`<p class="loading" role="status">جارٍ التحميل…</p>`
+    : state.loading && !state.rows?.length && !state.page
+      ? skeleton()
       : nothing;
 
 export const empty = (text: string) => html`<p class="empty">${text}</p>`;

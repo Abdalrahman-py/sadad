@@ -154,14 +154,12 @@ test("sign in, create a store, open it and approve its device", async ({ page })
   const createCall = calls.find((c) => c.method === "POST" && c.path === "/v1/admin/stores");
   expect(createCall?.body).toMatchObject(createStore.request);
 
-  // Hand off → the store page, whose overview shows the waiting device.
+  // Hand off → the store's account tab, which lists the waiting device.
   await page.getByRole("link", { name: "فتح صفحة المتجر" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "بقالة الزاوية" })).toBeVisible();
-  await expect(page.getByText("جهاز ينتظر الاعتماد")).toBeVisible();
+  await expect(page.getByText("بانتظار الاعتماد")).toBeVisible();
 
   // Approve the pending installation with a reason.
-  await page.getByRole("link", { name: "مراجعة واعتماد" }).click();
-  await expect(page.getByText("بانتظار الاعتماد")).toBeVisible();
   await page.getByRole("button", { name: "اعتماد", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("سبب الإجراء").fill("هاتف المتجر الجديد");
@@ -245,5 +243,6 @@ test("refuses a second sign-in while the account is open elsewhere", async ({ pa
 
   await expect(page.getByRole("alert")).toHaveText(messages.session_in_use);
   await expect(page.getByRole("heading", { level: 1, name: "المهام" })).toHaveCount(0);
-  expect(calls).toEqual(["POST /v1/admin/session"]);
+  // The lists start with the claim to save a round trip; the api refuses them for the same reason.
+  expect(calls).toContain("POST /v1/admin/session");
 });
