@@ -18,25 +18,21 @@ import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactDelete
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactRestore
-import com.sadad.ledger.ContactRow
 import com.sadad.ledger.ContactUpdate
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
-import com.sadad.ledger.DebtRow
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.LedgerView
-import com.sadad.ledger.OffsetRow
 import com.sadad.ledger.Origin
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
-import com.sadad.ledger.PaymentRow
 import com.sadad.ledger.ReceiptStatus
 import com.sadad.ledger.confirmed
 import com.sadad.ledger.view
@@ -358,25 +354,26 @@ class LedgerRepository(
   }
 
   /**
-   * Patches the cached state with only the ids in [next]'s maps and the ids in [ws] that
-   * disappeared, plus the new cursor. Empty maps are replaced; the rest are mutated in place, so
-   * the cache costs the page, not the store.
+   * The cached state with [next]'s rows put in and the [ws] rows the page removed taken out, at the
+   * new cursor. Copies the maps instead of patching them in place: the view flow and the write
+   * checks read the old state on other threads without the lock.
    */
-  @Suppress("UNCHECKED_CAST")
+  // shortcut: copies the store's maps per page (no fold, no Room); ticket 168 drops the cache.
   private fun patch(old: LedgerState, ws: LedgerState, next: LedgerState): LedgerState {
-    val contacts = old.contacts as? MutableMap<String, ContactRow> ?: LinkedHashMap(old.contacts)
-    val debts = old.debts as? MutableMap<String, DebtRow> ?: LinkedHashMap(old.debts)
-    val payments = old.payments as? MutableMap<String, PaymentRow> ?: LinkedHashMap(old.payments)
-    val offsets = old.offsets as? MutableMap<String, OffsetRow> ?: LinkedHashMap(old.offsets)
-    for ((id, row) in next.contacts) contacts[id] = row
-    for (id in ws.contacts.keys - next.contacts.keys) contacts.remove(id)
-    for ((id, row) in next.debts) debts[id] = row
-    for (id in ws.debts.keys - next.debts.keys) debts.remove(id)
-    for ((id, row) in next.payments) payments[id] = row
-    for (id in ws.payments.keys - next.payments.keys) payments.remove(id)
-    for ((id, row) in next.offsets) offsets[id] = row
-    for (id in ws.offsets.keys - next.offsets.keys) offsets.remove(id)
-    return LedgerState(next.storeId, next.epoch, next.cursor, contacts, debts, payments, offsets)
+    fun <T> patched(old: Map<String, T>, ws: Map<String, T>, next: Map<String, T>) =
+        LinkedHashMap(old).apply {
+          putAll(next)
+          keys.removeAll(ws.keys - next.keys)
+        }
+    return LedgerState(
+        next.storeId,
+        next.epoch,
+        next.cursor,
+        patched(old.contacts, ws.contacts, next.contacts),
+        patched(old.debts, ws.debts, next.debts),
+        patched(old.payments, ws.payments, next.payments),
+        patched(old.offsets, ws.offsets, next.offsets),
+    )
   }
 
   suspend fun addContact(

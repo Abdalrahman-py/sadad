@@ -4,7 +4,9 @@ import com.sadad.app.data.db.Events
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
+import com.sadad.ledger.LedgerState
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.view
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
@@ -98,44 +100,85 @@ class SyncPullTest {
   }
 
   @Test
-  fun multiPagePullViewEqualsWholeStoreView() = runTest {
+  fun multiPagePullThroughWorkingSetsEqualsTheWholeStoreFold() = runTest {
     SyncFixture.create().use { f ->
-      val contactId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
-      val debtId = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"
-      val paymentId = "c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f"
-      val contact =
-          Commands.contactCreate(Events.origin, Events.at(0), "سامي", entityId = contactId)
-      val debt =
-          Commands.debtCreate(
-              Events.origin,
-              Events.at(1),
-              contactId,
-              Direction.RECEIVABLE,
-              Cents(10_000),
-              entityId = debtId,
+      fun id(n: Int) = "00000000-0000-4000-8000-%012d".format(n)
+      val (a, b, aOwed, aOwes, bOwed) = listOf(id(1), id(2), id(11), id(12), id(13))
+      val (aPaid, bPaid) = listOf(id(21), id(22))
+      val o = Events.origin
+      fun t(m: Int) = Events.at(m)
+      val pages =
+          listOf(
+              listOf(
+                  Commands.contactCreate(o, t(0), "أ", entityId = a),
+                  Commands.contactCreate(o, t(1), "ب", entityId = b),
+                  Commands.debtCreate(
+                      o,
+                      t(2),
+                      a,
+                      Direction.RECEIVABLE,
+                      Cents(10_000),
+                      entityId = aOwed,
+                  ),
+                  Commands.debtCreate(
+                      o,
+                      t(3),
+                      a,
+                      Direction.PAYABLE,
+                      Cents(3_000),
+                      entityId = aOwes,
+                  ),
+                  Commands.debtCreate(
+                      o,
+                      t(4),
+                      b,
+                      Direction.RECEIVABLE,
+                      Cents(8_000),
+                      entityId = bOwed,
+                  ),
+              ),
+              listOf(
+                  Commands.debtOffset(o, t(5), aOwed, aOwes, Cents(1_000), entityId = id(31)),
+                  Commands.paymentCreate(
+                      o,
+                      t(6),
+                      aOwed,
+                      Cents(2_000),
+                      PaymentMethod.CASH,
+                      entityId = aPaid,
+                  ),
+                  Commands.paymentCreate(
+                      o,
+                      t(7),
+                      bOwed,
+                      Cents(1_000),
+                      PaymentMethod.CASH,
+                      entityId = bPaid,
+                  ),
+                  Commands.debtCorrect(o, t(8), bOwed, 1, Cents(9_000), "تصحيح", entityId = id(41)),
+                  Commands.paymentReverse(o, t(9), bPaid, "خطأ", entityId = id(42)),
+              ),
+              listOf(
+                  Commands.contactUpdate(o, t(10), b, 1, "ب جديد", entityId = b),
+                  Commands.contactArchive(o, t(11), a, 1, "سلة", entityId = a),
+              ),
+              listOf(Commands.contactDelete(o, t(12), a, 2, "نهائي", entityId = a)),
           )
-      val payment =
-          Commands.paymentCreate(
-              Events.origin,
-              Events.at(2),
-              debtId,
-              Cents(3_000),
-              PaymentMethod.CASH,
-              entityId = paymentId,
-          )
-      f.page(
-          Events.page(listOf(Events.accepted(contact, 1), Events.accepted(debt, 2)))
-              .copy(hasMore = true)
-      )
-      f.page(Events.page(listOf(Events.accepted(payment, 3))))
+      var sequence = 0L
+      val changes = pages.mapIndexed { i, commands ->
+        Events.page(commands.map { Events.accepted(it, ++sequence) })
+            .copy(hasMore = i < pages.lastIndex)
+      }
+      changes.forEach { f.page(it) }
       assertEquals(SyncStatus.Idle, f.engine.pass(f.scope))
-      val view = f.scope.repository.view.first { it != null }!!
-      assertEquals(listOf(contactId), view.contacts.map { it.id })
-      assertEquals(debtId, view.debts.single().id)
-      assertEquals(Cents(10_000), view.debts.single().amount)
-      assertEquals(paymentId, view.payments.single().id)
-      assertEquals(Cents(7_000), view.receivable)
-      assertEquals(3L, f.scope.database.metaDao().get()!!.cursor)
+
+      // Room and the cached view both equal folding every page over the whole store.
+      val full = changes.fold(LedgerState.EMPTY) { state, page -> state.apply(page) }
+      assertEquals(full, f.scope.store.load())
+      val expected =
+          full.view(emptyList(), emptySet(), f.scope.selfInstallationId, f.scope.staffName.first())
+      assertEquals(expected, f.scope.repository.view.first { it == expected })
+      assertEquals(listOf(b), expected.contacts.map { it.id })
     }
   }
 

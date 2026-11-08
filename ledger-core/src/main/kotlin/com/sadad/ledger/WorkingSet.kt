@@ -1,7 +1,5 @@
 package com.sadad.ledger
 
-import java.time.DateTimeException
-
 /** The rows one `changes` page names: what [LedgerState.apply] may read for that page. */
 data class WorkingSetIds(
     val contacts: Set<String> = emptySet(),
@@ -14,7 +12,8 @@ data class WorkingSetIds(
 
 /**
  * The working set of a page, decoded the way `Fold.accept` decodes: the `entityId` of every
- * accepted event (in its table) and every id its payload names. Rejected events add nothing.
+ * accepted event (in its table) and every id its payload names. Rejected events add nothing, and
+ * neither does an event [LedgerState.apply] cannot read, so its refusal keeps its message.
  */
 fun Changes.workingSetIds(): WorkingSetIds {
   val contacts = linkedSetOf<String>()
@@ -26,19 +25,15 @@ fun Changes.workingSetIds(): WorkingSetIds {
     val rejected =
         event.kind == ChangeEvent.REJECTED_KIND || event.result.status == ReceiptStatus.REJECTED
     if (rejected) continue
+    // An event apply will refuse adds nothing: apply then throws its own message, after its
+    // page-level checks, exactly as before working sets.
     val command: LedgerCommand
     val payload: CommandPayload
     try {
       command = LedgerJson.decodeFromJsonElement(LedgerCommand.serializer(), event.command)
-      ServerTime.parse(command.createdAt)
       payload = command.payload()
     } catch (e: IllegalArgumentException) {
-      throw IllegalStateException("event ${event.sequence}: unreadable command", e)
-    } catch (e: DateTimeException) {
-      throw IllegalStateException("event ${event.sequence}: unreadable command", e)
-    }
-    check(event.kind == command.type.wireName) {
-      "event ${event.sequence} is ${event.kind} but carries ${command.type.wireName}"
+      continue
     }
     when (command.type) {
       CommandType.CONTACT_CREATE,

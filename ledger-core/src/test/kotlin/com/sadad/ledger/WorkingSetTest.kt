@@ -4,7 +4,10 @@ import com.sadad.ledger.Events.accepted
 import com.sadad.ledger.Events.at
 import com.sadad.ledger.Events.origin
 import com.sadad.ledger.Events.page
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -124,6 +127,18 @@ class WorkingSetTest {
     assertTrue(ids.payments.isEmpty())
     assertTrue(ids.offsets.isEmpty())
     assertTrue(ids.withAllRows.isEmpty())
+  }
+
+  @Test
+  fun anUnreadableEventAddsNothingSoApplyKeepsItsOwnRefusal() {
+    val create = Commands.contactCreate(origin, at(0), "أ", entityId = id(1))
+    val unreadable =
+        accepted(create, 1)
+            .copy(command = JsonObject(mapOf("type" to JsonPrimitive("debt.delete"))))
+    val bad = page(listOf(unreadable), schemaVersion = 2)
+    assertEquals(WorkingSetIds(), bad.workingSetIds())
+    val e = assertThrows(IllegalStateException::class.java) { LedgerState.EMPTY.apply(bad) }
+    assertEquals("unsupported changes schemaVersion 2", e.message)
   }
 
   @Test
