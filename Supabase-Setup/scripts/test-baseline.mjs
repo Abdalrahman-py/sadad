@@ -1183,6 +1183,176 @@ try {
     }
   });
 
+  await check('Dashboard store totals sum each non-archived person’s net', async () => {
+    await db.exec('reset role; begin');
+    try {
+      const cents = (value) => Number(value);
+      const summaries = async () => {
+        await asAdmin('support', supportUser);
+        return (await db.query('select public.sadid_admin_summaries($1) as result', [[1]])).rows[0].result[0];
+      };
+      const ledgerTotals = async () => {
+        await asAdmin('support', supportUser);
+        return (
+          await db.query(
+            "select public.sadid_admin_ledger(1, 'contacts', 'مراجعة إجمالي', null::text, null::jsonb, 1) as result",
+          )
+        ).rows[0].result.totals;
+      };
+      const personNet = async (contactId) => {
+        await db.exec('reset role');
+        return Number(
+          (
+            await db.query(
+              `select coalesce(sum(case when direction = 'receivable' then principal - paid - offsetted
+                                            when direction = 'payable' then -(principal - paid - offsetted)
+                                            else 0 end), 0)::bigint as net
+               from sadid_private.debt_balances(1) where contact_id = $1`,
+              [contactId],
+            )
+          ).rows[0].net,
+        );
+      };
+
+      // A person with a receivable of 100 and a payable of 30.
+      const beforeMixed = await summaries();
+      const beforeMixedLedger = await ledgerTotals();
+      const mixed = command('contact.create', { kind: 'customer', name: 'مختلط', phone: '' });
+      assert.equal((await apply(mixed)).status, 'accepted');
+      const mixedReceivable = command('debt.create', {
+        contactId: mixed.entityId,
+        amountCents: 100,
+        direction: 'receivable',
+      });
+      assert.equal((await apply(mixedReceivable)).status, 'accepted');
+      const mixedPayable = command('debt.create', {
+        contactId: mixed.entityId,
+        amountCents: 30,
+        direction: 'payable',
+      });
+      assert.equal((await apply(mixedPayable)).status, 'accepted');
+      const afterMixed = await summaries();
+      const afterMixedLedger = await ledgerTotals();
+      assert.equal(cents(afterMixed.receivableCents) - cents(beforeMixed.receivableCents), 70);
+      assert.equal(cents(afterMixed.payableCents) - cents(beforeMixed.payableCents), 0);
+      assert.equal(cents(afterMixedLedger.receivableCents) - cents(beforeMixedLedger.receivableCents), 70);
+      assert.equal(cents(afterMixedLedger.payableCents) - cents(beforeMixedLedger.payableCents), 0);
+      assert.equal(cents(afterMixedLedger.netCents) - cents(beforeMixedLedger.netCents), 70);
+
+      // A supplier with only a payable of 50.
+      const beforeSupplier = await summaries();
+      const beforeSupplierLedger = await ledgerTotals();
+      const supplier = command('contact.create', { kind: 'supplier', name: 'مورد', phone: '' });
+      assert.equal((await apply(supplier)).status, 'accepted');
+      const supplierDebt = command('debt.create', {
+        contactId: supplier.entityId,
+        amountCents: 50,
+        direction: 'payable',
+      });
+      assert.equal((await apply(supplierDebt)).status, 'accepted');
+      const afterSupplier = await summaries();
+      const afterSupplierLedger = await ledgerTotals();
+      assert.equal(cents(afterSupplier.receivableCents) - cents(beforeSupplier.receivableCents), 0);
+      assert.equal(cents(afterSupplier.payableCents) - cents(beforeSupplier.payableCents), 50);
+      assert.equal(cents(afterSupplierLedger.receivableCents) - cents(beforeSupplierLedger.receivableCents), 0);
+      assert.equal(cents(afterSupplierLedger.payableCents) - cents(beforeSupplierLedger.payableCents), 50);
+
+      // An archived person with an open receivable is not counted. The balance reopens with a
+      // payment reversal after the archive, the one path the guards allow.
+      const beforeArchived = await summaries();
+      const beforeArchivedLedger = await ledgerTotals();
+      const trashed = command('contact.create', { kind: 'customer', name: 'مؤرشف', phone: '' });
+      assert.equal((await apply(trashed)).status, 'accepted');
+      const trashedDebt = command('debt.create', {
+        contactId: trashed.entityId,
+        amountCents: 200,
+        direction: 'receivable',
+      });
+      assert.equal((await apply(trashedDebt)).status, 'accepted');
+      const trashedPayment = command('payment.create', {
+        debtId: trashedDebt.entityId,
+        amountCents: 200,
+        method: 'cash',
+      });
+      assert.equal((await apply(trashedPayment)).status, 'accepted');
+      assert.equal(
+        (await apply(command('contact.archive', { contactId: trashed.entityId, reason: 'سلة' }, { expectedVersion: 1 })))
+          .status,
+        'accepted',
+      );
+      assert.equal(
+        (await apply(command('payment.reverse', { paymentId: trashedPayment.entityId, reason: 'عكس أثناء السلة' })))
+          .status,
+        'accepted',
+      );
+      assert.equal(await personNet(trashed.entityId), 200);
+      const afterArchived = await summaries();
+      const afterArchivedLedger = await ledgerTotals();
+      assert.equal(cents(afterArchived.receivableCents) - cents(beforeArchived.receivableCents), 0);
+      assert.equal(cents(afterArchived.payableCents) - cents(beforeArchived.payableCents), 0);
+      assert.equal(cents(afterArchivedLedger.receivableCents) - cents(beforeArchivedLedger.receivableCents), 0);
+      assert.equal(cents(afterArchivedLedger.payableCents) - cents(beforeArchivedLedger.payableCents), 0);
+
+      // A partial payment, a reversed payment, an adjustment and an offset. 900 - 300 - 150 = 450
+      // receivable left, 400 - 150 = 250 payable left, so the person nets 200.
+      const beforeMoves = await summaries();
+      const beforeMovesLedger = await ledgerTotals();
+      const person = command('contact.create', { kind: 'customer', name: 'حركات', phone: '' });
+      assert.equal((await apply(person)).status, 'accepted');
+      const moveReceivable = command('debt.create', {
+        contactId: person.entityId,
+        amountCents: 1000,
+        direction: 'receivable',
+      });
+      assert.equal((await apply(moveReceivable)).status, 'accepted');
+      const movePayable = command('debt.create', {
+        contactId: person.entityId,
+        amountCents: 400,
+        direction: 'payable',
+      });
+      assert.equal((await apply(movePayable)).status, 'accepted');
+      const partial = command('payment.create', { debtId: moveReceivable.entityId, amountCents: 300, method: 'cash' });
+      assert.equal((await apply(partial)).status, 'accepted');
+      assert.equal(
+        (await apply(command('debt.correct', { debtId: moveReceivable.entityId, amountCents: 900, reason: 'تصحيح' }, { expectedVersion: 1 })))
+          .status,
+        'accepted',
+      );
+      const reversedPayment = command('payment.create', {
+        debtId: moveReceivable.entityId,
+        amountCents: 100,
+        method: 'cash',
+      });
+      assert.equal((await apply(reversedPayment)).status, 'accepted');
+      assert.equal(
+        (await apply(command('payment.reverse', { paymentId: reversedPayment.entityId, reason: 'إلغاء موثق' }))).status,
+        'accepted',
+      );
+      assert.equal(
+        (
+          await apply(
+            command('debt.offset', {
+              receivableDebtId: moveReceivable.entityId,
+              payableDebtId: movePayable.entityId,
+              amountCents: 150,
+            }),
+          )
+        ).status,
+        'accepted',
+      );
+      assert.equal(await personNet(person.entityId), 200);
+      const afterMoves = await summaries();
+      const afterMovesLedger = await ledgerTotals();
+      assert.equal(cents(afterMoves.receivableCents) - cents(beforeMoves.receivableCents), 200);
+      assert.equal(cents(afterMoves.payableCents) - cents(beforeMoves.payableCents), 0);
+      assert.equal(cents(afterMovesLedger.receivableCents) - cents(beforeMovesLedger.receivableCents), 200);
+      assert.equal(cents(afterMovesLedger.payableCents) - cents(beforeMovesLedger.payableCents), 0);
+      assert.equal(cents(afterMovesLedger.netCents) - cents(beforeMovesLedger.netCents), 200);
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
   await check('Recovery permit flow works across installation transfer', async () => {
     await db.exec('reset role');
     const recovered = command('contact.create', { kind: 'customer', name: 'مدخل مستعاد' });

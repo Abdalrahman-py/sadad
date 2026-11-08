@@ -63,6 +63,7 @@ class StoreScope(
         installation = list.firstOrNull { it.storeUserId == account.storeUserId }?.installation
       }
     }
+    jobs.launch { repository.followOutbox(database) }
   }
 
   override val selfInstallationId: String

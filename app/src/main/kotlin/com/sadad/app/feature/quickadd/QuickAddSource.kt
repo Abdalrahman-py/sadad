@@ -5,9 +5,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import com.sadad.app.AppGraph
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.feature.contactpicker.DeviceContact
 import com.sadad.app.feature.contactpicker.DeviceContacts
 import com.sadad.app.permissions
+import com.sadad.ledger.ContactView
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
@@ -22,8 +24,32 @@ import kotlinx.coroutines.flow.map
  * What quick add reads from the open store: the Ledger, the device's permissions and its status.
  */
 interface QuickAddSource {
-  /** The open store's Ledger view; null while no store is open. */
+  /**
+   * The open store's Ledger view; null while no store is open. Once [summaryReady] the picker reads
+   * [summaries] instead, and this is never collected.
+   */
   val view: Flow<LedgerView?>
+
+  /**
+   * The stored per-person summary rows; null while no store is open. The picker reads these once
+   * [summaryReady] is true.
+   */
+  val summaries: Flow<List<ContactSummaryEntity>?>
+    get() = flowOf(null)
+
+  /** True once the one-time summary fill ended (ticket 160). */
+  val summaryReady: Flow<Boolean>
+    get() = flowOf(false)
+
+  /**
+   * The trash's contacts, so a number that belongs to someone in the archive is told from one that
+   * can be imported.
+   */
+  val archived: Flow<List<ContactView>>
+    get() = flowOf(emptyList())
+
+  /** The chosen person's own ledger view, queued commands projected; that is what a save reads. */
+  fun personView(contactId: String): Flow<LedgerView?> = flowOf(null)
 
   /** The open installation's permissions by name. */
   val permissions: Flow<Map<String, Boolean>>
@@ -75,6 +101,26 @@ fun AppGraph.quickAddSource(appContext: Context? = null): QuickAddSource {
   return object : QuickAddSource {
     override val view: Flow<LedgerView?> =
         graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
+
+    override val summaries: Flow<List<ContactSummaryEntity>?> =
+        graph.current.flatMapLatest { scope ->
+          scope?.let { it.database.contactSummaryDao().observe() } ?: flowOf(null)
+        }
+
+    override val summaryReady: Flow<Boolean> =
+        graph.current.flatMapLatest { scope ->
+          scope?.repository?.summaryReady ?: flowOf(false)
+        }
+
+    override val archived: Flow<List<ContactView>> =
+        graph.current.flatMapLatest { scope ->
+          scope?.personLedger?.archivedContacts() ?: flowOf(emptyList())
+        }
+
+    override fun personView(contactId: String): Flow<LedgerView?> =
+        graph.current.flatMapLatest { scope ->
+          scope?.personLedger?.observe(contactId)?.map { it?.ledger } ?: flowOf(null)
+        }
 
     override val permissions: Flow<Map<String, Boolean>> = graph.permissions()
 

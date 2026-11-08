@@ -3,6 +3,7 @@ package com.sadad.app.feature.quickadd
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.ui.UiTestApplication
@@ -11,15 +12,18 @@ import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtView
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
+import com.sadad.ledger.PaymentCreate
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -115,6 +119,202 @@ class QuickAddFakeSourceTest {
       assertEquals(C1, payload.contactId)
     }
   }
+
+  @Test
+  fun thePickerReadsTheSummariesWithTheStoredOpenBalanceAndNeverCollectsTheWholeView() =
+      runBlocking {
+        withTimeout(5_000) {
+          val source =
+              SummarySource(
+                  jobs,
+                  listOf(
+                      summary(C1, "خالد", net = 15_000, openReceivable = 15_000, atHours = 2),
+                      summary(C2, "سارة", net = 0, openReceivable = 0, atHours = 1),
+                  ),
+              )
+
+          val model = model(source)
+          val state = model.state.first { it.loaded }
+
+          assertEquals(listOf("خالد", "سارة"), state.people.map { it.name })
+          assertEquals(Cents(15_000), state.people.first().net)
+
+          model.pick(C1)
+          model.toPayment()
+          model.state.first { it.overBalance == Cents(15_000) }
+
+          assertEquals(Cents(15_000), model.state.value.overBalance)
+        }
+      }
+
+  @Test
+  fun aPaymentAllocatesOverThePersonsOwnViewOldestFirst() = runBlocking {
+    withTimeout(5_000) {
+      val older =
+          debt(
+              id = "0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d",
+              contactId = C1,
+              amount = 10_000,
+              at = "2026-09-01T00:00:00Z",
+          )
+      val newer =
+          debt(
+              id = "1b2c3d4e-5f6a-4b7c-8d8e-9f0a1b2c3d4e",
+              contactId = C1,
+              amount = 5_000,
+              at = "2026-09-02T00:00:00Z",
+          )
+      val person =
+          LedgerView(
+              contacts = listOf(contact(C1, "خالد")),
+              archivedContacts = emptyList(),
+              debts = listOf(older, newer),
+              payments = emptyList(),
+              receivable = Cents(15_000),
+              payable = Cents.ZERO,
+              confirmedReceivable = Cents(15_000),
+              confirmedPayable = Cents.ZERO,
+              pendingContacts = 0,
+              pendingDebts = 0,
+              pendingPayments = 0,
+              excludedOperations = emptySet(),
+          )
+      val source =
+          SummarySource(
+              jobs,
+              listOf(summary(C1, "خالد", net = 15_000, openReceivable = 15_000, atHours = 2)),
+              person = person,
+          )
+
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+      model.toPayment()
+      model.press("1")
+      model.press("2")
+      model.press("0")
+      model.save(context)
+
+      val commands = source.appended.await()
+      assertEquals(2, commands.size)
+      val parts = commands.map { it.payload() as PaymentCreate }
+      assertEquals(listOf(older.id, newer.id), parts.map { it.debtId })
+      assertEquals(listOf(Cents(10_000), Cents(2_000)), parts.map { it.amountCents })
+    }
+  }
+
+  @Test
+  fun aSaveTappedBeforeThePersonsViewLandsWaitsWithoutBlockingAndThenSaves() = runBlocking {
+    withTimeout(5_000) {
+      val gate = CompletableDeferred<Unit>()
+      val source =
+          SummarySource(
+              jobs,
+              listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2)),
+              person = ledger(contact(C1, "خالد")),
+              personGate = gate,
+          )
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+      model.press("8")
+      model.press("5")
+
+      model.save(context)
+      assertEquals(
+          "the save returns at once and waits for the view",
+          QuickAddStep.AMOUNT,
+          model.state.value.step,
+      )
+      assertFalse(source.appended.isCompleted)
+
+      gate.complete(Unit)
+      model.state.first { it.step == QuickAddStep.DONE }
+      val payload = source.appended.await().single().payload() as DebtCreate
+      assertEquals(Cents(8_500), payload.amountCents)
+      assertEquals(C1, payload.contactId)
+    }
+  }
+
+  /** A summary-ready source whose [view] fails the test if the ViewModel ever collects it. */
+  private class SummarySource(
+      val jobs: CoroutineScope,
+      summaries: List<ContactSummaryEntity>,
+      val person: LedgerView? = null,
+      val personGate: CompletableDeferred<Unit>? = null,
+  ) : QuickAddSource {
+    val appended = CompletableDeferred<List<LedgerCommand>>()
+    override val view: Flow<LedgerView?> =
+        kotlinx.coroutines.flow.flow { error("the whole-store view must never be collected") }
+
+    override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
+    override val summaryReady = MutableStateFlow(true)
+    override val permissions = flowOf(emptyMap<String, Boolean>())
+    override val blocked = flowOf(false)
+
+    override fun personView(contactId: String): Flow<LedgerView?> =
+        kotlinx.coroutines.flow.flow {
+          personGate?.await()
+          emit(person)
+        }
+
+    override fun open(): QuickAddStore =
+        object : QuickAddStore {
+          override val jobs = this@SummarySource.jobs
+
+          override fun origin() = Events.origin
+
+          override fun isOnline() = true
+
+          override suspend fun append(commands: List<LedgerCommand>) {
+            appended.complete(commands)
+          }
+        }
+  }
+
+  private fun summary(
+      id: String,
+      name: String,
+      net: Long,
+      openReceivable: Long,
+      atHours: Int,
+  ): ContactSummaryEntity {
+    val at = Instant.parse("2026-09-01T00:00:00Z").plusSeconds(atHours * 3_600L)
+    return ContactSummaryEntity(
+        contactId = id,
+        name = name,
+        phone = "0599000000",
+        kind = ContactKind.CUSTOMER,
+        category = "",
+        pending = false,
+        createdAt = at,
+        net = net,
+        openReceivable = openReceivable,
+        openPayable = 0,
+        earliestOpenDue = null,
+        lastEntryAt = at,
+        searchKey = PersonSearch.normalize(name),
+    )
+  }
+
+  private fun debt(id: String, contactId: String, amount: Long, at: String): DebtView =
+      DebtView(
+          id = id,
+          contactId = contactId,
+          direction = Direction.RECEIVABLE,
+          amount = Cents(amount),
+          paid = Cents.ZERO,
+          confirmedRemaining = Cents(amount),
+          remaining = Cents(amount),
+          version = 1,
+          pending = false,
+          hasPendingPayments = false,
+          note = "",
+          dueDate = null,
+          createdAt = Instant.parse(at),
+          createdBy = "",
+          operationId = "op-$id",
+      )
 
   private fun contact(id: String, name: String) =
       ContactView(

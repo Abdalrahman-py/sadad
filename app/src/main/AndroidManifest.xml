@@ -23,8 +23,8 @@
         android:supportsRtl="true"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="${allowCleartextTraffic}"
-        android:icon="@drawable/sadad_logo"
-        android:roundIcon="@drawable/sadad_logo"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Sadad">
         <meta-data
             android:name="io.sentry.auto-init"

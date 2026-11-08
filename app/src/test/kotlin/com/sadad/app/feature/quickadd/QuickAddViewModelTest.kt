@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
@@ -17,10 +18,18 @@ import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
+import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -110,7 +119,8 @@ class QuickAddViewModelTest {
       )
 
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      // The save waits off the main thread for the person's own view when it has not landed yet.
+      model.state.first { it.step == QuickAddStep.DONE }
       assertEquals("سجّل ₪85 على خالد", model.state.value.done?.sentence)
       assertTrue("the undo window holds the command", store.outbox.snapshot().isEmpty())
 
@@ -178,6 +188,7 @@ class QuickAddViewModelTest {
       model.press("8")
       model.press("5")
       model.save(context)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       model.undo(context)
       Thread.sleep(600)
@@ -366,7 +377,7 @@ class QuickAddViewModelTest {
 
       for (key in listOf("4", "9", "9", "9", ".", "9", "9")) model.press(key)
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       model.another(context)
       model.pick(contact)
@@ -502,7 +513,7 @@ class QuickAddViewModelTest {
       model.press("4")
       model.press("0")
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       // System back, «الرئيسية», «فتح الشخص»: every way out goes through leave().
       model.leave(context)
@@ -523,7 +534,7 @@ class QuickAddViewModelTest {
       model.press("6")
       model.press("5")
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       // What LockGate does when it swaps content() for UnlockScreen: the NavHost leaves
       // composition and its NavBackStackEntry ViewModelStore is cleared. feature/lock belongs to
@@ -585,7 +596,7 @@ class QuickAddViewModelTest {
       model.press("0")
       model.press("0")
       model.save(context)
-      assertEquals(QuickAddStep.DONE, model.state.value.step)
+      model.state.first { it.step == QuickAddStep.DONE }
 
       model.undo(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
@@ -662,6 +673,79 @@ class QuickAddViewModelTest {
       assertEquals(Events.at(3), last[sami.entityId])
       assertEquals(Events.at(4), last[huda.entityId])
     }
+  }
+
+  @Test
+  fun thePickerReadsTheSummaryRowsAndNeverCollectsTheWholeView() = runBlocking {
+    val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val source =
+        object : QuickAddSource {
+          override val view: Flow<LedgerView?> =
+              kotlinx.coroutines.flow.flow { error("the whole-store view must never be collected") }
+          override val summaries =
+              MutableStateFlow(
+                  listOf(
+                      summaryRow("0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d", "خالد", 15_000, 15_000, 2),
+                      summaryRow("1b2c3d4e-5f6a-4b7c-8d8e-9f0a1b2c3d4e", "سارة", 0, 0, 1),
+                  )
+              )
+          override val summaryReady = MutableStateFlow(true)
+          override val permissions = flowOf(emptyMap<String, Boolean>())
+          override val blocked = flowOf(false)
+
+          override fun open(): QuickAddStore =
+              object : QuickAddStore {
+                override val jobs = jobs
+
+                override fun origin() = Events.origin
+
+                override fun isOnline() = true
+
+                override suspend fun append(commands: List<com.sadad.ledger.LedgerCommand>) {}
+              }
+        }
+    try {
+      kotlinx.coroutines.withTimeout(5_000) {
+        val model = QuickAddViewModel(source, null, false, SavedStateHandle(), 100)
+
+        val state = model.state.first { it.loaded }
+
+        assertEquals(listOf("خالد", "سارة"), state.people.map { it.name })
+        assertEquals(Cents(15_000), state.people.first().net)
+
+        model.pick("0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d")
+        model.toPayment()
+        model.state.first { it.overBalance == Cents(15_000) }
+        assertEquals(Cents(15_000), model.state.value.overBalance)
+      }
+    } finally {
+      jobs.cancel()
+    }
+  }
+
+  private fun summaryRow(
+      id: String,
+      name: String,
+      net: Long,
+      openReceivable: Long,
+      atHours: Int,
+  ): ContactSummaryEntity {
+    val at = Events.at(atHours)
+    return ContactSummaryEntity(
+        contactId = id,
+        name = name,
+        phone = "0599000000",
+        kind = ContactKind.CUSTOMER,
+        category = "",
+        pending = false,
+        createdAt = at,
+        net = net,
+        openReceivable = openReceivable,
+        openPayable = 0,
+        earliestOpenDue = null,
+        lastEntryAt = at,
+        searchKey = PersonSearch.normalize(name),
+    )
   }
 
   private suspend fun TestGraph.settledContact(

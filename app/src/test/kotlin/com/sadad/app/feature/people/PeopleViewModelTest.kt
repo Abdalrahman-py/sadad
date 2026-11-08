@@ -1,6 +1,8 @@
 package com.sadad.app.feature.people
 
 import androidx.lifecycle.SavedStateHandle
+import com.sadad.app.data.db.ContactSummaryEntity
+import com.sadad.app.data.ledger.summaryOf
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
@@ -153,6 +155,84 @@ class PeopleViewModelTest {
     val state = state(query = "احمد")
 
     assertEquals(listOf("أحمد سالم", "أحمد ناصر"), state.rows.map { it.name })
+  }
+
+  @Test
+  fun theSummaryRowsMatchTheWholeViewRowsForEverySortAndChip() {
+    val view = board()
+    val summaries = summariesOf(view)
+
+    for (sort in PeopleSort.entries) {
+      for (filter in PeopleFilter.entries) {
+        val fromView = peopleUiState(view, zone, today, "", filter, sort)
+        val fromSummary = peopleUiState(summaries, emptyList(), zone, today, "", filter, sort)
+        assertEquals("sort $sort chip $filter", fromView.rows, fromSummary.rows)
+      }
+    }
+  }
+
+  @Test
+  fun theSummaryPathSearchFoldsHamzaAndDiacritics() {
+    val summaries = summariesOf(board())
+
+    val hamza =
+        peopleUiState(
+            summaries,
+            emptyList(),
+            zone,
+            today,
+            "احمد",
+            PeopleFilter.ALL,
+            PeopleSort.RECENT,
+        )
+    assertEquals(listOf("أحمد سالم", "أحمد ناصر"), hamza.rows.map { it.name })
+  }
+
+  @Test
+  fun aDiacriticNameIsFoundWithoutItsDiacritics() {
+    val diacritic =
+        ledger(listOf(person("p8", "مُحمَّد", "0599000000", 1_000, at(2026, 10, 25, 9, 0))))
+
+    val state =
+        peopleUiState(
+            summariesOf(diacritic),
+            emptyList(),
+            zone,
+            today,
+            "محمد",
+            PeopleFilter.ALL,
+            PeopleSort.RECENT,
+        )
+
+    assertEquals(listOf("مُحمَّد"), state.rows.map { it.name })
+  }
+
+  @Test
+  fun aFailedDraftStaysListedWithSyncFailedAndNoNet() {
+    val view = board()
+    val sarah = view.contacts.first { it.id == "p6" }
+    val summaries = summariesOf(view).filterNot { it.contactId == "p6" }
+
+    val fromSummary =
+        peopleUiState(
+            summaries,
+            listOf(sarah),
+            zone,
+            today,
+            "",
+            PeopleFilter.ALL,
+            PeopleSort.RECENT,
+        )
+    val fromViewRows =
+        peopleUiState(board(), zone, today, "", PeopleFilter.ALL, PeopleSort.RECENT).rows.map {
+          if (it.id == "p6") it.copy(syncFailed = true) else it
+        }
+
+    assertEquals(fromViewRows, fromSummary.rows)
+    val row = fromSummary.rows.first { it.id == "p6" }
+    assertTrue(row.syncFailed)
+    assertEquals(Cents.ZERO, row.net)
+    assertNull(row.lateDays)
   }
 
   @Test
@@ -354,4 +434,8 @@ class PeopleViewModelTest {
 
   private fun at(year: Int, month: Int, day: Int, hour: Int, minute: Int): Instant =
       LocalDate.of(year, month, day).atTime(hour, minute).atZone(zone).toInstant()
+
+  /** The stored rows for [view], built the way production builds them (ticket 160). */
+  private fun summariesOf(view: LedgerView): List<ContactSummaryEntity> =
+      view.contacts.mapNotNull { summaryOf(view, it.id) }
 }

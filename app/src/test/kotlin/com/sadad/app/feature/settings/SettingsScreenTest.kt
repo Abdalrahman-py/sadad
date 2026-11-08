@@ -67,10 +67,15 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun theSwitcherStaysHiddenWithOneStore() {
+    show { _, _, _ -> compose.onNodeWithTag(SettingsTags.SWITCHER).assertDoesNotExist() }
+  }
+
+  @Test
   fun theSwitcherListsTheSavedStoresAndAddStoreAsksForALogin() {
     show(twoStores = true) { _, _, nav ->
-      scrollTo(hasText("تبديل"))
-      compose.onNodeWithText("تبديل").performClick()
+      scrollTo(hasText("تبديل المتجر"))
+      compose.onNodeWithText("تبديل المتجر").performClick()
 
       compose.waitUntil(timeoutMillis = 10_000) {
         compose.onAllNodesWithText("متجر سامي").fetchSemanticsNodes().isNotEmpty()
@@ -83,8 +88,8 @@ class SettingsScreenTest {
   @Test
   fun choosingAnotherStoreInTheSwitcherOpensIt() {
     show(twoStores = true) { _, model, _ ->
-      scrollTo(hasText("تبديل"))
-      compose.onNodeWithText("تبديل").performClick()
+      scrollTo(hasText("تبديل المتجر"))
+      compose.onNodeWithText("تبديل المتجر").performClick()
       compose.waitUntil(timeoutMillis = 10_000) {
         compose.onAllNodesWithText("متجر سامي").fetchSemanticsNodes().isNotEmpty()
       }
@@ -125,12 +130,8 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun theRecoveryLinkOpensItsScreen() {
-    show { _, _, nav ->
-      scrollTo(hasTag(SettingsTags.RECOVERY))
-      compose.onNodeWithTag(SettingsTags.RECOVERY).performClick()
-      assertEquals(1, nav.recovery)
-    }
+  fun theRecoveryLinkStaysHiddenOnTheStoreTab() {
+    show { _, _, _ -> compose.onNodeWithTag(SettingsTags.RECOVERY).assertDoesNotExist() }
   }
 
   @Test
@@ -221,7 +222,7 @@ class SettingsScreenTest {
   fun theTrashRowOpensTheTrashWithItsCount() {
     show { _, _, nav ->
       scrollTo(hasTag(SettingsTags.TRASH))
-      compose.onNodeWithText("سلة المحذوفات").assertIsDisplayed()
+      compose.onNodeWithText("المحذوفات").assertIsDisplayed()
       compose.onNodeWithTag(SettingsTags.TRASH).performClick()
       assertEquals(1, nav.trash)
     }

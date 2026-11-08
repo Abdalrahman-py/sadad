@@ -64,7 +64,7 @@ class NotificationsScreenTest {
       compose.onAllNodesWithText("سامي").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("تحديد الإشعار كمكتمل").performClick()
-    compose.onNodeWithText("تم حذف الإشعار ونقله إلى سلة المحذوفات.").assertIsDisplayed()
+    compose.onNodeWithText("تم حذف الإشعار ونقله إلى المحذوفات.").assertIsDisplayed()
     compose.onNodeWithText("تراجع").performClick()
     compose.onNodeWithText("سامي").assertIsDisplayed()
     compose.onNodeWithText("تحديد الإشعار كمكتمل").performClick()

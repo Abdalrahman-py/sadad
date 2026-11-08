@@ -78,6 +78,51 @@ class LedgerMigrationTest {
     }
   }
 
+  @Test
+  fun aVersionFiveDatabaseKeepsItsRowsCursorAndOutboxAndGainsEmptySummaries() {
+    val store5 = "migration-5-to-6"
+    val file = context.getDatabasePath("ledger-$store5.db")
+    file.parentFile?.mkdirs()
+    file.delete()
+    writeVersionFive(file.absolutePath)
+
+    val db = LedgerDatabase.open(context, store5)
+    try {
+      val contacts = db.openHelper.readableDatabase.query("SELECT id FROM contacts")
+      assertTrue("the Contact must survive the upgrade", contacts.moveToFirst())
+      assertEquals("c1", contacts.getString(0))
+      contacts.close()
+
+      val debts = db.openHelper.readableDatabase.query("SELECT id FROM debts")
+      assertTrue("the Debt must survive the upgrade", debts.moveToFirst())
+      assertEquals("d1", debts.getString(0))
+      debts.close()
+
+      val payments = db.openHelper.readableDatabase.query("SELECT id FROM payments")
+      assertTrue("the Payment must survive the upgrade", payments.moveToFirst())
+      assertEquals("p1", payments.getString(0))
+      payments.close()
+
+      val meta = db.openHelper.readableDatabase.query("SELECT cursor FROM ledger_meta WHERE id = 0")
+      assertTrue("ledger_meta must survive the upgrade", meta.moveToFirst())
+      assertEquals(7L, meta.getLong(0))
+      meta.close()
+
+      val outbox = db.openHelper.readableDatabase.query("SELECT entityId, state FROM outbox")
+      assertTrue("the queued outbox row must survive the upgrade", outbox.moveToFirst())
+      assertEquals("c1", outbox.getString(0))
+      assertEquals("queued", outbox.getString(1))
+      outbox.close()
+
+      val summaries = db.openHelper.readableDatabase.query("SELECT count(1) FROM contact_summary")
+      assertTrue(summaries.moveToFirst())
+      assertEquals("the new summary table starts empty", 0, summaries.getInt(0))
+      summaries.close()
+    } finally {
+      db.close()
+    }
+  }
+
   /**
    * Writes a v1 database the way a phone that ran the first schema has it: Room's DDL, two rows.
    */
@@ -108,6 +153,45 @@ class LedgerMigrationTest {
                 .trimIndent()
         )
         insertDebt(sqlite)
+      }
+
+  /** The schema v1.3.0 ran: kind, whatsappCode, origin, plus a cursor and a queued outbox row. */
+  private fun writeVersionFive(path: String) =
+      write(path, version = 5) { sqlite ->
+        sqlite.execSQL(
+            """
+            INSERT INTO contacts
+              (id, name, phone, kind, category, note, archived, version, operationId, createdAt,
+               originInstallationId, createdSeq)
+            VALUES ('c1', 'سارة محمود', '', 'customer', 'customer', '', 0, 1, 'op-contact', 0, 'inst', 1)
+            """
+                .trimIndent()
+        )
+        insertDebt(sqlite)
+        sqlite.execSQL(
+            """
+            INSERT INTO payments
+              (id, debtId, amountCents, method, note, reversed, operationId, createdAt,
+               originInstallationId, createdSeq)
+            VALUES ('p1', 'd1', 2000, 'cash', '', 0, 'op-payment', 0, 'inst', 3)
+            """
+                .trimIndent()
+        )
+        sqlite.execSQL(
+            """
+            INSERT INTO ledger_meta (id, storeId, epoch, cursor)
+            VALUES (0, 42, 'epoch-5', 7)
+            """
+                .trimIndent()
+        )
+        sqlite.execSQL(
+            """
+            INSERT INTO outbox
+              (operationId, entityId, type, state, code, createdAt, recoveryPermit, payload)
+            VALUES ('op-queued', 'c1', 'contact.create', 'queued', NULL, 0, NULL, X'0102')
+            """
+                .trimIndent()
+        )
       }
 
   private fun insertDebt(sqlite: SQLiteDatabase) {

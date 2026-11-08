@@ -120,6 +120,7 @@ internal class StoreModule(private val source: SettingsSource, private val ui: S
         StoreSlice(
             storeName = account?.storeName.orEmpty(),
             ownerName = account?.ownerName.orEmpty(),
+            userName = account?.staffName?.ifBlank { null } ?: account?.username.orEmpty(),
             accounts =
                 file.accounts.map {
                   SavedStore(it.storeUserId, it.username, it.storeName, it.storeUserId == id)

@@ -66,9 +66,18 @@ begin
   if not found then raise exception 'ledger_not_initialized'; end if;
 
   select jsonb_build_object(
-    'receivableCents', coalesce(sum(principal - paid - offsetted) filter (where direction = 'receivable'), 0),
-    'payableCents', coalesce(sum(principal - paid - offsetted) filter (where direction = 'payable'), 0)
-  ) into v_totals from sadid_private.debt_balances(p_store);
+    'receivableCents', coalesce(sum(greatest(net, 0)), 0),
+    'payableCents', coalesce(sum(greatest(-net, 0)), 0)
+  ) into v_totals
+  from (
+    select sum(case when b.direction = 'receivable' then b.principal - b.paid - b.offsetted
+                    when b.direction = 'payable' then -(b.principal - b.paid - b.offsetted)
+                    else 0 end) as net
+    from sadid_private.debt_balances(p_store) b
+    join public.sadid_contacts c
+      on c.store_id = p_store and c.id = b.contact_id and not c.archived
+    group by b.contact_id
+  ) per_person;
   v_totals := v_totals || jsonb_build_object('netCents', (v_totals ->> 'receivableCents')::bigint - (v_totals ->> 'payableCents')::bigint);
 
   if p_kind = 'contacts' then

@@ -78,9 +78,19 @@ data class LedgerView(
 ) {
   // Built once per view on first use; a body property, so not part of equals or copy.
   private val debtsByContact: Map<String, List<DebtView>> by lazy { debts.groupBy { it.contactId } }
+  private val contactsById: Map<String, ContactView> by lazy { contacts.associateBy { it.id } }
+  private val paymentsByContact: Map<String, List<PaymentView>> by lazy {
+    payments.groupBy { it.contactId }
+  }
 
   /** This Contact's Debts, in [debts] order, without scanning the whole list. */
   fun debtsOf(contactId: String): List<DebtView> = debtsByContact[contactId].orEmpty()
+
+  /** This Contact, without scanning the list. */
+  fun contact(id: String): ContactView? = contactsById[id]
+
+  /** This Contact's payments, in [payments] order, without scanning the whole list. */
+  fun paymentsOf(id: String): List<PaymentView> = paymentsByContact[id].orEmpty()
 
   /**
    * What this Contact is worth: open receivable minus open payable, queued entries included.
