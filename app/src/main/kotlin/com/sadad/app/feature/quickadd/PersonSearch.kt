@@ -1,9 +1,9 @@
 package com.sadad.app.feature.quickadd
 
-import com.sadad.app.feature.contacts.searchText
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import java.time.Instant
+import java.util.Locale
 
 /** One person the picker can offer: what the row shows, and what ordering needs. */
 data class QuickAddPerson(
@@ -40,8 +40,23 @@ internal object PersonSearch {
   /** A query shorter than this in digits is not a phone search, or every phone matches. */
   private const val DIGITS_TO_MATCH = 2
 
+  /**
+   * The one fold every search uses: spaces trimmed, Arabic-Indic and Persian digits made Latin, أ إ
+   * آ made ا, ة made ه, ى made ي, and the short vowels (064B–0652) dropped. So «احمد» finds «أحمد»
+   * and «محمد» finds «مُحمَّد».
+   */
   fun normalize(value: String): String {
-    val ascii = searchText(value)
+    val ascii =
+        buildString(value.length) {
+              for (character in value.trim()) {
+                when {
+                  character in '\u0660'..'\u0669' -> append('0' + (character - '\u0660'))
+                  character in '\u06F0'..'\u06F9' -> append('0' + (character - '\u06F0'))
+                  else -> append(character)
+                }
+              }
+            }
+            .lowercase(Locale.ROOT)
     return buildString(ascii.length) {
       for (character in ascii) {
         when (character) {

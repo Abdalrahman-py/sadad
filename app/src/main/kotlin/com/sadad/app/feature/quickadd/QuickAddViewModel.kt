@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.ledger.traced
 import com.sadad.app.feature.contactform.ContactFormState
 import com.sadad.app.feature.contactpicker.ContactNumberRow
@@ -19,6 +20,7 @@ import com.sadad.app.ui.components.parseCents
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.ContactView
 import com.sadad.ledger.CreditAllocation
 import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
@@ -37,10 +39,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /** Where the one recording flow stands. */
 enum class QuickAddStep {
@@ -144,8 +150,21 @@ class QuickAddViewModel(
   /** The typed query; the rows for it are found off the main thread, so typing never waits. */
   private val queries = MutableStateFlow("")
 
-  /** The view the last preview was built from; the commands are built against it, never a guess. */
-  @Volatile private var currentView: LedgerView? = null
+  /**
+   * The chosen person's own ledger view, for the save: allocations read it, never the whole store.
+   */
+  @Volatile private var currentPersonView: LedgerView? = null
+
+  /** The person the person view is being read for; prefetched when they are picked. */
+  @Volatile private var watchedId: String? = null
+
+  private var personJob: Job? = null
+
+  /** Every visible person, for the new-person checks and the phone-contacts lookup. */
+  @Volatile private var allContacts: List<ContactView> = emptyList()
+
+  /** The trash's contacts, for telling an archived phone from an importable one. */
+  @Volatile private var archivedPeople: List<ContactView> = emptyList()
 
   /**
    * Each Contact's open receivable total, kept so a pick can show it without waiting for a re-emit.
@@ -206,8 +225,17 @@ class QuickAddViewModel(
           }
     }
     viewModelScope.launch {
-      combine(view(), permissions(), availability()) { view, permissions, saveBlocked ->
-            project(view, permissions, saveBlocked)
+      combine(source.summaryReady, permissions(), availability()) { ready, permissions, blocked ->
+            Triple(ready, permissions, blocked)
+          }
+          .flatMapLatest { (ready, permissions, blocked) ->
+            if (ready) {
+              combine(source.summaries, source.archived) { rows, archived ->
+                projectSummaries(rows, archived, permissions, blocked)
+              }
+            } else {
+              source.view.map { view -> projectView(view, permissions, blocked) }
+            }
           }
           .flowOn(Dispatchers.Default)
           .collect { facts ->
@@ -228,6 +256,7 @@ class QuickAddViewModel(
                   }
               if (started != null) startContactApplied = true
               val selected = chosen ?: started
+              if (selected != null) watchPerson(selected.id)
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
@@ -272,6 +301,7 @@ class QuickAddViewModel(
           error = null,
       )
     }
+    watchPerson(personId)
   }
 
   fun toDebt() = mutable.update { it.copy(payment = false, anomaly = null, error = null) }
@@ -340,7 +370,7 @@ class QuickAddViewModel(
    */
   private fun startNewPerson(name: String, phone: String, code: String) {
     val limit = source.contactLimit()
-    if (limit != null && (currentView?.contacts?.size ?: 0) >= limit) {
+    if (limit != null && allContacts.size >= limit) {
       mutable.update { it.copy(error = source.refusalText("contact_limit_reached")) }
       return
     }
@@ -376,7 +406,7 @@ class QuickAddViewModel(
   fun confirmNewPerson(context: Context) {
     val current = mutable.value
     val fields = current.newPerson ?: return
-    when (val check = checkNewPerson(fields, currentView?.contacts.orEmpty(), context)) {
+    when (val check = checkNewPerson(fields, allContacts, context)) {
       is NewPersonCheck.Invalid -> mutable.update { it.copy(newPerson = check.fields) }
       is NewPersonCheck.Valid ->
           mutable.update {
@@ -416,14 +446,13 @@ class QuickAddViewModel(
   private fun readContacts() =
       viewModelScope.launch(Dispatchers.Default) {
         deviceList = source.contacts.list()
-        parseContacts(currentView)
+        reparseContacts()
         mutable.update { it.copy(contactRows = ContactPickerRows.search(parsedRows, it.query)) }
       }
 
-  private fun parseContacts(view: LedgerView?) {
-    if (deviceList.isEmpty() || view == null) return
-    parsedRows =
-        ContactPickerRows.build(deviceList, SadadPeople(view.contacts, view.archivedContacts))
+  private fun reparseContacts() {
+    if (deviceList.isEmpty()) return
+    parsedRows = ContactPickerRows.build(deviceList, SadadPeople(allContacts, archivedPeople))
   }
 
   /** One key of the on-screen keypad: a digit, or «.» for the decimal mark. */
@@ -712,7 +741,7 @@ class QuickAddViewModel(
     val at = Instant.now()
     val note = current.note.trim().ifEmpty { null }
     if (current.payment) {
-      val view = currentView ?: return emptyList()
+      val view = personViewOf(person.id) ?: return emptyList()
       val contact = view.contacts.firstOrNull { it.id == person.id } ?: return emptyList()
       val direction = contact.kind.debtDirection
       val allocation =
@@ -765,7 +794,10 @@ class QuickAddViewModel(
     // A Debt on a Contact the server has not confirmed must name the command that creates it.
     val parent =
         create?.operationId
-            ?: currentView?.contacts?.firstOrNull { it.id == person.id && it.pending }?.operationId
+            ?: personViewOf(person.id)
+                ?.contacts
+                ?.firstOrNull { it.id == person.id && it.pending }
+                ?.operationId
     val debt =
         Commands.debtCreate(
             origin,
@@ -777,7 +809,7 @@ class QuickAddViewModel(
             if (person.kind == ContactKind.CUSTOMER) current.dueDate else null,
             dependsOn = listOfNotNull(parent),
         )
-    val view = currentView
+    val view = personViewOf(person.id)
     val credit =
         if (view != null && person.kind == ContactKind.CUSTOMER) {
           PaymentAllocation.allocateCredit(view, person.id, amount)
@@ -838,15 +870,16 @@ class QuickAddViewModel(
       val startContact: String? = null,
   )
 
-  private fun project(
+  private fun projectView(
       view: LedgerView?,
       permissions: Map<String, Boolean>,
       blocked: Boolean,
   ): Facts {
-    currentView = view
-    parseContacts(view)
     val restricted = permissions["registerPayments"] == false
     if (view == null) return Facts(blocked = blocked, restricted = restricted)
+    allContacts = view.contacts
+    archivedPeople = view.archivedContacts
+    reparseContacts()
     val lastActivity = lastActivity(view)
     val people =
         view.contacts.map { contact ->
@@ -874,6 +907,79 @@ class QuickAddViewModel(
     )
   }
 
+  private fun projectSummaries(
+      rows: List<ContactSummaryEntity>?,
+      archived: List<ContactView>,
+      permissions: Map<String, Boolean>,
+      blocked: Boolean,
+  ): Facts {
+    val restricted = permissions["registerPayments"] == false
+    if (rows == null) return Facts(blocked = blocked, restricted = restricted)
+    allContacts = rows.map { it.asContactView() }
+    archivedPeople = archived
+    reparseContacts()
+    val people = rows.map { row ->
+      QuickAddPerson(
+          id = row.contactId,
+          name = row.name,
+          phone = row.phone,
+          kind = row.kind,
+          net = Cents(row.net),
+          lastActivity = row.lastEntryAt,
+      )
+    }
+    val open = rows.associate { row ->
+      row.contactId to
+          Cents((if (row.kind == ContactKind.CUSTOMER) row.openReceivable else row.openPayable))
+    }
+    openBalances = open
+    return Facts(
+        loaded = true,
+        blocked = blocked,
+        restricted = restricted,
+        people = people,
+        openBalances = open,
+        startContact = contactId?.takeIf { id -> people.any { it.id == id } },
+    )
+  }
+
+  /** The person the save is about: their own ledger view, prefetched on the pick. */
+  private fun personViewOf(id: String): LedgerView? {
+    if (watchedId == id)
+        currentPersonView?.let {
+          return it
+        }
+    val fetched = runBlocking(Dispatchers.IO) { source.personView(id).firstOrNull() }
+    if (watchedId == id) currentPersonView = fetched
+    return fetched
+  }
+
+  private fun watchPerson(id: String) {
+    if (watchedId == id) return
+    watchedId = id
+    currentPersonView = null
+    personJob?.cancel()
+    personJob = viewModelScope.launch {
+      source.personView(id).collect { if (watchedId == id) currentPersonView = it }
+    }
+  }
+
+  /** A summary row as a Contact: only the id, name and phone the checks read are real. */
+  private fun ContactSummaryEntity.asContactView(): ContactView =
+      ContactView(
+          id = contactId,
+          name = name,
+          phone = phone,
+          kind = kind,
+          category = category,
+          note = "",
+          version = 0,
+          pending = pending,
+          createdAt = createdAt,
+          createdBy = "",
+          operationId = "",
+      )
+
   /** The last time the store recorded anything with each Contact: a debt or a payment. */
   private fun lastActivity(view: LedgerView): Map<String, Instant> {
     val perContact = HashMap<String, Instant>()
@@ -887,8 +993,6 @@ class QuickAddViewModel(
     }
     return perContact
   }
-
-  private fun view(): Flow<LedgerView?> = source.view
 
   private fun permissions(): Flow<Map<String, Boolean>> = source.permissions
 
