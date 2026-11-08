@@ -1,6 +1,6 @@
 -- One signed-in admin or support account at a time. The first request of an Auth session claims the
 -- account; a second session is refused until the holder signs out or stays silent for the lease
--- window. The browser is never trusted with this: every /v1/admin/* request asks the routine before
+-- window. An account with app_metadata.unlimited_sessions = true skips the lease. The browser is never trusted with this: every /v1/admin/* request asks the routine before
 -- it reads or writes anything, and the routine reads the session id from the JWT, not the body.
 create table sadid_private.admin_session_lease (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -22,6 +22,10 @@ declare
 begin
   if sadid_private.jwt_admin_role() is null then raise exception 'admin_authorization_required'; end if;
   if v_session is null then raise exception 'invalid_input'; end if;
+  -- app_metadata is written only by the service role, so a user cannot grant this to themselves.
+  if coalesce(((select sadid_private.jwt_claims()) -> 'app_metadata' ->> 'unlimited_sessions')::boolean, false) then
+    return true;
+  end if;
   -- on conflict do nothing, then read for update: two first requests of the same session cannot
   -- both insert, and the row lock serialises a claim racing an expiry takeover.
   insert into sadid_private.admin_session_lease (user_id, session_id) values (v_user, v_session)
