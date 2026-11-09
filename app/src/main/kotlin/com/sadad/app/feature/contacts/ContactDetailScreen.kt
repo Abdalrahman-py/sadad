@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -91,7 +92,6 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentMethod
 import java.time.YearMonth
-import java.time.ZoneId
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -159,8 +159,7 @@ internal fun ContactDetailScreen(
     }
   }
   // A supplier is whoever the store owes or has paid out to; the labels follow that side.
-  val supplier =
-      state.payable > Cents.ZERO || state.movements.any { it.direction == Direction.PAYABLE }
+  val supplier = state.isSupplier
   val net = state.balance.value - state.payable.value
   val viewConfiguration = LocalViewConfiguration.current
   val movementPressConfiguration =
@@ -169,7 +168,6 @@ internal fun ContactDetailScreen(
           override val longPressTimeoutMillis = 2_000L
         }
       }
-  val after = remember(state.movements) { balancesAfter(state.movements) }
 
   Column(modifier.fillMaxSize()) {
     ContactTopBar(
@@ -235,7 +233,7 @@ internal fun ContactDetailScreen(
           item(key = "timeline-head") {
             TimelineHead(state.newestFirst, viewModel::toggleOrder)
           }
-          if (state.movements.isEmpty()) {
+          if (state.timeline.isEmpty()) {
             item(key = "empty") {
               EmptyState(
                   title = stringResource(R.string.contacts_no_movements),
@@ -244,23 +242,33 @@ internal fun ContactDetailScreen(
               )
             }
           } else {
-            var month: YearMonth? = null
-            state.movements.forEach { movement ->
-              val its = YearMonth.from(movement.createdAt.atZone(ZoneId.systemDefault()))
-              if (its != month) {
-                month = its
-                item(key = "month:$its") { MonthHeader(its) }
-              }
-              item(key = "movement:${movement.id}") {
-                CompositionLocalProvider(
-                    LocalViewConfiguration provides movementPressConfiguration
-                ) {
-                  MovementRow(
-                      movement,
-                      after[movement.id] ?: 0L,
-                      onDelete = { viewModel.askDeleteMovement(movement.id) },
-                  )
-                }
+            items(
+                state.timeline,
+                key = { row ->
+                  when (row) {
+                    is ContactTimelineRow.Month -> "month:${row.month}"
+                    is ContactTimelineRow.Movement -> row.movement.id
+                  }
+                },
+                contentType = { row ->
+                  when (row) {
+                    is ContactTimelineRow.Month -> "month"
+                    is ContactTimelineRow.Movement -> "movement"
+                  }
+                },
+            ) { row ->
+              when (row) {
+                is ContactTimelineRow.Month -> MonthHeader(row.month)
+                is ContactTimelineRow.Movement ->
+                    CompositionLocalProvider(
+                        LocalViewConfiguration provides movementPressConfiguration
+                    ) {
+                      MovementRow(
+                          row.movement,
+                          row.balanceAfter,
+                          onDelete = { viewModel.askDeleteMovement(row.movement.id) },
+                      )
+                    }
               }
             }
           }
@@ -868,28 +876,6 @@ private fun RecordActions(
       }
     }
   }
-}
-
-/**
- * The balance each entry left, owner's side (`> 0` they owe the store), replayed oldest first: a
- * receivable debt adds and its payment settles; a payable debt is the store's and its payment
- * settles that. The last value equals the contact's net balance.
- */
-private fun balancesAfter(movements: List<ContactMovement>): Map<String, Long> {
-  var running = 0L
-  return movements
-      .sortedWith(compareBy<ContactMovement> { it.createdAt }.thenBy { it.id })
-      .associate { movement ->
-        val sign =
-            when {
-              movement.kind == MovementKind.DEBT && movement.direction == Direction.RECEIVABLE -> 1
-              movement.kind == MovementKind.DEBT -> -1
-              movement.direction == Direction.RECEIVABLE -> -1
-              else -> 1
-            }
-        running += sign * movement.amount.value
-        movement.id to running
-      }
 }
 
 private val MONTHS =
