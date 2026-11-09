@@ -8,6 +8,8 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contactpicker.ContactPickerRows
 import com.sadad.app.feature.contactpicker.ContactRow
+import com.sadad.app.feature.contactpicker.DeviceContact
+import com.sadad.app.feature.contactpicker.DeviceContacts
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -21,7 +23,9 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -318,6 +322,56 @@ class QuickAddFakeSourceTest {
   }
 
   @Test
+  fun deviceContactsReadDuringTheProjectionsSearchAreNotOverwrittenByItsOlderRows() = runBlocking {
+    withTimeout(5_000) {
+      // The projection searches the empty contact rows; the device contacts land before it applies.
+      val projectionSearching = CompletableDeferred<Unit>()
+      val contactsShown = CountDownLatch(1)
+      // Only the projection searches people before they are loaded into the ViewModel.
+      val projecting = ThreadLocal.withInitial { false }
+      val personSearch: (List<QuickAddPerson>, String) -> List<QuickAddPerson> = { people, query ->
+        projecting.set(people.isNotEmpty())
+        PersonSearch.search(people, query)
+      }
+      val contactSearch: (List<ContactRow>, String) -> List<ContactRow> = { rows, query ->
+        if (projecting.get() && rows.isEmpty() && projectionSearching.complete(Unit)) {
+          contactsShown.await(5, TimeUnit.SECONDS)
+        }
+        ContactPickerRows.search(rows, query)
+      }
+      val device =
+          object : DeviceContacts {
+            override suspend fun list(): List<DeviceContact> {
+              projectionSearching.await()
+              return listOf(DeviceContact("نمر", listOf("0599123456")))
+            }
+          }
+      val source =
+          SummarySource(
+              jobs,
+              listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)),
+              device = device,
+          )
+      val model =
+          QuickAddViewModel(
+              source,
+              null,
+              false,
+              SavedStateHandle(),
+              100,
+              personSearch,
+              contactSearch,
+          )
+      model.state.first { it.contactRows.isNotEmpty() }
+      contactsShown.countDown()
+
+      val loaded = model.state.first { it.loaded }
+
+      assertTrue("the device contacts stay listed", loaded.contactRows.isNotEmpty())
+    }
+  }
+
+  @Test
   fun aQueryTypedBeforeThePeopleLoadStillShowsItsRowsAfterTheyLoad() = runBlocking {
     withTimeout(5_000) {
       val source = SummarySource(jobs, emptyList())
@@ -342,7 +396,13 @@ class QuickAddFakeSourceTest {
       summaries: List<ContactSummaryEntity>,
       val person: LedgerView? = null,
       val personGate: CompletableDeferred<Unit>? = null,
+      val device: DeviceContacts? = null,
   ) : QuickAddSource {
+    override val contacts: DeviceContacts
+      get() = device ?: super.contacts
+
+    override fun contactsGranted() = device != null
+
     val appended = CompletableDeferred<List<LedgerCommand>>()
     override val view: Flow<LedgerView?> =
         kotlinx.coroutines.flow.flow { error("the whole-store view must never be collected") }

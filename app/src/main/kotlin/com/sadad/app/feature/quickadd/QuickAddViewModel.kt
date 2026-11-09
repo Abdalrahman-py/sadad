@@ -256,10 +256,12 @@ class QuickAddViewModel(
           }
           .map { facts ->
             val query = mutable.value.query
+            val parsed = parsedRows
             facts.copy(
                 shownPeople = personSearch(facts.people, query),
-                shownContacts = contactSearch(parsedRows, query),
+                shownContacts = contactSearch(parsed, query),
                 searchedQuery = query,
+                searchedParsed = parsed,
             )
           }
           .flowOn(Dispatchers.Default)
@@ -282,9 +284,10 @@ class QuickAddViewModel(
               if (started != null) startContactApplied = true
               val selected = chosen ?: started
               if (selected != null) watchPerson(selected.id)
-              // The rows were found off the main thread for the query as it stood then; a query
-              // typed since replaced them and the queries collector will find the new rows.
-              val searched = current.query == facts.searchedQuery
+              // The rows were found off the main thread for the query and device contacts as they
+              // stood then; if either moved since, the queries collector finds the new rows.
+              val searched =
+                  current.query == facts.searchedQuery && facts.searchedParsed === parsedRows
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
@@ -302,7 +305,7 @@ class QuickAddViewModel(
                       },
               )
             }
-            if (mutable.value.query != facts.searchedQuery) {
+            if (mutable.value.query != facts.searchedQuery || facts.searchedParsed !== parsedRows) {
               val query = mutable.value.query
               queries.value = query to queries.value.second + 1
             }
@@ -926,6 +929,7 @@ class QuickAddViewModel(
       val shownPeople: List<QuickAddPerson> = emptyList(),
       val shownContacts: List<ContactRow> = emptyList(),
       val searchedQuery: String = "",
+      val searchedParsed: List<ContactRow> = emptyList(),
   )
 
   private fun projectView(
