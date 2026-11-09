@@ -133,6 +133,16 @@ class QuickAddViewModel(
     private val payment: Boolean,
     private val saved: SavedStateHandle,
     private val undoWindowMs: Long = UNDO_WINDOW_MS,
+    /**
+     * The picker's searches, named so a test can record the thread they run on: finding the rows is
+     * heavy and must run on [Dispatchers.Default], never on the main thread.
+     */
+    private val personSearch: (List<QuickAddPerson>, String) -> List<QuickAddPerson> =
+        { people, query ->
+          PersonSearch.search(people, query)
+        },
+    private val contactSearch: (List<ContactRow>, String) -> List<ContactRow> =
+        ContactPickerRows::search,
 ) : ViewModel() {
   private val mutable =
       MutableStateFlow(
@@ -146,8 +156,12 @@ class QuickAddViewModel(
       )
   val state: StateFlow<QuickAddState> = mutable.asStateFlow()
 
-  /** The typed query; the rows for it are found off the main thread, so typing never waits. */
-  private val queries = MutableStateFlow("")
+  /**
+   * The typed query; the rows for it are found off the main thread, so typing never waits. The
+   * second is a trigger counter: a projection that moves under the query re-emits the same query so
+   * the rows are found again for the new people.
+   */
+  private val queries = MutableStateFlow("" to 0)
 
   /**
    * The chosen person's own ledger view, for the save: allocations read it, never the whole store.
@@ -199,15 +213,15 @@ class QuickAddViewModel(
     }
     viewModelScope.launch {
       queries
-          .mapLatest { query ->
+          .mapLatest { (query, _) ->
             val searched = allPeople
             val parsed = parsedRows
             SearchResult(
                 query,
                 searched,
                 parsed,
-                PersonSearch.search(searched, query),
-                ContactPickerRows.search(parsed, query),
+                personSearch(searched, query),
+                contactSearch(parsed, query),
             )
           }
           .flowOn(Dispatchers.Default)
@@ -240,6 +254,14 @@ class QuickAddViewModel(
               source.view.map { view -> projectView(view, permissions, blocked) }
             }
           }
+          .map { facts ->
+            val query = mutable.value.query
+            facts.copy(
+                shownPeople = personSearch(facts.people, query),
+                shownContacts = contactSearch(parsedRows, query),
+                searchedQuery = query,
+            )
+          }
           .flowOn(Dispatchers.Default)
           .collect { facts ->
             allPeople = facts.people
@@ -260,12 +282,15 @@ class QuickAddViewModel(
               if (started != null) startContactApplied = true
               val selected = chosen ?: started
               if (selected != null) watchPerson(selected.id)
+              // The rows were found off the main thread for the query as it stood then; a query
+              // typed since replaced them and the queries collector will find the new rows.
+              val searched = current.query == facts.searchedQuery
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
                   restricted = facts.restricted,
-                  people = members(PersonSearch.search(people, current.query), current),
-                  contactRows = ContactPickerRows.search(parsedRows, current.query),
+                  people = if (searched) members(facts.shownPeople, current) else current.people,
+                  contactRows = if (searched) facts.shownContacts else current.contactRows,
                   selected = selected,
                   overBalance =
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
@@ -277,13 +302,17 @@ class QuickAddViewModel(
                       },
               )
             }
+            if (mutable.value.query != facts.searchedQuery) {
+              val query = mutable.value.query
+              queries.value = query to queries.value.second + 1
+            }
           }
     }
   }
 
   fun onQueryChange(value: String) {
     mutable.update { it.copy(query = value, error = null) }
-    queries.value = value
+    queries.value = value to queries.value.second + 1
   }
 
   fun clearQuery() = onQueryChange("")
@@ -452,7 +481,7 @@ class QuickAddViewModel(
       viewModelScope.launch(Dispatchers.Default) {
         deviceList = source.contacts.list()
         reparseContacts()
-        mutable.update { it.copy(contactRows = ContactPickerRows.search(parsedRows, it.query)) }
+        mutable.update { it.copy(contactRows = contactSearch(parsedRows, it.query)) }
       }
 
   private fun reparseContacts() {
@@ -893,6 +922,10 @@ class QuickAddViewModel(
       val people: List<QuickAddPerson> = emptyList(),
       val openBalances: Map<String, Cents> = emptyMap(),
       val startContact: String? = null,
+      /** The picker's rows for [searchedQuery], found off the main thread upstream. */
+      val shownPeople: List<QuickAddPerson> = emptyList(),
+      val shownContacts: List<ContactRow> = emptyList(),
+      val searchedQuery: String = "",
   )
 
   private fun projectView(

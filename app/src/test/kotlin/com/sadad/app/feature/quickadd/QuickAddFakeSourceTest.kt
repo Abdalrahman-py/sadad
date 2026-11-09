@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.contactpicker.ContactPickerRows
+import com.sadad.app.feature.contactpicker.ContactRow
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -18,20 +20,27 @@ import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import java.time.Instant
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,6 +56,7 @@ import org.robolectric.annotation.Config
 // Commands refuse an id that is not a UUID, so the fake ledger uses real ones.
 private const val C1 = "0a1b2c3d-4e5f-4a6b-8c7d-8e9f0a1b2c3d"
 private const val C2 = "1b2c3d4e-5f6a-4b7c-8d8e-9f0a1b2c3d4e"
+private const val C3 = "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e"
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
@@ -233,6 +243,96 @@ class QuickAddFakeSourceTest {
       val payload = source.appended.await().single().payload() as DebtCreate
       assertEquals(Cents(8_500), payload.amountCents)
       assertEquals(C1, payload.contactId)
+    }
+  }
+
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun aNewSummaryEmissionUpdatesThePickerRowsForTheTypedQueryOffTheMainThread() = runBlocking {
+    withTimeout(5_000) {
+      val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "TestMain") }
+      val testMain = executor.asCoroutineDispatcher()
+      Dispatchers.resetMain()
+      Dispatchers.setMain(testMain)
+      try {
+        val personThreads = ConcurrentLinkedQueue<String>()
+        val contactThreads = ConcurrentLinkedQueue<String>()
+        val personSearch: (List<QuickAddPerson>, String) -> List<QuickAddPerson> =
+            { people, query ->
+              personThreads.add(Thread.currentThread().name)
+              PersonSearch.search(people, query)
+            }
+        val contactSearch: (List<ContactRow>, String) -> List<ContactRow> = { rows, query ->
+          contactThreads.add(Thread.currentThread().name)
+          ContactPickerRows.search(rows, query)
+        }
+        val source =
+            SummarySource(
+                jobs,
+                listOf(
+                    summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2),
+                    summary(C2, "سارة", net = 0, openReceivable = 0, atHours = 1),
+                ),
+            )
+        val model =
+            QuickAddViewModel(
+                source,
+                null,
+                false,
+                SavedStateHandle(),
+                100,
+                personSearch,
+                contactSearch,
+            )
+        model.state.first { it.loaded && it.people.size == 2 }
+        model.onQueryChange("سا")
+        model.state.first { it.people.map { person -> person.name } == listOf("سارة") }
+
+        personThreads.clear()
+        contactThreads.clear()
+        source.summaries.value =
+            listOf(
+                summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2),
+                summary(C2, "سارة", net = 0, openReceivable = 0, atHours = 1),
+                summary(C3, "سامي", net = 0, openReceivable = 0, atHours = 3),
+            )
+        val updated =
+            model.state.first { it.people.map { person -> person.name } == listOf("سامي", "سارة") }
+
+        assertEquals(listOf("سامي", "سارة"), updated.people.map { it.name })
+        assertTrue("the projection searched: $personThreads", personThreads.isNotEmpty())
+        assertTrue("the projection searched contacts: $contactThreads", contactThreads.isNotEmpty())
+        assertTrue(
+            "no person search on the main thread: $personThreads",
+            personThreads.none { it.startsWith("TestMain") },
+        )
+        assertTrue(
+            "no contact search on the main thread: $contactThreads",
+            contactThreads.none { it.startsWith("TestMain") },
+        )
+      } finally {
+        Dispatchers.resetMain()
+        executor.shutdownNow()
+      }
+    }
+  }
+
+  @Test
+  fun aQueryTypedBeforeThePeopleLoadStillShowsItsRowsAfterTheyLoad() = runBlocking {
+    withTimeout(5_000) {
+      val source = SummarySource(jobs, emptyList())
+      val model = model(source)
+      model.onQueryChange("سار")
+      model.state.first { it.loaded }
+
+      source.summaries.value =
+          listOf(
+              summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2),
+              summary(C2, "سارة", net = 0, openReceivable = 0, atHours = 1),
+          )
+      val picked = model.state.first { it.people.map { person -> person.name } == listOf("سارة") }
+
+      assertEquals(listOf("سارة"), picked.people.map { it.name })
     }
   }
 
