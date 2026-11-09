@@ -9,6 +9,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,6 +50,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -158,6 +162,13 @@ internal fun ContactDetailScreen(
   val supplier =
       state.payable > Cents.ZERO || state.movements.any { it.direction == Direction.PAYABLE }
   val net = state.balance.value - state.payable.value
+  val viewConfiguration = LocalViewConfiguration.current
+  val movementPressConfiguration =
+      remember(viewConfiguration) {
+        object : ViewConfiguration by viewConfiguration {
+          override val longPressTimeoutMillis = 2_000L
+        }
+      }
   val after = remember(state.movements) { balancesAfter(state.movements) }
 
   Column(modifier.fillMaxSize()) {
@@ -241,11 +252,15 @@ internal fun ContactDetailScreen(
                 item(key = "month:$its") { MonthHeader(its) }
               }
               item(key = "movement:${movement.id}") {
-                MovementRow(
-                    movement,
-                    after[movement.id] ?: 0L,
-                    onDelete = { viewModel.askDeleteMovement(movement.id) },
-                )
+                CompositionLocalProvider(
+                    LocalViewConfiguration provides movementPressConfiguration
+                ) {
+                  MovementRow(
+                      movement,
+                      after[movement.id] ?: 0L,
+                      onDelete = { viewModel.askDeleteMovement(movement.id) },
+                  )
+                }
               }
             }
           }
@@ -328,6 +343,8 @@ internal fun ContactDetailScreen(
                 stringResource(
                     R.string.contacts_delete_entry_message,
                     formatCents(movement.amount),
+                    balanceWord(net).spoken,
+                    balanceWord(state.netAfterDeleting(movement)).spoken,
                 ),
         confirmText =
             stringResource(
@@ -663,6 +680,12 @@ private fun MonthHeader(month: YearMonth) {
 /** One entry: its icon, what it was and when, its amount, and the balance it left behind. */
 @Composable
 private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () -> Unit) {
+  var showDelete by rememberSaveable(movement.id) { mutableStateOf(false) }
+  val deleteLabel =
+      stringResource(
+          if (movement.kind == MovementKind.DEBT) R.string.contacts_delete_debt_action
+          else R.string.contacts_delete_payment_action
+      )
   val p = sadadPalette
   val debt = movement.kind == MovementKind.DEBT
   val link = if (p.isDark) p.accent else p.primary
@@ -688,6 +711,16 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
           .heightIn(min = 64.dp)
           .background(p.card, RoundedCornerShape(12.dp))
           .border(1.dp, p.line, RoundedCornerShape(12.dp))
+          .clip(RoundedCornerShape(12.dp))
+          .then(
+              if (movement.canDelete)
+                  Modifier.combinedClickable(
+                      onLongClickLabel = deleteLabel,
+                      onLongClick = { showDelete = true },
+                      onClick = { showDelete = false },
+                  )
+              else Modifier
+          )
           .padding(horizontal = 12.dp, vertical = 12.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -730,16 +763,21 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
         )
       }
       when {
-        movement.canDelete ->
+        movement.deletePending ->
             Text(
-                stringResource(R.string.contacts_delete),
-                color = p.owes,
-                style = MaterialTheme.typography.labelMedium,
-                modifier =
-                    Modifier.padding(top = 2.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable(role = Role.Button, onClick = onDelete),
+                stringResource(R.string.contacts_delete_entry_pending),
+                color = p.muted,
+                style = MaterialTheme.typography.bodySmall,
             )
+        movement.canDelete && showDelete ->
+            TextButton(
+                onClick = {
+                  showDelete = false
+                  onDelete()
+                }
+            ) {
+              Text(deleteLabel, color = p.owes)
+            }
         movement.blockedReason != null ->
             Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
       }

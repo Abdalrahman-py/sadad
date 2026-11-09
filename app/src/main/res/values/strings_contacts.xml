@@ -60,7 +60,10 @@
     <string name="contacts_row_offset">خُصم من الرصيد %1$s</string>
     <string name="contacts_delete_debt_title">حذف الدين؟</string>
     <string name="contacts_delete_payment_title">حذف الدفعة؟</string>
-    <string name="contacts_delete_entry_message">سيُحذف هذا القيد بمبلغ %1$s من سجل الشخص ويُعاد حساب رصيده.</string>
+    <string name="contacts_delete_entry_message">مبلغ الحركة: %1$s\nالرصيد الحالي: %2$s\nالرصيد المتوقع بعد الحذف: %3$s</string>
+    <string name="contacts_delete_debt_action">حذف الدين</string>
+    <string name="contacts_delete_payment_action">حذف الدفعة</string>
+    <string name="contacts_delete_entry_pending">الحذف بانتظار المزامنة</string>
     <string name="contacts_delete_entry_next">متابعة</string>
     <string name="contacts_delete_entry_final_title">تأكيد الحذف النهائي</string>
     <string name="contacts_delete_entry_final_message">لا يمكن التراجع عن هذا الحذف. هل أنت متأكد؟</string>

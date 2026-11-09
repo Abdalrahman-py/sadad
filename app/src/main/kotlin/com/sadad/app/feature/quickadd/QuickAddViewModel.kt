@@ -426,6 +426,7 @@ class QuickAddViewModel(
                         kind = fields.kind,
                         net = Cents.ZERO,
                         lastActivity = null,
+                        asOf = Instant.now(),
                     ),
                 amount = "",
                 overBalance = Cents.ZERO,
@@ -905,6 +906,7 @@ class QuickAddViewModel(
     archivedPeople = view.archivedContacts
     reparseContacts()
     val lastActivity = lastActivity(view)
+    val now = Instant.now()
     val people =
         view.contacts.map { contact ->
           QuickAddPerson(
@@ -914,6 +916,7 @@ class QuickAddViewModel(
               kind = contact.kind,
               net = view.net(contact.id),
               lastActivity = lastActivity[contact.id],
+              asOf = now,
           )
         }
     val open =
@@ -942,6 +945,7 @@ class QuickAddViewModel(
     allContacts = rows.map { it.asContactView() }
     archivedPeople = archived
     reparseContacts()
+    val now = Instant.now()
     val people = rows.map { row ->
       QuickAddPerson(
           id = row.contactId,
@@ -950,6 +954,7 @@ class QuickAddViewModel(
           kind = row.kind,
           net = Cents(row.net),
           lastActivity = row.lastEntryAt,
+          asOf = now,
       )
     }
     val open = rows.associate { row ->

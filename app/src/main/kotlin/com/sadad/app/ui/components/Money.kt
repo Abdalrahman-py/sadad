@@ -92,9 +92,18 @@ fun MoneyText(
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
     color: Color = Color.Unspecified,
+) = MoneyText(formatShekels(cents), modifier, style, color)
+
+/** An amount already formatted once, laid out left to right inside the Arabic page. */
+@Composable
+fun MoneyText(
+    formatted: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = LocalTextStyle.current,
+    color: Color = Color.Unspecified,
 ) {
   Text(
-      text = formatShekels(cents),
+      text = formatted,
       modifier = modifier,
       style = style.copy(textDirection = TextDirection.Ltr),
       color = color,

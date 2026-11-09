@@ -1,9 +1,12 @@
 package com.sadad.app.data.ledger
 
+import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactView
+import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.LedgerView
+import com.sadad.ledger.PaymentReverse
 
 /** Saved inputs remain in the encrypted outbox when the server refuses them. */
 data class FailedContactDraft(
@@ -13,7 +16,11 @@ data class FailedContactDraft(
 )
 
 /** The financial ledger stays authoritative; failed inputs are a separate directory overlay. */
-data class ContactRecords(val ledger: LedgerView, val failed: List<FailedContactDraft>) {
+data class ContactRecords(
+    val ledger: LedgerView,
+    val failed: List<FailedContactDraft>,
+    val pendingMovementDeletes: Set<String> = emptySet(),
+) {
   val directory: LedgerView
     get() = ledger.copy(contacts = ledger.contacts + failed.map { it.contact })
 }
@@ -50,5 +57,17 @@ internal fun contactRecords(view: LedgerView, rows: List<OutboxRow>): ContactRec
         debts = debts[row.entityId].orEmpty(),
     )
   }
-  return ContactRecords(view, failed)
+  val pendingDeletes =
+      rows
+          .mapNotNull { row ->
+            if (row.state != OutboxState.QUEUED && row.state != OutboxState.ACCEPTED)
+                return@mapNotNull null
+            when (val payload = row.command.payload()) {
+              is DebtCorrect -> payload.debtId.takeIf { payload.amountCents == Cents.ZERO }
+              is PaymentReverse -> payload.paymentId
+              else -> null
+            }
+          }
+          .toSet()
+  return ContactRecords(view, failed, pendingDeletes)
 }
