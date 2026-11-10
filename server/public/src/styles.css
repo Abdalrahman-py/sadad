@@ -162,7 +162,8 @@ summary::-webkit-details-marker {
 .bar-brand img {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  /* 9.5% of the side, the radius the app's own logo uses. */
+  border-radius: 9.5%;
 }
 .bar-brand strong {
   display: block;
@@ -1039,7 +1040,7 @@ tr.is-link:hover td {
 .auth-brand img {
   width: 48px;
   height: 48px;
-  border-radius: 12px;
+  border-radius: 9.5%;
 }
 .auth-form {
   display: flex;
