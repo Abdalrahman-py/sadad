@@ -11,13 +11,14 @@ import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedContactPayment
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
-import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
 import java.time.YearMonth
 import java.time.ZoneId
@@ -200,9 +201,7 @@ class ContactDetailViewModelTest {
       val first = debt(person.entityId, amount = 10_000, minute = 1)
       val second = debt(person.entityId, amount = 5_000, minute = 2)
       fixture.seedCommands(listOf(person, first, second))
-      fixture.seed {
-        payContact(person.entityId, Cents(15_000), PaymentMethod.CASH, null).getOrThrow()
-      }
+      checkNotNull(fixture.graph.current.value).seedContactPayment(person.entityId, Cents(15_000))
       val model =
           ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
               .also {
@@ -689,10 +688,7 @@ class ContactDetailViewModelTest {
           fixture.seedCommands(
               listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
           )
-          val queuedPayment =
-              store.repository
-                  .payDebt(debtB.entityId, Cents(2_000), PaymentMethod.CASH, null)
-                  .getOrThrow()
+          val queuedPayment = store.seedPayment(debtB.entityId, Cents(2_000))
 
           val modelA =
               ContactDetailViewModel(fixture.graph.contactDetailSource(), a, context).also {
@@ -735,7 +731,7 @@ class ContactDetailViewModelTest {
       fixture.seedCommands(
           listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
       )
-      store.repository.payDebt(debtB.entityId, Cents(2_000), PaymentMethod.CASH, null).getOrThrow()
+      store.seedPayment(debtB.entityId, Cents(2_000))
       val whole =
           store.repository.contactRecords
               .first { it != null && it.ledger.payments.any { row -> row.pending } }!!

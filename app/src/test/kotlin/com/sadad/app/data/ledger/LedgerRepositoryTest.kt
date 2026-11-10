@@ -1,18 +1,32 @@
 package com.sadad.app.data.ledger
 
 import app.cash.turbine.test
+import com.sadad.app.data.db.ContactDao
 import com.sadad.app.data.db.ContactSummaryDao
 import com.sadad.app.data.db.ContactSummaryEntity
+import com.sadad.app.data.db.DebtDao
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.db.LedgerMetaDao
 import com.sadad.app.data.db.LedgerStore
+import com.sadad.app.data.db.OffsetDao
+import com.sadad.app.data.db.PaymentDao
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
+import com.sadad.ledger.ContactArchive
+import com.sadad.ledger.ContactCreate
+import com.sadad.ledger.ContactDelete
+import com.sadad.ledger.ContactRestore
+import com.sadad.ledger.ContactUpdate
+import com.sadad.ledger.DebtCorrect
+import com.sadad.ledger.DebtCreate
+import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerState
+import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
+import com.sadad.ledger.PaymentReverse
 import com.sadad.ledger.ReceiptStatus
 import java.lang.reflect.Proxy
 import java.util.UUID
@@ -123,50 +137,6 @@ class LedgerRepositoryTest : LedgerTestCase() {
       assertEquals(listOf(contactRow.operationId), debtRow.command.dependsOn)
       assertEquals(1, session.queued)
     }
-  }
-
-  @Test
-  fun payContactSplitsTheAmountOldestFirstAndRefusesAnOverpayment() = runTest {
-    val repo = repository()
-    repo.load()
-    repo.seed(
-        contactCommand(),
-        debtCommand(amount = 10_000, id = DEBT_ID, minute = 1),
-        debtCommand(amount = 5_000, id = OTHER_DEBT_ID, minute = 2),
-    )
-
-    val paid = repo.payContact(CONTACT_ID, Cents(12_000), PaymentMethod.CASH, "")
-    assertTrue(paid.isSuccess)
-
-    val first = outbox.snapshot()
-    assertEquals(listOf(10_000L, 2_000L), first.map { paymentAmount(it) })
-    assertTrue(first.all { it.type == CommandType.PAYMENT_CREATE })
-    assertTrue(first.all { it.command.dependsOn.isEmpty() })
-    assertEquals(1, session.queued)
-
-    val overpaid = repo.payContact(CONTACT_ID, Cents(16_000), PaymentMethod.CASH, "")
-    assertTrue(overpaid.exceptionOrNull() is Refusal.Invalid)
-    assertEquals(first.size, outbox.snapshot().size)
-    assertEquals(1, session.queued)
-  }
-
-  @Test
-  fun pendingParentsAreDependenciesOfTheirChildren() = runTest {
-    val repo = repository()
-    repo.load()
-
-    val contactId = repo.addContact("سامي", null, null, null, null).getOrThrow()
-    val debtId =
-        repo.addDebt(contactId, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
-    val payment = repo.payDebt(debtId, Cents(1_000), PaymentMethod.CASH, null)
-    assertTrue(payment.isSuccess)
-
-    val rows = outbox.snapshot()
-    val contactRow = rows.single { it.type == CommandType.CONTACT_CREATE }
-    val debtRow = rows.single { it.type == CommandType.DEBT_CREATE }
-    val paymentRow = rows.single { it.type == CommandType.PAYMENT_CREATE }
-    assertEquals(listOf(contactRow.operationId), debtRow.command.dependsOn)
-    assertEquals(listOf(debtRow.operationId), paymentRow.command.dependsOn)
   }
 
   @Test
@@ -424,19 +394,6 @@ class LedgerRepositoryTest : LedgerTestCase() {
   }
 
   @Test
-  fun anIdOutsideTheViewIsUnknown() = runTest {
-    val repo = repository()
-    repo.load()
-
-    val added = repo.addDebt(newOperationId(), Direction.RECEIVABLE, Cents(1_000), null, null)
-    val paid = repo.payDebt(newOperationId(), Cents(1_000), PaymentMethod.CASH, null)
-
-    assertTrue(added.exceptionOrNull() is Refusal.Unknown)
-    assertTrue(paid.exceptionOrNull() is Refusal.Unknown)
-    assertTrue(outbox.snapshot().isEmpty())
-  }
-
-  @Test
   fun aQueuedEntryKeepsTheConfirmedRowsItAlreadyBuilt() = runTest {
     val repo = repository()
     repo.load()
@@ -444,7 +401,19 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
     repo.view.test {
       val before = awaitView { it.debts.isNotEmpty() }
-      repo.payDebt(DEBT_ID, Cents(1_000), PaymentMethod.CASH, null)
+      outbox.append(
+          // What the deleted payDebt queued: a payment on a confirmed debt needs nothing.
+          listOf(
+              Commands.paymentCreate(
+                  Events.origin,
+                  java.time.Instant.now(),
+                  DEBT_ID,
+                  Cents(1_000),
+                  PaymentMethod.CASH,
+                  null,
+              )
+          )
+      )
       val after = awaitView { it.payments.isNotEmpty() }
 
       assertEquals(Cents(9_000), after.debts.single().remaining)
@@ -663,7 +632,16 @@ class LedgerRepositoryTest : LedgerTestCase() {
     )
 
     // A queued payment that must count in every later summary.
-    repo.payDebt(DEBT_ID, Cents(500), PaymentMethod.CASH, "مؤجل").getOrThrow()
+    val queuedPayment =
+        Commands.paymentCreate(
+            Events.origin,
+            java.time.Instant.now(),
+            DEBT_ID,
+            Cents(500),
+            PaymentMethod.CASH,
+            "مؤجل",
+        )
+    outbox.append(listOf(queuedPayment))
 
     val offsetId = UUID.randomUUID().toString()
     val offset =
@@ -941,8 +919,16 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
     // Queue a debt for A offline: A's row grows, B's row is not written.
     val bBefore = db.contactSummaryDao().all().single { it.contactId == OTHER_CONTACT_ID }
-    val queuedDebt =
-        repo.addDebt(CONTACT_ID, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+    val queuedDebtCommand =
+        Commands.debtCreate(
+            Events.origin,
+            java.time.Instant.now(),
+            CONTACT_ID,
+            Direction.RECEIVABLE,
+            Cents(5_000),
+        )
+    outbox.append(listOf(queuedDebtCommand))
+    val queuedDebt = queuedDebtCommand.entityId
     awaitSummary { rows ->
       rows.singleOrNull { it.contactId == CONTACT_ID }?.net == Cents(15_000).value
     }
@@ -972,7 +958,17 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertRowsEqualView(repo)
 
     // Cancel a queued payment: the owner's row returns to the old open balance.
-    val paymentId = repo.payDebt(DEBT_ID, Cents(1_000), PaymentMethod.CASH, null).getOrThrow()
+    val paymentCommand =
+        Commands.paymentCreate(
+            Events.origin,
+            java.time.Instant.now(),
+            DEBT_ID,
+            Cents(1_000),
+            PaymentMethod.CASH,
+            null,
+        )
+    outbox.append(listOf(paymentCommand))
+    val paymentId = paymentCommand.entityId
     awaitSummary { rows ->
       rows.singleOrNull { it.contactId == CONTACT_ID }?.openReceivable == Cents(9_000).value
     }
@@ -993,8 +989,19 @@ class LedgerRepositoryTest : LedgerTestCase() {
     repo.load()
     repo.seed(contactCommand(), debtCommand(amount = 10_000, id = DEBT_ID, minute = 1))
     // A queued debt written before the crash, with no collector running: the row is stale.
-    val queuedDebt =
-        repo.addDebt(CONTACT_ID, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+    val queuedDebtCommand =
+        Commands.debtCreate(
+            Events.origin,
+            java.time.Instant.now(),
+            CONTACT_ID,
+            Direction.RECEIVABLE,
+            Cents(5_000),
+        )
+    outbox.append(listOf(queuedDebtCommand))
+    awaitSummary { rows ->
+      rows.singleOrNull { it.contactId == CONTACT_ID }?.net == Cents(10_000).value
+    }
+    val queuedDebt = queuedDebtCommand.entityId
     assertEquals(
         Cents(10_000).value,
         db.contactSummaryDao().all().single { it.contactId == CONTACT_ID }.net,
@@ -1047,6 +1054,408 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertTrue(row.pending)
     assertEquals(2_000L, row.net)
   }
+
+  // ---- Characterisation (ticket 167): every write's queued commands and Result, pinned before
+  // the write moves to the one-person view. Ids and timestamps are normalized, so the pin is the
+  // command's type, order and the fields that matter, exactly as the ticket asks.
+
+  /** The ids a pin strips: ids the fixtures fix stay as they are, the rest get stable tokens. */
+  private val fixedIds = setOf(CONTACT_ID, DEBT_ID, OTHER_CONTACT_ID, OTHER_DEBT_ID, PAYMENT_ID)
+  private val flattenIds = HashMap<String, String>()
+
+  private fun String.idToken(): String =
+      if (this in fixedIds) this else flattenIds.getOrPut(this) { "#${flattenIds.size + 1}" }
+
+  private fun flattened(rows: List<OutboxRow>): List<String> = rows.map { row ->
+    fun dependsOn(): String =
+        row.command.dependsOn.joinToString(prefix = "[", postfix = "]") { it.idToken() }
+    val body =
+        when (val p = row.command.payload()) {
+          is ContactCreate ->
+              "name:${p.name} phone:${p.phone} kind:${p.kind} category:${p.category} " +
+                  "note:${p.note} code:${p.whatsappCode} dependsOn:${dependsOn()}"
+          is ContactUpdate ->
+              "contactId:${p.contactId.idToken()} name:${p.name} phone:${p.phone} kind:${p.kind} " +
+                  "category:${p.category} note:${p.note} code:${p.whatsappCode} " +
+                  "version:${row.command.expectedVersion} dependsOn:${dependsOn()}"
+          is ContactArchive ->
+              "contactId:${p.contactId.idToken()} reason:${p.reason} " +
+                  "version:${row.command.expectedVersion} dependsOn:${dependsOn()}"
+          is ContactRestore ->
+              "contactId:${p.contactId.idToken()} reason:${p.reason} " +
+                  "version:${row.command.expectedVersion} dependsOn:${dependsOn()}"
+          is ContactDelete ->
+              "contactId:${p.contactId.idToken()} reason:${p.reason} " +
+                  "version:${row.command.expectedVersion} dependsOn:${dependsOn()}"
+          is DebtCreate ->
+              "contactId:${p.contactId.idToken()} direction:${p.direction} " +
+                  "amount:${p.amountCents.value} note:${p.note} due:${p.dueDate} " +
+                  "origin:${p.origin} dependsOn:${dependsOn()}"
+          is DebtCorrect ->
+              "debtId:${p.debtId.idToken()} amount:${p.amountCents.value} reason:${p.reason} " +
+                  "version:${row.command.expectedVersion}"
+          is DebtOffset ->
+              "receivable:${p.receivableDebtId.idToken()} payable:${p.payableDebtId.idToken()} " +
+                  "amount:${p.amountCents.value} dependsOn:${dependsOn()}"
+          is PaymentCreate ->
+              "debtId:${p.debtId.idToken()} amount:${p.amountCents.value} method:${p.method} " +
+                  "note:${p.note} dependsOn:${dependsOn()}"
+          is PaymentReverse -> "paymentId:${p.paymentId.idToken()} reason:${p.reason}"
+        }
+    "${row.type.wireName}[$body]"
+  }
+
+  /**
+   * Three confirmed people with debts (the third with none, for the archive/delete pins) plus one
+   * queued contact with a queued debt — the store every characterisation runs against.
+   */
+  private suspend fun seedThreePeopleWithQueuedEntries(repo: LedgerRepository) {
+    repo.load()
+    flattenIds.clear()
+    val third = UUID.nameUUIDFromBytes("third".toByteArray()).toString()
+    val queued = UUID.nameUUIDFromBytes("queued".toByteArray()).toString()
+    val queuedDebtId = UUID.nameUUIDFromBytes("queued-debt".toByteArray()).toString()
+    repo.seed(
+        contactCommand(minute = 0),
+        debtCommand(amount = 10_000, id = DEBT_ID, minute = 1),
+        contactCommand(name = "ليلى", id = OTHER_CONTACT_ID, minute = 2),
+        debtCommand(contactId = OTHER_CONTACT_ID, amount = 4_000, id = OTHER_DEBT_ID, minute = 3),
+        contactCommand(name = "مريم", id = third, minute = 4),
+    )
+    val queuedCreate = contactCommand(name = "ندى", id = queued, minute = 5)
+    outbox.append(
+        listOf(
+            queuedCreate,
+            Commands.debtCreate(
+                Events.origin,
+                Events.at(6),
+                contactId = queued,
+                direction = Direction.RECEIVABLE,
+                amount = Cents(2_000),
+                entityId = queuedDebtId,
+                dependsOn = listOf(queuedCreate.operationId),
+            ),
+        )
+    )
+  }
+
+  @Test
+  fun characterisationAddingAContactWithAFirstDebtQueuesTheSameCommands() = runTest {
+    val repo = repository()
+    seedThreePeopleWithQueuedEntries(repo)
+    val seeded = outbox.snapshot().size
+
+    val saved = repo.addContact("نداء", "0599123456", "عميل", "ملاحظة", FirstDebt(Cents(7_500)))
+    assertTrue(saved.isSuccess)
+    val after = outbox.snapshot().drop(seeded)
+
+    // The ids show up as stable tokens: the debt names the contact it was written with and
+    // depends on it.
+    assertEquals(
+        listOf(
+            "contact.create[name:نداء phone:0599123456 kind:CUSTOMER category:عميل " +
+                "note:ملاحظة code:null dependsOn:[]]",
+            "debt.create[contactId:${checkNotNull(saved.getOrNull()).idToken()} " +
+                "direction:RECEIVABLE amount:7500 note:null due:null origin:null " +
+                // #2 is the contact.create's operation id: the debt waits for it, not for the
+                // contact's entity id (#1).
+                "dependsOn:[#2]]",
+        ),
+        flattened(after),
+    )
+  }
+
+  @Test
+  fun characterisationUpdatingAContactQueuesTheSameCommands() = runTest {
+    val repo = repository()
+    seedThreePeopleWithQueuedEntries(repo)
+    val seeded = outbox.snapshot().size
+
+    val saved = repo.updateContact(CONTACT_ID, "سامي الجديد", "0599123457", "زراعي", "ملاحظة جديدة")
+    assertTrue(saved.isSuccess)
+
+    assertEquals(
+        listOf(
+            "contact.update[contactId:$CONTACT_ID name:سامي الجديد phone:0599123457 " +
+                "kind:CUSTOMER category:زراعي note:ملاحظة جديدة code:null version:1 dependsOn:[]]",
+        ),
+        flattened(outbox.snapshot().drop(seeded)),
+    )
+  }
+
+  @Test
+  fun characterisationUpdatingAQueuedContactKeepsItsDependencyAndVersion() = runTest {
+    val repo = repository()
+    seedThreePeopleWithQueuedEntries(repo)
+    val seeded = outbox.snapshot().size
+    val queuedCreate =
+        outbox.snapshot().single {
+          it.type == CommandType.CONTACT_CREATE &&
+              it.entityId == UUID.nameUUIDFromBytes("queued".toByteArray()).toString()
+        }
+
+    val saved = repo.updateContact(queuedCreate.entityId, "ندى الجديدة", null, null, null)
+    assertTrue(saved.isSuccess)
+
+    assertEquals(
+        listOf(
+            "contact.update[contactId:${queuedCreate.entityId.idToken()} name:ندى الجديدة " +
+                "phone:null kind:CUSTOMER category:null note:null code:null version:1 " +
+                "dependsOn:[${queuedCreate.operationId.idToken()}]]",
+        ),
+        flattened(outbox.snapshot().drop(seeded)),
+    )
+  }
+
+  @Test
+  fun characterisationArchivingAZeroBalanceContactQueuesTheSameCommands() = runTest {
+    val repo = repository()
+    val third = UUID.nameUUIDFromBytes("third".toByteArray()).toString()
+    seedThreePeopleWithQueuedEntries(repo)
+    val seeded = outbox.snapshot().size
+
+    val saved = repo.archiveContact(third, "ترحيل")
+    assertTrue(saved.isSuccess)
+
+    assertEquals(
+        listOf(
+            "contact.archive[contactId:${third.idToken()} reason:ترحيل version:1 dependsOn:[]]",
+        ),
+        flattened(outbox.snapshot().drop(seeded)),
+    )
+  }
+
+  /** Deletes stay refused until the trash; the archive refusal is pinned in the same shape. */
+  @Test
+  fun characterisationArchivingAContactWithAnOpenBalanceIsRefused() = runTest {
+    val repo = repository()
+    seedThreePeopleWithQueuedEntries(repo)
+    val before = outbox.snapshot().size
+
+    val archived = repo.archiveContact(CONTACT_ID, "ترحيل")
+    assertTrue(archived.exceptionOrNull() is Refusal.Invalid)
+    assertEquals(
+        "سدّد الدين المتبقي على هذا الشخص أولاً.",
+        checkNotNull(archived.exceptionOrNull()).message,
+    )
+    assertEquals(before, outbox.snapshot().size)
+  }
+
+  @Test
+  fun characterisationDeletingANonArchivedPersonIsRefused() = runTest {
+    val repo = repository()
+    seedThreePeopleWithQueuedEntries(repo)
+    val before = outbox.snapshot().size
+
+    val deleted = repo.deleteContact(CONTACT_ID, "حذف نهائي من سلة المحذوفات")
+    assertTrue(deleted.exceptionOrNull() is Refusal.Invalid)
+    assertEquals(
+        "انقل الشخص إلى سلة المحذوفات أولًا.",
+        checkNotNull(deleted.exceptionOrNull()).message,
+    )
+    assertEquals(before, outbox.snapshot().size)
+  }
+
+  @Test
+  fun characterisationRestoringAnArchivedContactQueuesTheSameCommands() = runTest {
+    val repo = repository()
+    val third = UUID.nameUUIDFromBytes("third".toByteArray()).toString()
+    seedThreePeopleWithQueuedEntries(repo)
+    // The page after the seed's five events: the sequences must follow them.
+    repo.applyPage(
+        Events.page(
+            listOf(
+                    Commands.contactArchive(
+                        Events.origin,
+                        Events.at(9),
+                        third,
+                        expectedVersion = 1,
+                        reason = "ترحيل",
+                        entityId = third,
+                        operationId = UUID.randomUUID().toString(),
+                    ),
+                )
+                .mapIndexed { index, command -> Events.accepted(command, 6L + index) },
+        ),
+    )
+    val archived =
+        repo.view
+            .first { view ->
+              view?.archivedContacts?.any { it.id == third } == true
+            }!!
+            .archivedContacts
+            .first { it.id == third }
+    val seeded = outbox.snapshot().size
+
+    val saved = repo.restoreContact(third, "استعادة من سلة المحذوفات")
+    assertTrue(saved.isSuccess)
+
+    // The version is the stored contact's; the queued row must name exactly the version it has.
+    assertEquals(
+        listOf(
+            "contact.restore[contactId:${third.idToken()} reason:استعادة من سلة المحذوفات " +
+                "version:${archived.version} dependsOn:[]]",
+        ),
+        flattened(outbox.snapshot().drop(seeded)),
+    )
+  }
+
+  @Test
+  fun characterisationDeletingAnArchivedZeroBalanceContactQueuesTheSameCommands() = runTest {
+    val repo = repository()
+    val third = UUID.nameUUIDFromBytes("third".toByteArray()).toString()
+    seedThreePeopleWithQueuedEntries(repo)
+    // The page after the seed's five events: the sequences must follow them.
+    repo.applyPage(
+        Events.page(
+            listOf(
+                    Commands.contactArchive(
+                        Events.origin,
+                        Events.at(9),
+                        third,
+                        expectedVersion = 1,
+                        reason = "ترحيل",
+                        entityId = third,
+                        operationId = UUID.randomUUID().toString(),
+                    ),
+                )
+                .mapIndexed { index, command -> Events.accepted(command, 6L + index) },
+        ),
+    )
+    val archived =
+        repo.view
+            .first { view ->
+              view?.archivedContacts?.any { it.id == third } == true
+            }!!
+            .archivedContacts
+            .first { it.id == third }
+    val seeded = outbox.snapshot().size
+
+    val saved = repo.deleteContact(third, "حذف نهائي من سلة المحذوفات")
+    assertTrue(saved.isSuccess)
+
+    assertEquals(
+        listOf(
+            "contact.delete[contactId:${third.idToken()} reason:حذف نهائي من سلة المحذوفات " +
+                "version:${archived.version} dependsOn:[]]",
+        ),
+        flattened(outbox.snapshot().drop(seeded)),
+    )
+  }
+
+  // ---- Red (ticket 167): the writes must check the one person's rows without the whole-store
+  // view. The store below throws on every whole-store query, and the repository is never loaded;
+  // today the writes hang on `currentView()`, after the switch they answer from Room directly.
+
+  /** Proxies [real] so the whole-store queries throw; every per-person read stays. */
+  @Suppress("UNCHECKED_CAST")
+  private fun <T : Any> throwingOn(names: Set<String>, type: Class<T>, real: T): T =
+      Proxy.newProxyInstance(
+          type.classLoader,
+          arrayOf(type),
+      ) { _, method, args ->
+        check(method.name !in names) { "a write read the whole store via ${method.name}" }
+        method.invoke(real, *(args ?: emptyArray()))
+      } as T
+
+  /**
+   * Seeds the confirmed rows through a plain store and opens the repository on a store whose
+   * whole-store queries throw, without ever calling `load()`. The whole-state cache stays empty.
+   */
+  private fun storeThatNeverLoadsTheWholeStore(
+      vararg confirmed: LedgerCommand,
+      block: suspend LedgerRepository.() -> Unit,
+  ) {
+    runBlocking {
+      withTimeout(20_000) {
+        val seedStore = LedgerStore(db)
+        val page =
+            Events.page(confirmed.mapIndexed { i, command -> Events.accepted(command, i + 1L) })
+        seedStore.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(page), page)
+        val reads = setOf("all", "archived")
+        val store =
+            LedgerStore(
+                db,
+                contacts = throwingOn(reads, ContactDao::class.java, db.contactDao()),
+                debts = throwingOn(reads, DebtDao::class.java, db.debtDao()),
+                payments = throwingOn(reads, PaymentDao::class.java, db.paymentDao()),
+                offsets = throwingOn(reads, OffsetDao::class.java, db.offsetDao()),
+            )
+        val repo = LedgerRepository(store, outbox, session, countedScope)
+        withContext(Dispatchers.IO) { repo.block() }
+      }
+    }
+  }
+
+  @Test
+  fun updateContactReadsTheOnePersonViewNotTheWholeStore() =
+      storeThatNeverLoadsTheWholeStore(contactCommand(minute = 0)) {
+        assertTrue(updateContact(CONTACT_ID, "جديد", null, null, null).isSuccess)
+        assertEquals(1L, outbox.snapshot().single().command.expectedVersion)
+      }
+
+  /**
+   * The refusal names the balance from the person's own rows: an `Unknown` would mean the write
+   * could not see them, and today's code can't answer at all (it waits for `load()`).
+   */
+  @Test
+  fun archiveContactRefusalComesFromTheOnePersonView() =
+      storeThatNeverLoadsTheWholeStore(
+          contactCommand(minute = 0),
+          debtCommand(amount = 10_000, id = DEBT_ID, minute = 1),
+      ) {
+        val archived = archiveContact(CONTACT_ID, "سبب")
+        assertTrue(archived.exceptionOrNull() is Refusal.Invalid)
+        assertEquals(
+            "سدّد الدين المتبقي على هذا الشخص أولاً.",
+            checkNotNull(archived.exceptionOrNull()).message,
+        )
+        assertTrue(outbox.snapshot().isEmpty())
+      }
+
+  @Test
+  fun restoreContactReadsTheOnePersonViewNotTheWholeStore() =
+      storeThatNeverLoadsTheWholeStore(
+          contactCommand(name = "م", id = thirdId(), minute = 0),
+          Commands.contactArchive(
+              Events.origin,
+              Events.at(1),
+              thirdId(),
+              expectedVersion = 1,
+              reason = "ترحيل",
+              entityId = thirdId(),
+              operationId = UUID.randomUUID().toString(),
+          ),
+      ) {
+        assertTrue(restoreContact(thirdId(), "استعادة").isSuccess)
+        assertEquals(
+            listOf(CommandType.CONTACT_RESTORE),
+            outbox.snapshot().map { it.type },
+        )
+      }
+
+  private fun thirdId(): String = UUID.nameUUIDFromBytes("third".toByteArray()).toString()
+
+  @Test
+  fun deleteContactReadsTheOnePersonViewNotTheWholeStore() =
+      storeThatNeverLoadsTheWholeStore(
+          contactCommand(name = "م", id = thirdId(), minute = 0),
+          Commands.contactArchive(
+              Events.origin,
+              Events.at(1),
+              thirdId(),
+              expectedVersion = 1,
+              reason = "ترحيل",
+              entityId = thirdId(),
+              operationId = UUID.randomUUID().toString(),
+          ),
+      ) {
+        assertTrue(deleteContact(thirdId(), "حذف نهائي من سلة المحذوفات").isSuccess)
+        assertEquals(
+            listOf(CommandType.CONTACT_DELETE),
+            outbox.snapshot().map { it.type },
+        )
+      }
 
   /** Waits (real time, on Default) until the summary table satisfies [predicate]. */
   private suspend fun awaitSummary(predicate: suspend (List<ContactSummaryEntity>) -> Boolean) {

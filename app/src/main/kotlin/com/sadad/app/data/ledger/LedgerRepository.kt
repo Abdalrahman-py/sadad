@@ -23,15 +23,12 @@ import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.LedgerState
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.Origin
-import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentCreate
-import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
 import com.sadad.ledger.ReceiptStatus
 import com.sadad.ledger.confirmed
@@ -428,14 +425,14 @@ class LedgerRepository(
   ): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
-    val contact = currentView().contactOrThrow(contactId)
+    val contact = personContact(contactId)
     enqueue(
         listOf(
             Commands.contactUpdate(
                 origin,
                 Instant.now(),
                 contactId,
-                nextVersion(contactId),
+                nextVersionAfter(contact, contactId),
                 name,
                 wirePhone(phone),
                 category,
@@ -452,9 +449,9 @@ class LedgerRepository(
   suspend fun archiveContact(contactId: String, reason: String): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
-    val current = currentView()
-    val contact = current.contactOrThrow(contactId)
-    if (current.debts.any { it.contactId == contactId && it.remaining > Cents.ZERO }) {
+    val view = personViewOf(contactId)
+    val contact = view.contactOrThrow(contactId)
+    if (view.debts.any { it.contactId == contactId && it.remaining > Cents.ZERO }) {
       throw Refusal.Invalid("سدّد الدين المتبقي على هذا الشخص أولاً.")
     }
     enqueue(
@@ -463,7 +460,7 @@ class LedgerRepository(
                 origin,
                 Instant.now(),
                 contactId,
-                nextVersion(contactId),
+                nextVersionAfter(contact, contactId),
                 reason,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
@@ -475,14 +472,14 @@ class LedgerRepository(
   suspend fun restoreContact(contactId: String, reason: String): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
-    val contact = currentView().contactOrThrow(contactId)
+    val contact = personContact(contactId)
     enqueue(
         listOf(
             Commands.contactRestore(
                 origin,
                 Instant.now(),
                 contactId,
-                nextVersion(contactId),
+                nextVersionAfter(contact, contactId),
                 reason,
                 dependsOn = contact.dependency(),
                 entityId = contactId,
@@ -496,7 +493,8 @@ class LedgerRepository(
    * rows first (they depend on the person), then the person's. An accepted person is never touched.
    */
   suspend fun discardDraft(contactId: String): Result<Unit> = guarded {
-    val known = state.value.contacts.containsKey(contactId)
+    // The confirmed half decides: a stored row (visible or archived) is the server's now.
+    val known = store.loadPerson(contactId)?.contacts?.containsKey(contactId) == true
     val rows = outbox.snapshot()
     val draft = rows.firstOrNull {
       it.entityId == contactId &&
@@ -515,10 +513,17 @@ class LedgerRepository(
   suspend fun deleteContact(contactId: String, reason: String): Result<Unit> = guarded {
     val origin = origin()
     requireOnline()
-    val contact =
-        currentView().archivedContacts.firstOrNull { it.id == contactId }
+    // The stored rows decide: the trash's contact is always confirmed, and the projection needs
+    // the raw one-person state, which loadPerson returns in one transaction.
+    val stored = store.loadPerson(contactId)
+    val archived =
+        stored
+            ?.view(emptyList(), emptySet(), session.selfInstallationId, "")
+            ?.archivedContacts
+            ?.firstOrNull { it.id == contactId }
             ?: throw Refusal.Invalid("انقل الشخص إلى سلة المحذوفات أولًا.")
-    val stored = state.value
+    // Same projection on the one person's rows as today on the whole state: un-archive, then ask
+    // the queued payments whether any debt is still open.
     val rows = outbox.snapshot()
     val visible =
         stored
@@ -537,88 +542,12 @@ class LedgerRepository(
                 origin,
                 Instant.now(),
                 contactId,
-                contact.version,
+                archived.version,
                 reason,
                 entityId = contactId,
             )
         )
     )
-  }
-
-  suspend fun addDebt(
-      contactId: String,
-      direction: Direction,
-      amount: Cents,
-      note: String?,
-      dueDate: String?,
-  ): Result<String> = guarded {
-    val origin = origin()
-    requireOfflineAllowed()
-    val contact = currentView().contacts.firstOrNull { it.id == contactId } ?: throw Refusal.Unknown
-    val command =
-        Commands.debtCreate(
-            origin,
-            Instant.now(),
-            contactId,
-            direction,
-            amount,
-            note,
-            dueDate,
-            dependsOn = if (contact.pending) listOf(contact.operationId) else emptyList(),
-        )
-    traced("save_debt") { enqueue(listOf(command)) }
-    command.entityId
-  }
-
-  suspend fun payDebt(
-      debtId: String,
-      amount: Cents,
-      method: PaymentMethod,
-      note: String?,
-  ): Result<String> = guarded {
-    val origin = origin()
-    requireOfflineAllowed()
-    val debt = currentView().debts.firstOrNull { it.id == debtId } ?: throw Refusal.Unknown
-    val command =
-        Commands.paymentCreate(
-            origin,
-            Instant.now(),
-            debtId,
-            amount,
-            method,
-            note,
-            dependsOn = if (debt.pending) listOf(debt.operationId) else emptyList(),
-        )
-    enqueue(listOf(command))
-    command.entityId
-  }
-
-  /** Splits [amount] over the Contact's open Debts and queues every part in one transaction. */
-  suspend fun payContact(
-      contactId: String,
-      amount: Cents,
-      method: PaymentMethod,
-      note: String?,
-  ): Result<Unit> = guarded {
-    val origin = origin()
-    requireOfflineAllowed()
-    val current = currentView()
-    val contact = current.contacts.firstOrNull { it.id == contactId } ?: throw Refusal.Unknown
-    val at = Instant.now()
-    val commands =
-        PaymentAllocation.allocate(current, contactId, amount, contact.kind.debtDirection).map {
-            part ->
-          Commands.paymentCreate(
-              origin,
-              at,
-              part.debtId,
-              part.amount,
-              method,
-              note,
-              dependsOn = if (part.debtPending) listOf(part.debtOperationId) else emptyList(),
-          )
-        }
-    enqueue(commands)
   }
 
   private fun origin(): Origin = session.origin() ?: throw Refusal.NotReady
@@ -632,13 +561,79 @@ class LedgerRepository(
   }
 
   /**
-   * The view a write checks against, with the queue included and before it changes. It waits for
-   * the rows: a store the start route opened may still be reading them, and a check against the
-   * empty state would pass a duplicate phone or refuse a contact that exists.
+   * The one person's view a write checks against, read from Room with the queue on top, by the same
+   * projection rules the whole-store view used (ticket 167). A person who exists only in the queue
+   * — no confirmed rows yet, so no `ledger_meta` — projects on the empty state exactly as the
+   * whole-store projection did. That is also why the writes no longer wait for `load()`: Room holds
+   * the rows even before the in-memory state does.
    */
-  private suspend fun currentView(): LedgerView {
-    awaitLoaded()
-    return project(state.value, outbox.snapshot(), "")
+  private suspend fun personViewOf(contactId: String): LedgerView {
+    val rows = outbox.snapshot()
+    val state = store.loadPerson(contactId) ?: LedgerState.EMPTY
+    return state.view(
+        pendingCommands(rows),
+        failedOperations(rows),
+        session.selfInstallationId,
+        "",
+    )
+  }
+
+  /**
+   * The Contact a write names, from either side of the trash; anything else is [Refusal.Unknown].
+   */
+  private suspend fun personContact(contactId: String): ContactView =
+      personViewOf(contactId).contactOrThrow(contactId)
+
+  /**
+   * The version the server will expect after [contact]'s confirmed state: one more for every edit
+   * of that Contact still queued. Without this, two edits before a pull both name the version the
+   * first one consumes, and the server refuses the second.
+   */
+  private suspend fun nextVersionAfter(contact: ContactView, contactId: String): Long =
+      contact.version +
+          outbox.snapshot().count {
+            it.state == OutboxState.QUEUED && it.entityId == contactId && it.type in EDITS
+          }
+
+  /**
+   * The duplicate the contact form must stop on, having [excludeContactId] as the form's own
+   * person: one Room query (the stored contacts carrying [phone]) joined with the queued
+   * `contact.create`/`contact.update` payloads that also give [phone]. Each candidate loads as
+   * their own person, and the pending contact edits get folded on top — the projected view carries
+   * none of them, because contact edits are only ever sent online and never projected — so a queued
+   * phone change away from [phone] or a queued archive removes the match. An un-queued restore (or
+   * any other edit) is folded no further than today's whole-view check. Any one match is fine: the
+   * dialog shows one name.
+   */
+  suspend fun duplicateContact(phone: String, excludeContactId: String?): ContactView? {
+    val queued =
+        outbox.snapshot().filter {
+          it.state == OutboxState.QUEUED || it.state == OutboxState.ACCEPTED
+        }
+    val queuedPhones = HashMap<String, MutableList<String?>>()
+    val queuedArchives = HashSet<String>()
+    for (row in queued) {
+      when (val payload = row.command.payload()) {
+        is ContactCreate ->
+            queuedPhones.getOrPut(row.entityId) { mutableListOf() }.add(payload.phone)
+        is ContactUpdate ->
+            queuedPhones.getOrPut(row.entityId) { mutableListOf() }.add(payload.phone)
+        is ContactArchive -> queuedArchives += row.entityId
+        else -> Unit
+      }
+    }
+    for (id in (store.contactIdsWithPhone(phone) + queuedPhones.keys).distinct()) {
+      if (id == excludeContactId) continue
+      val view = personViewOf(id)
+      // Visible exactly when the projection holds them among the non-archived contacts, as
+      // today's whole-view check does; an archived (or archived-anyway) person is not one.
+      val contact = view.contact(id)
+      if (contact == null || id in queuedArchives) continue
+      var phoneNow = contact.phone
+      for (queuedPhone in queuedPhones[id].orEmpty()) phoneNow = queuedPhone.orEmpty()
+      if (phoneNow == phone) return contact
+    }
+    return null
   }
 
   /** One projection for the flow and for a write's checks, so both see the same rules. */
@@ -665,20 +660,6 @@ class LedgerRepository(
   /** A queued parent must be accepted before its child; a confirmed one needs no dependency. */
   private fun ContactView.dependency(): List<String> =
       if (pending) listOf(operationId) else emptyList()
-
-  /**
-   * The version the server will expect for the next command on [contactId]: the confirmed version
-   * plus one for every edit of that Contact still queued. Without this, two edits before a pull
-   * both name the version the first one consumes, and the server refuses the second.
-   */
-  private suspend fun nextVersion(contactId: String): Long {
-    val confirmed = currentView().contactOrThrow(contactId).version
-    val queued =
-        outbox.snapshot().count {
-          it.state == OutboxState.QUEUED && it.entityId == contactId && it.type in EDITS
-        }
-    return confirmed + queued
-  }
 
   private suspend fun enqueue(commands: List<LedgerCommand>) {
     outbox.append(commands)

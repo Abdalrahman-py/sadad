@@ -6,6 +6,7 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedContactPayment
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
@@ -121,7 +122,7 @@ class HistoryViewModelTest {
       val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
       fixture.confirmedDebt(sami, 10000, at("2026-10-02T09:00:00Z"))
       fixture.confirmedDebt(sami, 5000, at("2026-10-03T09:00:00Z"))
-      fixture.seed { payContact(sami, Cents(15000), PaymentMethod.CASH, null).getOrThrow() }
+      checkNotNull(fixture.graph.current.value).seedContactPayment(sami, Cents(15_000))
       val model = model(fixture)
       val pending =
           model.state.first {

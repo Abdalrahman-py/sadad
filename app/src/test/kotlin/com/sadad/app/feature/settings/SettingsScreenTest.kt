@@ -26,10 +26,10 @@ import com.sadad.app.feature.history.HistoryTags
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Direction
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -370,9 +370,7 @@ class SettingsScreenTest {
                 fixture.seed {
                   contact = addContact("سارة محمود", null, null, null, null).getOrThrow()
                 }
-                fixture.seed {
-                  addDebt(contact, Direction.RECEIVABLE, Cents(12_000), null, null).getOrThrow()
-                }
+                checkNotNull(fixture.graph.current.value).seedDebt(contact, amount = Cents(12_000))
               }
             }
             val model = kit.viewModel(biometricAvailable = sensor)

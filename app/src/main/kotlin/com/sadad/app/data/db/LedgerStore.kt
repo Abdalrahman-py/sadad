@@ -211,6 +211,9 @@ class LedgerStore(
     )
   }
 
+  /** The stored Contact ids carrying [phone]; the contact form's duplicate-phone check reads it. */
+  suspend fun contactIdsWithPhone(phone: String): List<String> = contacts.idsWithPhone(phone)
+
   private fun personState(
       stored: LedgerMetaEntity,
       contact: ContactEntity?,

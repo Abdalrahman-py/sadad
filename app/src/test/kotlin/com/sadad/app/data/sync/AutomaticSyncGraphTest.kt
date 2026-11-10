@@ -4,12 +4,12 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
+import com.sadad.app.testing.seedDebt
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ChangeEvent
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.OperationsRequest
-import com.sadad.ledger.PaymentMethod
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,11 +47,8 @@ class AutomaticSyncGraphTest {
         try {
           val repository = sender.scope.repository
           val person = repository.addContact("إبراهيم", null, null, null, null).getOrThrow()
-          val debt =
-              repository
-                  .addDebt(person, Direction.RECEIVABLE, Cents(15_000), null, null)
-                  .getOrThrow()
-          repository.payDebt(debt, Cents(5_000), PaymentMethod.CASH, null).getOrThrow()
+          val debt = sender.scope.seedDebt(person, amount = Cents(15_000))
+          sender.scope.seedPayment(debt, Cents(5_000))
           assertEquals(3, sender.scope.outbox.snapshot().count { it.state == OutboxState.QUEUED })
           assertEquals(1, sender.server.requestCount) // Sign-in only: no offline HTTP request.
           online = true

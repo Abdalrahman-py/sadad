@@ -12,6 +12,8 @@ import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.notifications.Reminder
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedContactPayment
+import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -72,14 +74,11 @@ class TrashViewModelTest {
     var id: String? = null
     seed { id = addContact(name, "0599123456", "عميل", null, null).getOrThrow() }
     settleAll()
-    seed {
-      addDebt(id!!, com.sadad.ledger.Direction.RECEIVABLE, Cents(100), "دين محفوظ", null)
-          .getOrThrow()
-    }
+    checkNotNull(graph.current.value)
+        .seedDebt(checkNotNull(id), amount = Cents(100), note = "دين محفوظ")
     settleAll()
-    seed {
-      payContact(id!!, Cents(100), com.sadad.ledger.PaymentMethod.CASH, "دفعة محفوظة").getOrThrow()
-    }
+    checkNotNull(graph.current.value)
+        .seedContactPayment(checkNotNull(id), Cents(100), note = "دفعة محفوظة")
     settleAll()
     seed { archiveContact(id!!, "حذف الزبون من التطبيق").getOrThrow() }
     settleAll()
