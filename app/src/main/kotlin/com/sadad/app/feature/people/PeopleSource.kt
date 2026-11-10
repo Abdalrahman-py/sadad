@@ -1,9 +1,7 @@
 package com.sadad.app.feature.people
 
 import com.sadad.app.AppGraph
-import com.sadad.app.contactRecords
 import com.sadad.app.data.db.ContactSummaryEntity
-import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.ledger.ContactCreate
@@ -15,8 +13,9 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 
 /**
- * What People reads: the stored per-person summary once its one-time fill has ended (ticket 160),
- * and today's list from the view only while the summary is still filling.
+ * What People reads: the stored per-person summary (ticket 160), drafts the server refused, and the
+ * day. Until the one-time fill ends the screen shows its loading state — no ledger view exists
+ * anymore (ticket 168).
  */
 interface PeopleSource {
   /** Every summary row; null while no store is open. */
@@ -27,9 +26,6 @@ interface PeopleSource {
 
   /** Rejected contact creates the summary does not know, as [ContactRecords] builds them. */
   val failedDrafts: Flow<List<ContactView>>
-
-  /** Today's list while the summary fills; collected only while [summaryReady] is false. */
-  val records: Flow<ContactRecords?>
 }
 
 /**
@@ -89,7 +85,5 @@ fun AppGraph.peopleSource(): PeopleSource {
             }
           }
         }
-
-    override val records: Flow<ContactRecords?> = graph.contactRecords()
   }
 }

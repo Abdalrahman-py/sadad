@@ -114,6 +114,7 @@ class ContactFormScreenTest {
       compose.setContent { SadadTheme { ContactFormScreen(model) } }
       compose.waitForIdle()
       compose.onNodeWithText(context.getString(R.string.contactform_save_only)).performClick()
+      compose.waitUntil(5_000) { model.state.value.duplicate != null }
       compose
           .onNodeWithText(context.getString(R.string.contactform_back_to_edit))
           .performSemanticsAction(SemanticsActions.OnClick) { it() }
@@ -127,7 +128,14 @@ class ContactFormScreenTest {
 
   private fun TestGraph.model(contactId: String? = null): ContactFormViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return ContactFormViewModel(scope.repository, STORE_A, context, SavedStateHandle(), contactId)
+    return ContactFormViewModel(
+        scope.repository,
+        scope.personLedger,
+        STORE_A,
+        context,
+        SavedStateHandle(),
+        contactId,
+    )
   }
 
   @Test

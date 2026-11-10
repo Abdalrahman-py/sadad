@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
 import com.sadad.app.data.db.ContactSummaryEntity
+import com.sadad.app.data.ledger.toContactView
 import com.sadad.app.data.ledger.traced
 import com.sadad.app.feature.contactform.ContactFormState
 import com.sadad.app.feature.contactpicker.ContactNumberRow
@@ -41,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -251,7 +253,13 @@ class QuickAddViewModel(
                 projectSummaries(rows, archived, permissions, blocked)
               }
             } else {
-              source.view.map { view -> projectView(view, permissions, blocked) }
+              // The ledger view this fell back to is gone (ticket 168): loading until the fill.
+              flowOf(
+                  Facts(
+                      blocked = blocked,
+                      restricted = permissions["registerPayments"] == false,
+                  )
+              )
             }
           }
           .map { facts ->
@@ -932,45 +940,6 @@ class QuickAddViewModel(
       val searchedParsed: List<ContactRow> = emptyList(),
   )
 
-  private fun projectView(
-      view: LedgerView?,
-      permissions: Map<String, Boolean>,
-      blocked: Boolean,
-  ): Facts {
-    val restricted = permissions["registerPayments"] == false
-    if (view == null) return Facts(blocked = blocked, restricted = restricted)
-    allContacts = view.contacts
-    archivedPeople = view.archivedContacts
-    reparseContacts()
-    val lastActivity = lastActivity(view)
-    val now = Instant.now()
-    val people =
-        view.contacts.map { contact ->
-          QuickAddPerson(
-              id = contact.id,
-              name = contact.name,
-              phone = contact.phone,
-              kind = contact.kind,
-              net = view.net(contact.id),
-              lastActivity = lastActivity[contact.id],
-              asOf = now,
-          )
-        }
-    val open =
-        view.contacts.associate { contact ->
-          contact.id to PaymentAllocation.openBalance(view, contact.id, contact.kind.debtDirection)
-        }
-    openBalances = open
-    return Facts(
-        loaded = true,
-        blocked = blocked,
-        restricted = restricted,
-        people = people,
-        openBalances = open,
-        startContact = contactId?.takeIf { id -> people.any { it.id == id } },
-    )
-  }
-
   private fun projectSummaries(
       rows: List<ContactSummaryEntity>?,
       archived: List<ContactView>,
@@ -979,7 +948,7 @@ class QuickAddViewModel(
   ): Facts {
     val restricted = permissions["registerPayments"] == false
     if (rows == null) return Facts(blocked = blocked, restricted = restricted)
-    allContacts = rows.map { it.asContactView() }
+    allContacts = rows.map { it.toContactView() }
     archivedPeople = archived
     reparseContacts()
     val now = Instant.now()
@@ -1024,36 +993,6 @@ class QuickAddViewModel(
 
   /** One person's own ledger view, tagged with whose it is; [view] is null when there is none. */
   private data class PersonView(val id: String, val view: LedgerView?)
-
-  /** A summary row as a Contact: only the id, name and phone the checks read are real. */
-  private fun ContactSummaryEntity.asContactView(): ContactView =
-      ContactView(
-          id = contactId,
-          name = name,
-          phone = phone,
-          kind = kind,
-          category = category,
-          note = "",
-          version = 0,
-          pending = pending,
-          createdAt = createdAt,
-          createdBy = "",
-          operationId = "",
-      )
-
-  /** The last time the store recorded anything with each Contact: a debt or a payment. */
-  private fun lastActivity(view: LedgerView): Map<String, Instant> {
-    val perContact = HashMap<String, Instant>()
-    for (debt in view.debts) {
-      val at = perContact[debt.contactId]
-      if (at == null || debt.createdAt > at) perContact[debt.contactId] = debt.createdAt
-    }
-    for (payment in view.payments) {
-      val at = perContact[payment.contactId]
-      if (at == null || payment.createdAt > at) perContact[payment.contactId] = payment.createdAt
-    }
-    return perContact
-  }
 
   private fun permissions(): Flow<Map<String, Boolean>> = source.permissions
 

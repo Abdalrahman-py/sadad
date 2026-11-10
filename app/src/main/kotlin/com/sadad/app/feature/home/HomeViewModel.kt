@@ -5,8 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Direction
-import com.sadad.ledger.LedgerView
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -57,92 +55,9 @@ data class HomeUiState(
     val offline: HomeOffline? = null,
     /** True while the open store's sync pass is running: the pull to refresh indicator. */
     val refreshing: Boolean = false,
-    /** False only before the store's ledger is read, when the zeros above mean nothing yet. */
+    /** False only before the summary table is ready, when the zeros above mean nothing yet. */
     val loaded: Boolean = true,
 )
-
-/**
- * Answers the two questions Home exists for. «لك عند الناس» is the sum of the positive
- * [LedgerView.net] over every person and «عليك للناس» the sum of the negative ones, so a supplier's
- * balance never inflates what customers owe. The month counts customers' Debts and the Payments
- * against them only, the collection share is capped, and follow-up lists people who owe and have a
- * receivable Debt overdue or due on [today], most days late first.
- */
-fun homeUiState(
-    view: LedgerView,
-    month: YearMonth,
-    zone: ZoneId,
-    storeName: String = "",
-    today: LocalDate,
-    queued: Int = 0,
-    offline: Boolean = false,
-    leaseEndsAt: Instant? = null,
-): HomeUiState {
-  val start = month.atDay(1).atStartOfDay(zone).toInstant()
-  val end = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant()
-  fun inMonth(at: Instant) = !at.isBefore(start) && at.isBefore(end)
-
-  var owed = Cents.ZERO
-  var owes = Cents.ZERO
-  val nets =
-      view.contacts.associate { contact ->
-        val net = view.net(contact.id)
-        if (net > Cents.ZERO) owed += net else if (net < Cents.ZERO) owes += Cents(-net.value)
-        contact.id to net
-      }
-
-  val receivable = view.debts.filter { it.direction == Direction.RECEIVABLE }
-  val receivableIds = receivable.mapTo(HashSet()) { it.id }
-  var monthDebts = Cents.ZERO
-  for (debt in receivable) if (inMonth(debt.createdAt)) monthDebts += debt.amount
-  var monthPayments = Cents.ZERO
-  var monthPaymentsCount = 0
-  for (payment in view.payments) {
-    if (payment.reversed || payment.debtId !in receivableIds || !inMonth(payment.createdAt))
-        continue
-    monthPayments += payment.amount
-    monthPaymentsCount++
-  }
-
-  val chasing = buildList {
-    for (contact in view.contacts) {
-      val net = nets[contact.id] ?: Cents.ZERO
-      if (net <= Cents.ZERO) continue
-      var late: Int? = null
-      var dueToday = false
-      for (debt in view.debtsOf(contact.id)) {
-        if (debt.direction != Direction.RECEIVABLE || debt.remaining <= Cents.ZERO) continue
-        val due = debt.dueDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        if (due == null) continue
-        val days = ChronoUnit.DAYS.between(due, today).toInt()
-        when {
-          days > 0 -> late = maxOf(late ?: 0, days)
-          days == 0 -> dueToday = true
-        }
-      }
-      when {
-        late != null -> add(HomeFollowUp(contact.id, contact.name, late, net))
-        dueToday -> add(HomeFollowUp(contact.id, contact.name, null, net))
-      }
-    }
-  }
-      .sortedWith(followUpOrder)
-
-  return HomeUiState(
-      storeName = storeName,
-      month = month,
-      owedToStore = owed,
-      storeOwes = owes,
-      monthDebts = monthDebts,
-      monthPayments = monthPayments,
-      monthPaymentsCount = monthPaymentsCount,
-      collectionPercent = collectionPercent(monthDebts, monthPayments),
-      followUps = chasing.take(FOLLOW_UP_ROWS),
-      followUpCount = chasing.size,
-      empty = view.contacts.isEmpty() && view.debts.isEmpty() && view.payments.isEmpty(),
-      offline = if (offline && queued > 0) HomeOffline(queued, leaseEndsAt) else null,
-  )
-}
 
 /** At most this many rows on «تحتاج متابعة»; the rest are behind «عرض الكل». */
 const val FOLLOW_UP_ROWS: Int = 5
@@ -165,18 +80,15 @@ private fun collectionPercent(monthDebts: Cents, monthPayments: Cents): Int =
         .toInt()
 
 /**
- * Follows the open store: its stored summary, the queue, the connection, and the store's name. Once
- * `summaryReady` the totals come from Room; while it is false they are derived once per view and
- * day. The rest only changes the banner. Off screen it stops.
+ * Follows the open store: its stored summary, the queue, the connection, and the store's name. Room
+ * is the only ledger (ticket 168): until the summary fill ends, the screen shows its loading state,
+ * and once it is ready every figure comes from Room. The rest only changes the banner. Off screen
+ * it stops.
  */
 class HomeViewModel
 internal constructor(
     private val source: HomeSource,
     private val clock: Clock? = null,
-    private val derive: (LedgerView, YearMonth, ZoneId, LocalDate) -> HomeUiState =
-        { view, month, zone, today ->
-          homeUiState(view = view, month = month, zone = zone, today = today)
-        },
 ) : ViewModel() {
   private data class Period(val month: YearMonth, val zone: ZoneId, val today: LocalDate)
 
@@ -207,13 +119,8 @@ internal constructor(
   /** The pull to refresh on Home starts one pass for the open store; offline it ends at once. */
   fun refresh() = source.refresh()
 
-  /** The derivation, kept while its view and day stay the same: a resubscription reuses it. */
-  private class Derived(val view: LedgerView, val period: Period, val state: HomeUiState)
-
-  @Volatile private var derived: Derived? = null
-
-  // Once summaryReady is true the heavy part reads only Room; a sync status flip never reaches
-  // it. While it is false (the fill wait) it reads the view, cached while view and day stay.
+  // The Room queries answer once the summary fill ends (summaryReady); a sync status flip never
+  // reaches the heavy part.
   private val totals: Flow<HomeUiState> =
       combine(source.current, period) { scope, period -> scope to period }
           .flatMapLatest { (scope, period) ->
@@ -221,25 +128,13 @@ internal constructor(
               flowOf(HomeUiState(month = period.month, loaded = false))
             } else {
               source.summaryReady(scope).flatMapLatest { ready ->
-                if (!ready) {
-                  source.view(scope).map { view ->
-                    if (view == null) {
-                      HomeUiState(month = period.month, loaded = false)
-                    } else {
-                      val last = derived
-                      if (last != null && last.view === view && last.period == period) {
-                        last.state
-                      } else {
-                        derive(view, period.month, period.zone, period.today).also {
-                          derived = Derived(view, period, it)
-                        }
-                      }
-                    }
-                  }
-                } else {
+                if (ready) {
                   source.roomData(scope, period.month, period.zone, period.today).map { data ->
                     roomState(data, period)
                   }
+                } else {
+                  // The ledger view this fell back to is gone (ticket 168): loading it is.
+                  flowOf(HomeUiState(month = period.month, loaded = false))
                 }
               }
             }

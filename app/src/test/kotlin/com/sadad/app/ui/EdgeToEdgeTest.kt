@@ -42,7 +42,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.sadad.app.contactRecords
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactDetailViewModel
@@ -60,6 +59,7 @@ import com.sadad.app.feature.notifications.NotificationsScreen
 import com.sadad.app.feature.notifications.Reminder
 import com.sadad.app.feature.people.PeopleScreen
 import com.sadad.app.feature.people.PeopleViewModel
+import com.sadad.app.feature.people.peopleSource
 import com.sadad.app.feature.settings.SettingsKit
 import com.sadad.app.feature.settings.StoreScreen
 import com.sadad.app.testing.TestGraph
@@ -133,7 +133,7 @@ class EdgeToEdgeTest {
       inShellWithStore(People()) { fixture ->
         awaiting { seedContacts(fixture) }
         val model =
-            PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
+            PeopleViewModel(fixture.graph.peopleSource(), SavedStateHandle()).also {
               fixture.closeWithStore(it.viewModelScope)
             }
         awaiting { model.state.first { it.registered > 0 } }

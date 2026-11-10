@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.ContactSummaryEntity
-import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.feature.quickadd.PersonSearch
 import com.sadad.app.ui.components.BalanceWordText
 import com.sadad.app.ui.components.balanceWord
@@ -12,8 +11,6 @@ import com.sadad.app.ui.components.formatShekels
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.ContactView
-import com.sadad.ledger.Direction
-import com.sadad.ledger.LedgerView
 import java.text.Collator
 import java.time.Clock
 import java.time.Duration
@@ -26,7 +23,6 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,7 +30,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -148,31 +143,11 @@ internal fun initialPeopleFilter(saved: SavedStateHandle): PeopleFilter {
 }
 
 /**
- * Everyone the store holds, under one search, one chip and one order: the net per person, when they
- * last moved, how late they are, each chip's count under the search, and the chip's total line.
- *
- * The counts are the search's, not the chip's, so a chip never offers a number it cannot show. The
- * header's total is everyone: choosing عليهم does not change how many people the store has.
- */
-fun peopleUiState(
-    view: LedgerView,
-    zone: ZoneId,
-    today: LocalDate,
-    query: String = "",
-    filter: PeopleFilter = PeopleFilter.ALL,
-    sort: PeopleSort = PeopleSort.RECENT,
-): PeopleState =
-    peopleUiState(
-        sortRows(peopleRows(view, zone, today), sort),
-        view.contacts.size,
-        query,
-        filter,
-        sort,
-    )
-
-/**
- * Everyone in the stored summary, under the same search, chip and order as [peopleUiState] from the
- * view: it is the list People shows once the summary is filled.
+ * Everyone in the stored summary, under one search, one chip and one order: the net per person,
+ * when they last moved, how late they are, each chip's count under the search, and the chip's total
+ * line (the counts are the search's, not the chip's, so a chip never offers a number it cannot
+ * show; the header's total is everyone, so choosing عليهم does not change how many people there
+ * are).
  */
 fun peopleUiState(
     summaries: List<ContactSummaryEntity>,
@@ -239,55 +214,6 @@ internal fun summaryRows(
   }
 
   return rows + failed
-}
-
-/**
- * Every person's row: the one pass over the whole ledger. It depends only on the view and the day,
- * so the screen runs it when those change, never per keystroke.
- */
-internal fun peopleRows(view: LedgerView, zone: ZoneId, today: LocalDate): List<PeopleRow> {
-  val nets = HashMap<String, Long>(view.contacts.size * 2)
-  val debts = view.debts.groupBy { it.contactId }
-  val payments = view.payments.groupBy { it.contactId }
-  for (debt in view.debts) {
-    val delta =
-        if (debt.direction == Direction.RECEIVABLE) debt.remaining.value else -debt.remaining.value
-    nets.merge(debt.contactId, delta, Long::plus)
-  }
-
-  val everyone = ArrayList<PeopleRow>(view.contacts.size)
-  for (contact in view.contacts) {
-    val own = debts[contact.id].orEmpty()
-    var last = contact.createdAt
-    var overdue = 0
-    for (debt in own) {
-      if (debt.createdAt.isAfter(last)) last = debt.createdAt
-      if (debt.direction != Direction.RECEIVABLE || debt.remaining <= Cents.ZERO) continue
-      val due = debt.dueDate?.let(::parseDue) ?: continue
-      val days = ChronoUnit.DAYS.between(due, today).toInt()
-      if (days > overdue) overdue = days
-    }
-    for (payment in payments[contact.id].orEmpty()) {
-      if (payment.createdAt.isAfter(last)) last = payment.createdAt
-    }
-    val net = Cents(nets[contact.id] ?: 0L)
-    val lateDays = if (net > Cents.ZERO && overdue > 0) overdue else null
-    everyone +=
-        PeopleRow(
-            id = contact.id,
-            name = contact.name,
-            phone = contact.phone,
-            supplier = contact.kind == ContactKind.SUPPLIER,
-            net = net,
-            lastActiveAt = last,
-            activity =
-                if (lateDays == null) activityText(last, today, zone) else lateText(lateDays),
-            lateDays = lateDays,
-            category = contact.category,
-        )
-  }
-
-  return everyone
 }
 
 /** [rows] in [sort]'s order; run when the rows or the order change, so a search only filters. */
@@ -394,10 +320,10 @@ private fun compareByArabicName(): Comparator<PeopleRow> {
 }
 
 /**
- * The list, projected on [Dispatchers.Default] from the stored summary once it is filled, and from
- * the one [LedgerView] while the summary is still filling. The search, the chip and the order live
- * in the [SavedStateHandle], so a recreated screen keeps them; [followDay] moves «اليوم» and «متأخر
- * 3 أيام» on at midnight while the tab stays open.
+ * The list, projected on [Dispatchers.Default] from the stored summary. Room is the only ledger
+ * (ticket 168), so before the fill ends there is no list: the screen shows its loading state. The
+ * search, the chip and the order live in the [SavedStateHandle], so a recreated screen keeps them;
+ * [followDay] moves «اليوم» and «متأخر 3 أيام» on at midnight while the tab stays open.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PeopleViewModel(
@@ -405,16 +331,6 @@ class PeopleViewModel(
     private val saved: SavedStateHandle,
     private val clock: Clock? = null,
 ) : ViewModel() {
-
-  /**
-   * The screen tests build the model against the open store's records; it never sees a filled
-   * summary, so this is the filling window's list, for the life of this constructor.
-   */
-  constructor(
-      records: Flow<ContactRecords?>,
-      saved: SavedStateHandle,
-      clock: Clock? = null,
-  ) : this(fillSource(records), saved, clock)
 
   private data class Day(val zone: ZoneId, val today: LocalDate)
 
@@ -455,17 +371,8 @@ class PeopleViewModel(
                   }
                 }
               } else {
-                source.records.map { records ->
-                  val view = records?.directory ?: return@map null
-                  val failedIds = records.failed.mapTo(HashSet()) { it.contact.id }
-                  Rows(
-                      peopleRows(view, current.zone, current.today).map {
-                        if (it.id in failedIds) it.copy(syncFailed = true) else it
-                      },
-                      records.ledger.contacts.size,
-                      records.failed.size,
-                  )
-                }
+                // The ledger view this fell back to is gone (ticket 168): no rows until the fill.
+                flowOf<Rows?>(null)
               }
             }
             .flowOn(Dispatchers.Default)
@@ -555,14 +462,5 @@ private const val SORT = "people:sort"
 
 /** The `filter` argument of the `People(filter)` route, in the same handle. */
 private const val ROUTE_FILTER = "filter"
-
-/** A source whose summary never fills, so the records constructor reads today's list for ever. */
-private fun fillSource(records: Flow<ContactRecords?>): PeopleSource =
-    object : PeopleSource {
-      override val summaries = flowOf<List<ContactSummaryEntity>?>(null)
-      override val summaryReady = flowOf(false)
-      override val failedDrafts = flowOf<List<ContactView>>(emptyList())
-      override val records = records
-    }
 
 private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)

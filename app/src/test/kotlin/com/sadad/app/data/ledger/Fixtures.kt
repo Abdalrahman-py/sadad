@@ -26,9 +26,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Before
 
@@ -157,6 +160,30 @@ abstract class LedgerTestCase {
    * joined when `runTest` returns, so a query could outlive the test and fail after `db.close()`.
    */
   protected fun repository() = LedgerRepository(LedgerStore(db), outbox, session, repositoryScope)
+
+  /**
+   * Waits (real time, on Default) until the person's projected rows satisfy [predicate], reading
+   * Room a person at a time as the screens do since ticket 168 (no resident view exists).
+   */
+  protected suspend fun personRecordsUntil(
+      id: String,
+      predicate: suspend (ContactRecords) -> Boolean,
+  ): ContactRecords =
+      withContext(Dispatchers.Default) {
+        withTimeout(5_000) {
+          val ledger = PersonLedger(LedgerStore(db), outbox, session)
+          var found: ContactRecords? = null
+          while (found == null) {
+            val records = ledger.records(id)
+            if (records != null && predicate(records)) {
+              found = records
+            } else {
+              delay(20)
+            }
+          }
+          checkNotNull(found)
+        }
+      }
 }
 
 /** Waits through the [LedgerView] flow's initial `null` and stale emissions. */

@@ -17,6 +17,7 @@ import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
+import com.sadad.ledger.ContactView
 import com.sadad.ledger.ReceiptStatus
 import java.io.File
 import java.util.UUID
@@ -82,9 +83,13 @@ class TrashViewModelTest {
     settleAll()
     seed { archiveContact(id!!, "حذف الزبون من التطبيق").getOrThrow() }
     settleAll()
-    repository().view.first { view -> view?.archivedContacts?.any { it.id == id } == true }
+    archivedRows().first { it.id == id }
     return checkNotNull(id)
   }
+
+  /** The trash's people, read from Room a person at a time (ticket 168). */
+  private suspend fun TestGraph.archivedRows(): List<ContactView> =
+      checkNotNull(graph.current.value).personLedger.archivedContacts().first()
 
   private fun TestGraph.repository() = checkNotNull(graph.current.value).repository
 
@@ -120,7 +125,7 @@ class TrashViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val first = fixture.archiveOne("سامي")
       val second = fixture.archiveOne("ليلى")
-      val whole = fixture.repository().view.value!!.archivedContacts
+      val whole = fixture.archivedRows()
       assertEquals(listOf(first, second), whole.map { it.id })
 
       val state = fixture.model().state.first { it.items.size == 2 }
@@ -133,7 +138,7 @@ class TrashViewModelTest {
   fun restoringAContactQueuesContactRestoreWithItsVersion() = runTest {
     TestGraph.signedIn().use { fixture ->
       fixture.archiveOne()
-      val archived = fixture.repository().view.value!!.archivedContacts.single()
+      val archived = fixture.archivedRows().single()
       val model = fixture.model()
       val item = model.state.first { it.items.isNotEmpty() }.items.single()
 
@@ -167,15 +172,8 @@ class TrashViewModelTest {
       val database = checkNotNull(fixture.graph.current.value).database
       assertTrue(database.debtDao().all().isEmpty())
       assertTrue(database.paymentDao().all().isEmpty())
-      checkNotNull(fixture.graph.current.value).repository.load()
-      assertTrue(
-          fixture
-              .repository()
-              .view
-              .first { it?.archivedContacts?.isEmpty() == true }!!
-              .contacts
-              .isEmpty()
-      )
+      // The person is gone from Room — the only ledger (ticket 168).
+      assertTrue(database.contactDao().all().isEmpty())
     }
   }
 
@@ -193,7 +191,6 @@ class TrashViewModelTest {
       fixture.closeWithStore(offlineScope)
       val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
-      offline.view.first { view -> view?.archivedContacts?.isNotEmpty() == true }
       val model =
           TrashViewModel(
               offline,

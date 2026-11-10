@@ -35,7 +35,7 @@ class ActivityA11yTest {
     awaiting {
       seedContacts(fixture)
       val scope = checkNotNull(fixture.graph.current.value)
-      val id = scope.repository.view.first { it != null }!!.contacts.first().id
+      val id = scope.database.contactDao().all().first().id
       val debt = scope.seedDebt(id, amount = Cents(10_000))
       scope.seedPayment(debt, Cents(2_000))
       fixture.settleAll()

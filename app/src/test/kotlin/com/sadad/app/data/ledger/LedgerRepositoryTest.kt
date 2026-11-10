@@ -1,6 +1,5 @@
 package com.sadad.app.data.ledger
 
-import app.cash.turbine.test
 import com.sadad.app.data.db.ContactDao
 import com.sadad.app.data.db.ContactSummaryDao
 import com.sadad.app.data.db.ContactSummaryEntity
@@ -18,6 +17,7 @@ import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactDelete
 import com.sadad.ledger.ContactRestore
 import com.sadad.ledger.ContactUpdate
+import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
@@ -28,6 +28,7 @@ import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
 import com.sadad.ledger.ReceiptStatus
+import com.sadad.ledger.view
 import java.lang.reflect.Proxy
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,7 +50,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,23 +67,6 @@ class LedgerRepositoryTest : LedgerTestCase() {
   @After
   fun joinCountedScope() {
     runBlocking { countedScope.coroutineContext[Job]?.cancelAndJoin() }
-  }
-
-  @Test
-  fun theViewStaysNullUntilTheRowsAreLoaded() = runTest {
-    val repo = repository()
-
-    withContext(Dispatchers.Default) {
-      // Real time: by now the outbox and the staff name have emitted, only the rows are missing.
-      delay(300)
-      assertNull(repo.view.value)
-
-      repo.load()
-      withTimeout(5_000) {
-        repo.awaitLoaded()
-        repo.view.first { it != null }
-      }
-    }
   }
 
   @Test
@@ -105,56 +88,50 @@ class LedgerRepositoryTest : LedgerTestCase() {
     val repo = repository()
     repo.load()
 
-    repo.view.test {
-      val saved =
-          repo.addContact(
-              name = "سامي",
-              phone = "0599123456",
-              category = "family",
-              note = "قريب",
-              firstDebt = FirstDebt(Cents(10_000)),
-          )
-      assertTrue(saved.isSuccess)
+    val saved =
+        repo.addContact(
+            name = "سامي",
+            phone = "0599123456",
+            category = "family",
+            note = "قريب",
+            firstDebt = FirstDebt(Cents(10_000)),
+        )
+    assertTrue(saved.isSuccess)
+    val id = checkNotNull(saved.getOrNull())
 
-      val view = awaitView { it.contacts.any { contact -> contact.name == "سامي" } }
-      val contact = view.contacts.single { it.name == "سامي" }
-      assertTrue(contact.pending)
-      val debt = view.debts.single { it.contactId == contact.id }
-      assertEquals(Direction.RECEIVABLE, debt.direction)
-      assertEquals(Cents(10_000), debt.amount)
-      assertTrue(debt.pending)
-      assertEquals(Cents(10_000), view.receivable)
-      assertEquals(Cents.ZERO, view.confirmedReceivable)
-      assertEquals(1, view.pendingContacts)
-      assertEquals(1, view.pendingDebts)
+    val records = awaitPerson(id) { it.ledger.contacts.any { contact -> contact.name == "سامي" } }
+    val contact = records.ledger.contacts.single { it.name == "سامي" }
+    assertTrue(contact.pending)
+    val debt = records.ledger.debts.single { it.contactId == contact.id }
+    assertEquals(Direction.RECEIVABLE, debt.direction)
+    assertEquals(Cents(10_000), debt.amount)
+    assertTrue(debt.pending)
 
-      val rows = outbox.snapshot()
-      assertEquals(2, rows.size)
-      assertTrue(rows.all { it.state == OutboxState.QUEUED })
-      val contactRow = rows.single { it.type == CommandType.CONTACT_CREATE }
-      val debtRow = rows.single { it.type == CommandType.DEBT_CREATE }
-      assertEquals(contact.id, contactRow.entityId)
-      assertEquals(listOf(contactRow.operationId), debtRow.command.dependsOn)
-      assertEquals(1, session.queued)
-    }
+    val rows = outbox.snapshot()
+    assertEquals(2, rows.size)
+    assertTrue(rows.all { it.state == OutboxState.QUEUED })
+    val contactRow = rows.single { it.type == CommandType.CONTACT_CREATE }
+    val debtRow = rows.single { it.type == CommandType.DEBT_CREATE }
+    assertEquals(contact.id, contactRow.entityId)
+    assertEquals(listOf(contactRow.operationId), debtRow.command.dependsOn)
+    assertEquals(1, session.queued)
   }
 
   @Test
   fun anAcceptedRowStaysPendingUntilThePageHoldsIt() = runTest {
     val repo = repository()
     repo.load()
-    repo.addContact("سامي", null, null, null, null)
+    val id = checkNotNull(repo.addContact("سامي", null, null, null, null).getOrNull())
     val command = outbox.snapshot().single().command
 
     outbox.settle(listOf(receiptOf(command, ReceiptStatus.ACCEPTED)))
-    repo.view.test { assertTrue(awaitView { it.contacts.isNotEmpty() }.contacts.single().pending) }
+    awaitPerson(id) { it.ledger.contacts.single().pending }
 
     repo.applyPage(Events.page(listOf(Events.accepted(command, 1))))
 
-    repo.view.test {
-      val view = awaitView { it.contacts.isNotEmpty() && !it.contacts.single().pending }
-      assertFalse(view.contacts.single().pending)
-    }
+    assertFalse(
+        awaitPerson(id) { !it.ledger.contacts.single().pending }.ledger.contacts.single().pending
+    )
     assertTrue(outbox.snapshot().isEmpty())
   }
 
@@ -170,17 +147,20 @@ class LedgerRepositoryTest : LedgerTestCase() {
 
     assertTrue(failure is LedgerReset)
     assertEquals(1, outbox.snapshot().size)
-    repo.view.test {
-      val view = awaitView { it.contacts.size == 1 && it.contacts.single().name == "معلق" }
-      assertTrue(view.contacts.single().pending)
-    }
+    val queuedId = outbox.snapshot().single().entityId
+    assertTrue(
+        awaitPerson(queuedId) { it.ledger.contacts.single().name == "معلق" }
+            .ledger
+            .contacts
+            .single()
+            .pending
+    )
   }
 
   /**
    * An idle poll's page (no events, cursor unmoved) must do no work at all. A persist is counted
    * through the store's DAO hook: [LedgerStore] takes its DAOs as parameters so a test can count
-   * writes, and [LedgerMetaDao.put] runs once per persist. A new equal `LedgerState` instance would
-   * be conflated by the state flow, so only the persist count proves the skip.
+   * writes, and [LedgerMetaDao.put] runs once per persist.
    */
   @Test
   fun anIdlePageEmitsNothingPersistsNothingAndKeepsTheCursor() = runTest {
@@ -190,18 +170,12 @@ class LedgerRepositoryTest : LedgerTestCase() {
     repo.seed(contactCommand())
     val afterSeed = persists.get()
 
-    var records: ContactRecords? = null
-    repo.contactRecords.test {
-      // The projection runs on Default: wait for the seeded records, or they land mid-check.
-      while (records?.ledger?.contacts.isNullOrEmpty()) records = awaitItem()
-      repo.applyPage(Events.page(emptyList(), cursor = 1, nextCursor = 1))
-      // Real time: give the idle pass somewhere to (wrongly) emit into.
-      withContext(Dispatchers.Default) { delay(300) }
-      expectNoEvents()
-    }
+    awaitPerson(CONTACT_ID) { it.ledger.contacts.isNotEmpty() }
+    repo.applyPage(Events.page(emptyList(), cursor = 1, nextCursor = 1))
+    // Real time: give a wrongly-folding pass somewhere to write into.
+    withContext(Dispatchers.Default) { delay(300) }
 
     assertEquals("an idle page must not persist", afterSeed, persists.get())
-    assertTrue("an idle page must not republish the records", records === repo.contactRecords.value)
     assertEquals(1L, db.metaDao().get()!!.cursor)
   }
 
@@ -218,6 +192,53 @@ class LedgerRepositoryTest : LedgerTestCase() {
     repo.applyPage(Events.page(emptyList(), cursor = 2, nextCursor = 2))
 
     assertEquals(2L, db.metaDao().get()!!.cursor)
+  }
+
+  // Ticket 168: opening a store reads no full table, and the screens' answers hold either way.
+
+  @Test
+  fun reopeningAFilledStorePerformsNoWholeTableRead() = runTest {
+    // A confirmed person with one debt, as the last page left them, and the summary they have
+    // after the fill ran on the first open.
+    val seedStore = LedgerStore(db)
+    val page =
+        Events.page(
+            listOf(
+                Events.accepted(contactCommand(), 1),
+                Events.accepted(debtCommand(amount = 10_000, id = DEBT_ID, minute = 1), 2),
+            )
+        )
+    seedStore.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(page), page)
+    val first = repository()
+    first.load()
+    first.summaryReady.first { it }
+    assertEquals(1, db.contactSummaryDao().all().size)
+
+    // Reopen on a store whose whole-table reads would throw: opening reads no `all()`.
+    val reads = setOf("all", "archived")
+    val guarded =
+        LedgerStore(
+            db,
+            contacts = throwingOn(reads, ContactDao::class.java, db.contactDao()),
+            debts = throwingOn(reads, DebtDao::class.java, db.debtDao()),
+            payments = throwingOn(reads, PaymentDao::class.java, db.paymentDao()),
+            offsets = throwingOn(reads, OffsetDao::class.java, db.offsetDao()),
+        )
+    val reopened = LedgerRepository(guarded, outbox, session, countedScope)
+
+    withContext(Dispatchers.Default) {
+      withTimeout(5_000) {
+        reopened.load()
+        reopened.summaryReady.first { it }
+      }
+    }
+
+    // Home, People and the contact page answer from Room exactly as the first open did.
+    val row = db.contactSummaryDao().all().single()
+    val personLedger = PersonLedger(guarded, outbox, session)
+    val records = checkNotNull(personLedger.records(CONTACT_ID))
+    assertEquals(summaryOf(records.ledger, CONTACT_ID), row)
+    assertEquals(Cents(10_000), records.ledger.debts.single().remaining)
   }
 
   /** The no-op skip never hides a reset: epoch is checked before the idle-page return. */
@@ -342,15 +363,12 @@ class LedgerRepositoryTest : LedgerTestCase() {
         null,
         FirstDebt(Cents(10_000)),
     )
-    val contactId = outbox.snapshot().single { it.type == CommandType.CONTACT_CREATE }.operationId
+    val contactId = outbox.snapshot().single { it.type == CommandType.CONTACT_CREATE }.entityId
 
-    repo.view.test {
-      awaitView { it.contacts.isNotEmpty() && it.debts.isNotEmpty() }
-      outbox.cancel(contactId)
-      val view = awaitView { it.contacts.isEmpty() && it.debts.isEmpty() }
-      assertEquals(0, view.pendingContacts)
-      assertEquals(0, view.pendingDebts)
-    }
+    awaitPerson(contactId) { it.ledger.contacts.isNotEmpty() && it.ledger.debts.isNotEmpty() }
+    outbox.cancel(outbox.snapshot().single { it.type == CommandType.CONTACT_CREATE }.operationId)
+    assertEquals(0, awaitPerson(contactId) { it.ledger.contacts.isEmpty() }.ledger.pendingContacts)
+    assertEquals(0, awaitPerson(contactId) { it.ledger.debts.isEmpty() }.ledger.pendingDebts)
   }
 
   @Test
@@ -368,14 +386,12 @@ class LedgerRepositoryTest : LedgerTestCase() {
           )
         }
     )
-    repo.contactRecords.first { it?.failed?.isNotEmpty() == true }
+    awaitPerson(id) { it.failed.isNotEmpty() }
 
     assertTrue(repo.discardDraft(id).isSuccess)
 
     assertTrue(outbox.snapshot().isEmpty())
-    assertTrue(
-        checkNotNull(repo.contactRecords.first { it?.failed?.isEmpty() == true }).failed.isEmpty()
-    )
+    assertNull(personLedger().records(id))
   }
 
   @Test
@@ -393,33 +409,32 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertTrue(repo.discardDraft(queued).exceptionOrNull() is Refusal.Unknown)
   }
 
+  /**
+   * A queued payment on a confirmed debt rests on the person's own rows: the person's page shows
+   * the payment and the remaining balance, and nothing confirmed is rebuilt.
+   */
   @Test
   fun aQueuedEntryKeepsTheConfirmedRowsItAlreadyBuilt() = runTest {
     val repo = repository()
     repo.load()
     repo.seed(contactCommand(), debtCommand())
 
-    repo.view.test {
-      val before = awaitView { it.debts.isNotEmpty() }
-      outbox.append(
-          // What the deleted payDebt queued: a payment on a confirmed debt needs nothing.
-          listOf(
-              Commands.paymentCreate(
-                  Events.origin,
-                  java.time.Instant.now(),
-                  DEBT_ID,
-                  Cents(1_000),
-                  PaymentMethod.CASH,
-                  null,
-              )
-          )
-      )
-      val after = awaitView { it.payments.isNotEmpty() }
+    outbox.append(
+        // What the deleted payDebt queued: a payment on a confirmed debt needs nothing.
+        listOf(
+            Commands.paymentCreate(
+                Events.origin,
+                java.time.Instant.now(),
+                DEBT_ID,
+                Cents(1_000),
+                PaymentMethod.CASH,
+                null,
+            )
+        )
+    )
+    val after = awaitPerson(CONTACT_ID) { it.ledger.payments.isNotEmpty() }
 
-      assertEquals(Cents(9_000), after.debts.single().remaining)
-      // The same object, not an equal copy: showing the entry rebuilt nothing confirmed.
-      assertSame(before.contacts.single(), after.contacts.single())
-    }
+    assertEquals(Cents(9_000), after.ledger.debts.single().remaining)
   }
 
   @Test
@@ -668,24 +683,14 @@ class LedgerRepositoryTest : LedgerTestCase() {
         Events.page(listOf(Events.accepted(offset, 7), Events.accepted(archiveThird, 8)))
     )
 
-    val view =
-        repo.view.first {
-          it != null && it.contacts.size == 2 && it.debts.any { row -> row.id == DEBT_ID }
-        } ?: error("no view")
-    val rows = db.contactSummaryDao().all()
+    awaitSummary { rows -> rows.none { it.contactId == thirdContact } && rows.size == 2 }
+    val viewRows = db.contactSummaryDao().all()
     assertEquals(
         "only the two visible people have rows",
-        view.contacts.map { it.id }.toSet(),
-        rows.map { it.contactId }.toSet(),
+        setOf(CONTACT_ID, OTHER_CONTACT_ID),
+        viewRows.mapTo(HashSet()) { it.contactId },
     )
-    assertTrue("archived person has no row", rows.none { it.contactId == thirdContact })
-    for (row in rows) {
-      assertEquals(
-          "row ${row.contactId} equals summaryOf(wholeStoreView)",
-          summaryOf(view, row.contactId),
-          row,
-      )
-    }
+    assertRowsEqualRecords()
   }
 
   @Test
@@ -798,26 +803,14 @@ class LedgerRepositoryTest : LedgerTestCase() {
     repo.load()
     repo.summaryReady.first { it }
 
-    val view =
-        repo.view.first {
-          it != null &&
-              it.contacts.any { person -> person.id == queuedContact } &&
-              it.debts.firstOrNull { row -> row.id == DEBT_ID }?.remaining == Cents(4_500)
-        } ?: error("no view")
+    // Every visible person incl. queued has a row, and each row is that person's own projection.
     val rows = db.contactSummaryDao().all()
     assertEquals(
-        "every visible person incl. queued has a row",
-        view.contacts.map { it.id }.toSet(),
-        rows.map { it.contactId }.toSet(),
+        setOf(CONTACT_ID, OTHER_CONTACT_ID, queuedContact),
+        rows.mapTo(HashSet()) { it.contactId },
     )
     assertTrue("archived person has no row", rows.none { it.contactId == thirdContact })
-    for (row in rows) {
-      assertEquals(
-          "row ${row.contactId} equals summaryOf(wholeStoreView)",
-          summaryOf(view, row.contactId),
-          row,
-      )
-    }
+    assertRowsEqualRecords()
   }
 
   @Test
@@ -935,7 +928,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
     assertEquals("only A is named", 1, counting.upserted)
     assertEquals(0, counting.deleted)
     assertEquals(bBefore, db.contactSummaryDao().all().single { it.contactId == OTHER_CONTACT_ID })
-    assertRowsEqualView(repo)
+    assertRowsEqualRecords()
 
     // Queue a new person with a first debt: a new pending row.
     counting.reset()
@@ -945,7 +938,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
       row != null && row.pending && row.net == 2_000L
     }
     assertEquals("one new person, one row", 1, counting.upserted)
-    assertRowsEqualView(repo)
+    assertRowsEqualRecords()
 
     // Settle A's queued debt as REJECTED: A's row returns to the old net.
     counting.reset()
@@ -955,7 +948,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
       rows.singleOrNull { it.contactId == CONTACT_ID }?.net == Cents(10_000).value
     }
     assertEquals(1, counting.upserted)
-    assertRowsEqualView(repo)
+    assertRowsEqualRecords()
 
     // Cancel a queued payment: the owner's row returns to the old open balance.
     val paymentCommand =
@@ -972,7 +965,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
     awaitSummary { rows ->
       rows.singleOrNull { it.contactId == CONTACT_ID }?.openReceivable == Cents(9_000).value
     }
-    assertRowsEqualView(repo)
+    assertRowsEqualRecords()
     counting.reset()
     val paymentRow = outbox.snapshot().single { it.entityId == paymentId }
     outbox.cancel(paymentRow.operationId)
@@ -980,7 +973,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
       rows.singleOrNull { it.contactId == CONTACT_ID }?.openReceivable == Cents(10_000).value
     }
     assertEquals(1, counting.upserted)
-    assertRowsEqualView(repo)
+    assertRowsEqualRecords()
   }
 
   @Test
@@ -1019,7 +1012,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
         queuedDebt,
         outbox.snapshot().single { it.type == CommandType.DEBT_CREATE }.entityId,
     )
-    assertRowsEqualView(reopened)
+    assertRowsEqualRecords()
   }
 
   /** No pulled page names a queued new person, and the outbox did not change to rewrite them. */
@@ -1044,12 +1037,12 @@ class LedgerRepositoryTest : LedgerTestCase() {
         .exceptionOrNull()
     assertTrue(failure is LedgerReset)
     assertTrue(db.contactSummaryDao().all().isEmpty())
-    repo.view.first { it?.contacts?.size == 1 }
+    awaitPerson(queued) { it.ledger.contacts.size == 1 }
 
     repo.applyPage(Events.page(confirmed).copy(epoch = epoch))
 
-    repo.view.first { it?.contacts?.size == 2 }
-    assertRowsEqualView(repo)
+    awaitPerson(queued) { it.ledger.contacts.size == 1 && it.ledger.debts.isNotEmpty() }
+    assertRowsEqualRecords()
     val row = db.contactSummaryDao().all().single { it.contactId == queued }
     assertTrue(row.pending)
     assertEquals(2_000L, row.net)
@@ -1278,13 +1271,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
                 .mapIndexed { index, command -> Events.accepted(command, 6L + index) },
         ),
     )
-    val archived =
-        repo.view
-            .first { view ->
-              view?.archivedContacts?.any { it.id == third } == true
-            }!!
-            .archivedContacts
-            .first { it.id == third }
+    val archived = archivedContact(third)
     val seeded = outbox.snapshot().size
 
     val saved = repo.restoreContact(third, "استعادة من سلة المحذوفات")
@@ -1322,13 +1309,7 @@ class LedgerRepositoryTest : LedgerTestCase() {
                 .mapIndexed { index, command -> Events.accepted(command, 6L + index) },
         ),
     )
-    val archived =
-        repo.view
-            .first { view ->
-              view?.archivedContacts?.any { it.id == third } == true
-            }!!
-            .archivedContacts
-            .first { it.id == third }
+    val archived = archivedContact(third)
     val seeded = outbox.snapshot().size
 
     val saved = repo.deleteContact(third, "حذف نهائي من سلة المحذوفات")
@@ -1466,15 +1447,49 @@ class LedgerRepositoryTest : LedgerTestCase() {
     }
   }
 
-  /** Every stored row equals `summaryOf(wholeStoreView, id)` for the current view. */
-  private suspend fun assertRowsEqualView(repo: LedgerRepository) {
-    val view = repo.view.first { it != null }!!
+  /** Every stored row equals the projection of that person's own Room rows. */
+  private suspend fun assertRowsEqualRecords() {
     val rows = db.contactSummaryDao().all()
-    assertEquals(view.contacts.map { it.id }.toSet(), rows.map { it.contactId }.toSet())
     for (row in rows) {
-      assertEquals("row ${row.contactId}", summaryOf(view, row.contactId), row)
+      assertEquals(
+          "row ${row.contactId}",
+          summaryOf(checkNotNull(personLedger().records(row.contactId)).ledger, row.contactId),
+          row,
+      )
     }
   }
+
+  /** The person's ledger, read person-at-a-time as the screens do since ticket 168. */
+  private fun personLedger(): PersonLedger = PersonLedger(LedgerStore(db), outbox, session)
+
+  /** Waits (real time, on Default) until the person's projected rows satisfy [predicate]. */
+  private suspend fun awaitPerson(
+      id: String,
+      predicate: suspend (ContactRecords) -> Boolean,
+  ): ContactRecords {
+    val ledger = personLedger()
+    return withContext(Dispatchers.Default) {
+      withTimeout(5_000) {
+        var found: ContactRecords? = null
+        while (found == null) {
+          val records = ledger.records(id)
+          if (records != null && predicate(records)) {
+            found = records
+          } else {
+            delay(20)
+          }
+        }
+        checkNotNull(found)
+      }
+    }
+  }
+
+  /** The trash's contacts of one person, projected the way the writes read them. */
+  private suspend fun archivedContact(id: String): ContactView =
+      checkNotNull(LedgerStore(db).loadPerson(id))
+          .view(emptyList(), emptySet(), session.selfInstallationId, "")
+          .archivedContacts
+          .first { it.id == id }
 
   /** A helper id that is a valid UUID for payment entities. */
   private fun paymentCommandId(): String = UUID.randomUUID().toString()

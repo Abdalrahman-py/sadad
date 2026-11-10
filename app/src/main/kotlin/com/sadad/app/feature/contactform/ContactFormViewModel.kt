@@ -6,13 +6,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
 import com.sadad.app.data.ledger.LedgerRepository
+import com.sadad.app.data.ledger.PersonLedger
 import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.ledger.ContactKind
+import com.sadad.ledger.ContactView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -51,6 +56,7 @@ data class ContactFormState(
  */
 class ContactFormViewModel(
     private val repository: LedgerRepository,
+    private val staff: PersonLedger,
     val storeUserId: String,
     context: Context,
     private val saved: SavedStateHandle,
@@ -84,39 +90,46 @@ class ContactFormViewModel(
 
   init {
     // The edit form waits for the Contact, then copies it into the fields and the saved state once.
+    // Room holds the rows (ticket 168), so the person's own ledger flows it in; no whole store.
     viewModelScope.launch {
-      repository.view.collect { projected ->
-        val editing = contactId
-        if (!prefilled && editing != null && projected != null) {
-          val contact = projected.contacts.firstOrNull { it.id == editing }
-          if (contact != null) {
-            prefilled = true
-            saved[PREFILLED] = true
-            val prefix = contact.whatsappCode
-            val number = contact.phone
-            val category =
-                contact.category.ifBlank {
-                  appContext.getString(R.string.contactform_default_category)
-                }
-            saved[PREFIX] = prefix
-            saved[PHONE] = number
-            saved[NAME] = contact.name
-            saved[KIND] = contact.kind.name
-            saved[CATEGORY] = category
-            saved[NOTE] = contact.note
-            mutable.update {
-              it.copy(
-                  name = contact.name,
-                  prefix = prefix,
-                  phone = number,
-                  kind = contact.kind,
-                  category = category,
-                  note = contact.note,
-              )
-            }
-          }
+      val editing = contactId ?: return@launch
+      if (prefilled) return@launch
+      val contact =
+          staff
+              .observe(editing)
+              .mapNotNull { records ->
+                records?.ledger?.contacts?.firstOrNull { it.id == editing }
+              }
+              .first()
+      prefillFrom(contact)
+    }
+  }
+
+  /** Copies [contact] into the fields and the saved state, once. */
+  private fun prefillFrom(contact: ContactView) {
+    prefilled = true
+    saved[PREFILLED] = true
+    val prefix = contact.whatsappCode
+    val number = contact.phone
+    val category =
+        contact.category.ifBlank {
+          appContext.getString(R.string.contactform_default_category)
         }
-      }
+    saved[PREFIX] = prefix
+    saved[PHONE] = number
+    saved[NAME] = contact.name
+    saved[KIND] = contact.kind.name
+    saved[CATEGORY] = category
+    saved[NOTE] = contact.note
+    mutable.update {
+      it.copy(
+          name = contact.name,
+          prefix = prefix,
+          phone = number,
+          kind = contact.kind,
+          category = category,
+          note = contact.note,
+      )
     }
   }
 

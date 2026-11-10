@@ -172,12 +172,12 @@ class SyncPullTest {
       changes.forEach { f.page(it) }
       assertEquals(SyncStatus.Idle, f.engine.pass(f.scope))
 
-      // Room and the cached view both equal folding every page over the whole store.
+      // Room and the projection both equal folding every page over the whole store.
       val full = changes.fold(LedgerState.EMPTY) { state, page -> state.apply(page) }
       assertEquals(full, f.scope.store.load())
       val expected =
           full.view(emptyList(), emptySet(), f.scope.selfInstallationId, f.scope.staffName.first())
-      assertEquals(expected, f.scope.repository.view.first { it == expected })
+      assertEquals(expected, f.scope.personLedger.wholeView())
       assertEquals(listOf(b), expected.contacts.map { it.id })
     }
   }

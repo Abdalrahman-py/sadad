@@ -168,7 +168,7 @@ D7. CI: actions pinned by tag in `android-ci.yml`, SHA in `admin-pages.yml`; no 
     AppGraph.kt   manual DI container held by Application
 ```
 Rules:
-- Screens read one `StateFlow<LedgerView>` computed from an in-memory `LedgerState` saved as Room rows plus the outbox, and the read model is plaintext in Room (only outbox payloads and the refresh token are encrypted). Compose recomposes only what changed: no `refreshCurrentScreen`, no wiped forms.
+- Room is the only copy of the ledger. Screens read Room queries: the per-person summary for Home, People and quick add; one person's rows for the contact page and writes; a period's rows for Activity and statements. A person's queued commands are projected over that person's rows with `LedgerState.view`. The read model is plaintext in Room (only outbox payloads and the refresh token are encrypted). Compose recomposes only what changed: no `refreshCurrentScreen`, no wiped forms.
 - Form state lives in `SavedStateHandle`, so it survives process death.
 - Navigation Compose with type-safe routes; predictive back for free.
 - Money is `Cents(Long)` everywhere; it is formatted only in UI.
@@ -299,7 +299,7 @@ Written directly in Kotlin inside `app/` against the Phase 2 contract.
 
 **Phase 3 decisions (user, 2026-10-17):**
 - The Java app is deleted first (ticket 39), not at the end.
-- Screens read one `StateFlow<LedgerView>` computed from an in-memory `LedgerState` saved as Room rows, and the read model is plaintext in Room (only outbox payloads and the refresh token are encrypted).
+- Room is the only copy of the ledger; screens read Room queries and keep no `LedgerView` resident, and the read model is plaintext in Room (only outbox payloads and the refresh token are encrypted).
 - `minSdk` 26, so no core library desugaring.
 - Server fixes land before the cutover (tickets 34–36).
 - Room and Compose tests run on Robolectric.
@@ -309,7 +309,7 @@ Written directly in Kotlin inside `app/` against the Phase 2 contract.
 
 1. `:ledger-core` (pure Kotlin/JVM) — done (tickets 16, 17): `Cents(Long)`, typed commands, projection over `changes` events, payment allocation, proof text. The behaviour of today's `LedgerProjectionTest`/`LedgerCommandTest`/`LedgerQueueTest` is rewritten as Kotlin tests against the new API; they never call Java.
 2. Data layer: Room (read model + outbox), the outbox payload encrypted with one Keystore-wrapped AES key, DataStore, OkHttp `AuthApi` (`/auth/v1/token`) and `LedgerApi` with a signing interceptor, `SyncWorker` on WorkManager, `AppGraph`.
-3. Compose UI: `ComponentActivity` + `NavHost` + ViewModels reading `StateFlow<LedgerView>`; screens in order: login/unlock → home → contacts → contact detail → contact/debt/payment forms → history/reports → settings/recovery. Each screen has a Compose UI test. PDF/Excel exporters ported to Kotlin on IO.
+3. Compose UI: `ComponentActivity` + `NavHost` + ViewModels reading Room queries; screens in order: login/unlock → home → contacts → contact detail → contact/debt/payment forms → history/reports → settings/recovery. Each screen has a Compose UI test. PDF/Excel exporters ported to Kotlin on IO.
    - **The lock and screen privacy (#177, decided 28 October 2026):** the gate removes the gated content from composition while locked and keeps its saveable state in a `rememberSaveableStateHolder`, so the `rememberNavController` inside it saves and restores the back stack — unlocking returns to the screen the owner left, not to Home. `MainActivity` calls `setRecentsScreenshotEnabled(false)` on API 33+, which keeps balances out of the app-switcher snapshot while leaving screenshots available for receipts; `FLAG_SECURE` is not used because the owner shares receipts. The content is deliberately **not** left composed behind the unlock screen: the lock protects input, the window flag protects the snapshot, and composing the ledger under an overlay without a window flag would put real balances in recents.
 4. **Release hardening:** enable R8 + `shrinkResources` with tested keep rules (the Java app, the `standalone` flavor, `STANDALONE_MODE`, the `"123"` login, the old `androidTest` runners and `res` leftovers are deleted first in ticket 39). Testers reinstall.
 5. Baseline Profile + Macrobenchmark module (the one allowed extra module, test-only); StrictMode `penaltyDeath` in debug.

@@ -21,18 +21,14 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
- * What quick add reads from the open store: the Ledger, the device's permissions and its status.
+ * What quick add reads from the open store: the stored summary, the device's permissions and its
+ * status. Room is the only ledger (ticket 168): the picker reads the summary once it is ready, and
+ * shows its loading state until then — no ledger view is read anywhere.
  */
 interface QuickAddSource {
   /**
-   * The open store's Ledger view; null while no store is open. Once [summaryReady] the picker reads
-   * [summaries] instead, and this is never collected.
-   */
-  val view: Flow<LedgerView?>
-
-  /**
    * The stored per-person summary rows; null while no store is open. The picker reads these once
-   * [summaryReady] is true.
+   * [summaryReady] is true, and shows its loading state before.
    */
   val summaries: Flow<List<ContactSummaryEntity>?>
     get() = flowOf(null)
@@ -99,9 +95,6 @@ interface QuickAddStore {
 fun AppGraph.quickAddSource(appContext: Context? = null): QuickAddSource {
   val graph = this
   return object : QuickAddSource {
-    override val view: Flow<LedgerView?> =
-        graph.current.flatMapLatest { scope -> scope?.repository?.view ?: flowOf(null) }
-
     override val summaries: Flow<List<ContactSummaryEntity>?> =
         graph.current.flatMapLatest { scope ->
           scope?.let { it.database.contactSummaryDao().observe() } ?: flowOf(null)

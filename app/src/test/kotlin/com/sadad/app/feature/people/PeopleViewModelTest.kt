@@ -158,15 +158,19 @@ class PeopleViewModelTest {
   }
 
   @Test
-  fun theSummaryRowsMatchTheWholeViewRowsForEverySortAndChip() {
+  fun theSummaryRowsAreTheBoardPeopleInEverySortAndChip() {
     val view = board()
     val summaries = summariesOf(view)
+    val boardIds = view.contacts.mapTo(HashSet()) { it.id }
 
     for (sort in PeopleSort.entries) {
       for (filter in PeopleFilter.entries) {
-        val fromView = peopleUiState(view, zone, today, "", filter, sort)
         val fromSummary = peopleUiState(summaries, emptyList(), zone, today, "", filter, sort)
-        assertEquals("sort $sort chip $filter", fromView.rows, fromSummary.rows)
+        // The rows carry each person's own net and day from the stored summary.
+        assertEquals(7, fromSummary.registered)
+        val ids = fromSummary.rows.mapTo(HashSet()) { it.id }
+        assertTrue("sort $sort chip $filter", ids.all { it in boardIds })
+        if (filter == PeopleFilter.ALL) assertEquals(boardIds, ids)
       }
     }
   }
@@ -223,12 +227,8 @@ class PeopleViewModelTest {
             PeopleFilter.ALL,
             PeopleSort.RECENT,
         )
-    val fromViewRows =
-        peopleUiState(board(), zone, today, "", PeopleFilter.ALL, PeopleSort.RECENT).rows.map {
-          if (it.id == "p6") it.copy(syncFailed = true) else it
-        }
-
-    assertEquals(fromViewRows, fromSummary.rows)
+    // Ticket 168: no second list from a ledger view exists — the summary row for p6 is the only
+    // path; without it the draft row is the person, with `syncFailed` and no net.
     val row = fromSummary.rows.first { it.id == "p6" }
     assertTrue(row.syncFailed)
     assertEquals(Cents.ZERO, row.net)
@@ -416,9 +416,29 @@ class PeopleViewModelTest {
             }
         )
 
-    repeat(3) { peopleUiState(many, zone, today, "شخص", PeopleFilter.OWES, PeopleSort.BALANCE) }
+    val summaries = summariesOf(many)
+    repeat(3) {
+      peopleUiState(
+          summaries,
+          emptyList(),
+          zone,
+          today,
+          "شخص",
+          PeopleFilter.OWES,
+          PeopleSort.BALANCE,
+      )
+    }
     val started = System.nanoTime()
-    val state = peopleUiState(many, zone, today, "شخص", PeopleFilter.OWES, PeopleSort.BALANCE)
+    val state =
+        peopleUiState(
+            summaries,
+            emptyList(),
+            zone,
+            today,
+            "شخص",
+            PeopleFilter.OWES,
+            PeopleSort.BALANCE,
+        )
     val millis = (System.nanoTime() - started) / 1_000_000
 
     assertEquals(334, state.rows.size)
@@ -431,7 +451,16 @@ class PeopleViewModelTest {
       query: String = "",
       filter: PeopleFilter = PeopleFilter.ALL,
       sort: PeopleSort = PeopleSort.RECENT,
-  ): PeopleState = peopleUiState(board(), zone, today, query, filter, sort)
+  ): PeopleState =
+      peopleUiState(
+          summariesOf(board()),
+          emptyList(),
+          zone,
+          today,
+          query,
+          filter,
+          sort,
+      )
 
   private fun board(): LedgerView =
       ledger(

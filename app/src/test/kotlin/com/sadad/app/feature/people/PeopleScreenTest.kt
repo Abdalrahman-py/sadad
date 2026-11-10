@@ -19,7 +19,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
-import com.sadad.app.contactRecords
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contacts.ContactDetailScreen
 import com.sadad.app.feature.contacts.ContactDetailViewModel
@@ -117,7 +116,7 @@ class PeopleScreenTest {
     }
         .use { fixture ->
           val model =
-              PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
+              PeopleViewModel(fixture.graph.peopleSource(), SavedStateHandle()).also {
                 fixture.closeWithStore(it.viewModelScope)
               }
           compose.setContent {
@@ -145,7 +144,7 @@ class PeopleScreenTest {
     }
     fixture.use {
       val model =
-          PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
+          PeopleViewModel(fixture.graph.peopleSource(), SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       compose.setContent { SadadTheme { PeopleScreen(onOpenContact = {}, viewModel = model) } }
@@ -165,7 +164,7 @@ class PeopleScreenTest {
     val fixture = runBlocking { TestGraph.signedIn().also { it.seedCommands(listOf(person)) } }
     fixture.use {
       val list =
-          PeopleViewModel(fixture.graph.contactRecords(), SavedStateHandle()).also {
+          PeopleViewModel(fixture.graph.peopleSource(), SavedStateHandle()).also {
             fixture.closeWithStore(it.viewModelScope)
           }
       val detail =
