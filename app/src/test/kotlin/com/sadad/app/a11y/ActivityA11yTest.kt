@@ -9,10 +9,10 @@ import com.sadad.app.feature.history.HistoryScreen
 import com.sadad.app.feature.history.HistoryTags
 import com.sadad.app.feature.history.HistoryViewModel
 import com.sadad.app.feature.history.statementSource
+import com.sadad.app.testing.seedDebt
+import com.sadad.app.testing.seedPayment
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Direction
-import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.flow.first
 import org.junit.Rule
 import org.junit.Test
@@ -34,10 +34,10 @@ class ActivityA11yTest {
   private fun history(fontScale: Float) = compose.withStore { fixture ->
     awaiting {
       seedContacts(fixture)
-      val repository = checkNotNull(fixture.graph.current.value).repository
-      val id = repository.view.first { it != null }!!.contacts.first().id
-      val debt = repository.addDebt(id, Direction.RECEIVABLE, Cents(10000), null, null).getOrThrow()
-      repository.payDebt(debt, Cents(2000), PaymentMethod.CASH, null).getOrThrow()
+      val scope = checkNotNull(fixture.graph.current.value)
+      val id = scope.repository.view.first { it != null }!!.contacts.first().id
+      val debt = scope.seedDebt(id, amount = Cents(10_000))
+      scope.seedPayment(debt, Cents(2_000))
       fixture.settleAll()
     }
     val history = HistoryViewModel(fixture.graph.statementSource(), SavedStateHandle())

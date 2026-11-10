@@ -9,6 +9,7 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -764,11 +765,9 @@ class QuickAddViewModelTest {
       cents: Long,
       direction: Direction = Direction.RECEIVABLE,
   ): String =
-      checkNotNull(graph.current.value)
-          .repository
-          .addDebt(contactId, direction, Cents(cents), null, null)
-          .getOrThrow()
-          .also { settleAll() }
+      checkNotNull(graph.current.value).seedDebt(contactId, direction, Cents(cents)).also {
+        settleAll()
+      }
 
   /**
    * A Contact holding [cents] of credit: the excess of an earlier payment, as `apply_one` stores

@@ -7,6 +7,7 @@ import com.sadad.app.feature.contacts.payment
 import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.home.homeUiState
 import com.sadad.app.feature.quickadd.PersonSearch
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
@@ -133,7 +134,7 @@ class PersonSummaryTest {
       val d =
           store.repository.addContact("د", null, null, null, FirstDebt(Cents(2_000))).getOrThrow()
       // A queued payment on a confirmed debt.
-      store.repository.payDebt(dA1, Cents(500), PaymentMethod.CASH, "دفعة مؤجلة").getOrThrow()
+      store.seedPayment(dA1, Cents(500), note = "دفعة مؤجلة")
       // A rejected contact.create, still saved with its debts.
       val e =
           store.repository.addContact("هـ", null, null, null, FirstDebt(Cents(700))).getOrThrow()

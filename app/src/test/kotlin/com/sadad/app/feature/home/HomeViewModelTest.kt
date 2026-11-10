@@ -9,6 +9,8 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contacts.contactId
 import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedDebt
+import com.sadad.app.testing.seedPayment
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
@@ -403,10 +405,8 @@ class HomeViewModelTest {
               ),
           )
       )
-      store.repository
-          .addDebt(a, Direction.RECEIVABLE, Cents(3_000), null, "2026-10-20")
-          .getOrThrow()
-      store.repository.payDebt(dA, Cents(2_000), PaymentMethod.CASH, null).getOrThrow()
+      store.seedDebt(a, amount = Cents(3_000), dueDate = "2026-10-20")
+      store.seedPayment(dA, Cents(2_000))
       val view =
           store.repository.view.first {
             it != null && it.debts.any { debt -> debt.pending } && it.payments.any { it.pending }
@@ -610,7 +610,7 @@ class HomeViewModelTest {
           store.repository
               .addContact("سامي", null, null, null, null, ContactKind.CUSTOMER)
               .getOrThrow()
-      store.repository.addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
+      store.seedDebt(contact, amount = Cents(5_000))
       model.state.first { it.owedToStore == Cents(5_000) }
       val derived = calls.get()
 

@@ -16,12 +16,13 @@ import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.history.PeriodPreset
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedDebt
+import com.sadad.app.testing.seedPayment
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
-import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -339,9 +340,7 @@ class SettingsViewModelTest {
       SettingsKit(fixture).use { kit ->
         var contact = ""
         fixture.seed { contact = addContact("سارة محمود", null, null, null, null).getOrThrow() }
-        fixture.seed {
-          addDebt(contact, Direction.RECEIVABLE, Cents(12_000), null, null).getOrThrow()
-        }
+        checkNotNull(fixture.graph.current.value).seedDebt(contact, amount = Cents(12_000))
         val model = kit.viewModel()
 
         // Rows emit before the view is recomputed: wait for the name, not just the count.
@@ -364,13 +363,11 @@ class SettingsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
         var contact = ""
-        var debt = ""
         fixture.seed { contact = addContact("سامي", null, null, null, null).getOrThrow() }
-        fixture.seed {
-          debt = addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
-        }
+        val debt =
+            checkNotNull(fixture.graph.current.value).seedDebt(contact, amount = Cents(5_000))
         fixture.settleAll()
-        fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
+        checkNotNull(fixture.graph.current.value).seedPayment(debt, Cents(2_000))
         val model = kit.viewModel()
 
         // Rows emit before the view is recomputed: wait for the name, not just the count.
@@ -389,12 +386,10 @@ class SettingsViewModelTest {
     TestGraph.signedIn().use { fixture ->
       SettingsKit(fixture).use { kit ->
         var contact = ""
-        var debt = ""
         fixture.seed { contact = addContact("نور", null, null, null, null).getOrThrow() }
-        fixture.seed {
-          debt = addDebt(contact, Direction.RECEIVABLE, Cents(5_000), null, null).getOrThrow()
-        }
-        fixture.seed { payDebt(debt, Cents(2_000), PaymentMethod.CASH, null).getOrThrow() }
+        val debt =
+            checkNotNull(fixture.graph.current.value).seedDebt(contact, amount = Cents(5_000))
+        checkNotNull(fixture.graph.current.value).seedPayment(debt, Cents(2_000))
         val model = kit.viewModel()
 
         val state = model.state.first { it.loaded && it.devices.unsent == 3 }

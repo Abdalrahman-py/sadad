@@ -15,11 +15,11 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedContactPayment
+import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Direction
-import com.sadad.ledger.PaymentMethod
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
@@ -107,19 +107,12 @@ class HistoryScreenTest {
         .use { fixture ->
           if (seed) {
             runBlocking {
-              val repository = checkNotNull(fixture.graph.current.value).repository
+              val scope = checkNotNull(fixture.graph.current.value)
+              val repository = scope.repository
               val contactId = repository.addContact("سامي", null, null, null, null).getOrThrow()
-              repository.addDebt(
-                  contactId,
-                  Direction.RECEIVABLE,
-                  Cents(10_000),
-                  null,
-                  null,
-              )
-              repository
-                  .addDebt(contactId, Direction.RECEIVABLE, Cents(5000), null, null)
-                  .getOrThrow()
-              repository.payContact(contactId, Cents(15000), PaymentMethod.CASH, null).getOrThrow()
+              scope.seedDebt(contactId, amount = Cents(10_000))
+              scope.seedDebt(contactId, amount = Cents(5_000))
+              scope.seedContactPayment(contactId, Cents(15_000))
               fixture.settleAll()
             }
           }

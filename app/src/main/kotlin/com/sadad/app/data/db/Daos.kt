@@ -21,6 +21,10 @@ interface ContactDao {
 
   @Query("SELECT name FROM contacts WHERE id = :id") suspend fun name(id: String): String?
 
+  /** The ids of stored Contacts carrying [phone]; the contact form's duplicate check reads it. */
+  @Query("SELECT id FROM contacts WHERE phone = :phone")
+  suspend fun idsWithPhone(phone: String): List<String>
+
   @Upsert suspend fun upsert(row: ContactEntity)
 
   @Query("SELECT createdSeq FROM contacts WHERE id = :id") suspend fun createdSeq(id: String): Long?

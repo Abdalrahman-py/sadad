@@ -22,7 +22,7 @@ import java.time.Instant
  * A confirmed Contact as a row. [createdSeq] is the sequence of the event that created it, so
  * [LedgerStore.load] can rebuild the event order [com.sadad.ledger.PaymentAllocation] needs.
  */
-@Entity(tableName = "contacts")
+@Entity(tableName = "contacts", indices = [Index("phone")])
 data class ContactEntity(
     @PrimaryKey val id: String,
     val name: String,
