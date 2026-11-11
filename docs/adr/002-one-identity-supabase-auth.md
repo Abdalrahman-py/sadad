@@ -9,7 +9,7 @@ Three identity schemes coexisted (`docs/ARCHITECTURE.md` B3): scrypt passwords a
 Supabase Auth is the only identity:
 - **Store** = Auth user `<username>@stores.sadad.invalid`, linked to `public.stores` by `sadid_private.store_memberships(user_id, store_id)`. The `api` creates the Auth user, then calls `sadid_create_store`.
 - **Admin** = Auth user with `app_metadata.role` `admin` (reads and writes) or `support` (reads only), read in SQL with `auth.jwt() -> 'app_metadata' ->> 'role'`; no access-token hook. Admin routines also require the Auth session to be live, so ending it removes access at once; a removed role takes effect when the JWT expires.
-- **Device** = a row in `sadid_private.installations` (`label`, `staff_name`, `permissions`). Enroll and approve both refuse with `device_limit_reached` when the store already has `allowed_devices` active installations; approval never revokes a device by itself.
+- **Device** = a row in `sadid_private.installations` (`label`, `staff_name`, `permissions`). Every new device key enrolls as `pending`, even when the store already has `allowed_devices` active installations; only a new store's first phone is active at once. Approval refuses with `device_limit_reached` when the store is at its cap, and never revokes a device by itself.
 - **Capability gate**: `sadid_private.current_capability()` refuses a store whose status is not `active`, whose subscription is paused or expired, whose JWT has `force_password_change`, or whose Auth session was ended (`session_active` reads `auth.sessions`).
 
 ## Consequences

@@ -15,6 +15,7 @@ import java.io.IOException
 import kotlinx.coroutines.test.runTest
 import mockwebserver3.MockResponse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -42,14 +43,9 @@ class SessionsTest {
   }
 
   @Test
-  fun aReinstallOnTheSamePhoneKeepsTheInstallationId() = runTest {
-    // The hardware id survives an uninstall; a random UUID does not.
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    Settings.Secure.putString(
-        context.contentResolver,
-        Settings.Secure.ANDROID_ID,
-        "device-android-id-1",
-    )
+  fun aReinstallTakesAFreshInstallationId() = runTest {
+    // No device value survives an uninstall as proof: every signed-in key is a new installation.
+    hardwareId("device-android-id-1")
 
     val first = TestGraph.unsigned()
     val firstId =
@@ -69,11 +65,27 @@ class SessionsTest {
           second.close()
         }
 
-    assertEquals(
-        "the same phone signing in again must present the installation it already approved",
+    assertNotEquals(
+        "a reinstalled phone must present a new installation for approval",
         firstId,
         secondId,
     )
+  }
+
+  @Test
+  fun removingAStoreThenSigningInAgainTakesAFreshInstallationId() = runTest {
+    hardwareId("device-android-id-1")
+
+    TestGraph.unsigned().use { fixture ->
+      fixture.signIn(STORE_A)
+      val firstId = checkNotNull(fixture.graph.accounts.account(STORE_A)).installationId
+      assertTrue(fixture.graph.removeStore(STORE_A))
+
+      fixture.signIn(STORE_A)
+      val secondId = checkNotNull(fixture.graph.accounts.account(STORE_A)).installationId
+
+      assertNotEquals(firstId, secondId)
+    }
   }
 
   @Test
@@ -160,6 +172,12 @@ class SessionsTest {
       assertNull(fixture.graph.accounts.refreshToken(STORE_A))
       assertNull(sessions.inMemorySession(STORE_A))
     }
+  }
+
+  /** The old seed source, set so a test catches any code that starts reading it again. */
+  private fun hardwareId(value: String) {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, value)
   }
 
   private fun sessions(fixture: TestGraph, host: SessionHost) =

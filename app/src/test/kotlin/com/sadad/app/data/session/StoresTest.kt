@@ -1,9 +1,11 @@
 package com.sadad.app.data.session
 
 import android.content.Context
+import android.provider.Settings
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.ledger.OutboxState
@@ -74,6 +76,13 @@ class StoresTest {
 
   @Test
   fun twoStoresUseDifferentDatabaseFilesAndInstallations() = runTest {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    Settings.Secure.putString(
+        context.contentResolver,
+        Settings.Secure.ANDROID_ID,
+        "device-android-id-1",
+    )
+
     TestGraph.unsigned().use { fixture ->
       fixture.signIn(STORE_A)
       val a = fixture.activate(STORE_A)
