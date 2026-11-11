@@ -3,6 +3,7 @@ package com.sadad.app.data.ledger
 import app.cash.turbine.test
 import com.sadad.app.data.crypto.Sealed
 import com.sadad.app.data.db.Events
+import com.sadad.app.data.db.LedgerStore
 import com.sadad.ledger.Commands
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
@@ -28,10 +29,11 @@ class OutboxTest : LedgerTestCase() {
   fun acceptedDeletionStaysPendingUntilItsChangesPageRemovesTheContact() = runTest {
     val contact = contactCommand()
     val archive = Commands.contactArchive(Events.origin, Events.at(1), contact.entityId, 1, "سلة")
-    val before =
-        LedgerState.EMPTY.apply(
-            Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
-        )
+    // The store's rows live in Room; compact only learns which ids Room holds (ticket 168).
+    val store = LedgerStore(db)
+    val creation = Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
+    val withContact = LedgerState.EMPTY.apply(creation)
+    store.persist(LedgerState.EMPTY, withContact, creation)
     val deletion =
         Commands.contactDelete(
             Events.origin,
@@ -43,10 +45,104 @@ class OutboxTest : LedgerTestCase() {
         )
     outbox.append(listOf(deletion))
     outbox.settle(listOf(receiptOf(deletion, ReceiptStatus.ACCEPTED, sequence = 3)))
-    outbox.compact(before)
+
+    outbox.compact(store::present)
     assertEquals(1, outbox.snapshot().size)
-    outbox.compact(before.apply(Events.page(listOf(Events.accepted(deletion, 3)))))
+
+    val removal = Events.page(listOf(Events.accepted(deletion, 3)))
+    store.persist(withContact, withContact.apply(removal), removal)
+    outbox.compact(store::present)
     assertTrue(outbox.snapshot().isEmpty())
+  }
+
+  /**
+   * Ticket 168: `compact` asks the Room ledger which ids it holds instead of a resident state, and
+   * removes exactly the rows today's `compact(state)` removed: one whose entity is in contacts,
+   * debts or payments; a `contact.delete` only once the person is gone; a `contact.restore` only
+   * once the stored version moved past the one the row was sent with (see the restore test).
+   */
+  @Test
+  fun compactRemovesExactlyTheAcceptedRowsTheRoomLedgerHolds() = runTest {
+    val store = LedgerStore(db)
+    val creation =
+        Events.page(
+            listOf(
+                Events.accepted(contactCommand(), 1),
+                Events.accepted(debtCommand(amount = 10_000, id = DEBT_ID, minute = 1), 2),
+                Events.accepted(paymentCommand(minute = 2), 3),
+                Events.accepted(
+                    contactCommand(name = "ليلى", id = OTHER_CONTACT_ID, minute = 3),
+                    4,
+                ),
+            )
+        )
+    val state = LedgerState.EMPTY.apply(creation)
+    store.persist(LedgerState.EMPTY, state, creation)
+
+    suspend fun acceptedRow(command: LedgerCommand, sequence: Long) {
+      outbox.append(listOf(command))
+      outbox.settle(listOf(receiptOf(command, ReceiptStatus.ACCEPTED, sequence = sequence)))
+    }
+    // A person Room does not hold: the row owes its dismissal to a page the store never saw.
+    val unknown =
+        contactCommand(
+            name = "غير مخزّنة",
+            id = "f6a7b8c9-d0e1-4f2a-9b3c-4d5e6f708192",
+            minute = 4,
+        )
+    acceptedRow(unknown, 5)
+    // The deletion's target is still in Room: the row stays.
+    acceptedRow(
+        Commands.contactDelete(
+            Events.origin,
+            Events.at(5),
+            OTHER_CONTACT_ID,
+            2,
+            "نهائي",
+            entityId = OTHER_CONTACT_ID,
+        ),
+        6,
+    )
+    outbox.compact(store::present)
+
+    // Exactly: every row whose entity Room holds (the seeded contact, debt and payment pages'
+    // entities) is gone; the unknown person and the pending deletion stay.
+    assertEquals(
+        setOf(unknown.entityId, OTHER_CONTACT_ID),
+        outbox.snapshot().mapTo(HashSet()) { it.entityId },
+    )
+
+    val removal =
+        Events.page(
+            listOf(
+                Events.accepted(
+                    Commands.contactArchive(
+                        Events.origin,
+                        Events.at(5),
+                        OTHER_CONTACT_ID,
+                        1,
+                        "سلة",
+                        entityId = OTHER_CONTACT_ID,
+                    ),
+                    7,
+                ),
+                Events.accepted(
+                    Commands.contactDelete(
+                        Events.origin,
+                        Events.at(6),
+                        OTHER_CONTACT_ID,
+                        2,
+                        "نهائي",
+                        entityId = OTHER_CONTACT_ID,
+                    ),
+                    8,
+                ),
+            )
+        )
+    store.persist(state, state.apply(removal), removal)
+    outbox.compact(store::present)
+    // The unknown person's row is the only thing left: Room has no person named by it.
+    assertEquals(setOf(unknown.entityId), outbox.snapshot().mapTo(HashSet()) { it.entityId })
   }
 
   @Test
@@ -119,7 +215,9 @@ class OutboxTest : LedgerTestCase() {
     assertTrue(outbox.queued(10).isEmpty())
 
     val page = Events.page(listOf(Events.accepted(command, 1)))
-    outbox.compact(LedgerState.EMPTY.apply(page))
+    val store = LedgerStore(db)
+    store.persist(LedgerState.EMPTY, LedgerState.EMPTY.apply(page), page)
+    outbox.compact(store::present)
     assertTrue(db.outboxDao().all().isEmpty())
   }
 
@@ -202,10 +300,10 @@ class OutboxTest : LedgerTestCase() {
             "حذف",
             entityId = contact.entityId,
         )
-    val archived =
-        LedgerState.EMPTY.apply(
-            Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
-        )
+    val store = LedgerStore(db)
+    val creation = Events.page(listOf(Events.accepted(contact, 1), Events.accepted(archive, 2)))
+    val archived = LedgerState.EMPTY.apply(creation)
+    store.persist(LedgerState.EMPTY, archived, creation)
     val restore =
         Commands.contactRestore(
             Events.origin,
@@ -218,23 +316,21 @@ class OutboxTest : LedgerTestCase() {
     outbox.append(listOf(restore))
     outbox.settle(listOf(receiptOf(restore, ReceiptStatus.ACCEPTED, sequence = 4)))
 
-    outbox.compact(archived)
+    // The stored contact is still at its archived version, so the row stays.
+    outbox.compact(store::present)
     assertEquals(restore.operationId, outbox.snapshot().single().operationId)
 
+    // An unrelated page that does not touch the person or their version changes nothing.
     val unrelated = contactCommand(id = OTHER_CONTACT_ID)
-    val earlierPage =
-        archived.apply(
-            Events.page(
-                listOf(Events.accepted(unrelated, 3)),
-                cursor = 4,
-                nextCursor = 3,
-            )
-        )
-    outbox.compact(earlierPage)
+    val earlier = Events.page(listOf(Events.accepted(unrelated, 3)), cursor = 4, nextCursor = 3)
+    store.persist(archived, archived.apply(earlier), earlier)
+    outbox.compact(store::present)
     assertEquals(restore.operationId, outbox.snapshot().single().operationId)
 
-    val restored = earlierPage.apply(Events.page(listOf(Events.accepted(restore, 4))))
-    outbox.compact(restored)
+    // The restore event is folded: the stored version moves past the row's, so the row goes.
+    val folded = Events.page(listOf(Events.accepted(restore, 4)))
+    store.persist(archived.apply(earlier), archived.apply(earlier).apply(folded), folded)
+    outbox.compact(store::present)
     assertTrue(outbox.snapshot().isEmpty())
   }
 }

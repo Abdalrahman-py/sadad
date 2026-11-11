@@ -19,14 +19,12 @@ import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
-import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -56,6 +54,7 @@ class QuickAddViewModelTest {
       val form =
           com.sadad.app.feature.contactform.ContactFormViewModel(
               store.repository,
+              store.personLedger,
               store.account.storeUserId,
               context,
               SavedStateHandle(),
@@ -86,11 +85,11 @@ class QuickAddViewModelTest {
       )
       assertEquals(listOf(rows.first().operationId), rows.last().command.dependsOn)
       fixture.settleAll()
-      val view =
-          store.repository.view.first {
-            it?.contacts?.any { person -> person.id == id && !person.pending } == true
-          }!!
-      assertEquals("إبراهيم", view.contacts.first { it.id == id }.name)
+      val records = store.personLedger.records(id)
+      val view = checkNotNull(records).ledger
+      val person = checkNotNull(view.contacts.firstOrNull { it.id == id })
+      assertFalse(person.pending)
+      assertEquals("إبراهيم", person.name)
       assertEquals(Cents(25_800), view.debts.first { it.contactId == id }.remaining)
     }
   }
@@ -677,12 +676,10 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun thePickerReadsTheSummaryRowsAndNeverCollectsTheWholeView() = runBlocking {
+  fun thePickerReadsTheSummaryRowsAndNeverWaitsForAWholeView() = runBlocking {
     val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val source =
         object : QuickAddSource {
-          override val view: Flow<LedgerView?> =
-              kotlinx.coroutines.flow.flow { error("the whole-store view must never be collected") }
           override val summaries =
               MutableStateFlow(
                   listOf(

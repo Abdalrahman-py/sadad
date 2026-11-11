@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.OutboxRow
+import com.sadad.app.data.ledger.PersonLedger
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.testing.STORE_A
@@ -41,6 +42,7 @@ class ContactFormViewModelTest {
       val model =
           ContactFormViewModel(
               store.repository,
+              store.personLedger,
               STORE_A,
               context,
               SavedStateHandle(mapOf("name" to "إبراهيم أحمد")),
@@ -57,6 +59,7 @@ class ContactFormViewModelTest {
       val model =
           ContactFormViewModel(
               store.repository,
+              store.personLedger,
               STORE_A,
               context,
               SavedStateHandle(),
@@ -79,7 +82,14 @@ class ContactFormViewModelTest {
       saved: SavedStateHandle = SavedStateHandle(),
   ): ContactFormViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return ContactFormViewModel(scope.repository, STORE_A, context, saved, contactId)
+    return ContactFormViewModel(
+        scope.repository,
+        scope.personLedger,
+        STORE_A,
+        context,
+        saved,
+        contactId,
+    )
   }
 
   private suspend fun TestGraph.rows(): List<OutboxRow> =
@@ -218,8 +228,6 @@ class ContactFormViewModelTest {
       fixture.seed {
         existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow()
       }
-      val repository = checkNotNull(fixture.graph.current.value).repository
-      repository.view.first { view -> view?.contacts?.any { it.id == existing } == true }
 
       val model = fixture.model()
       model.onNameChange("شخص آخر")
@@ -239,9 +247,6 @@ class ContactFormViewModelTest {
     TestGraph.signedIn().use { fixture ->
       var queued: String? = null
       fixture.seed { queued = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
-      checkNotNull(fixture.graph.current.value).repository.view.first { view ->
-        view?.contacts?.any { it.id == queued } == true
-      }
 
       val model = fixture.model()
       model.onNameChange("شخص آخر")
@@ -341,9 +346,6 @@ class ContactFormViewModelTest {
             )
             .getOrThrow()
       }
-      checkNotNull(fixture.graph.current.value).repository.view.first { view ->
-        view?.contacts?.any { it.id == existing } == true
-      }
 
       val model = fixture.model()
       model.onNameChange("شخص آخر")
@@ -414,13 +416,7 @@ class ContactFormViewModelTest {
             addContact("سامي", "0599123456", "عميل", null, null, whatsappCode = "972").getOrThrow()
       }
       fixture.settleAll()
-      val repository = checkNotNull(fixture.graph.current.value).repository
-      val contact =
-          repository.view
-              .first { view -> view?.contacts?.any { it.id == existing } == true }!!
-              .contacts
-              .single { it.id == existing }
-
+      val store = checkNotNull(fixture.graph.current.value)
       val model = fixture.model(contactId = existing)
       model.state.first { it.name == "سامي" }
       assertEquals("0599123456", model.state.value.phone)
@@ -432,7 +428,9 @@ class ContactFormViewModelTest {
       assertFalse(state.busy)
       val rows = fixture.rows()
       val update = rows.single { it.type == CommandType.CONTACT_UPDATE }
-      assertEquals(contact.version, update.command.expectedVersion)
+      // The queued version names the stored Contact's version, read from Room (ticket 168).
+      val version = checkNotNull(store.database.contactDao().byId(checkNotNull(existing))).version
+      assertEquals(version, update.command.expectedVersion)
       assertEquals("سامي الجديد", (update.command.payload() as ContactUpdate).name)
       assertEquals("0599123456", (update.command.payload() as ContactUpdate).phone)
       assertEquals("972", (update.command.payload() as ContactUpdate).whatsappCode)
@@ -476,9 +474,16 @@ class ContactFormViewModelTest {
       fixture.closeWithStore(offlineScope)
       val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
-      offline.view.first { view -> view?.contacts?.any { it.id == existing } == true }
 
-      val model = ContactFormViewModel(offline, STORE_A, context, SavedStateHandle(), existing)
+      val model =
+          ContactFormViewModel(
+              offline,
+              PersonLedger(scope.store, scope.outbox, session),
+              STORE_A,
+              context,
+              SavedStateHandle(),
+              existing,
+          )
       model.state.first { it.name == "سامي" }
       model.onNameChange("سامي الجديد")
       model.save()

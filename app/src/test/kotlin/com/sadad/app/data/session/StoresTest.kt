@@ -21,7 +21,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -48,15 +47,24 @@ class StoresTest {
       fixture.signIn(STORE_B)
       fixture.activate(STORE_B)
       val b = fixture.graph.current.value!!
-      val bView = b.repository.view.filterNotNull().first()
-      assertTrue(bView.contacts.isEmpty())
+      assertTrue(b.personLedger.wholeView().contacts.isEmpty())
       assertTrue(b.outbox.snapshot().isEmpty())
 
       fixture.graph.sessions.switchTo(STORE_A)
 
       val a = fixture.graph.current.first { it?.account?.storeUserId == STORE_A }!!
+      // No resident view: poll Room's whole projection until the queued person is visible.
       val view =
-          a.repository.view.filterNotNull().first { it.contacts.any { c -> c.name == "سامي" } }
+          withContext(Dispatchers.Default) {
+            withTimeout(5_000) {
+              var view = a.personLedger.wholeView()
+              while (view.contacts.none { c -> c.name == "سامي" }) {
+                delay(10)
+                view = a.personLedger.wholeView()
+              }
+              view
+            }
+          }
       assertTrue(view.contacts.single().pending)
       val rowNow = a.outbox.snapshot().single()
       assertEquals(aRow.operationId, rowNow.operationId)
@@ -105,11 +113,11 @@ class StoresTest {
             // here.
             assertEquals(Home, fixture.graph.startRoute())
             val scope = checkNotNull(fixture.graph.current.value)
-            assertNull(scope.repository.view.value)
+            // Opening reads no ledger rows: the fill has not started while the gate holds.
+            assertFalse(scope.repository.summaryReady.value)
 
             gate.release()
-            scope.repository.awaitLoaded()
-            assertNotNull(scope.repository.view.first { it != null })
+            scope.repository.summaryReady.first { it }
           }
         }
       } finally {

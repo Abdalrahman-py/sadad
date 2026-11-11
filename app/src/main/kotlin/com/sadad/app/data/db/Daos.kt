@@ -13,6 +13,8 @@ interface ContactDao {
 
   @Query("SELECT * FROM contacts WHERE id = :id") suspend fun byId(id: String): ContactEntity?
 
+  @Query("SELECT COUNT(*) FROM contacts") suspend fun count(): Int
+
   @Query("SELECT * FROM contacts WHERE id IN (:ids)")
   suspend fun byIds(ids: List<String>): List<ContactEntity>
 

@@ -454,7 +454,8 @@ class SettingsViewModelTest {
                 )
             )
         )
-        val whole = checkNotNull(store.repository.view.first { it?.pendingDebts == 1 })
+        val whole = store.personLedger.wholeView()
+        check(whole.pendingDebts == 1)
         val shared = CompletableDeferred<Shared>()
         val module =
             fixture.dataModule(kit, fixture.settingsUi()) { _, _, view, _, from, to ->

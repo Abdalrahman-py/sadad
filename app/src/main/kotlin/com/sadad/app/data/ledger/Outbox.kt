@@ -1,13 +1,13 @@
 package com.sadad.app.data.ledger
 
 import com.sadad.app.data.crypto.Sealed
+import com.sadad.app.data.db.LedgerPresent
 import com.sadad.app.data.db.OutboxAnswer
 import com.sadad.app.data.db.OutboxDao
 import com.sadad.app.data.db.OutboxEntity
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.LedgerCommand
 import com.sadad.ledger.LedgerJson
-import com.sadad.ledger.LedgerState
 import com.sadad.ledger.OperationsRequest
 import com.sadad.ledger.Receipt
 import com.sadad.ledger.ReceiptStatus
@@ -178,26 +178,29 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
     return DismissResult.Dismissed
   }
 
-  /** Deletes the accepted rows whose entity the confirmed [state] now holds. */
-  suspend fun compact(state: LedgerState) {
-    // Match in Kotlin: binding every id in the state would pass SQLite's 999-variable limit
-    // (API < 30) once a store holds that many rows.
+  /**
+   * Deletes the accepted rows whose entity the Room ledger now holds (ticket 168): [lookup] answers
+   * which of the rows' ids are stored and the versions they do as contacts. One query per ledger
+   * table, chunked like [LedgerStore.present]; delete and restore rows answer by their own rules: a
+   * deletion only once the person is gone, a restore only once the stored version moved past the
+   * one the row was sent with — the archived Contact already exists before its restore event is
+   * pulled.
+   */
+  suspend fun compact(lookup: suspend (Set<String>) -> LedgerPresent) {
+    val accepted = dao.all().filter { it.state == OutboxState.ACCEPTED.column }
+    if (accepted.isEmpty()) return
+    val present = lookup(accepted.mapTo(HashSet()) { it.entityId })
     val done =
-        dao.all()
-            .filter {
-              it.state == OutboxState.ACCEPTED.column &&
-                  (if (it.type == CommandType.CONTACT_DELETE.wireName) {
-                    (commandOf(it).payload() as com.sadad.ledger.ContactDelete).contactId !in
-                        state.contacts
-                  } else {
-                    it.entityId in state.contacts ||
-                        it.entityId in state.debts ||
-                        it.entityId in state.payments
-                  }) &&
-                  // The archived Contact already exists before its restore event is pulled.
-                  (it.type != CommandType.CONTACT_RESTORE.wireName ||
-                      checkNotNull(state.contacts[it.entityId]).version >
-                          checkNotNull(commandOf(it).expectedVersion))
+        accepted
+            .filter { row ->
+              when {
+                row.type == CommandType.CONTACT_DELETE.wireName -> row.entityId !in present.contacts
+                row.type == CommandType.CONTACT_RESTORE.wireName ->
+                    row.entityId in present.contacts &&
+                        checkNotNull(present.contacts[row.entityId]) >
+                            checkNotNull(commandOf(row).expectedVersion)
+                else -> row.entityId in present.all
+              }
             }
             .map { it.operationId }
     for (chunk in done.chunked(500)) dao.deleteAccepted(chunk)

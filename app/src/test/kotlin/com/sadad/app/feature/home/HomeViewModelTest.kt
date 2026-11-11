@@ -2,6 +2,8 @@ package com.sadad.app.feature.home
 
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.Events
+import com.sadad.app.data.ledger.failedOperations
+import com.sadad.app.data.ledger.pendingCommands
 import com.sadad.app.data.session.Account
 import com.sadad.app.data.session.StoreScope
 import com.sadad.app.data.sync.SyncStatus
@@ -21,6 +23,7 @@ import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentView
+import com.sadad.ledger.view
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -273,25 +276,8 @@ class HomeViewModelTest {
             override fun refresh() {
               refreshed.incrementAndGet()
             }
-
-            override fun summaryReady(scope: StoreScope) = flowOf(false)
-
-            override fun view(scope: StoreScope) = scope.repository.view
-
-            override fun roomData(
-                scope: StoreScope,
-                month: YearMonth,
-                zone: ZoneId,
-                today: LocalDate,
-            ): Flow<HomeRoomData> = flow {
-              throw AssertionError("roomData must not be read while summaryReady is false")
-            }
           }
-      val model =
-          HomeViewModel(source) { view, month, zone, today ->
-                homeUiState(view = view, month = month, zone = zone, today = today)
-              }
-              .also { fixture.closeWithStore(it.viewModelScope) }
+      val model = HomeViewModel(source).also { fixture.closeWithStore(it.viewModelScope) }
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
       model.state.first { it.loaded }
 
@@ -364,7 +350,18 @@ class HomeViewModelTest {
               ),
           )
       )
-      val view = store.repository.view.first { it != null && it.contacts.size == 3 }!!
+      // The whole-store projection, built here from Room (ticket 168): the reference derivation
+      // and the Room queries must agree on the same seed.
+      val rows = store.outbox.snapshot()
+      val view =
+          store.store
+              .load()
+              .view(
+                  pendingCommands(rows),
+                  failedOperations(rows),
+                  store.selfInstallationId,
+                  store.staffName.first(),
+              )
       val expected = homeUiState(view, october, zone, today = today)
 
       val clock = MovableClock(at(2026, 10, 25), zone)
@@ -407,10 +404,17 @@ class HomeViewModelTest {
       )
       store.seedDebt(a, amount = Cents(3_000), dueDate = "2026-10-20")
       store.seedPayment(dA, Cents(2_000))
+      // The whole-store projection, built here from Room (ticket 168).
+      val rows = store.outbox.snapshot()
       val view =
-          store.repository.view.first {
-            it != null && it.debts.any { debt -> debt.pending } && it.payments.any { it.pending }
-          }!!
+          store.store
+              .load()
+              .view(
+                  pendingCommands(rows),
+                  failedOperations(rows),
+                  store.selfInstallationId,
+                  store.staffName.first(),
+              )
       // The queued rows are created at Instant.now() (November), so the month is November.
       val november = YearMonth.of(2026, 11)
       val novemberToday = LocalDate.of(2026, 11, 7)
@@ -444,7 +448,7 @@ class HomeViewModelTest {
   }
 
   @Test
-  fun whileSummaryIsNotReadyHomeShowsTheViewAndNeverAnEmptyStore() = runTest {
+  fun whileSummaryIsNotReadyHomeShowsLoadingAndNeverAnEmptyStore() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
       val a = contactId(1)
@@ -462,19 +466,16 @@ class HomeViewModelTest {
               ),
           )
       )
-      val view = store.repository.view.first { it != null && it.contacts.size == 1 }!!
-      val expected = homeUiState(view, october, zone, today = today)
-      // The fill wait: the summary table is still empty, but the ledger is full.
+      // The fill wait: the summary table is emptied, so Home must hold its loading state —
+      // the ledger view it fell back to is gone (ticket 168).
       store.database.contactSummaryDao().clear()
 
-      val clock = MovableClock(at(2026, 10, 25), zone)
-      val model = fixture.home(MutableStateFlow(SyncStatus.Idle), AtomicInteger(), clock)
+      val model = fixture.notReadyHome()
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
-      val state = model.state.first { it.loaded }
+      runCurrent()
 
-      assertEquals(expected.owedToStore, state.owedToStore)
-      assertEquals(expected.monthDebts, state.monthDebts)
-      assertFalse("a full ledger never reads as an empty store", state.empty)
+      assertFalse(model.state.value.loaded)
+      assertFalse(model.state.value.empty)
     }
   }
 
@@ -522,7 +523,17 @@ class HomeViewModelTest {
               ),
           )
       )
-      val view = store.repository.view.first { it != null && it.contacts.size == 3 }!!
+      // The whole-store projection, built here from Room (ticket 168).
+      val rows = store.outbox.snapshot()
+      val view =
+          store.store
+              .load()
+              .view(
+                  pendingCommands(rows),
+                  failedOperations(rows),
+                  store.selfInstallationId,
+                  store.staffName.first(),
+              )
 
       for (day in
           listOf(
@@ -572,10 +583,6 @@ class HomeViewModelTest {
             throw AssertionError("no store, no summaryReady")
           }
 
-          override fun view(scope: StoreScope): Flow<LedgerView?> = flow {
-            throw AssertionError("no store, no view")
-          }
-
           override fun roomData(
               scope: StoreScope,
               month: YearMonth,
@@ -587,15 +594,8 @@ class HomeViewModelTest {
         }
     assertFalse(HomeViewModel(source).state.value.loaded)
 
-    val state =
-        homeUiState(
-            ledger(debts = listOf(debt("d1", "c1", 5_000, at(2026, 10, 2)))),
-            october,
-            zone,
-            today = today,
-        )
-    assertTrue(state.loaded)
-    assertEquals(Cents(5_000), state.owedToStore)
+    // The derivation itself is loaded; only the wait before the summary fill is not.
+    assertTrue(homeUiState(ledger(), october, zone, today = today).loaded)
   }
 
   @Test
@@ -603,8 +603,7 @@ class HomeViewModelTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
       val status = MutableSharedFlow<SyncStatus>(replay = 1).apply { tryEmit(SyncStatus.Idle) }
-      val calls = AtomicInteger()
-      val model = fixture.home(status, calls)
+      val model = fixture.roomHomeWithStatus(status)
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
       val contact =
           store.repository
@@ -612,7 +611,6 @@ class HomeViewModelTest {
               .getOrThrow()
       store.seedDebt(contact, amount = Cents(5_000))
       model.state.first { it.owedToStore == Cents(5_000) }
-      val derived = calls.get()
 
       repeat(3) {
         status.emit(SyncStatus.Running)
@@ -626,40 +624,53 @@ class HomeViewModelTest {
       status.emit(SyncStatus.Idle)
       model.state.first { it.offline == null }
 
-      assertEquals("only the banner moved", derived, calls.get())
-      assertEquals(Cents(5_000), model.state.value.owedToStore)
+      assertEquals("the totals never moved", Cents(5_000), model.state.value.owedToStore)
     }
   }
 
   @Test
-  fun aNewViewOrANewDayDerivesTheTotalsAgain() = runTest {
+  fun aNewDayDerivesTheTotalsAgain() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
-      val clock = MovableClock(Instant.parse("2026-10-25T08:00:00Z"), zone)
-      val calls = AtomicInteger()
-      val model = fixture.home(MutableStateFlow(SyncStatus.Idle), calls, clock)
+      val a = contactId(1)
+      val dA = contactId(11)
+      fixture.seedCommands(
+          listOf(
+              Commands.contactCreate(Events.origin, at(2026, 10, 4), name = "هدى", entityId = a),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 5),
+                  contactId = a,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(5_000),
+                  dueDate = "2026-10-25",
+                  entityId = dA,
+              ),
+          )
+      )
+      val clock = MovableClock(at(2026, 10, 25, 23), zone)
+      val model = fixture.roomHome(clock)
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
-      model.state.first { it.loaded }
-      val first = calls.get()
-
-      store.repository.addContact("هدى", null, null, null, null, ContactKind.CUSTOMER).getOrThrow()
-      model.state.first { !it.empty }
-      val afterView = calls.get()
-      assertTrue("a new view derives again", afterView > first)
+      val state = model.state.first { it.loaded && it.followUpCount == 1 }
+      assertNull("due today has no late day yet", state.followUps.single().lateDays)
 
       clock.now = clock.now.plus(Duration.ofDays(1))
       val follow = launch { model.followMonth() }
       runCurrent()
       follow.cancel()
-      awaitCalls(calls, afterView + 1)
+
+      val midnight = model.state.first { it.followUps.single().lateDays == 1 }
+      assertEquals(
+          "the row is one day late after midnight",
+          1,
+          midnight.followUps.single().lateDays,
+      )
     }
   }
 
-  // The summaryReady=false path (the fill wait): the view is the only totals source.
-  private fun TestGraph.home(
-      status: Flow<SyncStatus>,
-      calls: AtomicInteger,
-      clock: Clock? = null,
+  // The fill-window path: no ledger view exists, so the totals are the loading state.
+  private fun TestGraph.notReadyHome(
+      status: Flow<SyncStatus> = MutableStateFlow(SyncStatus.Idle)
   ): HomeViewModel {
     val real = graph.homeSource()
     val source =
@@ -668,11 +679,7 @@ class HomeViewModelTest {
 
           override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
 
-          override fun refresh() {}
-
           override fun summaryReady(scope: StoreScope) = flowOf(false)
-
-          override fun view(scope: StoreScope) = scope.repository.view
 
           override fun roomData(
               scope: StoreScope,
@@ -683,33 +690,33 @@ class HomeViewModelTest {
             throw AssertionError("roomData must not be read while summaryReady is false")
           }
         }
-    return HomeViewModel(source, clock) { view, month, zone, today ->
-          calls.incrementAndGet()
-          homeUiState(view = view, month = month, zone = zone, today = today)
-        }
-        .also { closeWithStore(it.viewModelScope) }
+    return HomeViewModel(source).also { closeWithStore(it.viewModelScope) }
   }
 
-  // The room path: the whole-store view and the derivation must never be touched.
+  // The room path: with a status the test moves, and a clock the test moves.
+  private fun TestGraph.roomHomeWithStatus(
+      status: Flow<SyncStatus>,
+      clock: Clock? = null,
+  ): HomeViewModel {
+    val real = graph.homeSource()
+    val source =
+        object : HomeSource by real {
+          override fun syncStatus(storeUserId: String) = status
+
+          override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
+        }
+    return HomeViewModel(source, clock).also { closeWithStore(it.viewModelScope) }
+  }
+
   private fun TestGraph.roomHome(clock: Clock): HomeViewModel {
     val real = graph.homeSource()
     val source =
         object : HomeSource by real {
-          override fun view(scope: StoreScope): Flow<LedgerView?> = flow {
-            throw AssertionError("repository.view must not be collected after summaryReady")
-          }
-        }
-    return HomeViewModel(source, clock) { _, _, _, _ ->
-          throw AssertionError("derive must not run after summaryReady")
-        }
-        .also { closeWithStore(it.viewModelScope) }
-  }
+          override fun syncStatus(storeUserId: String) = MutableStateFlow(SyncStatus.Idle)
 
-  /** The derivation runs on another thread; polling keeps the assertion about the count. */
-  private fun awaitCalls(calls: AtomicInteger, count: Int) {
-    val deadline = System.currentTimeMillis() + 5_000
-    while (calls.get() < count && System.currentTimeMillis() < deadline) Thread.sleep(10)
-    assertEquals(count, calls.get())
+          override fun offlineUntil(account: Account): Long = LEASE_END.toEpochMilli()
+        }
+    return HomeViewModel(source, clock).also { closeWithStore(it.viewModelScope) }
   }
 
   private class MovableClock(@Volatile var now: Instant, private val zone: ZoneId) : Clock() {
@@ -720,8 +727,8 @@ class HomeViewModelTest {
     override fun instant(): Instant = now
   }
 
-  private fun at(year: Int, month: Int, day: Int): Instant =
-      LocalDate.of(year, month, day).atTime(12, 0).atZone(zone).toInstant()
+  private fun at(year: Int, month: Int, day: Int, hour: Int = 12): Instant =
+      LocalDate.of(year, month, day).atTime(hour, 0).atZone(zone).toInstant()
 
   private fun contact(
       id: String,

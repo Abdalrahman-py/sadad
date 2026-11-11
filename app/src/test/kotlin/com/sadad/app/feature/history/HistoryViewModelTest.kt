@@ -304,10 +304,9 @@ class HistoryViewModelTest {
               ),
           )
       )
-      val whole =
-          checkNotNull(
-              scope.repository.view.first { it?.pendingDebts == 1 && it.pendingPayments == 1 }
-          )
+      val whole = scope.personLedger.wholeView()
+      assertEquals(1, whole.pendingDebts)
+      assertEquals(1, whole.pendingPayments)
       assertEquals(
           "a statement reads the whole store from Room",
           whole,
@@ -386,11 +385,11 @@ class HistoryViewModelTest {
   private fun at(text: String): Instant = Instant.parse(text)
 
   private suspend fun TestGraph.fold(command: LedgerCommand) {
-    val repository = checkNotNull(graph.current.value).repository
-    val before = repository.view.first { it != null }
-    repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
-    // The view is projected on another thread; wait until it shows this command.
-    repository.view.first { it != before }
+    val scope = checkNotNull(graph.current.value)
+    val before = scope.personLedger.wholeView()
+    scope.repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
+    // applyPage persists before returning, so Room shows the command now.
+    check(scope.personLedger.wholeView() != before)
   }
 
   private suspend fun TestGraph.confirmedContact(name: String, at: Instant): String {

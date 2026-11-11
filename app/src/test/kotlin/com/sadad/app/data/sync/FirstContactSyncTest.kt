@@ -35,10 +35,11 @@ class FirstContactSyncTest {
   private suspend fun verifyFirstContact(phone: String?) {
     SyncFixture.create().use { f ->
       val store = f.scope
-      assertTrue(checkNotNull(store.repository.view.first { it != null }).contacts.isEmpty())
+      assertTrue(store.database.contactDao().all().isEmpty())
       val form =
           ContactFormViewModel(
               store.repository,
+              store.personLedger,
               store.account.storeUserId,
               f.test.context,
               SavedStateHandle(),
@@ -63,11 +64,7 @@ class FirstContactSyncTest {
       f.page(Events.page(listOf(Events.accepted(commands[0], 1)), cursor = 2).copy(hasMore = true))
       f.page(Events.page(listOf(Events.accepted(commands[1], 2))))
       assertEquals(SyncStatus.Idle, f.engine.pass(store))
-      val confirmed =
-          store.repository.view.first {
-            it?.contacts?.any { person -> person.id == id && !person.pending } == true &&
-                it.debts.any { debt -> debt.contactId == id && !debt.pending }
-          }!!
+      val confirmed = checkNotNull(store.personLedger.records(id)).ledger
       assertEquals(Cents(25_800), confirmed.net(id))
       assertTrue(store.outbox.snapshot().isEmpty())
       val visible = detail.state.first { it.movements.any { movement -> !movement.pending } }

@@ -4,12 +4,12 @@ import android.content.Context
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.R
-import com.sadad.app.contactRecords
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.people.peopleSource
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.testing.seedContactPayment
 import com.sadad.app.testing.seedPayment
@@ -83,7 +83,6 @@ class ContactDetailViewModelTest {
 
       assertTrue(model.state.first { it.done }.done)
       assertTrue(store.outbox.snapshot().isEmpty())
-      store.repository.contactRecords.first { it?.failed?.isEmpty() == true }
     }
   }
 
@@ -127,7 +126,7 @@ class ContactDetailViewModelTest {
       assertFalse(failed.canDeleteContacts)
       val people =
           com.sadad.app.feature.people.PeopleViewModel(
-              fixture.graph.contactRecords(),
+              fixture.graph.peopleSource(),
               androidx.lifecycle.SavedStateHandle(),
           )
       fixture.closeWithStore(people.viewModelScope)
@@ -137,10 +136,8 @@ class ContactDetailViewModelTest {
       val recreated = ContactDetailViewModel(fixture.graph.contactDetailSource(), id, context)
       fixture.closeWithStore(recreated.viewModelScope)
       assertFalse(recreated.state.first { it.syncFailure != null }.missing)
-      val ledger =
-          store.repository.view.first {
-            it != null && it.contacts.none { person -> person.id == id }
-          }!!
+      val ledger = store.personLedger.wholeView()
+      assertTrue(ledger.contacts.none { person -> person.id == id })
       assertEquals(Cents.ZERO, ledger.receivable)
       assertEquals(Cents.ZERO, ledger.confirmedReceivable)
     }
@@ -244,9 +241,9 @@ class ContactDetailViewModelTest {
               operationId = UUID.randomUUID().toString(),
           )
       fixture.seedCommands(listOf(person, open, paid, reversed))
-      fixture.graph.current.value!!.repository.view.first { view ->
-        view != null && view.payments.any { it.reversed }
-      }
+      assertTrue(
+          fixture.graph.current.value!!.personLedger.wholeView().payments.any { it.reversed }
+      )
 
       val model =
           ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
@@ -401,7 +398,7 @@ class ContactDetailViewModelTest {
         assertFalse(state.done)
         assertTrue(outboxRows(fixture).isEmpty())
         assertTrue(
-            checkNotNull(fixture.graph.current.value).repository.view.value!!.contacts.any {
+            checkNotNull(fixture.graph.current.value).personLedger.wholeView().contacts.any {
               it.id == person.entityId
             }
         )
@@ -732,10 +729,8 @@ class ContactDetailViewModelTest {
           listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
       )
       store.seedPayment(debtB.entityId, Cents(2_000))
-      val whole =
-          store.repository.contactRecords
-              .first { it != null && it.ledger.payments.any { row -> row.pending } }!!
-              .ledger
+      val whole = store.personLedger.wholeView()
+      assertTrue(whole.payments.any { row -> row.pending })
 
       var shared: LedgerView? = null
       val model =

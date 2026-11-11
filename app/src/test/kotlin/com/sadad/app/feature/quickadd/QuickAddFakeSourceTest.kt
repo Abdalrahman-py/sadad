@@ -74,9 +74,11 @@ class QuickAddFakeSourceTest {
     jobs.cancel()
   }
 
-  private class FakeSource(val jobs: CoroutineScope, view: LedgerView) : QuickAddSource {
+  private class FakeSource(val jobs: CoroutineScope, summaries: List<ContactSummaryEntity>) :
+      QuickAddSource {
     val appended = CompletableDeferred<List<LedgerCommand>>()
-    override val view = MutableStateFlow<LedgerView?>(view)
+    override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
+    override val summaryReady = MutableStateFlow(true)
     override val permissions = flowOf(emptyMap<String, Boolean>())
     override val blocked = flowOf(false)
 
@@ -100,7 +102,14 @@ class QuickAddFakeSourceTest {
   @Test
   fun thePickerListsTheSourcesPeopleAndTheRouteContactStartsAtTheAmount() = runBlocking {
     withTimeout(5_000) {
-      val source = FakeSource(jobs, ledger(contact(C1, "خالد"), contact(C2, "سارة")))
+      val source =
+          FakeSource(
+              jobs,
+              listOf(
+                  summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2),
+                  summary(C2, "سارة", net = 0, openReceivable = 0, atHours = 1),
+              ),
+          )
 
       val picker = model(source).state.first { it.loaded }
       assertEquals(listOf("خالد", "سارة"), picker.people.map { it.name })
@@ -114,7 +123,8 @@ class QuickAddFakeSourceTest {
   @Test
   fun aDebtReachesTheStoreOnlyAfterTheUndoWindow() = runBlocking {
     withTimeout(5_000) {
-      val source = FakeSource(jobs, ledger(contact(C1, "خالد")))
+      val source =
+          FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
       val model = model(source)
       model.state.first { it.loaded }
 
@@ -390,7 +400,7 @@ class QuickAddFakeSourceTest {
     }
   }
 
-  /** A summary-ready source whose [view] fails the test if the ViewModel ever collects it. */
+  /** A summary-ready source; the whole-store view no longer exists (ticket 168). */
   private class SummarySource(
       val jobs: CoroutineScope,
       summaries: List<ContactSummaryEntity>,
@@ -404,8 +414,6 @@ class QuickAddFakeSourceTest {
     override fun contactsGranted() = device != null
 
     val appended = CompletableDeferred<List<LedgerCommand>>()
-    override val view: Flow<LedgerView?> =
-        kotlinx.coroutines.flow.flow { error("the whole-store view must never be collected") }
 
     override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
     override val summaryReady = MutableStateFlow(true)

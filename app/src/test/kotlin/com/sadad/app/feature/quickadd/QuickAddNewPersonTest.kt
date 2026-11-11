@@ -3,6 +3,7 @@ package com.sadad.app.feature.quickadd
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
+import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contactpicker.ContactPermission
@@ -25,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -63,15 +65,21 @@ class QuickAddNewPersonTest {
 
   private class FakeSource(
       val jobs: CoroutineScope,
-      view: LedgerView,
+      private val view: LedgerView,
       private val phone: List<DeviceContact> = emptyList(),
       private val granted: Boolean = true,
       private val limit: Int? = null,
   ) : QuickAddSource {
     val appended = CompletableDeferred<List<LedgerCommand>>()
-    override val view = MutableStateFlow<LedgerView?>(view)
+    override val summaries =
+        MutableStateFlow<List<ContactSummaryEntity>?>(view.contacts.map(::summaryOf))
+    override val summaryReady = MutableStateFlow(true)
+    override val archived = flowOf(view.archivedContacts)
     override val permissions = flowOf(emptyMap<String, Boolean>())
     override val blocked = flowOf(false)
+
+    override fun personView(contactId: String): Flow<LedgerView?> = flowOf(view)
+
     override val contacts =
         object : DeviceContacts {
           override suspend fun list() = phone
@@ -342,3 +350,20 @@ class QuickAddNewPersonTest {
           excludedOperations = emptySet(),
       )
 }
+
+private fun summaryOf(contact: ContactView) =
+    ContactSummaryEntity(
+        contactId = contact.id,
+        name = contact.name,
+        phone = contact.phone,
+        kind = contact.kind,
+        category = contact.category,
+        pending = contact.pending,
+        createdAt = contact.createdAt,
+        net = 0,
+        openReceivable = 0,
+        openPayable = 0,
+        earliestOpenDue = null,
+        lastEntryAt = contact.createdAt,
+        searchKey = PersonSearch.normalize(contact.name),
+    )

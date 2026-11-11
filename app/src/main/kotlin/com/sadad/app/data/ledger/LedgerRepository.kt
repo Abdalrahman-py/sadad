@@ -12,7 +12,6 @@ import com.sadad.ledger.ChangeEvent
 import com.sadad.ledger.Changes
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
-import com.sadad.ledger.ConfirmedLedger
 import com.sadad.ledger.ContactArchive
 import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactDelete
@@ -38,17 +37,11 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -118,9 +111,9 @@ interface RepositorySession {
 }
 
 /**
- * One per open store: the confirmed [LedgerState], the [Outbox] of commands the server has not
- * settled, and the [view] the screens read. Writes put commands in the outbox; only a folded page
- * changes the state.
+ * The open store's writes and pages: Room is the only copy of the ledger (ticket 168), so nothing
+ * here is resident — the writes check one person's Room rows, and a page persists its rows and
+ * summaries in one transaction. Queued commands wait in the [Outbox].
  */
 class LedgerRepository(
     private val store: LedgerStore,
@@ -128,74 +121,47 @@ class LedgerRepository(
     private val session: RepositorySession,
     private val scope: CoroutineScope,
 ) {
-  private val state = MutableStateFlow(LedgerState.EMPTY)
-
-  // The view stays null until the rows are in: the empty state would read as zero balances.
-  private val loaded = MutableStateFlow(false)
   private val mutex = Mutex()
 
   // The summary table is ready when no fill is needed, or when the one-time fill ends.
   private val _summaryReady = MutableStateFlow(false)
   val summaryReady: StateFlow<Boolean> = _summaryReady.asStateFlow()
 
-  // The confirmed half depends on the state and the staff name only, so a queued command, or a
-  // write's check, reuses it; a new state drops it. The writes pass no staff name, hence the map.
-  private val confirmedFor = HashMap<String, ConfirmedLedger>()
-  private var confirmedState: LedgerState? = null
-
-  val contactRecords: StateFlow<ContactRecords?> =
-      combine(state, outbox.rows, session.staffName, loaded) { current, rows, staff, ready ->
-            if (ready) {
-              traced("ledger_project") { contactRecords(project(current, rows, staff), rows) }
-            } else {
-              null
-            }
-          }
-          .flowOn(Dispatchers.Default)
-          .stateIn(scope, SharingStarted.Eagerly, null)
-
-  val view: StateFlow<LedgerView?> =
-      contactRecords.map { it?.ledger }.stateIn(scope, SharingStarted.Eagerly, null)
-
   /**
-   * Reads the confirmed rows once, when the store opens. On an updated phone the table is empty and
-   * the rows are already here, so the fill runs in the background under [mutex] and opening does
-   * not wait; a page sent in the meantime waits on that lock. On failure the lock stays held, so no
-   * page writes a partial table and the next open retries.
+   * The one call opening a store makes, and the only whole-store read left (ticket 160's fill): on
+   * an updated phone the summary table is empty while the rows are here, so the fill rebuilds it
+   * from one [LedgerStore.load] snapshot and drops it — the heap never grows with the store. The
+   * fill runs in the background under [mutex], so opening does not wait; a page sent in the
+   * meantime waits on that lock. A failed fill writes nothing, releases the lock and rethrows, so
+   * the app ends loudly and the next open retries. Every other open answers with one count per
+   * table: no full table is read.
    */
   suspend fun load() {
-    val current = traced("ledger_load") { store.load() }
-    state.value = current
-    if (current.contacts.isEmpty() || store.summaryCount() > 0) {
+    if (store.summaryCount() > 0 || store.contactCount() == 0) {
       _summaryReady.value = true
-      loaded.value = true
       return
     }
     mutex.lock()
-    loaded.value = true
     scope.launch(Dispatchers.Default) {
-      // A second load that started while this fill ran passes the check above (count still 0) and
-      // refills here unless it re-checks under the lock.
-      if (store.summaryCount() > 0) {
-        _summaryReady.value = true
-        mutex.unlock()
-      } else {
+      try {
+        // A second load that started while this fill ran passes the check above (count still 0)
+        // and refills here unless it re-checks under the lock.
+        if (store.summaryCount() > 0) {
+          _summaryReady.value = true
+          return@launch
+        }
         val rows = outbox.snapshot()
-        val view = confirmedOf(current, "").view(pendingCommands(rows), failedOperations(rows))
+        val current = traced("ledger_load") { store.load() }
+        val view =
+            current
+                .confirmed(session.selfInstallationId, "")
+                .view(pendingCommands(rows), failedOperations(rows))
         store.fillSummaries(view.contacts.mapNotNull { summaryOf(view, it.id) })
         _summaryReady.value = true
+      } finally {
         mutex.unlock()
       }
     }
-  }
-
-  /**
-   * Returns once [load] has read the rows. Waits in the store's own scope, so a store closed before
-   * its rows came in cancels the wait instead of holding a sync pass for ever.
-   */
-  suspend fun awaitLoaded() {
-    if (loaded.value) return
-    scope.async { loaded.first { it } }.await()
   }
 
   /**
@@ -269,30 +235,30 @@ class LedgerRepository(
   }
 
   /**
-   * Folds one page under the write lock. A page from another epoch or store empties the state and
-   * the rows, keeps the outbox, and throws [LedgerReset]; any other refusal leaves the state alone.
-   * The page and the summaries of the people it touches are persisted in one transaction.
+   * Folds one page under the write lock. Room is the only ledger: the stored meta answers the reset
+   * and idle-page checks, the fold persists the page's rows, and the summaries of the people it
+   * touches are rebuilt from Room in the same transaction. A page from another epoch or store
+   * empties the rows, keeps the outbox, and throws [LedgerReset].
    */
   suspend fun applyPage(page: Changes) {
     mutex.withLock {
-      val old = state.value
-      if (old.storeId != null && (page.storeId != old.storeId || page.epoch != old.epoch)) {
+      val stored = store.currentMeta()
+      if (stored != null && (page.storeId != stored.storeId || page.epoch != stored.epoch)) {
         store.reset()
-        state.value = LedgerState.EMPTY
         throw LedgerReset(
             IllegalStateException(
-                "page is for store ${page.storeId} epoch ${page.epoch}, not ${old.storeId} ${old.epoch}"
+                "page is for store ${page.storeId} epoch ${page.epoch}, not ${stored.storeId} ${stored.epoch}"
             )
         )
       }
       // An idle poll's page carries nothing: skip the fold, the persist, the publish and the
       // compact, so a pass that found nothing new costs no ledger work.
       if (
-          old.storeId != null &&
-              page.storeId == old.storeId &&
-              page.epoch == old.epoch &&
+          stored != null &&
+              page.storeId == stored.storeId &&
+              page.epoch == stored.epoch &&
               page.events.isEmpty() &&
-              page.nextCursor == old.cursor
+              page.nextCursor == stored.cursor
       ) {
         return
       }
@@ -304,7 +270,7 @@ class LedgerRepository(
       val failed = failedOperations(rows)
       // After a reset the table is empty, and no page names a person who exists only in the outbox.
       val queued =
-          if (old.storeId == null)
+          if (stored == null)
               pending.filter { it.type == CommandType.CONTACT_CREATE }.map { it.entityId }
           else emptyList()
       val touched = touchedPeople(page, next) + queued
@@ -313,9 +279,7 @@ class LedgerRepository(
         val personView = personState.view(pending, failed, session.selfInstallationId, "")
         summaryOf(personView, contactId)
       }
-      val patched = patch(old, workingSet, next)
-      state.value = patched
-      outbox.compact(patched)
+      outbox.compact(store::present)
     }
   }
 
@@ -348,29 +312,6 @@ class LedgerRepository(
       }
     }
     return touched
-  }
-
-  /**
-   * The cached state with [next]'s rows put in and the [ws] rows the page removed taken out, at the
-   * new cursor. Copies the maps instead of patching them in place: the view flow and the write
-   * checks read the old state on other threads without the lock.
-   */
-  // shortcut: copies the store's maps per page (no fold, no Room); ticket 168 drops the cache.
-  private fun patch(old: LedgerState, ws: LedgerState, next: LedgerState): LedgerState {
-    fun <T> patched(old: Map<String, T>, ws: Map<String, T>, next: Map<String, T>) =
-        LinkedHashMap(old).apply {
-          putAll(next)
-          keys.removeAll(ws.keys - next.keys)
-        }
-    return LedgerState(
-        next.storeId,
-        next.epoch,
-        next.cursor,
-        patched(old.contacts, ws.contacts, next.contacts),
-        patched(old.debts, ws.debts, next.debts),
-        patched(old.payments, ws.payments, next.payments),
-        patched(old.offsets, ws.offsets, next.offsets),
-    )
   }
 
   suspend fun addContact(
@@ -634,19 +575,6 @@ class LedgerRepository(
       if (phoneNow == phone) return contact
     }
     return null
-  }
-
-  /** One projection for the flow and for a write's checks, so both see the same rules. */
-  private fun project(current: LedgerState, rows: List<OutboxRow>, staff: String): LedgerView =
-      confirmedOf(current, staff).view(pendingCommands(rows), failedOperations(rows))
-
-  @Synchronized
-  private fun confirmedOf(current: LedgerState, staff: String): ConfirmedLedger {
-    if (confirmedState !== current) {
-      confirmedFor.clear()
-      confirmedState = current
-    }
-    return confirmedFor.getOrPut(staff) { current.confirmed(session.selfInstallationId, staff) }
   }
 
   /**

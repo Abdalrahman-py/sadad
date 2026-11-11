@@ -28,11 +28,16 @@ class PersonLedger(
     private val outbox: Outbox,
     private val session: RepositorySession,
 ) {
-  /** The person's [ContactRecords] as they are now; null while the store has no `ledger_meta`. */
+  /** The person's [ContactRecords] as they are now; null while nothing names them. */
   suspend fun records(contactId: String): ContactRecords? =
       withContext(Dispatchers.Default) {
         val staff = session.staffName.first()
-        store.loadPerson(contactId)?.let { state -> project(state, outbox.snapshot(), staff) }
+        val rows = outbox.snapshot()
+        val state = store.loadPerson(contactId)
+        val records = project(state ?: LedgerState.EMPTY, rows, staff)
+        // No `ledger_meta` yet: a person the queue names still projects on the empty state, while
+        // an id no row names has no records at all.
+        if (state == null && rows.none { it.entityId == contactId }) null else records
       }
 
   /** [records] as a flow, re-read when that person's rows or the outbox change. */

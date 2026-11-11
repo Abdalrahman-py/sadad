@@ -67,14 +67,20 @@ class AutomaticSyncGraphTest {
               }
           withContext(Dispatchers.Default) {
             withTimeout(45_000) {
-              receiver.scope.repository.view.first { view ->
-                view != null && view.debts.size == 1 && view.payments.size == 1
+              // No resident view: poll the receiver's room-projected whole store.
+              var view = receiver.scope.personLedger.wholeView()
+              while (view.debts.size != 1 || view.payments.size != 1) {
+                kotlinx.coroutines.delay(25)
+                view = receiver.scope.personLedger.wholeView()
               }
               receiver.test.graph.accounts.accounts.first { it.first().lastSyncAt != null }
             }
           }
           assertTrue(sender.scope.outbox.snapshot().all { it.state == OutboxState.ACCEPTED })
-          assertEquals("إبراهيم", receiver.scope.repository.view.value!!.contacts.single().name)
+          assertEquals(
+              "إبراهيم",
+              receiver.scope.personLedger.wholeView().contacts.single().name,
+          )
           assertNotNull(receiver.test.graph.accounts.account(STORE_B)!!.lastSyncAt)
         } finally {
           sending.cancelAndJoin()
