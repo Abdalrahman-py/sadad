@@ -1,5 +1,5 @@
--- Registers a device within the store's device cap: a new store's first phone is active at once,
--- every later one waits as pending for an admin.
+-- Registers a device: a new store's first phone is active at once, every later one waits as
+-- pending for an admin. The device cap is enforced at approval, never here.
 create function sadid_private.enroll(
   p_installation uuid,
   p_key jsonb,
@@ -15,7 +15,6 @@ declare
   s public.stores;
   i sadid_private.installations;
   v_generation integer;
-  v_active_count integer;
   v_first boolean;
 begin
   if p_key ->> 'kty' is distinct from 'EC'
@@ -58,10 +57,6 @@ begin
     where id = p_installation
     returning * into i;
   else
-    select count(*) into v_active_count from sadid_private.installations where store_id = v_store_id and status = 'active';
-    if v_active_count >= s.allowed_devices then
-      raise exception 'device_limit_reached';
-    end if;
     select coalesce(max(generation), 0) + 1 into v_generation from sadid_private.installations where store_id = v_store_id;
     -- Any earlier row, revoked ones too, means a person already has to decide about this store.
     v_first := v_generation = 1;

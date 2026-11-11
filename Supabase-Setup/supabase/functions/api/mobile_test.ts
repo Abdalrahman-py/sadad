@@ -243,14 +243,21 @@ dbTest(
 );
 
 dbTest(
-  "enroll beyond allowed_devices returns the device-cap code",
+  "enroll beyond allowed_devices waits as pending for approval",
   async () => {
     const { store } = await activeStore(1);
     const second = await newDevice();
     const res = await send(store.jwt, second, "POST", "/v1/mobile/enroll", {
       body: enrollBody(second),
     });
-    await assertRefusal(res, refusals.enrollOverDeviceCap);
+    assertEqual(res.status, 200);
+    const response = fill(enrollFixture.response, {
+      installationId: second.installationId,
+    });
+    assertEqual(await res.json(), {
+      ...response,
+      installation: { ...response.installation, generation: 2 },
+    });
   },
 );
 
