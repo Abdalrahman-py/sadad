@@ -6,14 +6,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.R
 import com.sadad.app.data.ledger.LedgerRepository
+import com.sadad.app.data.ledger.PersonLedger
 import com.sadad.app.data.ledger.Refusal
 import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.ledger.ContactKind
-import com.sadad.ledger.LedgerView
+import com.sadad.ledger.ContactView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -52,6 +56,7 @@ data class ContactFormState(
  */
 class ContactFormViewModel(
     private val repository: LedgerRepository,
+    private val staff: PersonLedger,
     val storeUserId: String,
     context: Context,
     private val saved: SavedStateHandle,
@@ -59,6 +64,8 @@ class ContactFormViewModel(
     initialName: String = "",
 ) : ViewModel() {
   private val appContext = context.applicationContext
+  // The duplicate check reads Room, so one save runs at a time across the validation and the write.
+  private var validating = false
   private val mutable =
       MutableStateFlow(
           ContactFormState(
@@ -78,46 +85,51 @@ class ContactFormViewModel(
       )
   val state: StateFlow<ContactFormState> = mutable.asStateFlow()
 
-  private var view: LedgerView? = null
   // Saved, not just a field: otherwise a recreated edit form would overwrite what the user typed.
   private var prefilled = saved.get<Boolean>(PREFILLED) ?: (contactId == null)
 
   init {
     // The edit form waits for the Contact, then copies it into the fields and the saved state once.
+    // Room holds the rows (ticket 168), so the person's own ledger flows it in; no whole store.
     viewModelScope.launch {
-      repository.view.collect { projected ->
-        view = projected
-        val editing = contactId
-        if (!prefilled && editing != null && projected != null) {
-          val contact = projected.contacts.firstOrNull { it.id == editing }
-          if (contact != null) {
-            prefilled = true
-            saved[PREFILLED] = true
-            val prefix = contact.whatsappCode
-            val number = contact.phone
-            val category =
-                contact.category.ifBlank {
-                  appContext.getString(R.string.contactform_default_category)
-                }
-            saved[PREFIX] = prefix
-            saved[PHONE] = number
-            saved[NAME] = contact.name
-            saved[KIND] = contact.kind.name
-            saved[CATEGORY] = category
-            saved[NOTE] = contact.note
-            mutable.update {
-              it.copy(
-                  name = contact.name,
-                  prefix = prefix,
-                  phone = number,
-                  kind = contact.kind,
-                  category = category,
-                  note = contact.note,
-              )
-            }
-          }
+      val editing = contactId ?: return@launch
+      if (prefilled) return@launch
+      val contact =
+          staff
+              .observe(editing)
+              .mapNotNull { records ->
+                records?.ledger?.contacts?.firstOrNull { it.id == editing }
+              }
+              .first()
+      prefillFrom(contact)
+    }
+  }
+
+  /** Copies [contact] into the fields and the saved state, once. */
+  private fun prefillFrom(contact: ContactView) {
+    prefilled = true
+    saved[PREFILLED] = true
+    val prefix = contact.whatsappCode
+    val number = contact.phone
+    val category =
+        contact.category.ifBlank {
+          appContext.getString(R.string.contactform_default_category)
         }
-      }
+    saved[PREFIX] = prefix
+    saved[PHONE] = number
+    saved[NAME] = contact.name
+    saved[KIND] = contact.kind.name
+    saved[CATEGORY] = category
+    saved[NOTE] = contact.note
+    mutable.update {
+      it.copy(
+          name = contact.name,
+          prefix = prefix,
+          phone = number,
+          kind = contact.kind,
+          category = category,
+          note = contact.note,
+      )
     }
   }
 
@@ -171,45 +183,51 @@ class ContactFormViewModel(
 
   /** Validates, then queues the Contact (with no debt; the debt comes from QuickAdd). */
   private fun persist(record: Boolean) {
-    if (mutable.value.busy) return
-    val draft = validate() ?: return
-    mutable.update { it.copy(busy = true, message = null) }
+    if (mutable.value.busy || validating) return
+    // The duplicate check reads Room off the UI thread, so the whole save runs in one coroutine.
+    validating = true
     viewModelScope.launch {
-      val editing = contactId
-      val outcome: Result<String> =
-          if (editing == null) {
-            repository.addContact(
-                draft.name,
-                draft.phone,
-                draft.category,
-                draft.note,
-                null,
-                kind = draft.kind,
-                whatsappCode = draft.whatsappCode,
-            )
-          } else {
-            repository
-                .updateContact(
-                    editing,
-                    draft.name,
-                    draft.phone,
-                    draft.category,
-                    draft.note,
-                    draft.kind,
-                    draft.whatsappCode,
-                )
-                .map { editing }
-          }
-      mutable.update { current ->
-        outcome.fold(
-            onSuccess = { current.copy(busy = false, savedContactId = it, record = record) },
-            onFailure = { current.copy(busy = false, message = refusalText(it)) },
-        )
+      try {
+        val draft = validate() ?: return@launch
+        mutable.update { it.copy(busy = true, message = null) }
+        val editing = contactId
+        val outcome: Result<String> =
+            if (editing == null) {
+              repository.addContact(
+                  draft.name,
+                  draft.phone,
+                  draft.category,
+                  draft.note,
+                  null,
+                  kind = draft.kind,
+                  whatsappCode = draft.whatsappCode,
+              )
+            } else {
+              repository
+                  .updateContact(
+                      editing,
+                      draft.name,
+                      draft.phone,
+                      draft.category,
+                      draft.note,
+                      draft.kind,
+                      draft.whatsappCode,
+                  )
+                  .map { editing }
+            }
+        mutable.update { current ->
+          outcome.fold(
+              onSuccess = { current.copy(busy = false, savedContactId = it, record = record) },
+              onFailure = { current.copy(busy = false, message = refusalText(it)) },
+          )
+        }
+      } finally {
+        validating = false
       }
     }
   }
 
-  private fun validate(): Draft? {
+  private suspend fun validate(): Draft? {
     mutable.update {
       it.copy(
           validationAttempt = it.validationAttempt + 1,
@@ -242,9 +260,7 @@ class ContactFormViewModel(
           }
           checkNotNull(parsed).phone
         }
-    val duplicate = phone?.let { value ->
-      view?.contacts?.firstOrNull { it.id != contactId && it.phone == value }
-    }
+    val duplicate = phone?.let { value -> repository.duplicateContact(value, contactId) }
     if (duplicate != null) {
       mutable.update {
         it.copy(

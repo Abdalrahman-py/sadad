@@ -4,21 +4,24 @@ import android.content.Context
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.R
-import com.sadad.app.contactRecords
 import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
+import com.sadad.app.feature.people.peopleSource
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedContactPayment
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerView
-import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentReverse
+import java.time.YearMonth
+import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +83,6 @@ class ContactDetailViewModelTest {
 
       assertTrue(model.state.first { it.done }.done)
       assertTrue(store.outbox.snapshot().isEmpty())
-      store.repository.contactRecords.first { it?.failed?.isEmpty() == true }
     }
   }
 
@@ -124,7 +126,7 @@ class ContactDetailViewModelTest {
       assertFalse(failed.canDeleteContacts)
       val people =
           com.sadad.app.feature.people.PeopleViewModel(
-              fixture.graph.contactRecords(),
+              fixture.graph.peopleSource(),
               androidx.lifecycle.SavedStateHandle(),
           )
       fixture.closeWithStore(people.viewModelScope)
@@ -134,10 +136,8 @@ class ContactDetailViewModelTest {
       val recreated = ContactDetailViewModel(fixture.graph.contactDetailSource(), id, context)
       fixture.closeWithStore(recreated.viewModelScope)
       assertFalse(recreated.state.first { it.syncFailure != null }.missing)
-      val ledger =
-          store.repository.view.first {
-            it != null && it.contacts.none { person -> person.id == id }
-          }!!
+      val ledger = store.personLedger.wholeView()
+      assertTrue(ledger.contacts.none { person -> person.id == id })
       assertEquals(Cents.ZERO, ledger.receivable)
       assertEquals(Cents.ZERO, ledger.confirmedReceivable)
     }
@@ -198,9 +198,7 @@ class ContactDetailViewModelTest {
       val first = debt(person.entityId, amount = 10_000, minute = 1)
       val second = debt(person.entityId, amount = 5_000, minute = 2)
       fixture.seedCommands(listOf(person, first, second))
-      fixture.seed {
-        payContact(person.entityId, Cents(15_000), PaymentMethod.CASH, null).getOrThrow()
-      }
+      checkNotNull(fixture.graph.current.value).seedContactPayment(person.entityId, Cents(15_000))
       val model =
           ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
               .also {
@@ -243,9 +241,9 @@ class ContactDetailViewModelTest {
               operationId = UUID.randomUUID().toString(),
           )
       fixture.seedCommands(listOf(person, open, paid, reversed))
-      fixture.graph.current.value!!.repository.view.first { view ->
-        view != null && view.payments.any { it.reversed }
-      }
+      assertTrue(
+          fixture.graph.current.value!!.personLedger.wholeView().payments.any { it.reversed }
+      )
 
       val model =
           ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
@@ -400,7 +398,7 @@ class ContactDetailViewModelTest {
         assertFalse(state.done)
         assertTrue(outboxRows(fixture).isEmpty())
         assertTrue(
-            checkNotNull(fixture.graph.current.value).repository.view.value!!.contacts.any {
+            checkNotNull(fixture.graph.current.value).personLedger.wholeView().contacts.any {
               it.id == person.entityId
             }
         )
@@ -687,10 +685,7 @@ class ContactDetailViewModelTest {
           fixture.seedCommands(
               listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
           )
-          val queuedPayment =
-              store.repository
-                  .payDebt(debtB.entityId, Cents(2_000), PaymentMethod.CASH, null)
-                  .getOrThrow()
+          val queuedPayment = store.seedPayment(debtB.entityId, Cents(2_000))
 
           val modelA =
               ContactDetailViewModel(fixture.graph.contactDetailSource(), a, context).also {
@@ -733,11 +728,9 @@ class ContactDetailViewModelTest {
       fixture.seedCommands(
           listOf(contact("أ", a, minute = 0), contact("ب", b, minute = 1), debtA, debtB, paidB)
       )
-      store.repository.payDebt(debtB.entityId, Cents(2_000), PaymentMethod.CASH, null).getOrThrow()
-      val whole =
-          store.repository.contactRecords
-              .first { it != null && it.ledger.payments.any { row -> row.pending } }!!
-              .ledger
+      store.seedPayment(debtB.entityId, Cents(2_000))
+      val whole = store.personLedger.wholeView()
+      assertTrue(whole.payments.any { row -> row.pending })
 
       var shared: LedgerView? = null
       val model =
@@ -771,6 +764,123 @@ class ContactDetailViewModelTest {
       // B's queued payment is on B's page, not in A's statement.
       assertTrue(whole.payments.any { it.contactId == b && it.pending })
       assertFalse(statement.payments.any { it.contactId != a })
+    }
+  }
+
+  @Test
+  fun theTimelineRowsCarryMonthHeadersAndBalancesAfterInBothOrders() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سامي", contactId(1), minute = 0)
+      val octDebt = debt(person.entityId, 10_000, id = contactId(11), minute = 0)
+      val octPayment = payment(octDebt.entityId, 4_000, id = contactId(12), minute = 1)
+      val novPayable =
+          debt(
+              person.entityId,
+              2_000,
+              direction = Direction.PAYABLE,
+              id = contactId(13),
+              minute = 43_200,
+          )
+      fixture.seedCommands(listOf(person, octDebt, octPayment, novPayable))
+
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
+      val newest = model.state.first { it.loaded && it.movements.size == 3 }
+
+      val octMonth = YearMonth.from(Events.at(0).atZone(ZoneId.systemDefault()))
+      val novMonth = YearMonth.from(Events.at(43_200).atZone(ZoneId.systemDefault()))
+      val expected =
+          mapOf(
+              octDebt.entityId to 10_000L,
+              octPayment.entityId to 6_000L,
+              novPayable.entityId to 4_000L,
+          )
+
+      assertEquals(5, newest.timeline.size)
+      assertTrue(newest.timeline[0] is ContactTimelineRow.Month)
+      assertEquals(novMonth, (newest.timeline[0] as ContactTimelineRow.Month).month)
+      assertTrue(newest.timeline[1] is ContactTimelineRow.Movement)
+      assertEquals(
+          novPayable.entityId,
+          (newest.timeline[1] as ContactTimelineRow.Movement).movement.id,
+      )
+      assertEquals(4_000L, (newest.timeline[1] as ContactTimelineRow.Movement).balanceAfter)
+      assertTrue(newest.timeline[2] is ContactTimelineRow.Month)
+      assertEquals(octMonth, (newest.timeline[2] as ContactTimelineRow.Month).month)
+      assertTrue(newest.timeline[3] is ContactTimelineRow.Movement)
+      assertEquals(
+          octPayment.entityId,
+          (newest.timeline[3] as ContactTimelineRow.Movement).movement.id,
+      )
+      assertEquals(6_000L, (newest.timeline[3] as ContactTimelineRow.Movement).balanceAfter)
+      assertTrue(newest.timeline[4] is ContactTimelineRow.Movement)
+      assertEquals(
+          octDebt.entityId,
+          (newest.timeline[4] as ContactTimelineRow.Movement).movement.id,
+      )
+      assertEquals(10_000L, (newest.timeline[4] as ContactTimelineRow.Movement).balanceAfter)
+      newest.timeline.filterIsInstance<ContactTimelineRow.Movement>().forEach { row ->
+        assertEquals(expected[row.movement.id], row.balanceAfter)
+      }
+
+      model.toggleOrder()
+      val oldest = model.state.first { !it.newestFirst && it.movements.size == 3 }
+      assertEquals(5, oldest.timeline.size)
+      assertTrue(oldest.timeline[0] is ContactTimelineRow.Month)
+      assertEquals(octMonth, (oldest.timeline[0] as ContactTimelineRow.Month).month)
+      assertTrue(oldest.timeline[1] is ContactTimelineRow.Movement)
+      assertEquals(
+          octDebt.entityId,
+          (oldest.timeline[1] as ContactTimelineRow.Movement).movement.id,
+      )
+      assertEquals(10_000L, (oldest.timeline[1] as ContactTimelineRow.Movement).balanceAfter)
+      assertTrue(oldest.timeline[2] is ContactTimelineRow.Movement)
+      assertEquals(
+          octPayment.entityId,
+          (oldest.timeline[2] as ContactTimelineRow.Movement).movement.id,
+      )
+      assertEquals(6_000L, (oldest.timeline[2] as ContactTimelineRow.Movement).balanceAfter)
+      assertTrue(oldest.timeline[3] is ContactTimelineRow.Month)
+      assertEquals(novMonth, (oldest.timeline[3] as ContactTimelineRow.Month).month)
+      assertTrue(oldest.timeline[4] is ContactTimelineRow.Movement)
+      assertEquals(
+          novPayable.entityId,
+          (oldest.timeline[4] as ContactTimelineRow.Movement).movement.id,
+      )
+      assertEquals(4_000L, (oldest.timeline[4] as ContactTimelineRow.Movement).balanceAfter)
+      oldest.timeline.filterIsInstance<ContactTimelineRow.Movement>().forEach { row ->
+        assertEquals(expected[row.movement.id], row.balanceAfter)
+      }
+    }
+  }
+
+  @Test
+  fun aPayableMovementWithNoPayableBalanceStillShowsTheSupplierLook() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val person = contact("سامي", contactId(1), minute = 0)
+      val payableDebt =
+          debt(
+              person.entityId,
+              3_000,
+              direction = Direction.PAYABLE,
+              id = contactId(11),
+              minute = 1,
+          )
+      val paid = payment(payableDebt.entityId, 3_000, id = contactId(12), minute = 2)
+      fixture.seedCommands(listOf(person, payableDebt, paid))
+
+      val model =
+          ContactDetailViewModel(fixture.graph.contactDetailSource(), person.entityId, context)
+              .also {
+                fixture.closeWithStore(it.viewModelScope)
+              }
+      val state = model.state.first { it.loaded && it.movements.size == 2 }
+
+      assertEquals(Cents.ZERO, state.payable)
+      assertTrue(state.isSupplier)
     }
   }
 

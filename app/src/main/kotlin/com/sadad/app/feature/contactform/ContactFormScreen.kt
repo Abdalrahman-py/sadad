@@ -254,6 +254,7 @@ private fun contactFormViewModel(contactId: String?, initialName: String): Conta
                   checkNotNull(graph.current.value) { "the contact form needs an open store" }
               ContactFormViewModel(
                   store.repository,
+                  store.personLedger,
                   store.account.storeUserId,
                   app,
                   createSavedStateHandle(),

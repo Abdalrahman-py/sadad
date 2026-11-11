@@ -22,6 +22,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
@@ -63,11 +64,12 @@ internal suspend fun seedContacts(fixture: TestGraph) {
 /** One signed-in store with one settled Contact who owes 150 in two Debts. */
 internal fun graphWithDebt(): Pair<TestGraph, String> = awaiting {
   val fixture = TestGraph.signedIn()
-  val repository = checkNotNull(fixture.graph.current.value).repository
+  val scope = checkNotNull(fixture.graph.current.value)
+  val repository = scope.repository
   val contact = repository.addContact("سامي", "0599123456", null, null, null).getOrThrow()
   fixture.settleAll()
   for (amount in listOf(10_000L, 5_000L)) {
-    repository.addDebt(contact, Direction.RECEIVABLE, Cents(amount), null, null).getOrThrow()
+    scope.seedDebt(contact, Direction.RECEIVABLE, Cents(amount))
     fixture.settleAll()
   }
   fixture to contact

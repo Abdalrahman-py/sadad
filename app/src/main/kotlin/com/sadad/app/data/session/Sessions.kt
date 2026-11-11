@@ -34,8 +34,6 @@ class Sessions(
     private val installations: Installations,
     private val host: SessionHost,
     private val deviceLabel: String,
-    /** Survives reinstall of the same signing key; null falls back to a random id. */
-    private val installationSeed: () -> String? = { null },
     private val now: () -> Instant = Instant::now,
 ) {
   private val access = MutableStateFlow<AuthSession?>(null)
@@ -202,7 +200,7 @@ class Sessions(
         Account(
             storeUserId = storeUserId,
             username = username,
-            installationId = DeviceIdentity.installationId(installationSeed()),
+            installationId = UUID.randomUUID().toString(),
             keyAlias = "installation-$storeUserId",
             label = deviceLabel,
         )

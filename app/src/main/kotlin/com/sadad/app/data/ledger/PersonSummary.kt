@@ -8,6 +8,7 @@ import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.ContactDelete
 import com.sadad.ledger.ContactRestore
 import com.sadad.ledger.ContactUpdate
+import com.sadad.ledger.ContactView
 import com.sadad.ledger.DebtCorrect
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
@@ -53,6 +54,26 @@ fun summaryOf(view: LedgerView, contactId: String): ContactSummaryEntity? {
       searchKey = PersonSearch.normalize(person.name),
   )
 }
+
+/**
+ * The summary row as a [ContactView] the pick comparisons read: identity and dates only — the
+ * ledger rules run on Room rows, not on this projection (ticket 168).
+ */
+fun ContactSummaryEntity.toContactView(): ContactView =
+    ContactView(
+        id = contactId,
+        name = name,
+        phone = phone,
+        kind = kind,
+        category = category,
+        note = "",
+        version = 0,
+        pending = pending,
+        createdAt = createdAt,
+        createdBy = "",
+        operationId = "",
+        whatsappCode = "970",
+    )
 
 /**
  * The one person an outbox command names, or null when its debt's owner is unknown. Suspend,

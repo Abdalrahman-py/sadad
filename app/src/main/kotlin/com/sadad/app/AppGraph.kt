@@ -6,9 +6,9 @@ import android.provider.Settings
 import com.sadad.app.data.crypto.DataKey
 import com.sadad.app.data.db.LedgerDatabase
 import com.sadad.app.data.db.LedgerStore
-import com.sadad.app.data.ledger.ContactRecords
 import com.sadad.app.data.ledger.Outbox
 import com.sadad.app.data.ledger.OutboxState
+import com.sadad.app.data.ledger.toContactView
 import com.sadad.app.data.net.ApiHttpClient
 import com.sadad.app.data.net.AuthApi
 import com.sadad.app.data.net.ErrorMessages
@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -90,20 +91,11 @@ internal constructor(
     },
     /** The wall clock offline leases are checked against; a test moves it. */
     private val now: () -> Long = System::currentTimeMillis,
-    /** Stable across a reinstall of the same signing key; see DeviceIdentity. */
-    private val deviceSeed: () -> String? = { androidId(context) },
 ) : SessionHost {
   val errorMessages: ErrorMessages by lazy { ErrorMessages(context) }
 
   val sessions: Sessions by lazy {
-    Sessions(
-        accounts,
-        authApi,
-        installations,
-        this,
-        deviceLabel,
-        installationSeed = deviceSeed,
-    )
+    Sessions(accounts, authApi, installations, this, deviceLabel)
   }
 
   private val mutableCurrent = MutableStateFlow<StoreScope?>(null)
@@ -148,7 +140,10 @@ internal constructor(
         )
       }
 
-  /** Background sync reuses a store's scope without changing the active account or UI. */
+  /**
+   * Runs a pass for [storeUserId]. Opening a store reads no ledger rows (ticket 168), so the pass
+   * needs no wait for a load: it starts as soon as the store is open.
+   */
   suspend fun syncStore(storeUserId: String): SyncStatus =
       withContext(Dispatchers.IO) {
         val opened = storeMutex.withLock {
@@ -158,8 +153,6 @@ internal constructor(
           }
         }
         try {
-          // A store the start route opened may still be reading its rows.
-          opened.repository.awaitLoaded()
           syncEngine.pass(opened).also { result ->
             if (result == SyncStatus.Idle) {
               accounts.update(storeUserId) { it.copy(lastSyncAt = now()) }
@@ -206,9 +199,10 @@ internal constructor(
   }
 
   /**
-   * Closes the open store, then opens [account]'s database, outbox and repository. It returns with
-   * the rows read, unless [awaitRows] is false: then they load in the background and the
-   * repository's view stays null until they are in.
+   * Closes the open store, then opens [account]'s database, outbox and repository. Opening reads no
+   * ledger rows (ticket 168): it returns after the epoch is set, leaving the one-time summary fill
+   * (`repository.load`) running in the background, so Home shows its loading state until
+   * `summaryReady`. With [awaitRows] false it does not wait even for the epoch.
    */
   suspend fun openStore(account: Account, awaitRows: Boolean = true): StoreScope =
       withContext(Dispatchers.IO) {
@@ -254,9 +248,10 @@ internal constructor(
     }
   }
 
-  /** The epoch goes in first, so sync that waits for the rows never sees the store without it. */
+  /** The epoch goes in first, so a sync pass starting right after opening has one to send. */
   private suspend fun loadRows(storeScope: StoreScope) {
     storeScope.setEpoch(storeScope.database.metaDao().get()?.epoch)
+    // The one-time fill when the summary table is empty; answers with one count per table else.
     storeScope.repository.load()
     syncScheduler?.schedulePeriodic(storeScope.account.storeUserId)
   }
@@ -385,25 +380,22 @@ internal constructor(
 }
 
 /**
- * The device value that survives a reinstall of the same signing key. `ANDROID_ID` is stable per
- * app-signing key + user since Android 8; a device that withholds it falls back to a random id.
+ * The open store's people a pick is compared against; Room is the only copy (ticket 168), so the
+ * picker reads the stored summaries and the trash, not a ledger view.
  */
-private fun androidId(context: Context): String? = runCatching {
-  Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-}
-    .getOrNull()
-
-/** The open store's contact records; null while no store is open. */
 @OptIn(ExperimentalCoroutinesApi::class)
-fun AppGraph.contactRecords(): Flow<ContactRecords?> = current.flatMapLatest { scope ->
-  scope?.repository?.contactRecords ?: flowOf(null)
-}
-
-/** The store's own people a pick is compared against; the open store's ledger view. */
-fun AppGraph.contactPeople(): Flow<SadadPeople?> =
-    contactRecords().map { records ->
-      records?.let { SadadPeople(it.directory.contacts, it.ledger.archivedContacts) }
+fun AppGraph.contactPeople(): Flow<SadadPeople?> = current.flatMapLatest { scope ->
+  if (scope == null) {
+    flowOf(null)
+  } else {
+    combine(
+        scope.database.contactSummaryDao().observe(),
+        scope.personLedger.archivedContacts(),
+    ) { rows, archived ->
+      SadadPeople(rows.map { it.toContactView() }, archived)
     }
+  }
+}
 
 /** The open installation's permissions by name; empty while no store is open. */
 @OptIn(ExperimentalCoroutinesApi::class)

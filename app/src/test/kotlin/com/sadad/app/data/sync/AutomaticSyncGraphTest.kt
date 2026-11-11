@@ -4,12 +4,12 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.STORE_B
+import com.sadad.app.testing.seedDebt
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.ChangeEvent
-import com.sadad.ledger.Direction
 import com.sadad.ledger.LedgerJson
 import com.sadad.ledger.OperationsRequest
-import com.sadad.ledger.PaymentMethod
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,11 +47,8 @@ class AutomaticSyncGraphTest {
         try {
           val repository = sender.scope.repository
           val person = repository.addContact("إبراهيم", null, null, null, null).getOrThrow()
-          val debt =
-              repository
-                  .addDebt(person, Direction.RECEIVABLE, Cents(15_000), null, null)
-                  .getOrThrow()
-          repository.payDebt(debt, Cents(5_000), PaymentMethod.CASH, null).getOrThrow()
+          val debt = sender.scope.seedDebt(person, amount = Cents(15_000))
+          sender.scope.seedPayment(debt, Cents(5_000))
           assertEquals(3, sender.scope.outbox.snapshot().count { it.state == OutboxState.QUEUED })
           assertEquals(1, sender.server.requestCount) // Sign-in only: no offline HTTP request.
           online = true
@@ -70,14 +67,20 @@ class AutomaticSyncGraphTest {
               }
           withContext(Dispatchers.Default) {
             withTimeout(45_000) {
-              receiver.scope.repository.view.first { view ->
-                view != null && view.debts.size == 1 && view.payments.size == 1
+              // No resident view: poll the receiver's room-projected whole store.
+              var view = receiver.scope.personLedger.wholeView()
+              while (view.debts.size != 1 || view.payments.size != 1) {
+                kotlinx.coroutines.delay(25)
+                view = receiver.scope.personLedger.wholeView()
               }
               receiver.test.graph.accounts.accounts.first { it.first().lastSyncAt != null }
             }
           }
           assertTrue(sender.scope.outbox.snapshot().all { it.state == OutboxState.ACCEPTED })
-          assertEquals("إبراهيم", receiver.scope.repository.view.value!!.contacts.single().name)
+          assertEquals(
+              "إبراهيم",
+              receiver.scope.personLedger.wholeView().contacts.single().name,
+          )
           assertNotNull(receiver.test.graph.accounts.account(STORE_B)!!.lastSyncAt)
         } finally {
           sending.cancelAndJoin()

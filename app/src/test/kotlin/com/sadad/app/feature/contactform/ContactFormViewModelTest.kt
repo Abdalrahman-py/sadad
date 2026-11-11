@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.ledger.FakeSession
 import com.sadad.app.data.ledger.LedgerRepository
 import com.sadad.app.data.ledger.OutboxRow
+import com.sadad.app.data.ledger.PersonLedger
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contactpicker.PickedContact
 import com.sadad.app.testing.STORE_A
@@ -41,6 +42,7 @@ class ContactFormViewModelTest {
       val model =
           ContactFormViewModel(
               store.repository,
+              store.personLedger,
               STORE_A,
               context,
               SavedStateHandle(mapOf("name" to "إبراهيم أحمد")),
@@ -57,6 +59,7 @@ class ContactFormViewModelTest {
       val model =
           ContactFormViewModel(
               store.repository,
+              store.personLedger,
               STORE_A,
               context,
               SavedStateHandle(),
@@ -79,7 +82,14 @@ class ContactFormViewModelTest {
       saved: SavedStateHandle = SavedStateHandle(),
   ): ContactFormViewModel {
     val scope = checkNotNull(graph.current.value) { "the fixture has no open store" }
-    return ContactFormViewModel(scope.repository, STORE_A, context, saved, contactId)
+    return ContactFormViewModel(
+        scope.repository,
+        scope.personLedger,
+        STORE_A,
+        context,
+        saved,
+        contactId,
+    )
   }
 
   private suspend fun TestGraph.rows(): List<OutboxRow> =
@@ -218,17 +228,157 @@ class ContactFormViewModelTest {
       fixture.seed {
         existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow()
       }
-      val repository = checkNotNull(fixture.graph.current.value).repository
-      repository.view.first { view -> view?.contacts?.any { it.id == existing } == true }
 
       val model = fixture.model()
       model.onNameChange("شخص آخر")
       model.onPhoneChange("0599123456")
       model.saveOnly()
+      model.state.first { it.duplicate != null || it.savedContactId != null }
 
       assertEquals(existing, model.state.value.duplicate?.contactId)
       assertNull(model.state.value.savedContactId)
       assertEquals(1, fixture.rows().size)
+    }
+  }
+
+  /** The queued, not-yet-confirmed contact also blocks a new person with its phone. */
+  @Test
+  fun aDuplicatePhoneAmongQueuedContactCreatesStillShowsTheDialog() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var queued: String? = null
+      fixture.seed { queued = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
+
+      val model = fixture.model()
+      model.onNameChange("شخص آخر")
+      model.onPhoneChange("0599123456")
+      model.saveOnly()
+      model.state.first { it.duplicate != null || it.savedContactId != null }
+
+      assertEquals(queued, model.state.value.duplicate?.contactId)
+      assertNull(model.state.value.savedContactId)
+      assertEquals(1, fixture.rows().size)
+    }
+  }
+
+  /** The stored, settled contact blocks the form too: the Room query alone must find them. */
+  @Test
+  fun aDuplicatePhoneAmongConfirmedStoredContactsShowsTheDialog() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var stored: String? = null
+      fixture.seed { stored = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
+      fixture.settleAll()
+
+      val model = fixture.model()
+      model.onNameChange("شخص آخر")
+      model.onPhoneChange("0599123456")
+      model.saveOnly()
+      model.state.first { it.duplicate != null || it.savedContactId != null }
+
+      assertEquals(stored, model.state.value.duplicate?.contactId)
+      assertEquals("سامي", model.state.value.duplicate?.name)
+      assertNull(model.state.value.savedContactId)
+      assertTrue("nothing new queued", fixture.rows().isEmpty())
+    }
+  }
+
+  /** A queued archive takes the person out of the duplicate check before the server answers. */
+  @Test
+  fun aQueuedArchiveRemovesTheDuplicate() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var archived: String? = null
+      fixture.seed { archived = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
+      fixture.settleAll()
+      fixture.seed {
+        archiveContact(checkNotNull(archived), "حذف الزبون من التطبيق").getOrThrow()
+      }
+
+      val model = fixture.model()
+      model.onNameChange("شخص آخر")
+      model.onPhoneChange("0599123456")
+      model.saveOnly()
+      model.state.first { it.duplicate != null || it.savedContactId != null }
+
+      assertNull(model.state.value.duplicate)
+      assertNotNull(model.state.value.savedContactId)
+    }
+  }
+
+  /** The archive keeps the person out of the form's duplicate checks, as the view does today. */
+  @Test
+  fun anArchivedContactWithThePhoneDoesNotOfferIt() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var archived: String? = null
+      fixture.seed { archived = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
+      fixture.settleAll()
+      fixture.seed {
+        archiveContact(checkNotNull(archived), "حذف الزبون من التطبيق").getOrThrow()
+      }
+      fixture.settleAll()
+
+      val model = fixture.model()
+      model.onNameChange("شخص آخر")
+      model.onPhoneChange("0599123456")
+      model.saveOnly()
+      model.state.first { it.savedContactId != null || it.message != null }
+
+      assertNull(model.state.value.duplicate)
+      assertNotNull(model.state.value.savedContactId)
+    }
+  }
+
+  /**
+   * A queued edit that moves the person to another phone must not offer them on their old phone:
+   * the check reads the queued edit's own payload, not the last committed row.
+   */
+  @Test
+  fun aQueuedPhoneChangeAwayFromThePhoneDoesNotOfferTheContact() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var existing: String? = null
+      fixture.seed { existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
+      fixture.settleAll()
+      fixture.seed {
+        updateContact(
+                checkNotNull(existing),
+                "سامي",
+                "0599123457",
+                "عميل",
+                null,
+            )
+            .getOrThrow()
+      }
+
+      val model = fixture.model()
+      model.onNameChange("شخص آخر")
+      model.onPhoneChange("0599123456")
+      model.saveOnly()
+      model.state.first { it.savedContactId != null || it.message != null }
+
+      assertNull(model.state.value.duplicate)
+      assertNotNull(model.state.value.savedContactId)
+    }
+  }
+
+  /** An edit of the person themselves never quarrels with their own phone. */
+  @Test
+  fun theFormsOwnContactDoesNotOfferItself() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      var existing: String? = null
+      fixture.seed { existing = addContact("سامي", "0599123456", "عميل", null, null).getOrThrow() }
+      fixture.settleAll()
+
+      val model = fixture.model(contactId = existing)
+      model.state.first { it.name == "سامي" }
+      model.onNameChange("سامي الجديد")
+      assertEquals("0599123456", model.state.value.phone)
+      model.save()
+      model.state.first { it.savedContactId != null }
+
+      assertNull(model.state.value.duplicate)
+      val update = fixture.rows().single { it.type == CommandType.CONTACT_UPDATE }
+      assertEquals(
+          "0599123456",
+          (update.command.payload() as com.sadad.ledger.ContactUpdate).phone,
+      )
     }
   }
 
@@ -266,13 +416,7 @@ class ContactFormViewModelTest {
             addContact("سامي", "0599123456", "عميل", null, null, whatsappCode = "972").getOrThrow()
       }
       fixture.settleAll()
-      val repository = checkNotNull(fixture.graph.current.value).repository
-      val contact =
-          repository.view
-              .first { view -> view?.contacts?.any { it.id == existing } == true }!!
-              .contacts
-              .single { it.id == existing }
-
+      val store = checkNotNull(fixture.graph.current.value)
       val model = fixture.model(contactId = existing)
       model.state.first { it.name == "سامي" }
       assertEquals("0599123456", model.state.value.phone)
@@ -284,7 +428,9 @@ class ContactFormViewModelTest {
       assertFalse(state.busy)
       val rows = fixture.rows()
       val update = rows.single { it.type == CommandType.CONTACT_UPDATE }
-      assertEquals(contact.version, update.command.expectedVersion)
+      // The queued version names the stored Contact's version, read from Room (ticket 168).
+      val version = checkNotNull(store.database.contactDao().byId(checkNotNull(existing))).version
+      assertEquals(version, update.command.expectedVersion)
       assertEquals("سامي الجديد", (update.command.payload() as ContactUpdate).name)
       assertEquals("0599123456", (update.command.payload() as ContactUpdate).phone)
       assertEquals("972", (update.command.payload() as ContactUpdate).whatsappCode)
@@ -328,9 +474,16 @@ class ContactFormViewModelTest {
       fixture.closeWithStore(offlineScope)
       val offline = LedgerRepository(scope.store, scope.outbox, session, offlineScope)
       offline.load()
-      offline.view.first { view -> view?.contacts?.any { it.id == existing } == true }
 
-      val model = ContactFormViewModel(offline, STORE_A, context, SavedStateHandle(), existing)
+      val model =
+          ContactFormViewModel(
+              offline,
+              PersonLedger(scope.store, scope.outbox, session),
+              STORE_A,
+              context,
+              SavedStateHandle(),
+              existing,
+          )
       model.state.first { it.name == "سامي" }
       model.onNameChange("سامي الجديد")
       model.save()

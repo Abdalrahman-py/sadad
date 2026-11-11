@@ -10,9 +10,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * The Room side of the in-memory [LedgerState]: [load] rebuilds it once when a store opens, and
- * [persist] writes one folded `changes` page in one transaction, so a crash keeps every page that
- * finished.
+ * Which ids the Room ledger holds: [contacts] are the stored contacts by id with their versions (a
+ * restore's compact check reads them), [all] is every id of [LedgerStore.present]'s answer.
+ */
+data class LedgerPresent(val contacts: Map<String, Long>, val all: Set<String>)
+
+/**
+ * The Room ledger: [load] rebuilds the whole state for the one-time summary fill and for a
+ * statement, [persist] writes one folded `changes` page in one transaction, so a crash keeps every
+ * page that finished. The screens read it a person or a period at a time (tickets 168, 159–167).
  */
 class LedgerStore(
     private val db: LedgerDatabase,
@@ -25,7 +31,11 @@ class LedgerStore(
     private val events: EventDao = db.eventDao(),
     private val summaries: ContactSummaryDao = db.contactSummaryDao(),
 ) {
-  /** The stored rows, ordered by `createdSeq`, which is the event order the maps must keep. */
+  /**
+   * The stored rows, ordered by `createdSeq`, which is the event order the maps must keep. The
+   * summary fill (ticket 160) and a statement's whole read ([PersonLedger.wholeView]) are its only
+   * callers: the screens read a person or a period instead, so opening a store reads no rows.
+   */
   suspend fun load(): LedgerState =
       // One transaction: a statement reads this while a sync page may be landing.
       db.withTransaction {
@@ -211,6 +221,29 @@ class LedgerStore(
     )
   }
 
+  /** The stored Contact ids carrying [phone]; the contact form's duplicate-phone check reads it. */
+  suspend fun contactIdsWithPhone(phone: String): List<String> = contacts.idsWithPhone(phone)
+
+  /** Which of [ids] the Room ledger holds ([Outbox.compact] reads it), chunked per table. */
+  suspend fun present(ids: Collection<String>): LedgerPresent {
+    if (ids.isEmpty()) return LedgerPresent(emptyMap(), emptySet())
+    val candidates = ids.toList()
+    val storedContacts = HashMap<String, Long>()
+    for (chunk in candidates.chunked(ID_CHUNK)) {
+      contacts.byIds(chunk).associateTo(storedContacts) { it.id to it.version }
+    }
+    val all = storedContacts.keys.toMutableSet()
+    val rest = candidates.filterNot { it in storedContacts }
+    for (chunk in rest.chunked(ID_CHUNK)) {
+      debts.byIds(chunk).mapTo(all) { it.id }
+      payments.byIds(chunk).mapTo(all) { it.id }
+    }
+    return LedgerPresent(storedContacts, all)
+  }
+
+  /** The stored meta, so [LedgerRepository.applyPage] needs no resident state to answer a page. */
+  suspend fun currentMeta(): LedgerMetaEntity? = meta.get()
+
   private fun personState(
       stored: LedgerMetaEntity,
       contact: ContactEntity?,
@@ -318,6 +351,9 @@ class LedgerStore(
 
   /** How many summary rows are stored; the fill fires only when this is zero. */
   suspend fun summaryCount(): Int = summaries.count()
+
+  /** How many Contact rows are stored; a store with none needs no fill. */
+  suspend fun contactCount(): Int = contacts.count()
 
   /**
    * The one-time fill after the schema 6 update: [rows] are [summaryOf] for every visible person,

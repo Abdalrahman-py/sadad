@@ -1,5 +1,5 @@
 import { html, nothing } from "lit-html";
-import logo from "../assets/logo.jpeg";
+import logo from "../assets/icon.svg";
 import type { Actions, Model } from "../model";
 import { needsDecision } from "../subscription";
 import { auditView } from "./audit";

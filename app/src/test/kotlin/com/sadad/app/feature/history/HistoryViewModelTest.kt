@@ -6,6 +6,7 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedContactPayment
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
@@ -121,7 +122,7 @@ class HistoryViewModelTest {
       val sami = fixture.confirmedContact("سامي", at("2026-10-01T09:00:00Z"))
       fixture.confirmedDebt(sami, 10000, at("2026-10-02T09:00:00Z"))
       fixture.confirmedDebt(sami, 5000, at("2026-10-03T09:00:00Z"))
-      fixture.seed { payContact(sami, Cents(15000), PaymentMethod.CASH, null).getOrThrow() }
+      checkNotNull(fixture.graph.current.value).seedContactPayment(sami, Cents(15_000))
       val model = model(fixture)
       val pending =
           model.state.first {
@@ -303,10 +304,9 @@ class HistoryViewModelTest {
               ),
           )
       )
-      val whole =
-          checkNotNull(
-              scope.repository.view.first { it?.pendingDebts == 1 && it.pendingPayments == 1 }
-          )
+      val whole = scope.personLedger.wholeView()
+      assertEquals(1, whole.pendingDebts)
+      assertEquals(1, whole.pendingPayments)
       assertEquals(
           "a statement reads the whole store from Room",
           whole,
@@ -385,11 +385,11 @@ class HistoryViewModelTest {
   private fun at(text: String): Instant = Instant.parse(text)
 
   private suspend fun TestGraph.fold(command: LedgerCommand) {
-    val repository = checkNotNull(graph.current.value).repository
-    val before = repository.view.first { it != null }
-    repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
-    // The view is projected on another thread; wait until it shows this command.
-    repository.view.first { it != before }
+    val scope = checkNotNull(graph.current.value)
+    val before = scope.personLedger.wholeView()
+    scope.repository.applyPage(Events.page(listOf(Events.accepted(command, ++sequence))))
+    // applyPage persists before returning, so Room shows the command now.
+    check(scope.personLedger.wholeView() != before)
   }
 
   private suspend fun TestGraph.confirmedContact(name: String, at: Instant): String {

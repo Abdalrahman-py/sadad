@@ -9,7 +9,6 @@ import com.sadad.app.data.sync.SyncStatus
 import com.sadad.ledger.Cents
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.Direction
-import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import java.time.Instant
 import java.time.LocalDate
@@ -53,11 +52,8 @@ interface HomeSource {
   /** The pull to refresh on Home starts one pass for the open store. */
   fun refresh()
 
-  /** True once the summary table is filled (or needed no fill). */
+  /** True once the summary table is filled (or needed no fill); loading until then. */
   fun summaryReady(scope: StoreScope): Flow<Boolean>
-
-  /** The whole-store view, read only while [summaryReady] is false. */
-  fun view(scope: StoreScope): Flow<LedgerView?>
 
   /** Totals, month and follow-up from the summary table and the confirmed rows, plus the queue. */
   fun roomData(
@@ -83,8 +79,6 @@ fun AppGraph.homeSource(): HomeSource {
     }
 
     override fun summaryReady(scope: StoreScope) = scope.repository.summaryReady
-
-    override fun view(scope: StoreScope) = scope.repository.view
 
     override fun roomData(
         scope: StoreScope,

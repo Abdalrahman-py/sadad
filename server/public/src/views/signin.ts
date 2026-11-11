@@ -1,5 +1,5 @@
 import { html } from "lit-html";
-import logo from "../assets/logo.jpeg";
+import logo from "../assets/icon.svg";
 import type { Model, SignInActions } from "../model";
 import { onSubmit } from "./common";
 

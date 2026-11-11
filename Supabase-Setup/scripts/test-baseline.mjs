@@ -320,7 +320,7 @@ try {
 
   const proofKey = '{"kty":"EC","crv":"P-256","x":"' + 'A'.repeat(43) + '","y":"' + 'B'.repeat(43) + '"}';
 
-  await check('Enrollment registers device metadata and refuses replay nonce or exceeding allowed_devices', async () => {
+  await check('Enrollment registers device metadata, refuses a replay nonce, and enrolls at the cap as pending', async () => {
     const nonce1 = randomUUID();
     await asStore(storeUser, session);
     const enrolled = (
@@ -340,16 +340,12 @@ try {
       /proof_replayed/,
     );
 
-    // A later device waits as pending; a cap of 2 lets it in, then the store goes back to 1
-    await db.exec('reset role; update public.stores set allowed_devices = 2 where id = 1');
-    await asStore(storeUser, session);
+    // A later device waits as pending, even with the store at allowed_devices = 1
     const extra = randomUUID();
     const second = (
       await db.query('select public.sadid_enroll($1, $2, $3, $4, $5) as result', [extra, proofKey, randomUUID(), 'هاتف ثان', 'سامي'])
     ).rows[0].result;
     assert.equal(second.status, 'pending');
-    await db.exec('reset role; update public.stores set allowed_devices = 1 where id = 1');
-    await asStore(storeUser, session);
 
     // Approving the active first phone again changes nothing
     await asAdmin('admin');
@@ -372,20 +368,62 @@ try {
     ).rows.reduce((all, row) => ({ ...all, [row.id]: row.status }), {});
     assert.deepEqual(statuses, { [installation]: 'active', [extra]: 'pending' });
 
-    // Enrolling a second installation when allowed_devices = 1 and 1 active installation exists -> device_limit_reached
-    await asStore(storeUser, session);
-    await assert.rejects(
-      db.query('select public.sadid_enroll($1, $2, $3, $4, $5)', [
-        randomUUID(), proofKey, randomUUID(), 'هاتف إضافي', 'سامي',
-      ]),
-      /device_limit_reached/,
-    );
+    // At the cap the waiting device stays pending (above); revoking the active row makes room for
+    // approval. In a transaction so the later checks still find the devices they expect.
+    await db.exec('reset role; begin');
+    try {
+      await asAdmin('admin');
+      await db.query('select public.sadid_revoke_installation($1, $2)', [installation, 'استبدال جهاز قديم']);
+      const activated = (
+        await db.query('select public.sadid_approve_installation($1, $2) as result', [extra, 'اعتماد الجهاز الجديد'])
+      ).rows[0].result;
+      assert.equal(activated.status, 'active');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
   });
 
   const pendingInstallation = async () => {
     await db.exec('reset role');
     return (await db.query("select id from sadid_private.installations where store_id = 1 and status = 'pending'")).rows[0].id;
   };
+
+  await check('A known installation id with a different key is refused, active or revoked, and writes no row', async () => {
+    const otherKey = '{"kty":"EC","crv":"P-256","x":"' + 'C'.repeat(43) + '","y":"' + 'D'.repeat(43) + '"}';
+    const pending = await pendingInstallation();
+
+    await db.exec('begin');
+    try {
+      // One active row (the pending device takes the revoked phone's place) and the revoked row.
+      await asAdmin('admin');
+      await db.query('select public.sadid_revoke_installation($1, $2)', [installation, 'اختبار مفتاح جديد']);
+      await db.query('select public.sadid_approve_installation($1, $2)', [pending, 'اختبار مفتاح جديد']);
+
+      // Counted inside the transaction, after the setup: a refusal must add nothing.
+      const deviceCount = async () => {
+        await db.exec('reset role');
+        return (await db.query('select count(*)::int n from sadid_private.installations where store_id = 1')).rows[0].n;
+      };
+      const before = await deviceCount();
+
+      await asStore(storeUser, session);
+      await db.exec('savepoint active_row');
+      await assert.rejects(
+        db.query('select public.sadid_enroll($1, $2, $3, $4, $5)', [pending, otherKey, randomUUID(), '', '']),
+        /installation_key_changed/,
+      );
+      await db.exec('rollback to savepoint active_row');
+      await db.exec('savepoint revoked_row');
+      await assert.rejects(
+        db.query('select public.sadid_enroll($1, $2, $3, $4, $5)', [installation, otherKey, randomUUID(), '', '']),
+        /installation_key_changed/,
+      );
+      await db.exec('rollback to savepoint revoked_row');
+      assert.equal(await deviceCount(), before, 'a refused key writes no row');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
   // Inserts every nonce at now() before ageing any, so the rate guard's pruning cannot remove a row of the setup.
   const agedNonces = async (...rows) => {
     const nonces = rows.map(() => randomUUID());

@@ -7,8 +7,8 @@ import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.contactform.ContactFormViewModel
 import com.sadad.app.feature.contacts.ContactDetailViewModel
 import com.sadad.app.feature.contacts.contactDetailSource
+import com.sadad.app.testing.seedDebt
 import com.sadad.ledger.Cents
-import com.sadad.ledger.Direction
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -35,10 +35,11 @@ class FirstContactSyncTest {
   private suspend fun verifyFirstContact(phone: String?) {
     SyncFixture.create().use { f ->
       val store = f.scope
-      assertTrue(checkNotNull(store.repository.view.first { it != null }).contacts.isEmpty())
+      assertTrue(store.database.contactDao().all().isEmpty())
       val form =
           ContactFormViewModel(
               store.repository,
+              store.personLedger,
               store.account.storeUserId,
               f.test.context,
               SavedStateHandle(),
@@ -49,7 +50,7 @@ class FirstContactSyncTest {
       form.saveOnly()
       val id = checkNotNull(form.state.first { it.savedContactId != null }.savedContactId)
       // The form no longer takes a first debt; it is recorded next, as quick add does.
-      store.repository.addDebt(id, Direction.RECEIVABLE, Cents(25_800), null, null).getOrThrow()
+      store.seedDebt(id, amount = Cents(25_800))
       val detail = ContactDetailViewModel(f.test.graph.contactDetailSource(), id, f.test.context)
       f.test.closeWithStore(detail.viewModelScope)
       detail.state.first { it.loaded && !it.missing && it.balance == Cents(25_800) }
@@ -63,11 +64,7 @@ class FirstContactSyncTest {
       f.page(Events.page(listOf(Events.accepted(commands[0], 1)), cursor = 2).copy(hasMore = true))
       f.page(Events.page(listOf(Events.accepted(commands[1], 2))))
       assertEquals(SyncStatus.Idle, f.engine.pass(store))
-      val confirmed =
-          store.repository.view.first {
-            it?.contacts?.any { person -> person.id == id && !person.pending } == true &&
-                it.debts.any { debt -> debt.contactId == id && !debt.pending }
-          }!!
+      val confirmed = checkNotNull(store.personLedger.records(id)).ledger
       assertEquals(Cents(25_800), confirmed.net(id))
       assertTrue(store.outbox.snapshot().isEmpty())
       val visible = detail.state.first { it.movements.any { movement -> !movement.pending } }

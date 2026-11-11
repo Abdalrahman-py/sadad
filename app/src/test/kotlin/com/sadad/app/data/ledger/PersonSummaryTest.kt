@@ -7,12 +7,14 @@ import com.sadad.app.feature.contacts.payment
 import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.feature.home.homeUiState
 import com.sadad.app.feature.quickadd.PersonSearch
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import com.sadad.ledger.view
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -133,7 +135,7 @@ class PersonSummaryTest {
       val d =
           store.repository.addContact("د", null, null, null, FirstDebt(Cents(2_000))).getOrThrow()
       // A queued payment on a confirmed debt.
-      store.repository.payDebt(dA1, Cents(500), PaymentMethod.CASH, "دفعة مؤجلة").getOrThrow()
+      store.seedPayment(dA1, Cents(500), note = "دفعة مؤجلة")
       // A rejected contact.create, still saved with its debts.
       val e =
           store.repository.addContact("هـ", null, null, null, FirstDebt(Cents(700))).getOrThrow()
@@ -156,19 +158,18 @@ class PersonSummaryTest {
               }
       )
 
+      // The whole-store projection, built here from Room: the resident flow is gone (ticket 168),
+      // and this test's rule is that the stored summary equals that projection's facts per person.
+      val rows = store.outbox.snapshot()
       val view =
-          store.repository.contactRecords
-              .first {
-                it != null &&
-                    it.ledger.archivedContacts.any { person -> person.id == c } &&
-                    it.ledger.contacts.any { person -> person.id == d } &&
-                    it.failed.any { draft -> draft.contact.id == e } &&
-                    it.ledger.debts.firstOrNull { row -> row.id == dA1 }?.remaining == Cents(4_500)
-              }
-              .let {
-                assertNotNull(it)
-                it!!.ledger
-              }
+          store.store
+              .load()
+              .view(
+                  pendingCommands(rows),
+                  failedOperations(rows),
+                  store.selfInstallationId,
+                  store.staffName.first(),
+              )
 
       val home = homeUiState(view, month, zone, today = today)
 

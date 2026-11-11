@@ -9,17 +9,17 @@ import com.sadad.app.feature.contacts.payment
 import com.sadad.app.feature.contacts.seedCommands
 import com.sadad.app.testing.STORE_A
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedPayment
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.Commands
 import com.sadad.ledger.Direction
-import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.ReceiptStatus
+import com.sadad.ledger.view
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -84,10 +84,8 @@ class PersonLedgerTest {
           store.repository.addContact("د", null, null, null, FirstDebt(Cents(2_000))).getOrThrow()
       val dIds = queuedIdsOf(d, store.outbox.snapshot())
       // A queued payment on a confirmed debt, and one too large to apply (excluded).
-      val queuedPayment =
-          store.repository.payDebt(dA1, Cents(500), PaymentMethod.CASH, "دفعة مؤجلة").getOrThrow()
-      val excessivePayment =
-          store.repository.payDebt(dB1, Cents(99_999), PaymentMethod.CASH, null).getOrThrow()
+      val queuedPayment = store.seedPayment(dA1, Cents(500), note = "دفعة مؤجلة")
+      val excessivePayment = store.seedPayment(dB1, Cents(99_999))
       // A rejected contact.create, still saved with its debts.
       val e =
           store.repository.addContact("هـ", null, null, null, FirstDebt(Cents(700))).getOrThrow()
@@ -107,19 +105,22 @@ class PersonLedgerTest {
               }
       )
 
+      // The whole-store projection, built here from Room: the resident flow is gone (ticket 168),
+      // and this test's rule is that one-person records equal that projection per person.
+      val storeRows = store.outbox.snapshot()
+      val staff = store.staffName.first()
       val expected =
-          store.repository.contactRecords
-              .first {
-                it != null &&
-                    it.ledger.archivedContacts.any { person -> person.id == c } &&
-                    it.ledger.contacts.any { person -> person.id == d } &&
-                    it.failed.any { draft -> draft.contact.id == e } &&
-                    it.ledger.debts.firstOrNull { row -> row.id == dA1 }?.remaining == Cents(4_500)
-              }
-              .let {
-                assertNotNull(it)
-                it!!
-              }
+          contactRecords(
+              store.store
+                  .load()
+                  .view(
+                      pendingCommands(storeRows),
+                      failedOperations(storeRows),
+                      store.selfInstallationId,
+                      staff,
+                  ),
+              storeRows,
+          )
       val mine =
           mapOf(
               a to

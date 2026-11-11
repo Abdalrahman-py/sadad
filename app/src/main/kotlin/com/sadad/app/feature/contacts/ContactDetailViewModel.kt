@@ -19,6 +19,8 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentMethod
 import com.sadad.ledger.PaymentView
 import java.time.Instant
+import java.time.YearMonth
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +68,13 @@ data class ContactMovement(
     val deletePending: Boolean = false,
 )
 
+/** One timeline row as the screen shows it: a month header or a movement with its after-balance. */
+sealed interface ContactTimelineRow {
+  data class Month(val month: YearMonth) : ContactTimelineRow
+
+  data class Movement(val movement: ContactMovement, val balanceAfter: Long) : ContactTimelineRow
+}
+
 data class ContactDetailState(
     val loaded: Boolean = false,
     val missing: Boolean = false,
@@ -80,6 +89,8 @@ data class ContactDetailState(
     val balance: Cents = Cents.ZERO,
     val payable: Cents = Cents.ZERO,
     val movements: List<ContactMovement> = emptyList(),
+    val timeline: List<ContactTimelineRow> = emptyList(),
+    val isSupplier: Boolean = false,
     val newestFirst: Boolean = true,
     val canRegisterPayments: Boolean = true,
     val canDeleteContacts: Boolean = true,
@@ -499,6 +510,18 @@ class ContactDetailViewModel(
                   compareBy<ContactMovement> { it.createdAt }.thenBy { it.id }
                 }
             )
+    val after = balancesAfter(ordered)
+    val timeline = buildList {
+      var month: YearMonth? = null
+      for (movement in ordered) {
+        val its = YearMonth.from(movement.createdAt.atZone(ZoneId.systemDefault()))
+        if (its != month) {
+          month = its
+          add(ContactTimelineRow.Month(its))
+        }
+        add(ContactTimelineRow.Movement(movement, after[movement.id] ?: 0L))
+      }
+    }
     return ContactDetailState(
         loaded = true,
         name = contact.name,
@@ -509,6 +532,8 @@ class ContactDetailViewModel(
         balance = balance,
         payable = payable,
         movements = ordered,
+        timeline = timeline,
+        isSupplier = payable > Cents.ZERO || ordered.any { it.direction == Direction.PAYABLE },
         deleting = ordered.firstOrNull { it.id == dialogs.deleting && it.canDelete },
         deleteFinal = dialogs.deleteFinal,
         newestFirst = dialogs.newestFirst,
@@ -530,6 +555,29 @@ class ContactDetailViewModel(
         is Refusal.Invalid -> error.message
         else -> appContext.getString(R.string.contacts_delete_failed)
       }
+
+  /**
+   * The balance each entry left, owner's side (`> 0` they owe the store), replayed oldest first: a
+   * receivable debt adds and its payment settles; a payable debt is the store's and its payment
+   * settles that. The last value equals the contact's net balance.
+   */
+  private fun balancesAfter(movements: List<ContactMovement>): Map<String, Long> {
+    var running = 0L
+    return movements
+        .sortedWith(compareBy<ContactMovement> { it.createdAt }.thenBy { it.id })
+        .associate { movement ->
+          val sign =
+              when {
+                movement.kind == MovementKind.DEBT && movement.direction == Direction.RECEIVABLE ->
+                    1
+                movement.kind == MovementKind.DEBT -> -1
+                movement.direction == Direction.RECEIVABLE -> -1
+                else -> 1
+              }
+          running += sign * movement.amount.value
+          movement.id to running
+        }
+  }
 
   private companion object {
     const val ARCHIVE_REASON = "حذف الزبون من التطبيق"

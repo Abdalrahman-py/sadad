@@ -9,6 +9,7 @@ import com.sadad.app.data.db.Events
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
+import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -18,14 +19,12 @@ import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.DebtOffset
 import com.sadad.ledger.DebtOrigin
 import com.sadad.ledger.Direction
-import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import com.sadad.ledger.PaymentMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -55,6 +54,7 @@ class QuickAddViewModelTest {
       val form =
           com.sadad.app.feature.contactform.ContactFormViewModel(
               store.repository,
+              store.personLedger,
               store.account.storeUserId,
               context,
               SavedStateHandle(),
@@ -85,11 +85,11 @@ class QuickAddViewModelTest {
       )
       assertEquals(listOf(rows.first().operationId), rows.last().command.dependsOn)
       fixture.settleAll()
-      val view =
-          store.repository.view.first {
-            it?.contacts?.any { person -> person.id == id && !person.pending } == true
-          }!!
-      assertEquals("إبراهيم", view.contacts.first { it.id == id }.name)
+      val records = store.personLedger.records(id)
+      val view = checkNotNull(records).ledger
+      val person = checkNotNull(view.contacts.firstOrNull { it.id == id })
+      assertFalse(person.pending)
+      assertEquals("إبراهيم", person.name)
       assertEquals(Cents(25_800), view.debts.first { it.contactId == id }.remaining)
     }
   }
@@ -676,12 +676,10 @@ class QuickAddViewModelTest {
   }
 
   @Test
-  fun thePickerReadsTheSummaryRowsAndNeverCollectsTheWholeView() = runBlocking {
+  fun thePickerReadsTheSummaryRowsAndNeverWaitsForAWholeView() = runBlocking {
     val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val source =
         object : QuickAddSource {
-          override val view: Flow<LedgerView?> =
-              kotlinx.coroutines.flow.flow { error("the whole-store view must never be collected") }
           override val summaries =
               MutableStateFlow(
                   listOf(
@@ -764,11 +762,9 @@ class QuickAddViewModelTest {
       cents: Long,
       direction: Direction = Direction.RECEIVABLE,
   ): String =
-      checkNotNull(graph.current.value)
-          .repository
-          .addDebt(contactId, direction, Cents(cents), null, null)
-          .getOrThrow()
-          .also { settleAll() }
+      checkNotNull(graph.current.value).seedDebt(contactId, direction, Cents(cents)).also {
+        settleAll()
+      }
 
   /**
    * A Contact holding [cents] of credit: the excess of an earlier payment, as `apply_one` stores
