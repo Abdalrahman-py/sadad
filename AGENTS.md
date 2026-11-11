@@ -42,7 +42,7 @@
 
 - `./tools/check.sh` هو البوابة الموحدة محليًا وفي CI، ويشغّل CI جميع أقسامه.
 - مرة لكل نسخة: `git config core.hooksPath tools/git-hooks`. يفحص الخطاف تنسيق الملفات المُجهّزة قبل كل commit، بأوامر قسم `format` نفسها.
-- النشر يدوي عبر `.github/workflows/supabase-deploy.yml` (`workflow_dispatch` من `main`): يشغّل `./tools/check.sh`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`.
+- النشر يدوي عبر `.github/workflows/supabase-deploy.yml` (`workflow_dispatch` من `main`): يشغّل `./tools/check.sh database edge`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`.
 - `main` خط الإصدار المستقر و`dev` خط التثبيت للفريق: كل دفعة إلى `dev` تنشر `team-latest` بحزمة `com.sadad.app.debug` موقّعة بمفتاح الفريق (`.github/workflows/team-release.yml`)؛ لا تدفع إلى `main` مباشرة.
 - إصدار الإنتاج يتطلب `SADAD_KEYSTORE_FILE` و`SADAD_KEYSTORE_PASSWORD` و`SADAD_KEY_ALIAS` و`SADAD_KEY_PASSWORD` مع `assembleRelease`؛ عنوان Supabase يحدد وقت البناء (`-PSADAD_SUPABASE_URL=...`).
 

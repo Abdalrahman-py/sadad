@@ -21,4 +21,4 @@
 
 ## النشر
 
-النشر يدوي عبر `.github/workflows/supabase-deploy.yml` من `main`: يشغّل `./tools/check.sh`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`. لا تشغّل هذه الأوامر يدويًا.
+النشر يدوي عبر `.github/workflows/supabase-deploy.yml` من `main`: يشغّل `./tools/check.sh database edge`، ثم ينتظر موافقة مراجعي بيئة `production` قبل `supabase db push` و`supabase functions deploy api`. لا تشغّل هذه الأوامر يدويًا.
