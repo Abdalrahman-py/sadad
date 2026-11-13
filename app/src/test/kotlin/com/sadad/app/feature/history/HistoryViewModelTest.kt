@@ -17,6 +17,7 @@ import com.sadad.ledger.PaymentMethod
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.flow.first
@@ -36,7 +37,7 @@ class HistoryViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
   private fun model(fixture: TestGraph, saved: SavedStateHandle = SavedStateHandle()) =
-      HistoryViewModel(fixture.graph.statementSource(), saved, clock).also {
+      HistoryViewModel(fixture.graph.statementSource(), saved, clock, Period.All).also {
         fixture.closeWithStore(it.viewModelScope)
       }
 
@@ -60,6 +61,18 @@ class HistoryViewModelTest {
       model.setNewestFirst(false)
       val oldest = model.state.first { !it.newestFirst && it.loaded }
       assertEquals(newest.movements.reversed(), oldest.movements)
+    }
+  }
+
+  @Test
+  fun aFirstOpenShowsTheMonthAndASavedPeriodWins() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val first = model(fixture).state.first { it.loaded }
+      assertEquals(Period.Month(YearMonth.of(2026, 10)), first.period)
+      val saved = SavedStateHandle()
+      model(fixture, saved).selectPreset(PeriodPreset.ALL)
+      val reopened = model(fixture, saved).state.first { it.loaded }
+      assertEquals(Period.All, reopened.period)
     }
   }
 

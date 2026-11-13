@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -79,6 +80,7 @@ object HistoryTags {
   const val ORDER = "history:order"
   const val PERIOD = "history:period"
   const val MOVEMENTS = "history:movements"
+  const val LOADING = "history:loading"
   const val PERIOD_DAY = "history:period:day"
   const val PERIOD_MONTH = "history:period:month"
   const val PERIOD_YEAR = "history:period:year"
@@ -160,16 +162,27 @@ fun HistoryContent(
           HistoryFilters(state, onNewestFirst, onPresetSelected, onCustomRange)
         }
         item(key = "summary") {
-          Text(
-              stringResource(
-                  R.string.history_movements_heading,
-                  state.movements.size,
-                  periodLabel(LocalContext.current, state.period),
-              ),
-              color = sadadPalette.muted,
-              fontSize = 13.sp,
-              lineHeight = 20.sp,
-          )
+          if (!state.loaded && state.movements.isEmpty()) {
+            // The rows are still being read: a thin bar, not a "0 movements" count that reads as
+            // an empty history.
+            LinearProgressIndicator(
+                modifier =
+                    Modifier.fillMaxWidth().height(2.dp).testTag(HistoryTags.LOADING),
+                color = sadadPalette.primary,
+                trackColor = sadadPalette.line,
+            )
+          } else {
+            Text(
+                stringResource(
+                    R.string.history_movements_heading,
+                    state.movements.size,
+                    periodLabel(LocalContext.current, state.period),
+                ),
+                color = sadadPalette.muted,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+            )
+          }
         }
         if (state.loaded && state.movements.isEmpty()) {
           item(key = "empty") {
