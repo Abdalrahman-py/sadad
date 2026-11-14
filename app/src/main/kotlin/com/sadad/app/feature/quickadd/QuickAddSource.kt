@@ -1,13 +1,7 @@
 package com.sadad.app.feature.quickadd
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import com.sadad.app.AppGraph
 import com.sadad.app.data.db.ContactSummaryEntity
-import com.sadad.app.feature.contactpicker.DeviceContact
-import com.sadad.app.feature.contactpicker.DeviceContacts
 import com.sadad.app.permissions
 import com.sadad.ledger.ContactView
 import com.sadad.ledger.LedgerCommand
@@ -56,24 +50,12 @@ interface QuickAddSource {
   /** The store as it is now, or null when none is open. */
   fun open(): QuickAddStore?
 
-  /** The phone's contacts, read only once the permission is granted. */
-  val contacts: DeviceContacts
-    get() = NO_CONTACTS
-
-  /** Whether reading the phone's contacts is allowed right now. */
-  fun contactsGranted(): Boolean = false
-
   /** The open store's person limit from its verified lease; null without one. */
   fun contactLimit(): Int? = null
 
   /** The words for a server refusal code, the same the rest of the app shows. */
   fun refusalText(code: String): String = code
 }
-
-private val NO_CONTACTS =
-    object : DeviceContacts {
-      override suspend fun list(): List<DeviceContact> = emptyList()
-    }
 
 /** The one open store, for the entry quick add records. */
 interface QuickAddStore {
@@ -91,8 +73,7 @@ interface QuickAddStore {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-/** [appContext] answers the contacts permission; without one the phone's contacts stay unread. */
-fun AppGraph.quickAddSource(appContext: Context? = null): QuickAddSource {
+fun AppGraph.quickAddSource(): QuickAddSource {
   val graph = this
   return object : QuickAddSource {
     override val summaries: Flow<List<ContactSummaryEntity>?> =
@@ -135,13 +116,6 @@ fun AppGraph.quickAddSource(appContext: Context? = null): QuickAddSource {
             }
           }
         }
-
-    override val contacts: DeviceContacts = graph.deviceContacts()
-
-    override fun contactsGranted(): Boolean =
-        appContext != null &&
-            ContextCompat.checkSelfPermission(appContext, Manifest.permission.READ_CONTACTS) ==
-                PackageManager.PERMISSION_GRANTED
 
     override fun contactLimit(): Int? =
         graph.current.value?.account?.let { graph.leaseFor(it.storeUserId).contactLimit(it) }

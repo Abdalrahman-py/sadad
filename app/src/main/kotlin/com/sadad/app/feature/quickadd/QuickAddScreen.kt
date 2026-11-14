@@ -75,7 +75,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -161,7 +160,6 @@ fun QuickAddScreen(
           AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
-    PhoneNumberChooser(state, viewModel)
     val anomaly = state.anomaly
     if (anomaly != null) {
       AlertDialog(
@@ -210,7 +208,7 @@ private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddVie
           viewModelFactory {
             initializer {
               QuickAddViewModel(
-                  graph.quickAddSource(this[APPLICATION_KEY]),
+                  graph.quickAddSource(),
                   contactId,
                   payment,
                   createSavedStateHandle(),
@@ -254,6 +252,8 @@ private fun PickerStep(
         onQuery = model::onQueryChange,
         onClear = model::clearQuery,
     )
+    // A new person is someone to record a debt for; the payment flow has nobody new to pay.
+    if (!state.payment) FromContactsRow(model)
     if (state.blocked) BlockedCard()
     state.error?.let {
       Text(
@@ -290,7 +290,6 @@ private fun PickerStep(
       // A new person is someone to record a debt for; the payment flow has nobody new to pay.
       if (state.query.isNotBlank() && !state.payment) {
         item { AddNewRow(name = state.query.trim(), onClick = model::addNewPerson) }
-        phoneContacts(state, model)
       }
     }
   }

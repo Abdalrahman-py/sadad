@@ -2,17 +2,8 @@ package com.sadad.app.feature.contactpicker
 
 import com.sadad.ledger.ContactView
 
-/** One contact of the phone, as `ContactsContract` gives it: the name and its raw numbers. */
+/** One contact the system picker returned: the name and its raw number. */
 data class DeviceContact(val name: String, val numbers: List<String>)
-
-/**
- * Reads the device's contacts for the in-app list. Nothing here leaves the phone: the query result
- * is for display only, and no log, analytics event or crash report carries a name or a number.
- */
-interface DeviceContacts {
-  /** The contacts that have at least one number, in no defined order. */
-  suspend fun list(): List<DeviceContact>
-}
 
 /** The store's own people a pick is compared against. */
 data class SadadPeople(val active: List<ContactView>, val archived: List<ContactView>)
