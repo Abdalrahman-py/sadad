@@ -15,6 +15,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -23,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -36,14 +38,24 @@ import com.sadad.app.ui.RecentsPrivacy
 import com.sadad.app.ui.SadadApp
 import com.sadad.app.ui.theme.SadadTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
   private var launchIntent by mutableStateOf<Intent?>(null)
 
+  /** The system splash stays until the first screen knows its route and theme. */
+  @Volatile private var ready = false
+
   override fun onCreate(savedInstanceState: Bundle?) {
+    installSplashScreen().setKeepOnScreenCondition { !ready }
     super.onCreate(savedInstanceState)
+    // Never hold the splash past this, whatever the store is doing.
+    lifecycleScope.launch {
+      delay(SPLASH_LIMIT_MS)
+      ready = true
+    }
     launchIntent = intent
     // The ledger never becomes the app-switcher snapshot: recents keeps a picture of whatever was
     // on screen when the owner left, and that picture is his customers' balances. Unlike
@@ -83,7 +95,10 @@ class MainActivity : FragmentActivity() {
       }
       // Hold the splash until the saved theme is read, so a saved dark theme never flashes light.
       if (route == null || choice == null) Splash(dark)
-      else key(route, request) { SadadApp(startDestination = route, dark = dark) }
+      else {
+        SideEffect { ready = true }
+        key(route, request) { SadadApp(startDestination = route, dark = dark) }
+      }
     }
   }
 
@@ -122,6 +137,8 @@ class MainActivity : FragmentActivity() {
     }
   }
 }
+
+private const val SPLASH_LIMIT_MS = 6_000L
 
 /** The system navigation bar's scrims, as `enableEdgeToEdge` uses by default. */
 private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)

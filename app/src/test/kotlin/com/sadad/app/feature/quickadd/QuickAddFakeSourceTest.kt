@@ -145,6 +145,37 @@ class QuickAddFakeSourceTest {
   }
 
   @Test
+  fun thePlusKeyAddsAmountsUpAndDeleteReopensTheLastOne() = runBlocking {
+    withTimeout(5_000) {
+      val source =
+          FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+
+      model.press("+") // nothing typed: adds nothing
+      model.press("1")
+      model.press("2")
+      model.press("+")
+      model.press("3")
+      model.press("0")
+      model.press(".")
+      model.press("5")
+      assertEquals(listOf("12"), model.state.value.terms)
+      assertEquals(Cents(4_250), model.state.value.total)
+
+      model.press("+")
+      model.delete() // nothing typed: reopens 30.5
+      assertEquals(listOf("12"), model.state.value.terms)
+      assertEquals("30.5", model.state.value.amount)
+
+      model.save(context)
+      val payload = source.appended.await().single().payload() as DebtCreate
+      assertEquals(Cents(4_250), payload.amountCents)
+    }
+  }
+
+  @Test
   fun thePickerReadsTheSummariesWithTheStoredOpenBalanceAndNeverCollectsTheWholeView() =
       runBlocking {
         withTimeout(5_000) {

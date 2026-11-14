@@ -150,7 +150,7 @@ fun PeopleContent(
 private fun PeopleHeader(registered: Int) {
   val p = sadadPalette
   Row(
-      Modifier.fillMaxWidth().heightIn(min = 64.dp),
+      Modifier.fillMaxWidth().heightIn(min = 48.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Row(

@@ -29,8 +29,7 @@ import org.robolectric.annotation.Config
 
 /**
  * The three things a shop does from Home: see the two figures, open the people who are late, and —
- * in a new store — start the first entry. The bell announces its count to a screen reader instead
- * of only drawing a badge.
+ * in a new store — start the first entry.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
@@ -42,7 +41,6 @@ class HomeScreenTest {
   private var openedContact: String? = null
   private var recorded = 0
   private var openedActivity = 0
-  private var openedNotifications = 0
   private var refreshed = 0
 
   private val state =
@@ -62,22 +60,6 @@ class HomeScreenTest {
               ),
           followUpCount = 2,
       )
-
-  @Test
-  fun theBellAnnouncesHowManyAreNew() {
-    show(state, unread = 2)
-
-    compose.onNodeWithContentDescription("الإشعارات، 2 جديدة").assertIsDisplayed().performClick()
-
-    assertEquals(1, openedNotifications)
-  }
-
-  @Test
-  fun theBellWithoutUnreadIsJustNotifications() {
-    show(state, unread = 0)
-
-    compose.onNodeWithContentDescription("الإشعارات").assertIsDisplayed()
-  }
 
   @Test
   fun showAllOpensPeopleWithTheLateFilter() {
@@ -188,16 +170,14 @@ class HomeScreenTest {
     assertEquals(1, refreshed)
   }
 
-  private fun show(state: HomeUiState, unread: Int = 0) {
+  private fun show(state: HomeUiState) {
     compose.setContent {
       SadadTheme {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
           HomeContent(
               state = state,
-              unread = unread,
               onOpenContact = { openedContact = it },
               onOpenPeople = { openedPeople = it },
-              onOpenNotifications = { openedNotifications++ },
               onRecord = { recorded++ },
               onOpenActivity = { openedActivity++ },
               onRefresh = { refreshed++ },

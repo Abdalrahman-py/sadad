@@ -18,6 +18,7 @@ import com.sadad.ledger.LedgerView
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -117,9 +118,15 @@ class HistoryViewModel(
     private val source: StatementSource,
     private val saved: SavedStateHandle,
     private val clock: Clock = Clock.systemDefaultZone(),
+    /** The period a first open shows; once the user picks one, the saved filter wins. */
+    initialPeriod: Period = Period.Month(YearMonth.now(clock)),
 ) : ViewModel() {
   private val newestFirst = MutableStateFlow(saved.get<Boolean>(NEWEST_FIRST) ?: true)
-  private val period = MutableStateFlow(periodOf(saved.get<String>(PERIOD)))
+  private val period =
+      MutableStateFlow(
+          saved.get<String>(PERIOD)?.takeUnless(String::isBlank)?.let { periodOf(it) }
+              ?: initialPeriod
+      )
   private val export = MutableStateFlow(Export())
 
   /** A view with the period it was read for: the list never cuts it to another period's bounds. */

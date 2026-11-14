@@ -51,7 +51,6 @@ class HomeA11yTest {
                       ),
                   followUpCount = 2,
               ),
-          unread = 2,
       )
     }
     // The last thing a finger has to reach at this font size.
@@ -84,9 +83,8 @@ class HomeA11yTest {
                           leaseEndsAt = Instant.parse("2026-10-25T17:00:00Z"),
                       ),
               ),
-          unread = 1,
       )
     }
-    compose.assertAccessible(hasTestTag(HomeTags.BELL))
+    compose.assertAccessible(hasTestTag(HomeTags.OFFLINE))
   }
 }

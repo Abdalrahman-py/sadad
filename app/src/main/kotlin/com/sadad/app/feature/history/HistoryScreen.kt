@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -79,6 +80,7 @@ object HistoryTags {
   const val ORDER = "history:order"
   const val PERIOD = "history:period"
   const val MOVEMENTS = "history:movements"
+  const val LOADING = "history:loading"
   const val PERIOD_DAY = "history:period:day"
   const val PERIOD_MONTH = "history:period:month"
   const val PERIOD_YEAR = "history:period:year"
@@ -140,7 +142,7 @@ fun HistoryContent(
   Box(modifier.fillMaxSize().sadadPageBackground()) {
     Column(Modifier.fillMaxSize()) {
       Row(
-          Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp),
+          Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp),
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Text(
@@ -153,23 +155,33 @@ fun HistoryContent(
       }
       LazyColumn(
           modifier = Modifier.fillMaxSize().testTag(HistoryTags.MOVEMENTS),
-          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         item(key = "filters") {
           HistoryFilters(state, onNewestFirst, onPresetSelected, onCustomRange)
         }
         item(key = "summary") {
-          Text(
-              stringResource(
-                  R.string.history_movements_heading,
-                  state.movements.size,
-                  periodLabel(LocalContext.current, state.period),
-              ),
-              color = sadadPalette.muted,
-              fontSize = 13.sp,
-              lineHeight = 20.sp,
-          )
+          if (!state.loaded && state.movements.isEmpty()) {
+            // The rows are still being read: a thin bar, not a "0 movements" count that reads as
+            // an empty history.
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().height(2.dp).testTag(HistoryTags.LOADING),
+                color = sadadPalette.primary,
+                trackColor = sadadPalette.line,
+            )
+          } else {
+            Text(
+                stringResource(
+                    R.string.history_movements_heading,
+                    state.movements.size,
+                    periodLabel(LocalContext.current, state.period),
+                ),
+                color = sadadPalette.muted,
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+            )
+          }
         }
         if (state.loaded && state.movements.isEmpty()) {
           item(key = "empty") {
@@ -379,7 +391,7 @@ private fun ExportPill(onClick: () -> Unit) {
       onClick = onClick,
       color = p.card,
       contentColor = if (p.isDark) p.accent else p.primary,
-      shape = RoundedCornerShape(20.dp),
+      shape = RoundedCornerShape(12.dp),
       border = BorderStroke(1.dp, p.line),
       modifier = Modifier.heightIn(min = 40.dp),
   ) {

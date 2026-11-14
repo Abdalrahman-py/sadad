@@ -49,12 +49,14 @@ class QuickAddA11yTest {
     compose.waitForIdle()
 
     compose.assertAccessible(hasTestTag(QuickAddTags.SAVE))
-    for (key in listOf("1", "5", ".", "del")) {
+    for (key in listOf("1", "5", "+", "del")) {
       compose.onNodeWithTag(QuickAddTags.key(key)).assertIsDisplayed()
     }
     // The two keys whose face is not a digit are spoken, not just drawn.
     compose.onNodeWithContentDescription("حذف").assertIsDisplayed()
-    compose.onNodeWithContentDescription("فاصلة عشرية").assertIsDisplayed()
+    compose
+        .onNodeWithContentDescription("جمع المبلغ؛ اضغط مطولًا للفاصلة العشرية")
+        .assertIsDisplayed()
   }
 
   @Test

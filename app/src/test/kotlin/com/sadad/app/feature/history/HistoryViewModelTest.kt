@@ -17,6 +17,7 @@ import com.sadad.ledger.PaymentMethod
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.flow.first
@@ -35,8 +36,13 @@ import org.robolectric.annotation.Config
 class HistoryViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
-  private fun model(fixture: TestGraph, saved: SavedStateHandle = SavedStateHandle()) =
-      HistoryViewModel(fixture.graph.statementSource(), saved, clock).also {
+  /** Most tests read the whole ledger; [initial] is what a first open shows. */
+  private fun model(
+      fixture: TestGraph,
+      saved: SavedStateHandle = SavedStateHandle(),
+      initial: Period = Period.All,
+  ) =
+      HistoryViewModel(fixture.graph.statementSource(), saved, clock, initial).also {
         fixture.closeWithStore(it.viewModelScope)
       }
 
@@ -60,6 +66,19 @@ class HistoryViewModelTest {
       model.setNewestFirst(false)
       val oldest = model.state.first { !it.newestFirst && it.loaded }
       assertEquals(newest.movements.reversed(), oldest.movements)
+    }
+  }
+
+  @Test
+  fun aFirstOpenShowsTheMonthAndASavedPeriodWins() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val month = Period.Month(YearMonth.of(2026, 10))
+      val first = model(fixture, initial = month).state.first { it.loaded }
+      assertEquals(month, first.period)
+      val saved = SavedStateHandle()
+      model(fixture, saved, initial = month).selectPreset(PeriodPreset.ALL)
+      val reopened = model(fixture, saved, initial = month).state.first { it.loaded }
+      assertEquals(Period.All, reopened.period)
     }
   }
 

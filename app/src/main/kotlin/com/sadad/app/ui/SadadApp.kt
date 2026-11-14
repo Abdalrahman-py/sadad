@@ -146,9 +146,6 @@ fun SadadApp(
                     launchSingleTop = true
                   }
                 },
-                onOpenNotifications = {
-                  navController.navigate(Notifications) { launchSingleTop = true }
-                },
                 onRecord = { navController.navigate(QuickAdd()) },
             )
           }
@@ -313,10 +310,21 @@ internal fun SadadShell(
           destination != null &&
           (!destination.isAny(AUTH_GATES) ||
               (fromStore && !destination.hasRoute<AwaitingApproval>()))
+  // The four tabs share one top bar (store name and bell), so their pages start at one place.
+  val showTopBar = destination.isAny(TAB_ROOTS)
   Scaffold(
       modifier = Modifier.sadadPageBackground(),
       containerColor = Color.Transparent,
       contentColor = sadadPalette.text,
+      topBar = {
+        if (showTopBar) {
+          AppTopBar(
+              onOpenNotifications = {
+                navController.navigate(Notifications) { launchSingleTop = true }
+              }
+          )
+        }
+      },
       bottomBar = { if (showNavigation) SadadBottomBar(navController, syncDot) },
   ) { insets ->
     NavHost(
@@ -333,6 +341,8 @@ internal fun SadadShell(
 
 /** Entry gates hide navigation; account pages opened from Store remain inside the store flow. */
 private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApproval::class)
+
+private val TAB_ROOTS = listOf(Home::class, People::class, Activity::class, Store::class)
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -374,6 +384,8 @@ private fun NavHostController.navigateTab(destination: Any) {
         Store -> Tab.STORE
         else -> null
       }
+  // Already on this tab's own page: nothing to do. Navigating again rebuilt the page under the tap.
+  if (currentDestination?.hasRoute(destination::class) == true) return
   val sameSection = activeTab(currentDestination) == target
   navigate(destination) {
     popUpTo(graph.findStartDestination().id) { saveState = !sameSection }
@@ -407,7 +419,12 @@ internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) 
     TabItem(R.string.nav_people, R.drawable.ic_people, ScreenTag.NAV_PEOPLE, active == Tab.PEOPLE) {
       navController.navigateTab(People())
     }
-    RecordItem { navController.navigate(QuickAdd()) { launchSingleTop = true } }
+    RecordItem {
+      // Already adding an entry: a tap here must not restart it.
+      if (navController.currentDestination?.hasRoute<QuickAdd>() != true) {
+        navController.navigate(QuickAdd()) { launchSingleTop = true }
+      }
+    }
     TabItem(
         R.string.nav_activity,
         R.drawable.ic_activity,

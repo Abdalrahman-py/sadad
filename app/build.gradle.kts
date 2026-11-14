@@ -209,6 +209,7 @@ dependencies {
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.activity.compose)
   implementation(libs.core.ktx)
+  implementation(libs.core.splashscreen)
   implementation(libs.biometric)
   // MainActivity uses FragmentActivity; biometric's transitive 1.2.5 rejects Activity Result codes.
   implementation(libs.fragment)
@@ -231,6 +232,9 @@ dependencies {
 
   debugImplementation(libs.compose.ui.tooling)
   debugImplementation(libs.compose.ui.test.manifest)
+  // Names every composable in system traces, so a stall is traced to a function. Debug builds only.
+  debugImplementation("androidx.compose.runtime:runtime-tracing")
+  debugImplementation("androidx.tracing:tracing-perfetto-binary:1.0.1")
 
   testImplementation(libs.junit)
   testImplementation(libs.ext.junit)
