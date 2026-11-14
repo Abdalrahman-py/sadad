@@ -1,0 +1,474 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-14T14:08:49+00:00",
+  "title": "Design System: Sadad Admin",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Ground",
+        "cssVariable": "--ground",
+        "tonalRamp": [
+          "#0a0b0c",
+          "#242526",
+          "#414243",
+          "#606163",
+          "#818284",
+          "#a4a5a6",
+          "#c8c9ca",
+          "#edeef0"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Sheet",
+        "cssVariable": "--surface",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242526",
+          "#414243",
+          "#606163",
+          "#818284",
+          "#a4a5a6",
+          "#c8c9ca",
+          "#edeeef"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised",
+        "cssVariable": "--raised",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#414245",
+          "#606165",
+          "#818286",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover Veil",
+        "cssVariable": "--hover",
+        "note": "8-digit hex alpha veil over the dark surfaces; no ramp."
+      },
+      "active": {
+        "role": "neutral",
+        "displayName": "Active Veil",
+        "cssVariable": "--active",
+        "note": "8-digit hex alpha veil over the dark surfaces; no ramp."
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "cssVariable": "--border",
+        "tonalRamp": [
+          "#0b0b0d",
+          "#242527",
+          "#414245",
+          "#606164",
+          "#818286",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Strong Border",
+        "cssVariable": "--border-strong",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#414246",
+          "#606166",
+          "#818287",
+          "#a4a5aa",
+          "#c8c9cd",
+          "#edeef2"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "cssVariable": "--rule",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242527",
+          "#414244",
+          "#606163",
+          "#818285",
+          "#a4a5a7",
+          "#c8c9cb",
+          "#edeef0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "cssVariable": "--text",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#414242",
+          "#606161",
+          "#828282",
+          "#a4a5a5",
+          "#c8c9c9",
+          "#eeeeee"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "cssVariable": "--muted",
+        "tonalRamp": [
+          "#090b0f",
+          "#22252b",
+          "#3e4249",
+          "#5d616a",
+          "#7d838b",
+          "#a0a5ad",
+          "#c5c9d1",
+          "#ebeff5"
+        ]
+      },
+      "faint": {
+        "role": "neutral",
+        "displayName": "Faint",
+        "cssVariable": "--faint",
+        "tonalRamp": [
+          "#090b0f",
+          "#22252a",
+          "#3e4249",
+          "#5d6169",
+          "#7e838b",
+          "#a1a5ad",
+          "#c5c9d0",
+          "#ebeff5"
+        ]
+      },
+      "sadad-green": {
+        "role": "primary",
+        "displayName": "Sadad Green",
+        "cssVariable": "--green",
+        "tonalRamp": [
+          "#00130b",
+          "#003125",
+          "#005242",
+          "#007562",
+          "#0a9783",
+          "#56b9a6",
+          "#89dcca",
+          "#b8ffef"
+        ]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Waiting Amber",
+        "cssVariable": "--amber",
+        "tonalRamp": [
+          "#220000",
+          "#451300",
+          "#6b3000",
+          "#934e00",
+          "#b87000",
+          "#d89635",
+          "#f8bd6f",
+          "#ffe4a2"
+        ]
+      },
+      "red": {
+        "role": "secondary",
+        "displayName": "Expired Red",
+        "cssVariable": "--red",
+        "tonalRamp": [
+          "#2d0000",
+          "#550000",
+          "#810013",
+          "#af242c",
+          "#d74c4d",
+          "#f77975",
+          "#ffa49e",
+          "#ffcfc9"
+        ]
+      },
+      "red-fill": {
+        "role": "secondary",
+        "displayName": "Danger Fill",
+        "cssVariable": "--red-fill",
+        "purpose": "Red behind white text (danger button, red chip); 5.2:1 with white. Plain red is for dots and text only."
+      },
+      "blue": {
+        "role": "secondary",
+        "displayName": "Frozen Blue",
+        "cssVariable": "--blue",
+        "tonalRamp": [
+          "#000335",
+          "#00215d",
+          "#004088",
+          "#0460b5",
+          "#3584db",
+          "#64a8f8",
+          "#91cdff",
+          "#bef3ff"
+        ]
+      },
+      "grey": {
+        "role": "neutral",
+        "displayName": "Archive Grey",
+        "cssVariable": "--grey",
+        "tonalRamp": [
+          "#090b0e",
+          "#23252a",
+          "#3f4248",
+          "#5e6168",
+          "#7f8289",
+          "#a1a5ac",
+          "#c6c9cf",
+          "#eceff4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Title",
+        "purpose": "Page title in the title row and sign-in heading."
+      },
+      "kpi": {
+        "displayName": "KPI",
+        "purpose": "KPI values, tabular; 22px on phones."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Panel headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text, table cells, nav."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Table headers, second lines, help text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Chips, badges, group labels, hints."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 12px 32px #00000080",
+        "purpose": "Menus and the toast."
+      },
+      {
+        "name": "modal",
+        "value": "0 24px 64px #000000b3",
+        "purpose": "Dialogs and the command palette."
+      },
+      {
+        "name": "drawer",
+        "value": "0 0 48px #000000b3",
+        "purpose": "Phone sidebar drawer when open."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "150ms ease",
+        "purpose": "Colour and border changes on hover and focus."
+      },
+      {
+        "name": "press",
+        "value": "100ms ease, translateY(1px)",
+        "purpose": "Button press."
+      },
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Toast entrance (200ms) and drawer slide (220ms)."
+      },
+      {
+        "name": "skeleton-pulse",
+        "value": "1.4s ease-in-out infinite",
+        "purpose": "Loading rows fade to 45% opacity."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "none",
+        "purpose": "prefers-reduced-motion removes all transitions and animations."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "kpi-fold",
+        "value": "1100px"
+      },
+      {
+        "name": "single-column",
+        "value": "1000px"
+      },
+      {
+        "name": "phone",
+        "value": "760px"
+      },
+      {
+        "name": "table-stack (container)",
+        "value": "620px"
+      },
+      {
+        "name": "wide-table-stack (container)",
+        "value": "900px"
+      }
+    ],
+    "layout": {
+      "sidebar": "236px",
+      "control": "32px",
+      "gap": "16px",
+      "pageMaxWidth": "1240px",
+      "sheetInset": "8px",
+      "sheetHeader": "48px",
+      "focusRing": "2px solid ink, 2px offset"
+    }
+  },
+  "components": [
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Secondary actions; raised fill with a strong border.",
+      "html": "<button class=\"ds-btn\">تمديد</button>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--control);padding:0 14px;border-radius:var(--r-control);border:1px solid var(--border-strong);background:var(--raised);color:var(--text);font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,transform .1s ease} .ds-btn:hover{background:#1d1e21;border-color:#ffffff2e} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px} "
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single main action of a view; ink fill.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">إنشاء متجر</button>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--control);padding:0 14px;border-radius:var(--r-control);border:1px solid var(--border-strong);background:var(--raised);color:var(--text);font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,transform .1s ease} .ds-btn:hover{background:#1d1e21;border-color:#ffffff2e} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px} .ds-btn-primary{background:var(--text);color:var(--ground);border-color:var(--text)} .ds-btn-primary:hover{background:#fff;border-color:#fff}"
+    },
+    {
+      "name": "Approve Button",
+      "kind": "button",
+      "refersTo": "button-approve",
+      "description": "Approving a device or a positive confirmation; green only here.",
+      "html": "<button class=\"ds-btn ds-btn-approve\">اعتماد</button>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--control);padding:0 14px;border-radius:var(--r-control);border:1px solid var(--border-strong);background:var(--raised);color:var(--text);font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,transform .1s ease} .ds-btn:hover{background:#1d1e21;border-color:#ffffff2e} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px} .ds-btn-approve{background:var(--green);border-color:var(--green);color:#04140f} .ds-btn-approve:hover{background:#22bba3;border-color:#22bba3}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Low-weight actions in headers and rows.",
+      "html": "<button class=\"ds-btn ds-btn-ghost\">رفض</button>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:var(--control);padding:0 14px;border-radius:var(--r-control);border:1px solid var(--border-strong);background:var(--raised);color:var(--text);font-weight:500;cursor:pointer;white-space:nowrap;transition:background-color .15s ease,border-color .15s ease,transform .1s ease} .ds-btn:hover{background:#1d1e21;border-color:#ffffff2e} .ds-btn:active{transform:translateY(1px)} .ds-btn:focus-visible{outline:2px solid var(--text);outline-offset:2px} .ds-btn-ghost{background:transparent;border-color:transparent;color:var(--muted)} .ds-btn-ghost:hover{background:var(--hover);color:var(--text);border-color:transparent}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Ground-filled field that sits darker than the sheet; ink border on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"ابحث عن متجر\">",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-input{width:280px;height:var(--control);padding:0 12px;border-radius:var(--r-control);background:var(--ground);border:1px solid var(--border-strong);color:var(--text);font:inherit;transition:border-color .15s ease} .ds-input::placeholder{color:var(--faint)} .ds-input:focus{outline:none;border-color:var(--text)}"
+    },
+    {
+      "name": "Status Chips",
+      "kind": "chip",
+      "refersTo": "chip-active",
+      "description": "Solid status fills, one meaning each, always with the word.",
+      "html": "<span class=\"ds-chip ds-g\">نشط</span> <span class=\"ds-chip ds-a\">ينتهي قريبا</span> <span class=\"ds-chip ds-b\">مجمّد</span> <span class=\"ds-chip ds-x\">مؤرشف</span>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-chip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:4px;font-size:12px;font-weight:500;white-space:nowrap} .ds-g{background:var(--green);color:#04140f} .ds-a{background:var(--amber);color:#1a1205} .ds-b{background:var(--blue);color:#04101f} .ds-x{background:#ffffff14;color:var(--text)}"
+    },
+    {
+      "name": "Status Dot",
+      "kind": "custom",
+      "description": "Default state display in tables and feeds: 8px solid dot plus the word.",
+      "html": "<span class=\"ds-status\"><span class=\"ds-dot\"></span>نشط</span>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-status{display:inline-flex;align-items:center;gap:8px;color:var(--text)} .ds-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}"
+    },
+    {
+      "name": "Sidebar Nav",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "30px nav items; hover veil, current page on the active veil.",
+      "html": "<nav class=\"ds-nav\" dir=\"rtl\"><a class=\"ds-ni\" aria-current=\"page\">المهام<span class=\"ds-count\">3</span></a><a class=\"ds-ni\">المتاجر</a><a class=\"ds-ni\">إنشاء متجر</a></nav>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-nav{display:flex;flex-direction:column;gap:2px;width:216px;padding:10px;background:var(--ground)} .ds-ni{display:flex;align-items:center;gap:10px;height:30px;padding:0 10px;border-radius:6px;color:var(--muted);font-weight:500;cursor:pointer} .ds-ni:hover{background:var(--hover);color:var(--text)} .ds-ni[aria-current=page]{background:var(--active);color:var(--text)} .ds-count{margin-inline-start:auto;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--amber);color:#1a1205;font:600 12px/20px Inter,sans-serif;text-align:center}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Bordered container on the sheet; no shadow.",
+      "html": "<section class=\"ds-panel\" dir=\"rtl\"><header class=\"ds-ph\"><h2>أجهزة تنتظر الاعتماد</h2><span class=\"ds-pc\">3</span></header><div class=\"ds-pb\">محتوى اللوحة</div></section>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-panel{width:420px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-panel)} .ds-ph{display:flex;align-items:center;gap:10px;padding:14px 18px;min-height:52px;border-bottom:1px solid var(--border)} .ds-ph h2{margin:0;font:700 14.5px/1.3 Tajawal,sans-serif} .ds-pc{color:var(--muted);font-size:12.5px} .ds-pb{padding:18px;color:var(--muted)}"
+    },
+    {
+      "name": "Underline Tabs",
+      "kind": "nav",
+      "refersTo": "tab-selected",
+      "description": "Muted tabs; selected tab ink with a 2px ink underline.",
+      "html": "<div class=\"ds-tabs\" dir=\"rtl\"><button class=\"ds-tab\" aria-selected=\"true\">الأجهزة <span>4</span></button><button class=\"ds-tab\">الاشتراك</button></div>",
+      "css": ":host{--ground:#08090a;--surface:#0f1011;--raised:#16171a;--hover:#ffffff0a;--active:#ffffff0f;--border:#232427;--border-strong:#34353a;--rule:#1b1c1e;--text:#f7f8f8;--muted:#d0d6e0;--faint:#8a8f98;--green:#1ba892;--amber:#f5a524;--red:#eb5757;--blue:#4c9ffe;--grey:#62666d;--r-panel:8px;--r-control:6px;--control:32px;font:400 14px/1.55 Inter,Tajawal,system-ui,sans-serif;font-feature-settings:'tnum' 1,'cv11' 1;color:var(--text)} .ds-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border)} .ds-tab{padding:10px 12px;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;font:inherit;cursor:pointer} .ds-tab:hover{color:var(--text)} .ds-tab[aria-selected=true]{color:var(--text);border-bottom-color:var(--text)} .ds-tab span{color:var(--faint)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Operator's Console",
+    "overview": "The category-standard dark admin, played straight at the craft level of Linear, Vercel and Stripe. One operator runs a small real service from this screen, often with a shop owner waiting on the phone, so the console stays quiet and lets the queue speak: a near-black ground, an inset sheet that holds the work, thin rules instead of boxes, and colour reserved for status. Values were measured from Linear's live app and Vercel Geist's dark tokens, then adjusted for Arabic.\n\nDensity is that of a working tool: 32px controls, 14px body, tables first. The page is right-to-left Arabic set in Tajawal, while every digit, code and amount runs in Inter with tabular figures and isolated left-to-right direction. Depth comes from three tonal steps of near-black and hairline borders; shadows exist only under things that float.\n\nThe world refuses vanity tiles, decorative icon circles, gradients and glow. The brand green is not decoration: it is the colour of \"active\" and \"approved\", and nothing else.",
+    "keyCharacteristics": [
+      "Dark only; `color-scheme: dark`, no light theme.",
+      "Inset sheet shell: sidebar on the ground, work inside one bordered sheet.",
+      "Ink-white primary action; green only for positive status and approve.",
+      "Solid status colours, each with one meaning, always paired with a word.",
+      "Tajawal for Arabic headings and text, Inter tabular digits for all data.",
+      "Flat surfaces; shadow only on menus, toasts, dialogs and the drawer."
+    ],
+    "rules": [
+      {
+        "name": "The One Meaning Rule",
+        "body": "Green is active or approved, amber is waiting or ending, red is expired or danger, blue is frozen by an admin, grey is archived or revoked. A status colour never appears for any other reason, and never without its word beside it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink Primary Rule",
+        "body": "The main action on a page is an ink-white button on dark text. Green is earned by status; it does not mark the most important button.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Digits Rule",
+        "body": "Every number, code, date and username is set in Inter with tabular figures, isolated left-to-right inside the RTL page, and numeric columns align to the left edge.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Uppercase Rule",
+        "body": "Labels are sentence-case Arabic at 12px; no tracked capitals anywhere except the spacing of the temporary code.",
+        "section": "typography"
+      },
+      {
+        "name": "The Float-Only Shadow Rule",
+        "body": "If it sits in the page flow, it has no shadow. Shadows mark things that cover other things.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every colour from the tokens; the production build exposes them as CSS variables under a strict `style-src 'self'` CSP, with fonts and icons self-hosted.",
+      "Do pair every status colour with its word, and keep each colour to its one meaning.",
+      "Do make the ink-white button the single primary action of a view.",
+      "Do set digits, codes, dates and usernames in Inter with tabular figures and isolated LTR direction.",
+      "Do put work inside the inset sheet and panels; separate rows with rules, not boxes.",
+      "Do keep controls at 32px on desktop and grow row actions to 40px on phones.",
+      "Do honour reduced motion: all transitions and animations switch off."
+    ],
+    "donts": [
+      "Don't add a light theme; the only light fills are the ink primary button, the toast and the selected step.",
+      "Don't use gradients, glow, vanity metric tiles, or decorative icons set in circles or tiles.",
+      "Don't use Sadad green for decoration, links or the main call to action.",
+      "Don't put a shadow on anything that sits in the page flow.",
+      "Don't introduce inline styles or runtime style tags; they break the CSP."
+    ]
+  }
+}
