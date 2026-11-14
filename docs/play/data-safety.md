@@ -37,4 +37,5 @@ Not collected: location, contacts (only the picked contact's name and number, al
 - Photos stay local: `app/src/main/kotlin/com/sadad/app/feature/photo/PhotoEditor.kt` (`PhotoStore.save`).
 - Contacts: only the picked contact is saved (`feature/contactpicker/`); after the system-picker ticket the app has no contacts permission at all.
 - HTTPS only: release `allowCleartextTraffic=false` (`app/build.gradle.kts`), checked by the release workflow.
+- Support and deletion email: saddid.ps@gmail.com (owner, 2026-11-14).
 - "Within 30 days" for deletion is a promise the owner makes; confirm before publishing.
