@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -84,15 +83,13 @@ internal fun NewPersonStep(state: QuickAddState, model: QuickAddViewModel) {
 }
 
 /**
- * The picker's «من جهات الاتصال» row: Android's own picker returns one number, and someone the
- * store keeps opens them while anyone else starts a new person. The app reads only that one row.
+ * The picker's «من جهات الاتصال» row, under the search field: Android's own picker returns one
+ * number, and someone the store keeps opens them while anyone else starts a new person. The app
+ * reads only that one row. The launcher is registered here, outside the people list: a lazy row
+ * scrolled away while the system picker is up would drop the result with it.
  */
-internal fun LazyListScope.phoneContacts(model: QuickAddViewModel) {
-  item(key = "phone-contacts") { FromContactsRow(model) }
-}
-
 @Composable
-private fun FromContactsRow(model: QuickAddViewModel) {
+internal fun FromContactsRow(model: QuickAddViewModel) {
   val open = rememberPhoneContactPicker { contact -> contact?.let(model::pickPhoneContact) }
   Text(
       stringResource(R.string.quickadd_contacts_section),

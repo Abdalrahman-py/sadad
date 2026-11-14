@@ -253,6 +253,8 @@ private fun PickerStep(
         onQuery = model::onQueryChange,
         onClear = model::clearQuery,
     )
+    // A new person is someone to record a debt for; the payment flow has nobody new to pay.
+    if (!state.payment) FromContactsRow(model)
     if (state.blocked) BlockedCard()
     state.error?.let {
       Text(
@@ -290,7 +292,6 @@ private fun PickerStep(
       if (state.query.isNotBlank() && !state.payment) {
         item { AddNewRow(name = state.query.trim(), onClick = model::addNewPerson) }
       }
-      if (!state.payment) phoneContacts(model)
     }
   }
 }
