@@ -82,6 +82,8 @@ data class QuickAddState(
     /** True when the amount being entered is a payment; false for a debt. */
     val payment: Boolean = false,
     val amount: String = "",
+    /** The amounts the «+» key has already added up; [amount] is the one being typed. */
+    val terms: List<String> = emptyList(),
     val method: PaymentMethod = PaymentMethod.CASH,
     /** `yyyy-MM-dd`, exactly as the wire carries it. */
     val dueDate: String? = null,
@@ -108,13 +110,22 @@ data class QuickAddState(
   val personName: String
     get() = selected?.name.orEmpty()
 
+  /** What the entry adds up to: every added amount plus the one being typed. */
+  val total: Cents
+    get() =
+        (terms + amount).fold(Cents.ZERO) { sum, text -> sum + (parseCents(text) ?: Cents.ZERO) }
+
+  /** The whole entry as typed, to tell an edit from a repeat tap on save. */
+  val entry: String
+    get() = (terms + amount).joinToString("+")
+
   /**
    * Whether the amount on screen may be saved: a positive amount, and a supplier payment within the
    * debt. A customer's payment above what is open becomes credit instead of being refused.
    */
   val canSave: Boolean
     get() {
-      val value = parseCents(amount) ?: return false
+      val value = total
       if (value <= Cents.ZERO) return false
       if (blocked) return false
       if (payment && value > overBalance && selected?.kind != ContactKind.CUSTOMER) return false
@@ -151,6 +162,7 @@ class QuickAddViewModel(
           QuickAddState(
               payment = payment,
               amount = saved.get<String>(AMOUNT).orEmpty(),
+              terms = saved.get<String>(TERMS)?.split(',')?.filter { it.isNotEmpty() }.orEmpty(),
               note = saved.get<String>(NOTE).orEmpty(),
               dueDate = saved.get<String>(DUE),
               method = saved.get<String>(METHOD)?.let(::methodOf) ?: PaymentMethod.CASH,
@@ -339,6 +351,7 @@ class QuickAddViewModel(
           selected = person,
           step = if (person == null) current.step else QuickAddStep.AMOUNT,
           amount = "",
+          terms = emptyList(),
           overBalance = openBalances[personId] ?: Cents.ZERO,
           anomaly = null,
           error = null,
@@ -361,7 +374,14 @@ class QuickAddViewModel(
     mutable.update {
       // A new person's amount goes back to their fields, not past them.
       val step = if (it.newPerson != null) QuickAddStep.NEW_PERSON else QuickAddStep.PICKER
-      it.copy(step = step, amount = "", anomaly = null, error = null, done = null)
+      it.copy(
+          step = step,
+          amount = "",
+          terms = emptyList(),
+          anomaly = null,
+          error = null,
+          done = null,
+      )
     }
   }
 
@@ -469,6 +489,7 @@ class QuickAddViewModel(
                         asOf = Instant.now(),
                     ),
                 amount = "",
+                terms = emptyList(),
                 overBalance = Cents.ZERO,
                 error = null,
             )
@@ -503,6 +524,10 @@ class QuickAddViewModel(
   /** One key of the on-screen keypad: a digit, or «.» for the decimal mark. */
   fun press(key: String) {
     if (mutable.value.step != QuickAddStep.AMOUNT) return
+    if (key == "+") {
+      addTerm()
+      return
+    }
     val next =
         when (key) {
           "." -> {
@@ -530,12 +555,35 @@ class QuickAddViewModel(
     mutable.update { it.copy(amount = next, anomaly = null, error = null) }
   }
 
+  /**
+   * The «+» key: the typed amount joins the total and the next one starts. Nothing typed, or a
+   * zero, adds nothing.
+   */
+  private fun addTerm() {
+    val current = mutable.value
+    val typed = parseCents(current.amount) ?: return
+    if (typed <= Cents.ZERO || current.terms.size >= MAX_TERMS) return
+    val terms = current.terms + current.amount
+    saved[TERMS] = terms.joinToString(",")
+    saved[AMOUNT] = ""
+    anomalyApproved = null
+    mutable.update { it.copy(terms = terms, amount = "", anomaly = null, error = null) }
+  }
+
   fun delete() {
     if (mutable.value.step != QuickAddStep.AMOUNT) return
-    val next = mutable.value.amount.dropLast(1)
+    val current = mutable.value
+    // With nothing typed, delete reopens the last added amount instead of doing nothing.
+    val (terms, next) =
+        if (current.amount.isEmpty() && current.terms.isNotEmpty()) {
+          current.terms.dropLast(1) to current.terms.last()
+        } else {
+          current.terms to current.amount.dropLast(1)
+        }
     saved[AMOUNT] = next
+    saved[TERMS] = terms.joinToString(",")
     anomalyApproved = null
-    mutable.update { it.copy(amount = next, anomaly = null, error = null) }
+    mutable.update { it.copy(terms = terms, amount = next, anomaly = null, error = null) }
   }
 
   fun onMethodChange(method: PaymentMethod) {
@@ -561,9 +609,9 @@ class QuickAddViewModel(
     val current = mutable.value
     // Saving is the amount step's action; the done step cannot queue the same entry again.
     if (current.step != QuickAddStep.AMOUNT) return
-    val amount = parseCents(current.amount)
-    if (!current.canSave || amount == null) return
-    if (amount >= ANOMALY_LIMIT && anomalyApproved != current.amount) {
+    val amount = current.total
+    if (!current.canSave) return
+    if (amount >= ANOMALY_LIMIT && anomalyApproved != current.entry) {
       mutable.update { it.copy(anomaly = amount) }
       return
     }
@@ -579,7 +627,7 @@ class QuickAddViewModel(
         val now = mutable.value
         if (
             now.selected?.id == chosen.id &&
-                now.amount == current.amount &&
+                now.entry == current.entry &&
                 now.payment == current.payment
         ) {
           save(context)
@@ -637,7 +685,7 @@ class QuickAddViewModel(
   fun confirmAnomaly() {
     val current = mutable.value
     if (current.anomaly == null) return
-    anomalyApproved = current.amount
+    anomalyApproved = current.entry
     mutable.update { it.copy(anomaly = null) }
   }
 
@@ -668,6 +716,7 @@ class QuickAddViewModel(
     }
     anomalyApproved = null
     saved[AMOUNT] = ""
+    saved[TERMS] = ""
     saved[NOTE] = ""
     saved[DUE] = null
     mutable.update {
@@ -697,7 +746,7 @@ class QuickAddViewModel(
   fun sentence(context: Context): String {
     val current = mutable.value
     val name = current.personName
-    val amount = typedAmountLabel(current.amount)
+    val amount = formatAmount(current.total)
     val supplier = current.selected?.kind == ContactKind.SUPPLIER
     val template =
         when {
@@ -712,7 +761,7 @@ class QuickAddViewModel(
   /** The line under the amount that states what the entry does to the balance. */
   fun preview(context: Context): String {
     val current = mutable.value
-    val amount = parseCents(current.amount) ?: Cents.ZERO
+    val amount = current.total
     if (amount <= Cents.ZERO) return context.getString(R.string.quickadd_preview_empty)
     val supplier = current.selected?.kind == ContactKind.SUPPLIER
     if (current.payment && amount > current.overBalance) {
@@ -1008,6 +1057,8 @@ class QuickAddViewModel(
     private const val MAX_INTEGER_DIGITS = 7
 
     private const val AMOUNT = "quickadd:amount"
+    private const val TERMS = "quickadd:terms"
+    private const val MAX_TERMS = 30
     private const val METHOD = "quickadd:method"
     private const val NOTE = "quickadd:note"
     private const val DUE = "quickadd:due-date"

@@ -67,7 +67,7 @@
     <string name="quickadd_method_bank">بنكي</string>
     <string name="quickadd_method_wallet">محفظة</string>
     <string name="quickadd_key_delete">حذف</string>
-    <string name="quickadd_key_dot">فاصلة عشرية</string>
+    <string name="quickadd_key_plus">جمع المبلغ؛ اضغط مطولًا للفاصلة العشرية</string>
     <string name="quickadd_save_blocked">الحفظ غير متاح لهذا الجهاز</string>
     <string name="quickadd_anomaly_title">مبلغ أكبر من المعتاد</string>
     <string name="quickadd_anomaly_body">راجع القيمة قبل الحفظ:</string>

@@ -93,10 +93,9 @@ import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.balanceWord
-import com.sadad.app.ui.components.parseCents
+import com.sadad.app.ui.components.formatAmount
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.sadadPalette
-import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
@@ -559,15 +558,32 @@ private fun AmountStep(
           Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = p.text)
           Spacer(Modifier.width(8.dp))
           Text(
-              text = typedAmountLabel(state.amount),
+              text =
+                  if (state.terms.isEmpty()) typedAmountLabel(state.amount)
+                  else formatAmount(state.total),
               fontSize = 52.sp,
               fontWeight = FontWeight.SemiBold,
-              color = if (state.amount.isEmpty()) Ghost else p.text,
+              color = if (state.terms.isEmpty() && state.amount.isEmpty()) Ghost else p.text,
               modifier = Modifier.testTag(QuickAddTags.AMOUNT),
           )
         }
       }
-      val amount = parseCents(state.amount) ?: Cents.ZERO
+      if (state.terms.isNotEmpty()) {
+        // «12 + 30 +»: what the total is made of, read left to right like the amount.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+          Text(
+              text =
+                  (if (state.amount.isEmpty()) state.terms else state.terms + state.amount)
+                      .joinToString(" + ")
+                      .let { if (state.amount.isEmpty()) "$it +" else it },
+              fontSize = 16.sp,
+              color = p.muted,
+              maxLines = 1,
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+          )
+        }
+      }
+      val amount = state.total
       val over = state.payment && amount > state.overBalance
       Surface(
           color = if (over) p.creditSoft else Color.Transparent,
@@ -628,7 +644,7 @@ private fun AmountStep(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-      Keypad(onKey = model::press, onDelete = model::delete)
+      Keypad(onKey = model::press, onLongKey = { model.press(".") }, onDelete = model::delete)
     }
 
     if (choosingDue) {
@@ -741,18 +757,20 @@ private fun ModeCell(
 
 /** The shared keypad, tagged per key as the quick add tests find them. */
 @Composable
-private fun Keypad(onKey: (String) -> Unit, onDelete: () -> Unit) {
-  val dot = stringResource(R.string.quickadd_key_dot)
+private fun Keypad(onKey: (String) -> Unit, onLongKey: (String) -> Unit, onDelete: () -> Unit) {
+  val plus = stringResource(R.string.quickadd_key_plus)
   val keys =
       listOf("1", "2", "3", "4", "5", "6", "7", "8", "9").map { KeypadKey.Char(it) } +
           listOf(
-              KeypadKey.Char(".", dot),
+              // Tap adds the typed amount to the total; a long press types the decimal mark.
+              KeypadKey.Char("+", plus, longLabel = "."),
               KeypadKey.Char("0"),
               KeypadKey.Delete(stringResource(R.string.quickadd_key_delete)),
           )
   SadadKeypad(
       keys = keys,
       onChar = onKey,
+      onLongChar = onLongKey,
       onDelete = onDelete,
       modifier = Modifier.testTag(QuickAddTags.KEYPAD),
       tagFor = { key ->
@@ -817,30 +835,46 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
       modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
       onDismissRequest = onDismiss,
       confirmButton = {
-        TextButton(
-            enabled = picked != null,
-            onClick = {
-              if (picked != null) {
-                onPick(Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate().toString())
-              }
-            },
-        ) {
-          Text(stringResource(R.string.quickadd_due_confirm))
+        RightToLeft {
+          TextButton(
+              enabled = picked != null,
+              onClick = {
+                if (picked != null) {
+                  onPick(
+                      Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                  )
+                }
+              },
+          ) {
+            Text(stringResource(R.string.quickadd_due_confirm))
+          }
         }
       },
       dismissButton = {
-        Row {
-          if (current != null) {
-            TextButton(onClick = { onPick(null) }) {
-              Text(stringResource(R.string.quickadd_due_clear))
+        RightToLeft {
+          Row {
+            if (current != null) {
+              TextButton(onClick = { onPick(null) }) {
+                Text(stringResource(R.string.quickadd_due_clear))
+              }
             }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
           }
-          TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
         }
       },
   ) {
-    DatePicker(state = state)
+    RightToLeft { DatePicker(state = state) }
   }
+}
+
+/**
+ * A dialog is its own window: its first frame takes the device's direction, and the page's right to
+ * left reaches it one frame later, so the picker drew left to right for a moment. Set here, the
+ * direction is right from the first frame.
+ */
+@Composable
+private fun RightToLeft(content: @Composable () -> Unit) {
+  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, content = content)
 }
 
 /** «ملاحظة»: a line saying what the entry was for, kept with it in the ledger. */
@@ -1005,26 +1039,16 @@ private fun DoneStep(
         onClick = { model.another(context) },
         modifier = Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.ANOTHER),
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-      if (person != null) {
-        SadadButton(
-            text = stringResource(R.string.quickadd_open_contact, firstWord(person.name)),
-            onClick = {
-              model.leave(context)
-              onOpenContact(person.id)
-            },
-            style = SadadButtonStyle.SOFT,
-            modifier = Modifier.weight(1f).height(48.dp),
-        )
-      }
+    // One way on besides «تسجيل آخر»: the bar below already leads home.
+    if (person != null) {
       SadadButton(
-          text = stringResource(R.string.quickadd_home),
+          text = stringResource(R.string.quickadd_open_contact, firstWord(person.name)),
           onClick = {
             model.leave(context)
-            onClose()
+            onOpenContact(person.id)
           },
           style = SadadButtonStyle.SOFT,
-          modifier = Modifier.weight(1f).height(48.dp),
+          modifier = Modifier.fillMaxWidth().height(48.dp),
       )
     }
   }
@@ -1166,14 +1190,14 @@ private fun BackGlyph(color: Color) {
     val stroke = this.size.minDimension * 0.09f
     drawLine(
         color,
-        Offset(this.size.width * 0.62f, this.size.height * 0.22f),
-        Offset(this.size.width * 0.36f, this.size.height * 0.5f),
+        Offset(this.size.width * 0.38f, this.size.height * 0.22f),
+        Offset(this.size.width * 0.64f, this.size.height * 0.5f),
         stroke,
     )
     drawLine(
         color,
-        Offset(this.size.width * 0.36f, this.size.height * 0.5f),
-        Offset(this.size.width * 0.62f, this.size.height * 0.78f),
+        Offset(this.size.width * 0.64f, this.size.height * 0.5f),
+        Offset(this.size.width * 0.38f, this.size.height * 0.78f),
         stroke,
     )
   }

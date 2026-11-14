@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -170,7 +172,12 @@ fun SadadBrand(modifier: Modifier = Modifier, logoSize: Dp = 72.dp, tagline: Boo
 
 /** One key of [SadadKeypad]: a digit or the dot, delete, or an action such as the fingerprint. */
 sealed interface KeypadKey {
-  data class Char(val label: String, val description: String = label) : KeypadKey
+  /** [longLabel] is typed by a long press; the tap types [label]. */
+  data class Char(
+      val label: String,
+      val description: String = label,
+      val longLabel: String? = null,
+  ) : KeypadKey
 
   data class Delete(val description: String) : KeypadKey
 
@@ -191,6 +198,7 @@ fun SadadKeypad(
     onChar: (String) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongChar: (String) -> Unit = {},
     keyHeight: Dp = 52.dp,
     fontSize: Int = 24,
     plainSpecials: Boolean = false,
@@ -229,45 +237,87 @@ fun SadadKeypad(
                   KeypadKey.Blank -> ""
                 }
             val tag = tagFor(key)
-            Surface(
-                onClick = {
-                  when (key) {
-                    is KeypadKey.Char -> onChar(key.label)
-                    is KeypadKey.Delete -> onDelete()
-                    is KeypadKey.Action -> key.onClick()
-                    KeypadKey.Blank -> Unit
-                  }
-                },
-                color = tint,
-                contentColor = if (p.isDark) p.text else if (plainSpecials) p.primary else p.text,
-                shape = KeyShape,
-                interactionSource = source,
-                modifier =
-                    Modifier.weight(1f)
-                        .height(keyHeight)
-                        .scale(scale)
-                        .then(if (plain) Modifier else Modifier.keyUnderline(p.line))
-                        .then(if (tag != null) Modifier.testTag(tag) else Modifier)
-                        .semantics {
-                          contentDescription = description
-                          role = Role.Button
-                        },
-            ) {
+            val keyModifier =
+                Modifier.weight(1f)
+                    .height(keyHeight)
+                    .scale(scale)
+                    .then(if (plain) Modifier else Modifier.keyUnderline(p.line))
+                    .then(if (tag != null) Modifier.testTag(tag) else Modifier)
+                    .semantics {
+                      contentDescription = description
+                      role = Role.Button
+                    }
+            val keyContent: @Composable () -> Unit = {
               Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 when (key) {
                   is KeypadKey.Char ->
-                      Text(
-                          key.label,
-                          fontSize = fontSize.sp,
-                          fontWeight = FontWeight.Medium,
-                          color = LocalContentColor.current,
-                      )
+                      if (key.longLabel == null) {
+                        Text(
+                            key.label,
+                            fontSize = fontSize.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = LocalContentColor.current,
+                        )
+                      } else {
+                        // The long press types [longLabel]: shown dimmer under the label.
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                          Text(
+                              key.label,
+                              fontSize = fontSize.sp,
+                              lineHeight = fontSize.sp,
+                              fontWeight = FontWeight.Medium,
+                              color = LocalContentColor.current,
+                          )
+                          Text(
+                              key.longLabel,
+                              fontSize = (fontSize * 3 / 4).sp,
+                              lineHeight = (fontSize * 3 / 4).sp,
+                              fontWeight = FontWeight.Medium,
+                              color = LocalContentColor.current.copy(alpha = 0.4f),
+                          )
+                        }
+                      }
                   is KeypadKey.Delete ->
                       Icon(painterResource(R.drawable.ic_backspace), null, Modifier.size(24.dp))
                   is KeypadKey.Action -> Icon(painterResource(key.icon), null, Modifier.size(28.dp))
                   KeypadKey.Blank -> Unit
                 }
               }
+            }
+            val ink = if (p.isDark) p.text else if (plainSpecials) p.primary else p.text
+            val longLabel = (key as? KeypadKey.Char)?.longLabel
+            if (longLabel != null) {
+              // A key with a long press cannot use Surface's plain click.
+              Surface(
+                  color = tint,
+                  contentColor = ink,
+                  shape = KeyShape,
+                  modifier =
+                      keyModifier.combinedClickable(
+                          interactionSource = source,
+                          indication = ripple(),
+                          onClick = { onChar((key as KeypadKey.Char).label) },
+                          onLongClick = { onLongChar(longLabel) },
+                      ),
+                  content = keyContent,
+              )
+            } else {
+              Surface(
+                  onClick = {
+                    when (key) {
+                      is KeypadKey.Char -> onChar(key.label)
+                      is KeypadKey.Delete -> onDelete()
+                      is KeypadKey.Action -> key.onClick()
+                      KeypadKey.Blank -> Unit
+                    }
+                  },
+                  color = tint,
+                  contentColor = ink,
+                  shape = KeyShape,
+                  interactionSource = source,
+                  modifier = keyModifier,
+                  content = keyContent,
+              )
             }
           }
         }
