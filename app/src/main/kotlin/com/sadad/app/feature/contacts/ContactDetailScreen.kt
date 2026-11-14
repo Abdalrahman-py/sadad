@@ -552,8 +552,8 @@ private fun BalanceBlock(net: Long, supplier: Boolean) {
   Column(
       Modifier.fillMaxWidth()
           .padding(bottom = 12.dp)
-          .background(p.card, RoundedCornerShape(16.dp))
-          .border(1.dp, p.line, RoundedCornerShape(16.dp))
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
           .padding(16.dp)
           .animateContentSize(tween(250)),
       verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -659,7 +659,7 @@ private fun TimelineHead(newestFirst: Boolean, onToggle: () -> Unit) {
         onClick = onToggle,
         color = p.card,
         contentColor = if (p.isDark) p.accent else p.primary,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, p.line),
         modifier = Modifier.heightIn(min = 40.dp).semantics { contentDescription = description },
     ) {
@@ -820,27 +820,16 @@ private fun RecordActions(
 ) {
   val p = sadadPalette
   StickyActions {
-    Surface(
-        onClick = onRecordDebt,
-        color = p.owesSoft,
-        contentColor = p.owes,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.5.dp, p.owes),
-        modifier = Modifier.weight(1f).height(52.dp),
-    ) {
-      Row(
-          horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Icon(painterResource(R.drawable.ic_payment_out), null, modifier = Modifier.size(16.dp))
-        Text(
+    SadadButton(
+        text =
             stringResource(
                 if (supplier) R.string.contacts_record_goods else R.string.contacts_record_debt
             ),
-            style = MaterialTheme.typography.titleMedium,
-        )
-      }
-    }
+        onClick = onRecordDebt,
+        style = SadadButtonStyle.DANGER,
+        leading = painterResource(R.drawable.ic_payment_out),
+        modifier = Modifier.weight(1f),
+    )
     if (canPay) {
       SadadButton(
           text =

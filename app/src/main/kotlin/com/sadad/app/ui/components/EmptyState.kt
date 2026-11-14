@@ -35,8 +35,8 @@ fun EmptyState(
   Column(
       modifier =
           modifier
-              .background(p.card, RoundedCornerShape(16.dp))
-              .border(1.dp, p.line, RoundedCornerShape(16.dp))
+              .background(p.card, RoundedCornerShape(12.dp))
+              .border(1.dp, p.line, RoundedCornerShape(12.dp))
               .padding(horizontal = 20.dp, vertical = 24.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(12.dp),

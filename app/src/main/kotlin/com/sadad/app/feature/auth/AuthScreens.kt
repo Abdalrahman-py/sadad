@@ -424,8 +424,8 @@ private fun ApprovalSteps(needsDetails: Boolean, ownerSub: String) {
   val description = stringResource(R.string.approval_steps)
   Column(
       Modifier.fillMaxWidth()
-          .background(p.card, RoundedCornerShape(16.dp))
-          .border(1.dp, p.line, RoundedCornerShape(16.dp))
+          .background(p.card, RoundedCornerShape(12.dp))
+          .border(1.dp, p.line, RoundedCornerShape(12.dp))
           .padding(16.dp)
           .semantics { contentDescription = description },
   ) {
