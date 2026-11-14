@@ -8,9 +8,6 @@
          after the short explanation, and it never leaves the phone. -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- The app installs its own update: this permission only unlocks the system's
-         «install unknown apps» page and its confirmation sheet. Never a silent install. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries>
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
@@ -57,10 +54,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-        <!-- The installer's result: confirmed, done, cancelled or failed. Addressed by the app's own
-             pending intent, so it stays unexported. -->
-        <receiver
-            android:name=".feature.updates.UpdateInstallReceiver"
-            android:exported="false" />
     </application>
 </manifest>

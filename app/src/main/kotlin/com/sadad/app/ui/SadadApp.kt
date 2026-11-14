@@ -70,6 +70,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.sadad.app.BuildConfig
 import com.sadad.app.LocalGraph
 import com.sadad.app.R
 import com.sadad.app.feature.activity.ActivityScreen
@@ -241,13 +242,13 @@ fun SadadApp(
           composable<Notifications> { NotificationsScreen(onBack = back) }
           composable<Trash> { TrashScreen(onBack = back) }
           composable<Recovery> { RecoveryScreen(onBack = back) }
-          composable<AppUpdate> { AppUpdateScreen(onBack = back) }
+          if (BuildConfig.SELF_UPDATE) composable<AppUpdate> { AppUpdateScreen(onBack = back) }
         }
         // Only on the home tab: a release never interrupts someone in the middle of an entry.
         val onHome =
             navController.currentBackStackEntryAsState().value?.destination?.hasRoute<Home>() ==
                 true
-        if (onHome) {
+        if (onHome && BuildConfig.SELF_UPDATE) {
           UpdatePrompt(onOpen = { navController.navigate(AppUpdate) { launchSingleTop = true } })
         }
       }

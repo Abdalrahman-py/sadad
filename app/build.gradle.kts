@@ -92,6 +92,8 @@ android {
     buildConfigField("String", "LEASE_PUBLIC_KEY_Y", quoted(leaseKeyY))
     buildConfigField("String", "SENTRY_DSN", quoted(sentryDsn))
     buildConfigField("String", "UPDATE_REPO", quoted(updateRepo))
+    // The in-app updater: team builds only. Play forbids an app updating itself outside Play.
+    buildConfigField("boolean", "SELF_UPDATE", "false")
     manifestPlaceholders["allowCleartextTraffic"] = "false"
   }
   signingConfigs {
@@ -113,6 +115,8 @@ android {
   buildTypes {
     debug {
       applicationIdSuffix = ".debug"
+      // `team` copies this through initWith; release and benchmark keep the default false.
+      buildConfigField("boolean", "SELF_UPDATE", "true")
     }
     release {
       manifestPlaceholders["allowCleartextTraffic"] = "false"
