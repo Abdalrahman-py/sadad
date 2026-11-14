@@ -2,10 +2,14 @@ package com.sadad.app.feature.contactpicker
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.ContactsContract
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.ui.UiTestApplication
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -32,5 +36,14 @@ class ContactPickerManifestTest {
         "READ_CONTACTS is back in the merged manifest",
         Manifest.permission.READ_CONTACTS in asked,
     )
+  }
+
+  @Test
+  fun thePickerIntentAsksByTypeAndCarriesNoContentUri() {
+    val intent = PickPhoneContact().createIntent(ApplicationProvider.getApplicationContext(), Unit)
+
+    assertEquals(Intent.ACTION_PICK, intent.action)
+    assertEquals(ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE, intent.type)
+    assertNull("a content URI here trips StrictMode in debug builds", intent.data)
   }
 }

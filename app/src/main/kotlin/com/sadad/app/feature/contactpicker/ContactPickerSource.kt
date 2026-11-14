@@ -23,8 +23,10 @@ import kotlinx.coroutines.withContext
  * permission and never sees the rest of the address book (Play treats contacts as sensitive data).
  */
 class PickPhoneContact : ActivityResultContract<Unit, Uri?>() {
+  // A MIME type, not Phone.CONTENT_URI as data: a content URI in an outgoing intent without a
+  // grant is a StrictMode ContentUriWithoutPermission violation (it killed debug builds).
   override fun createIntent(context: Context, input: Unit): Intent =
-      Intent(Intent.ACTION_PICK, Phone.CONTENT_URI)
+      Intent(Intent.ACTION_PICK).setType(Phone.CONTENT_TYPE)
 
   override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
       intent?.data.takeIf { resultCode == Activity.RESULT_OK }
