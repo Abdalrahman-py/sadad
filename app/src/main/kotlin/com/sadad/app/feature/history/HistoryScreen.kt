@@ -142,7 +142,7 @@ fun HistoryContent(
   Box(modifier.fillMaxSize().sadadPageBackground()) {
     Column(Modifier.fillMaxSize()) {
       Row(
-          Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp),
+          Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp),
           verticalAlignment = Alignment.CenterVertically,
       ) {
         Text(
@@ -155,7 +155,7 @@ fun HistoryContent(
       }
       LazyColumn(
           modifier = Modifier.fillMaxSize().testTag(HistoryTags.MOVEMENTS),
-          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 20.dp),
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         item(key = "filters") {
@@ -166,8 +166,7 @@ fun HistoryContent(
             // The rows are still being read: a thin bar, not a "0 movements" count that reads as
             // an empty history.
             LinearProgressIndicator(
-                modifier =
-                    Modifier.fillMaxWidth().height(2.dp).testTag(HistoryTags.LOADING),
+                modifier = Modifier.fillMaxWidth().height(2.dp).testTag(HistoryTags.LOADING),
                 color = sadadPalette.primary,
                 trackColor = sadadPalette.line,
             )
@@ -392,7 +391,7 @@ private fun ExportPill(onClick: () -> Unit) {
       onClick = onClick,
       color = p.card,
       contentColor = if (p.isDark) p.accent else p.primary,
-      shape = RoundedCornerShape(20.dp),
+      shape = RoundedCornerShape(12.dp),
       border = BorderStroke(1.dp, p.line),
       modifier = Modifier.heightIn(min = 40.dp),
   ) {
