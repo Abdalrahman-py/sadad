@@ -65,7 +65,7 @@ class MainActivity : FragmentActivity() {
         destination =
             withContext(Dispatchers.IO) {
               val graph = (application as SadadApplication).graph
-              updateRoute(graph, request)
+              (if (BuildConfig.SELF_UPDATE) updateRoute(graph, request) else null)
                   ?: reminderDestination(graph, request, DueReminders.get(applicationContext))
             }
       }
