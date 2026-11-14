@@ -87,8 +87,7 @@
     <string name="quickadd_open_contact">صفحة %1$s</string>
     <string name="quickadd_home">الرئيسية</string>
     <string name="quickadd_net_label">%1$s الآن:</string>
-    <string name="quickadd_contacts_section">من جهات الاتصال</string>
-    <string name="quickadd_contacts_allow">اسمح بقراءة جهات الاتصال</string>
+    <string name="quickadd_contacts_section">اختر من جهات الاتصال</string>
     <string name="quickadd_new_person_title">شخص جديد</string>
     <string name="quickadd_new_person_continue">متابعة</string>
     <string name="quickadd_open_record">فتح سجل الشخص</string>

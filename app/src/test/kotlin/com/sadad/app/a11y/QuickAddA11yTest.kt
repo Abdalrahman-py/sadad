@@ -79,7 +79,7 @@ class QuickAddA11yTest {
   @Test fun newPersonStepAtLargestFont() = newPersonStep(LARGEST_FONT)
 
   @Test
-  fun theContactsSectionAsksForThePermissionWithAReachableRow() = compose.withStore { fixture ->
+  fun theFromContactsRowIsReachable() = compose.withStore { fixture ->
     val model = modelFor(fixture, seedPerson = true)
     compose.showAt(NORMAL_FONT) { screen(model) }
     compose.runOnIdle { model.onQueryChange("منى") }
@@ -87,7 +87,7 @@ class QuickAddA11yTest {
 
     compose.assertAccessible(
         hasTestTag(QuickAddTags.ADD_NEW),
-        hasTestTag(QuickAddNewPersonTags.ALLOW_CONTACTS),
+        hasTestTag(QuickAddNewPersonTags.FROM_CONTACTS),
     )
   }
 
