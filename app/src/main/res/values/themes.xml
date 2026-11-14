@@ -10,4 +10,10 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#EFFCF7</item>
     </style>
+    <!-- The window the system shows until the first screens have their data (installSplashScreen). -->
+    <style name="Theme.Sadad.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#EFFCF7</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.Sadad</item>
+    </style>
 </resources>
