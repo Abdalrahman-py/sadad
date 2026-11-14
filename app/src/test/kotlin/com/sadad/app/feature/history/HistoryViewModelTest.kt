@@ -36,8 +36,13 @@ import org.robolectric.annotation.Config
 class HistoryViewModelTest {
   @get:Rule val main = MainDispatcherRule()
 
-  private fun model(fixture: TestGraph, saved: SavedStateHandle = SavedStateHandle()) =
-      HistoryViewModel(fixture.graph.statementSource(), saved, clock, Period.All).also {
+  /** Most tests read the whole ledger; [initial] is what a first open shows. */
+  private fun model(
+      fixture: TestGraph,
+      saved: SavedStateHandle = SavedStateHandle(),
+      initial: Period = Period.All,
+  ) =
+      HistoryViewModel(fixture.graph.statementSource(), saved, clock, initial).also {
         fixture.closeWithStore(it.viewModelScope)
       }
 
@@ -67,11 +72,12 @@ class HistoryViewModelTest {
   @Test
   fun aFirstOpenShowsTheMonthAndASavedPeriodWins() = runTest {
     TestGraph.signedIn().use { fixture ->
-      val first = model(fixture).state.first { it.loaded }
-      assertEquals(Period.Month(YearMonth.of(2026, 10)), first.period)
+      val month = Period.Month(YearMonth.of(2026, 10))
+      val first = model(fixture, initial = month).state.first { it.loaded }
+      assertEquals(month, first.period)
       val saved = SavedStateHandle()
-      model(fixture, saved).selectPreset(PeriodPreset.ALL)
-      val reopened = model(fixture, saved).state.first { it.loaded }
+      model(fixture, saved, initial = month).selectPreset(PeriodPreset.ALL)
+      val reopened = model(fixture, saved, initial = month).state.first { it.loaded }
       assertEquals(Period.All, reopened.period)
     }
   }
