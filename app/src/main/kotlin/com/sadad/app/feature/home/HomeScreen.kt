@@ -64,9 +64,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.sadad.app.LocalGraph
 import com.sadad.app.R
-import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.formatShekels
@@ -74,18 +72,13 @@ import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.components.softShadow
 import com.sadad.app.ui.theme.sadadPalette
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 
 /** The handles the screen tests and the a11y sweep hold on to. */
 object HomeTags {
   const val SCREEN = "screen:home"
-  const val BELL = "home:bell"
   const val OWED = "home:owed"
   const val OWES = "home:owes"
   const val MONTH_LINE = "home:month"
@@ -108,7 +101,6 @@ object HomeTags {
 fun HomeScreen(
     onOpenContact: (String) -> Unit = {},
     onOpenPeople: (filter: String?) -> Unit = {},
-    onOpenNotifications: () -> Unit = {},
     onRecord: () -> Unit = {},
     onOpenActivity: () -> Unit = {},
     viewModel: HomeViewModel = homeViewModel(),
@@ -120,32 +112,12 @@ fun HomeScreen(
   }
   HomeContent(
       state = state,
-      unread = unreadReminders(),
       onOpenContact = onOpenContact,
       onOpenPeople = onOpenPeople,
-      onOpenNotifications = onOpenNotifications,
       onRecord = onRecord,
       onOpenActivity = onOpenActivity,
       onRefresh = viewModel::refresh,
   )
-}
-
-/** The open store's unread reminders, the count the bell shows. */
-@OptIn(ExperimentalCoroutinesApi::class)
-@Composable
-private fun unreadReminders(): Int {
-  val context = LocalContext.current
-  // The screen tests run under UiTestApplication, which has no graph; they pass their own count.
-  val graph = LocalGraph.current ?: return 0
-  val reminders = remember(context) { DueReminders.get(context) }
-  val unread by
-      remember(graph, reminders) {
-            graph.current.flatMapLatest { open ->
-              if (open == null) flowOf(0) else reminders.unreadCount(open.account.storeUserId)
-            }
-          }
-          .collectAsStateWithLifecycle(0)
-  return unread
 }
 
 @Composable
@@ -157,17 +129,14 @@ private fun homeViewModel(): HomeViewModel {
 @Composable
 fun HomeContent(
     state: HomeUiState,
-    unread: Int = 0,
     onOpenContact: (String) -> Unit = {},
     onOpenPeople: (filter: String?) -> Unit = {},
-    onOpenNotifications: () -> Unit = {},
     onRecord: () -> Unit = {},
     onOpenActivity: () -> Unit = {},
     onRefresh: () -> Unit = {},
 ) {
   val storeName = state.storeName.ifBlank { stringResource(R.string.home_default_store) }
   Column(Modifier.fillMaxSize().sadadPageBackground().testTag(HomeTags.SCREEN)) {
-    HomeHeader(storeName = storeName, unread = unread, onOpenNotifications = onOpenNotifications)
     if (!state.loaded) {
       val loading = stringResource(R.string.home_loading)
       Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -195,65 +164,6 @@ fun HomeContent(
               onOpenContact = onOpenContact,
               onOpenPeople = onOpenPeople,
           )
-        }
-      }
-    }
-  }
-}
-
-/* ------------------------------------------------------------------ header */
-
-@Composable
-private fun HomeHeader(storeName: String, unread: Int, onOpenNotifications: () -> Unit) {
-  val p = sadadPalette
-  val today = LocalDate.now()
-  val date = remember(today) { DATE_FORMAT.format(today) }
-  val bellLabel =
-      if (unread > 0) stringResource(R.string.home_bell_new, unread)
-      else stringResource(R.string.home_bell)
-  Row(
-      Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Column(Modifier.weight(1f)) {
-      Text(date, fontSize = 12.sp, lineHeight = 16.sp, color = p.muted)
-      Text(
-          storeName,
-          style = MaterialTheme.typography.titleLarge,
-          color = p.text,
-      )
-    }
-    Box(Modifier.size(44.dp)) {
-      Box(
-          Modifier.size(44.dp)
-              .clip(CircleShape)
-              .background(p.card)
-              .border(1.dp, p.line, CircleShape)
-              .clickable(onClick = onOpenNotifications)
-              .testTag(HomeTags.BELL)
-              .semantics {
-                contentDescription = bellLabel
-                role = Role.Button
-              },
-          contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-            painterResource(R.drawable.ic_notifications),
-            contentDescription = null,
-            tint = p.text,
-            modifier = Modifier.size(24.dp),
-        )
-      }
-      if (unread > 0) {
-        Surface(
-            color = BadgeRed,
-            shape = CircleShape,
-            modifier = Modifier.align(Alignment.TopEnd).heightIn(min = 16.dp).widthIn(min = 16.dp),
-        ) {
-          Box(Modifier.padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-            Text("$unread", style = MaterialTheme.typography.bodySmall, color = Color.White)
-          }
         }
       }
     }
@@ -303,7 +213,7 @@ private fun HeroCard(state: HomeUiState, onOpenActivity: () -> Unit) {
       Modifier.fillMaxWidth()
           // The board's `0 12px 28px rgba(2, 48, 43, 0.22)` under the hero.
           .then(if (p.isDark) Modifier else Modifier.softShadow(16.dp, HeroShadow, 28.dp))
-          .clip(RoundedCornerShape(16.dp))
+          .clip(RoundedCornerShape(12.dp))
           .background(Brush.linearGradient(hero))
           .padding(20.dp)
   ) {
@@ -704,9 +614,6 @@ private fun initialsOf(name: String): String {
   }
 }
 
-private val DATE_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEEE، d MMMM", Locale.forLanguageTag("ar-u-nu-latn"))
-
 private val TIME_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("h:mm a", Locale.forLanguageTag("ar-u-nu-latn"))
 
@@ -719,5 +626,3 @@ private val HeroTrack = Color(0x38C6F0E0)
 private val HeroBar = Color(0xFF78DEC0)
 
 private val HeroShadow = Color(0x3802302B)
-
-private val BadgeRed = Color(0xFFC13634)

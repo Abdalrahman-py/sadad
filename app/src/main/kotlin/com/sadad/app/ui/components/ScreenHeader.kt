@@ -43,7 +43,7 @@ fun ScreenHeader(
       modifier =
           modifier
               .fillMaxWidth()
-              .heightIn(min = if (onBack == null) 64.dp else 60.dp)
+              .heightIn(min = if (onBack == null) 48.dp else 60.dp)
               .padding(horizontal = if (onBack == null) 16.dp else 8.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {

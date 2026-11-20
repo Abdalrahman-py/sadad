@@ -30,9 +30,7 @@ import com.sadad.app.data.sync.SyncStatus
 import com.sadad.app.data.sync.connectivity
 import com.sadad.app.data.sync.internetAvailable
 import com.sadad.app.export.StatementExport
-import com.sadad.app.feature.contactpicker.DeviceContacts
 import com.sadad.app.feature.contactpicker.SadadPeople
-import com.sadad.app.feature.contactpicker.contactSource
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.photo.PhotoStore
@@ -117,9 +115,6 @@ internal constructor(
 
   /** The pull to refresh on Home starts one pass for this store; it no-ops while offline. */
   fun refresh(storeUserId: String) = automaticSync.request(storeUserId)
-
-  /** The device's contacts for the contact picker; it is device-level, built from this app. */
-  fun deviceContacts(): DeviceContacts = contactSource(context.contentResolver)
 
   fun syncStatus(storeUserId: String): StateFlow<SyncStatus> = syncEngine.status(storeUserId)
 

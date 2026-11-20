@@ -70,6 +70,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.sadad.app.BuildConfig
 import com.sadad.app.LocalGraph
 import com.sadad.app.R
 import com.sadad.app.feature.activity.ActivityScreen
@@ -145,9 +146,6 @@ fun SadadApp(
                     popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                     launchSingleTop = true
                   }
-                },
-                onOpenNotifications = {
-                  navController.navigate(Notifications) { launchSingleTop = true }
                 },
                 onRecord = { navController.navigate(QuickAdd()) },
             )
@@ -244,13 +242,13 @@ fun SadadApp(
           composable<Notifications> { NotificationsScreen(onBack = back) }
           composable<Trash> { TrashScreen(onBack = back) }
           composable<Recovery> { RecoveryScreen(onBack = back) }
-          composable<AppUpdate> { AppUpdateScreen(onBack = back) }
+          if (BuildConfig.SELF_UPDATE) composable<AppUpdate> { AppUpdateScreen(onBack = back) }
         }
         // Only on the home tab: a release never interrupts someone in the middle of an entry.
         val onHome =
             navController.currentBackStackEntryAsState().value?.destination?.hasRoute<Home>() ==
                 true
-        if (onHome) {
+        if (onHome && BuildConfig.SELF_UPDATE) {
           UpdatePrompt(onOpen = { navController.navigate(AppUpdate) { launchSingleTop = true } })
         }
       }
@@ -313,10 +311,21 @@ internal fun SadadShell(
           destination != null &&
           (!destination.isAny(AUTH_GATES) ||
               (fromStore && !destination.hasRoute<AwaitingApproval>()))
+  // The four tabs share one top bar (store name and bell), so their pages start at one place.
+  val showTopBar = destination.isAny(TAB_ROOTS)
   Scaffold(
       modifier = Modifier.sadadPageBackground(),
       containerColor = Color.Transparent,
       contentColor = sadadPalette.text,
+      topBar = {
+        if (showTopBar) {
+          AppTopBar(
+              onOpenNotifications = {
+                navController.navigate(Notifications) { launchSingleTop = true }
+              }
+          )
+        }
+      },
       bottomBar = { if (showNavigation) SadadBottomBar(navController, syncDot) },
   ) { insets ->
     NavHost(
@@ -333,6 +342,8 @@ internal fun SadadShell(
 
 /** Entry gates hide navigation; account pages opened from Store remain inside the store flow. */
 private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApproval::class)
+
+private val TAB_ROOTS = listOf(Home::class, People::class, Activity::class, Store::class)
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -374,6 +385,8 @@ private fun NavHostController.navigateTab(destination: Any) {
         Store -> Tab.STORE
         else -> null
       }
+  // Already on this tab's own page: nothing to do. Navigating again rebuilt the page under the tap.
+  if (currentDestination?.hasRoute(destination::class) == true) return
   val sameSection = activeTab(currentDestination) == target
   navigate(destination) {
     popUpTo(graph.findStartDestination().id) { saveState = !sameSection }
@@ -407,7 +420,12 @@ internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) 
     TabItem(R.string.nav_people, R.drawable.ic_people, ScreenTag.NAV_PEOPLE, active == Tab.PEOPLE) {
       navController.navigateTab(People())
     }
-    RecordItem { navController.navigate(QuickAdd()) { launchSingleTop = true } }
+    RecordItem {
+      // Already adding an entry: a tap here must not restart it.
+      if (navController.currentDestination?.hasRoute<QuickAdd>() != true) {
+        navController.navigate(QuickAdd()) { launchSingleTop = true }
+      }
+    }
     TabItem(
         R.string.nav_activity,
         R.drawable.ic_activity,

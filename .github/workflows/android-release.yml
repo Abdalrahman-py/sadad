@@ -135,6 +135,12 @@ jobs:
           fi
           "$tools/aapt" dump xmltree "$apk" AndroidManifest.xml > "$RUNNER_TEMP/apk-manifest.txt"
           grep -q 'usesCleartextTraffic.*=(type 0x12)0x0' "$RUNNER_TEMP/apk-manifest.txt"
+          # Play forbids an app updating itself outside Play: the updater is team-only (ticket 172).
+          "$tools/aapt2" dump permissions "$apk" > "$RUNNER_TEMP/apk-permissions.txt"
+          if grep -q 'REQUEST_INSTALL_PACKAGES' "$RUNNER_TEMP/apk-permissions.txt"; then
+            echo '::error::The release APK declares REQUEST_INSTALL_PACKAGES'
+            exit 1
+          fi
           mkdir -p release
           cp "$apk" "release/Sadad-${GITHUB_REF_NAME#v}-release.apk"
           cd release
