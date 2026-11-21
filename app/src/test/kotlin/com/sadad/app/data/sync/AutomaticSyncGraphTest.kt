@@ -16,7 +16,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -63,6 +62,15 @@ class AutomaticSyncGraphTest {
           }
           // The receiver comes to the foreground only after the sender's work is accepted: its
           // visibility start is a trigger and one pass delivers the data. There is no poll.
+          val history = java.util.Collections.synchronizedList(mutableListOf<String>())
+          backgroundScope.launch(Dispatchers.Default) {
+            receiver.test.graph.syncStatus(STORE_B).collect { history += "status=$it" }
+          }
+          backgroundScope.launch(Dispatchers.Default) {
+            receiver.test.graph.accounts.accounts.collect { list ->
+              history += "accounts=" + list.map { it.storeUserId.take(4) + ":" + it.lastSyncAt }
+            }
+          }
           receiving =
               backgroundScope.launch(Dispatchers.Default) {
                 receiver.test.graph.syncWhileVisible(connected)
@@ -76,12 +84,12 @@ class AutomaticSyncGraphTest {
                     kotlinx.coroutines.delay(25)
                     view = receiver.scope.personLedger.wholeView()
                   }
-                  receiver.test.graph.accounts.accounts.firstOrNull {
-                    it.first().lastSyncAt != null
+                  receiver.test.graph.accounts.accounts.first {
+                    it.isEmpty() || it.first().lastSyncAt != null
                   }
                 }
-            if (matched == null) {
-              fail(receiverDiagnostics(server, receiver))
+            if (matched.isNullOrEmpty()) {
+              fail(receiverDiagnostics(server, receiver, history))
             }
           }
           assertTrue(sender.scope.outbox.snapshot().all { it.state == OutboxState.ACCEPTED })
@@ -169,6 +177,14 @@ private object DeferredScheduler : SyncScheduling {
 }
 
 /** The receiver's state when its last wait fails: status, accounts file and server traffic. */
-private fun receiverDiagnostics(server: SharedLedger, receiver: SyncFixture): String =
-    "receiver status=${receiver.test.graph.syncStatus(STORE_B).value} " +
-        "accounts=${receiver.test.graph.accounts.file()} requests=${server.recorded}"
+private suspend fun receiverDiagnostics(
+    server: SharedLedger,
+    receiver: SyncFixture,
+    history: List<String>,
+): String {
+  val file = receiver.test.accountsFile
+  return "receiver status=${receiver.test.graph.syncStatus(STORE_B).value} " +
+      "accounts=${receiver.test.graph.accounts.file()} " +
+      "disk=${file.exists()}/${file.length()} dir=${file.parentFile?.list()?.toList()} " +
+      "history=${synchronized(history) { history.toList() }} requests=${server.recorded}"
+}
