@@ -89,7 +89,7 @@ jobs:
           # activity in the production APK. The logic is covered by the `checks` job, which runs the
           # whole suite on debug on this same commit; what this job verifies is the artifact itself
           # (signature, badging, mapping, size, Baseline Profile).
-          ./gradlew assembleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" \
+          ./gradlew assembleRelease bundleRelease --console=plain -PSADAD_SENTRY_DSN="$SADAD_SENTRY_DSN" \
             -PSADAD_VERSION_CODE="$SADAD_VERSION_CODE" -PSADAD_VERSION_NAME="$SADAD_VERSION_NAME"
       - name: Fail when R8 reports missing classes
         run: |
@@ -119,6 +119,7 @@ jobs:
       - name: Verify production APK and create checksum
         run: |
           apk=app/build/outputs/apk/release/app-release.apk
+          aab=app/build/outputs/bundle/release/app-release.aab
           tools="$ANDROID_HOME/build-tools/36.0.0"
           "$tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
           if grep -qi 'CN=Android Debug' "$RUNNER_TEMP/apk-signature.txt"; then
@@ -143,13 +144,52 @@ jobs:
           fi
           mkdir -p release
           cp "$apk" "release/Sadad-${GITHUB_REF_NAME#v}-release.apk"
+          cp "$aab" "release/Sadad-${GITHUB_REF_NAME#v}-release.aab"
           cd release
-          sha256sum ./*.apk > SHA256SUMS
+          sha256sum ./*.apk ./*.aab > SHA256SUMS
+      - name: Download the pinned bundletool
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/bundletool.jar" "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar"
+          # The digest is the one GitHub's release asset reports for bundletool 1.18.3.
+          echo "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29  $RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+      - name: Verify production AAB
+        run: |
+          set -euo pipefail
+          aab=app/build/outputs/bundle/release/app-release.aab
+          if [[ ! -s "$aab" ]]; then
+            echo "::error::$aab is missing; bundleRelease did not run"
+            exit 1
+          fi
+          # Signer: a production bundle must not be signed with the debug key.
+          jarsigner -verify -verbose -certs "$aab" > "$RUNNER_TEMP/aab-signature.txt"
+          if grep -qi 'CN=Android Debug' "$RUNNER_TEMP/aab-signature.txt"; then
+            echo '::error::A debug signing key cannot publish a production AAB'
+            exit 1
+          fi
+          # jarsigner -verify exits 0 on an unsigned jar, so require the signed verdict too.
+          grep -q 'jar verified' "$RUNNER_TEMP/aab-signature.txt" || {
+            echo '::error::The release AAB is not verified as signed'
+            exit 1
+          }
+          # Permission guard: the manifest inside the AAB is protobuf, so dump it with the pinned bundletool.
+          java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle "$aab" > "$RUNNER_TEMP/aab-manifest.txt"
+          if grep -q 'REQUEST_INSTALL_PACKAGES' "$RUNNER_TEMP/aab-manifest.txt"; then
+            echo '::error::The release AAB declares REQUEST_INSTALL_PACKAGES'
+            exit 1
+          fi
+      - name: Verify the AAB's native libraries are 16 KiB page aligned
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          # The AAB ships the same native libraries as the APK, so the check runs on the release APK.
+          "$tools/zipalign" -c -P 16 -v 4 "$apk"
       - name: Write the update manifest
         run: |
           set -euo pipefail
           apk="release/Sadad-${GITHUB_REF_NAME#v}-release.apk"
-          sha=$(cut -d' ' -f1 release/SHA256SUMS)
+          # The digest of the published APK; SHA256SUMS also holds the AAB's.
+          sha=$(sha256sum "$apk" | cut -d' ' -f1)
           size=$(stat -c%s "$apk")
           # The installed app reads this from `releases/latest/download/update.json`. It carries the
           # digest and the size, so the app proves the APK it downloaded is the one published here.
@@ -166,11 +206,11 @@ jobs:
           }
           JSON
           python3 -c 'import json,sys; json.load(open(sys.argv[1]))' release/update.json
-      - name: Publish APK, checksum and update manifest to GitHub Releases
+      - name: Publish APK, AAB, checksum and update manifest to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release/*.apk release/SHA256SUMS release/update.json \
+          gh release create "$GITHUB_REF_NAME" release/*.apk release/*.aab release/SHA256SUMS release/update.json \
             --verify-tag --generate-notes --title "Sadad ${GITHUB_REF_NAME#v}"
       - name: Remove signing key
         if: always()

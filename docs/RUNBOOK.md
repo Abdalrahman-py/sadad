@@ -217,13 +217,13 @@ supabase functions deploy api --project-ref "$BRANCH_REF" --use-api --yes
 git tag vX.Y.Z <approved-main-sha>
 git push origin vX.Y.Z
 gh run list --workflow android-release.yml -R Abdalrahman-py/sadad
-gh release download vX.Y.Z -R Abdalrahman-py/sadad --pattern '*.apk' --pattern SHA256SUMS --dir <outside-repo>
+gh release download vX.Y.Z -R Abdalrahman-py/sadad --pattern '*.apk' --pattern '*.aab' --pattern SHA256SUMS --dir <outside-repo>
 ```
 
 استبدل القيم بين `<...>` و`X.Y.Z` قبل التنفيذ؛ لا تدفع وسمًا قبل اعتماد الإصدار.
 السير يشتق `versionCode` من الوسم (`major*10000 + minor*100 + patch`، فـ`v3.0.1` = `30001`)، ويشترط
 تطابق الوسم مع `versionName` و`versionCode` في الحزمة، وينتظر CI، ثم يفحص R8 والحجم وBaseline Profile
-والحزمة والتوقيع وعدم debuggable وعدم cleartext؛ وينشر APK و`SHA256SUMS` و`update.json`.
+والحزمة والتوقيع وعدم debuggable وعدم cleartext؛ وينشر APK و`Sadad-X.Y.Z-release.aab` و`SHA256SUMS` و`update.json`.
 داخل مجلد التنزيل، وبأدوات SDK التي يستخدمها السير:
 
 ```sh
@@ -232,9 +232,18 @@ sha256sum -c SHA256SUMS
 adb install -r Sadad-X.Y.Z-release.apk
 ```
 
+تم نشر `Sadad-X.Y.Z-release.aab` (في `SHA256SUMS`) بجانب الـ APK. خطوات تحميل الإصدار على
+Play Console (مالك المنتج): (1) سجّل في Play App Signing في شاشة Google Play Console وابقِ
+المفتاح الجاهز من #82 كمفتاح الرفع (أذنّ بالبصمة إن لم يكان مسجّلًا بالفعل)، (2) أنشئ إصدارًا
+جديدًا وارفع `Sadad-X.Y.Z-release.aab`، وتأكّد من أن بصمة التوقيع مطابقة للمفتاح في #82.
+تحميل الأصول من الكتلة أعلاه بأداة `gh`.
+
+**تحقق المسؤول من الـ AAB:** `jarsigner -verify -verbose -certs Sadad-X.Y.Z-release.aab` (ارفض `CN=Android Debug`)،
+و`bundletool dump manifest --bundle Sadad-X.Y.Z-release.aab` يجب ألا يظهر `REQUEST_INSTALL_PACKAGES`.
+
 طابق بصمة SHA-256 مع بصمة keystore التي سجّلها الإنسان في #82، وارفض شهادة `CN=Android Debug`.
 إذا تعارضت شهادة نسخة الاختبار القديمة، لا تحذفها عميانيًا: تحقق من إرسال العمليات واحفظ نسخة استرداد
-قبل إزالتها بموافقة الإنسان؛ إزالة التطبيق تمس بياناته المحلية. التوزيع sideload، دون Play Console.
+قبل إزالتها بموافقة الإنسان؛ إزالة التطبيق تمس بياناته المحلية. التوزيع sideload (الـ APK على QA)، والـ AAB على Play Console.
 سجّل الوسم والبصمة ونتيجة الدخول على هاتف QA؛ فحوص `app/src/androidTest` لم تُنفّذ هنا وتحتاج هاتف المسؤول.
 
 ## بناء الفريق من `dev`
