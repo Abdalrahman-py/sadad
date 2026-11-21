@@ -18,14 +18,15 @@ import kotlinx.coroutines.flow.flowOf
  * anymore (ticket 168).
  */
 interface PeopleSource {
-  /** Every summary row; null while no store is open. */
-  val summaries: Flow<List<ContactSummaryEntity>?>
+  /**
+   * The summary list and the outbox rows of one emission of the summary table (ticket 215); null
+   * while no store is open. The view model builds the failed drafts from the same list the rows
+   * come from, so a person is in the list at most once.
+   */
+  val summariesAndOutbox: Flow<Pair<List<ContactSummaryEntity>, List<OutboxRow>>?>
 
   /** True once the one-time fill ends; from then the summary is the list, never the ledger. */
   val summaryReady: Flow<Boolean>
-
-  /** Rejected contact creates the summary does not know, as [ContactRecords] builds them. */
-  val failedDrafts: Flow<List<ContactView>>
 }
 
 /**
@@ -60,30 +61,18 @@ internal fun failedDraftContacts(
 fun AppGraph.peopleSource(): PeopleSource {
   val graph = this
   return object : PeopleSource {
-    override val summaries: Flow<List<ContactSummaryEntity>?> =
+    override val summariesAndOutbox: Flow<Pair<List<ContactSummaryEntity>, List<OutboxRow>>?> =
         graph.current.flatMapLatest { scope ->
-          scope?.let { it.database.contactSummaryDao().observe() } ?: flowOf(null)
+          scope?.let {
+            combine(it.database.contactSummaryDao().observe(), it.outbox.rows) { summaries, rows ->
+              summaries to rows
+            }
+          } ?: flowOf(null)
         }
 
     override val summaryReady: Flow<Boolean> =
         graph.current.flatMapLatest { scope ->
           scope?.repository?.summaryReady ?: flowOf(false)
-        }
-
-    override val failedDrafts: Flow<List<ContactView>> =
-        graph.current.flatMapLatest { scope ->
-          if (scope == null) {
-            flowOf(emptyList())
-          } else {
-            combine(scope.outbox.rows, scope.database.contactSummaryDao().observe()) {
-                rows,
-                summaries ->
-              failedDraftContacts(
-                  rows,
-                  summaries.mapTo(HashSet()) { it.contactId },
-              )
-            }
-          }
         }
   }
 }
