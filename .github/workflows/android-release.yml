@@ -167,6 +167,11 @@ jobs:
             echo '::error::A debug signing key cannot publish a production AAB'
             exit 1
           fi
+          # jarsigner -verify exits 0 on an unsigned jar, so require the signed verdict too.
+          grep -q 'jar verified' "$RUNNER_TEMP/aab-signature.txt" || {
+            echo '::error::The release AAB is not verified as signed'
+            exit 1
+          }
           # Permission guard: the manifest inside the AAB is protobuf, so dump it with the pinned bundletool.
           java -jar "$RUNNER_TEMP/bundletool.jar" dump manifest --bundle "$aab" > "$RUNNER_TEMP/aab-manifest.txt"
           if grep -q 'REQUEST_INSTALL_PACKAGES' "$RUNNER_TEMP/aab-manifest.txt"; then
