@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.RecordedRequest
@@ -61,19 +62,34 @@ class AutomaticSyncGraphTest {
           }
           // The receiver comes to the foreground only after the sender's work is accepted: its
           // visibility start is a trigger and one pass delivers the data. There is no poll.
+          val history = java.util.Collections.synchronizedList(mutableListOf<String>())
+          backgroundScope.launch(Dispatchers.Default) {
+            receiver.test.graph.syncStatus(STORE_B).collect { history += "status=$it" }
+          }
+          backgroundScope.launch(Dispatchers.Default) {
+            receiver.test.graph.accounts.accounts.collect { list ->
+              history += "accounts=" + list.map { it.storeUserId.take(4) + ":" + it.lastSyncAt }
+            }
+          }
           receiving =
               backgroundScope.launch(Dispatchers.Default) {
                 receiver.test.graph.syncWhileVisible(connected)
               }
           withContext(Dispatchers.Default) {
-            withTimeout(45_000) {
-              // No resident view: poll the receiver's room-projected whole store.
-              var view = receiver.scope.personLedger.wholeView()
-              while (view.debts.size != 1 || view.payments.size != 1) {
-                kotlinx.coroutines.delay(25)
-                view = receiver.scope.personLedger.wholeView()
-              }
-              receiver.test.graph.accounts.accounts.first { it.first().lastSyncAt != null }
+            val matched =
+                withTimeoutOrNull(45_000) {
+                  // No resident view: poll the receiver's room-projected whole store.
+                  var view = receiver.scope.personLedger.wholeView()
+                  while (view.debts.size != 1 || view.payments.size != 1) {
+                    kotlinx.coroutines.delay(25)
+                    view = receiver.scope.personLedger.wholeView()
+                  }
+                  receiver.test.graph.accounts.accounts.first {
+                    it.isEmpty() || it.first().lastSyncAt != null
+                  }
+                }
+            if (matched.isNullOrEmpty()) {
+              fail(receiverDiagnostics(server, receiver, history))
             }
           }
           assertTrue(sender.scope.outbox.snapshot().all { it.state == OutboxState.ACCEPTED })
@@ -125,9 +141,12 @@ class AutomaticSyncGraphTest {
  */
 private class SharedLedger : Dispatcher() {
   private val events = mutableListOf<ChangeEvent>()
+  /** Every request the server saw, in order; the diagnostics of a failing receiver wait. */
+  val recorded = mutableListOf<String>()
 
   @Synchronized
   override fun dispatch(request: RecordedRequest): MockResponse {
+    recorded += request.method + " " + request.target
     if (request.method == "POST") {
       val commands =
           LedgerJson.decodeFromString(OperationsRequest.serializer(), request.body!!.utf8())
@@ -155,4 +174,17 @@ private object DeferredScheduler : SyncScheduling {
   override fun schedulePeriodic(storeUserId: String) {}
 
   override fun cancel(storeUserId: String) {}
+}
+
+/** The receiver's state when its last wait fails: status, accounts file and server traffic. */
+private suspend fun receiverDiagnostics(
+    server: SharedLedger,
+    receiver: SyncFixture,
+    history: List<String>,
+): String {
+  val file = receiver.test.accountsFile
+  return "receiver status=${receiver.test.graph.syncStatus(STORE_B).value} " +
+      "accounts=${receiver.test.graph.accounts.file()} " +
+      "disk=${file.exists()}/${file.length()} dir=${file.parentFile?.list()?.toList()} " +
+      "history=${synchronized(history) { history.toList() }} requests=${server.recorded}"
 }
