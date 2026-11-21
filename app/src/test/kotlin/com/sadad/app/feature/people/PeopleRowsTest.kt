@@ -10,6 +10,7 @@ import com.sadad.ledger.Origin
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -24,7 +25,7 @@ class PeopleRowsTest {
 
   @Test
   fun aPersonInTheSummaryWithARejectedCreateGivesExactlyOneRow() {
-    val id = "c-1"
+    val id = UUID.randomUUID().toString()
     val at = at(10, 24)
     val summaries = listOf(summary(id, "أحمد سالم", at))
 
@@ -42,7 +43,7 @@ class PeopleRowsTest {
 
   @Test
   fun aRejectedCreateUnknownToTheSummaryStaysAsOneFailedDraftRow() {
-    val id = "c-2"
+    val id = UUID.randomUUID().toString()
 
     val rows =
         summaryRowsFrom(emptyList(), listOf(rejectedCreate(id, "شخص جديد", at(12, 0))), zone, today)
@@ -77,7 +78,7 @@ class PeopleRowsTest {
             name,
             phone = "0598440905",
             entityId = entityId,
-            operationId = "op-$entityId",
+            operationId = UUID.randomUUID().toString(),
         )
     return OutboxRow(
         seq = 1,
