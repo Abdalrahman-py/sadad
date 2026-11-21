@@ -186,5 +186,5 @@ private suspend fun receiverDiagnostics(
   return "receiver status=${receiver.test.graph.syncStatus(STORE_B).value} " +
       "accounts=${receiver.test.graph.accounts.file()} " +
       "disk=${file.exists()}/${file.length()} dir=${file.parentFile?.list()?.toList()} " +
-      "history=${synchronized(history) { history.toList() }} requests=${server.recorded}"
+      "history=${synchronized(history) { history.toList() }} requests=${synchronized(server) { server.recorded.toList() }}"
 }
