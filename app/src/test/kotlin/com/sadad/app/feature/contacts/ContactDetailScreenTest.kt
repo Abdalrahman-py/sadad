@@ -120,7 +120,6 @@ class ContactDetailScreenTest {
           }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
       compose.waitUntil(5_000) { model.state.value.syncFailure != null }
-      compose.waitForIdle()
       compose
           .onNodeWithText(context.getString(com.sadad.app.R.string.contacts_saved_draft))
           .assertIsDisplayed()
