@@ -1,0 +1,48 @@
+name: TEMP ticket 179 QuickAddFakeSourceTest x30
+
+# Temporary: proves ticket 179 (30 of 30 on this branch, before count with dev's test file). Removed before merge.
+
+on:
+  push:
+    branches: [ticket-179]
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [after, before]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+      - name: Use dev's test file for the before count
+        if: matrix.side == 'before'
+        run: git show origin/dev:app/src/test/kotlin/com/sadad/app/feature/quickadd/QuickAddFakeSourceTest.kt > app/src/test/kotlin/com/sadad/app/feature/quickadd/QuickAddFakeSourceTest.kt
+      - name: Run QuickAddFakeSourceTest 30 times
+        run: |
+          git log -1 --format='%H %s'
+          ./gradlew :app:compileDebugUnitTestKotlin --console=plain -q
+          pass=0; fail=0
+          for i in $(seq 1 30); do
+            if timeout 300 ./gradlew :app:testDebugUnitTest --tests '*QuickAddFakeSourceTest' --rerun --console=plain -q; then
+              pass=$((pass+1)); echo "run $i: pass"
+            else
+              fail=$((fail+1)); echo "run $i: FAIL"
+              grep -l "<failure" app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | xargs -r grep -h -A3 "<failure" | head -20
+            fi
+          done
+          echo "${{ matrix.side }} $(git rev-parse --short HEAD): $pass passed, $fail failed of 30" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ $fail == 0 ]]
