@@ -24,9 +24,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -62,9 +64,13 @@ class QuickAddFakeSourceTest {
   @get:Rule val main = MainDispatcherRule()
   private val context: Context = ApplicationProvider.getApplicationContext()
   private val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+  private val viewModels = mutableListOf<QuickAddViewModel>()
 
   @After
   fun tearDown() {
+    runBlocking {
+      viewModels.forEach { vm -> vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin() }
+    }
     jobs.cancel()
   }
 
@@ -91,7 +97,9 @@ class QuickAddFakeSourceTest {
   }
 
   private fun model(source: QuickAddSource, contactId: String? = null) =
-      QuickAddViewModel(source, contactId, false, SavedStateHandle(), undoWindowMs = 100)
+      QuickAddViewModel(source, contactId, false, SavedStateHandle(), undoWindowMs = 100).also {
+        viewModels.add(it)
+      }
 
   @Test
   fun thePickerListsTheSourcesPeopleAndTheRouteContactStartsAtTheAmount() = runBlocking {
@@ -310,13 +318,14 @@ class QuickAddFakeSourceTest {
             )
         val model =
             QuickAddViewModel(
-                source,
-                null,
-                false,
-                SavedStateHandle(),
-                100,
-                personSearch,
-            )
+                    source,
+                    null,
+                    false,
+                    SavedStateHandle(),
+                    100,
+                    personSearch,
+                )
+                .also { viewModels.add(it) }
         model.state.first { it.loaded && it.people.size == 2 }
         model.onQueryChange("سا")
         model.state.first { it.people.map { person -> person.name } == listOf("سارة") }
