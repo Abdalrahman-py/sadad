@@ -217,13 +217,13 @@ supabase functions deploy api --project-ref "$BRANCH_REF" --use-api --yes
 git tag vX.Y.Z <approved-main-sha>
 git push origin vX.Y.Z
 gh run list --workflow android-release.yml -R Abdalrahman-py/sadad
-gh release download vX.Y.Z -R Abdalrahman-py/sadad --pattern '*.apk' --pattern SHA256SUMS --dir <outside-repo>
+gh release download vX.Y.Z -R Abdalrahman-py/sadad --pattern '*.apk' --pattern '*.aab' --pattern SHA256SUMS --dir <outside-repo>
 ```
 
 استبدل القيم بين `<...>` و`X.Y.Z` قبل التنفيذ؛ لا تدفع وسمًا قبل اعتماد الإصدار.
 السير يشتق `versionCode` من الوسم (`major*10000 + minor*100 + patch`، فـ`v3.0.1` = `30001`)، ويشترط
 تطابق الوسم مع `versionName` و`versionCode` في الحزمة، وينتظر CI، ثم يفحص R8 والحجم وBaseline Profile
-والحزمة والتوقيع وعدم debuggable وعدم cleartext؛ وينشر APK و`SHA256SUMS` و`update.json`.
+والحزمة والتوقيع وعدم debuggable وعدم cleartext؛ وينشر APK و`app-release.aab` و`SHA256SUMS` و`update.json`.
 داخل مجلد التنزيل، وبأدوات SDK التي يستخدمها السير:
 
 ```sh
@@ -231,6 +231,17 @@ sha256sum -c SHA256SUMS
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs Sadad-X.Y.Z-release.apk
 adb install -r Sadad-X.Y.Z-release.apk
 ```
+
+تم نشر `app-release.aab` (في `SHA256SUMS`) بجانب الـ APK — عند الإصدار على Play Console اختر
+الـ AAB كأصل، وتأكّد من أن التوقيع يستخدم بصمة Play App Signing، وأذنّ بالبصمة من شاشة
+Google Play Console إن لم يكان مسجّلًا بالفعل. تحميل الأصول:
+
+```sh
+gh release download vX.Y.Z -R Abdalrahman-py/sadad --pattern '*.apk' --pattern '*.aab' --dir <outside-repo>
+```
+
+**تحقق المسؤول من الـ AAB:** `jarsigner -verify -verbose -certs app-release.aab` (ارفض `CN=Android Debug`)،
+و`bundletool dump manifest --bundle app-release.aab` يجب ألا يظهر `REQUEST_INSTALL_PACKAGES`.
 
 طابق بصمة SHA-256 مع بصمة keystore التي سجّلها الإنسان في #82، وارفض شهادة `CN=Android Debug`.
 إذا تعارضت شهادة نسخة الاختبار القديمة، لا تحذفها عميانيًا: تحقق من إرسال العمليات واحفظ نسخة استرداد
