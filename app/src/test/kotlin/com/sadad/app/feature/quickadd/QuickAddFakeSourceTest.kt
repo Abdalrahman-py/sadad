@@ -2,6 +2,7 @@ package com.sadad.app.feature.quickadd
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
