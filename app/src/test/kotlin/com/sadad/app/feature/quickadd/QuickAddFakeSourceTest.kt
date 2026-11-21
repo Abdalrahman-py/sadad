@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -69,10 +71,13 @@ class QuickAddFakeSourceTest {
 
   @After
   fun tearDown() {
-    runBlocking {
-      viewModels.forEach { vm -> vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin() }
-    }
+    runBlocking { stopViewModels() }
     jobs.cancel()
+  }
+
+  /** Cancels each view model and waits until its collectors have ended, before Main changes. */
+  private suspend fun stopViewModels() {
+    viewModels.forEach { vm -> vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin() }
   }
 
   private class FakeSource(val jobs: CoroutineScope, summaries: List<ContactSummaryEntity>) :
@@ -348,6 +353,9 @@ class QuickAddFakeSourceTest {
             personThreads.none { it.startsWith("TestMain") },
         )
       } finally {
+        // Stop the view model while its Main still runs: after resetMain, Main is Robolectric's
+        // paused looper, and a join from tearDown would wait on it forever.
+        withContext(NonCancellable) { stopViewModels() }
         Dispatchers.resetMain()
         executor.shutdownNow()
       }
