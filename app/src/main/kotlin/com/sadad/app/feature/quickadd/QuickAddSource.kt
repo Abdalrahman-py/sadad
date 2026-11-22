@@ -68,8 +68,14 @@ interface QuickAddStore {
   /** Whether the device has a network now; a save without one waits in the outbox. */
   fun isOnline(): Boolean
 
-  /** Queues [commands] in the outbox and asks for a sync. */
-  suspend fun append(commands: List<LedgerCommand>)
+  /** Stores [commands] held: written, but not sent or shown until [release]. */
+  suspend fun hold(commands: List<LedgerCommand>)
+
+  /** Queues the held rows [operationIds] names and asks for a sync. */
+  suspend fun release(operationIds: List<String>)
+
+  /** Deletes the held rows [operationIds] names: the undo. */
+  suspend fun discard(operationIds: List<String>)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -131,10 +137,15 @@ fun AppGraph.quickAddSource(): QuickAddSource {
 
             override fun isOnline() = scope.isOnline()
 
-            override suspend fun append(commands: List<LedgerCommand>) {
-              scope.outbox.append(commands)
+            override suspend fun hold(commands: List<LedgerCommand>) = scope.outbox.hold(commands)
+
+            override suspend fun release(operationIds: List<String>) {
+              scope.outbox.release(operationIds)
               scope.onQueued()
             }
+
+            override suspend fun discard(operationIds: List<String>) =
+                scope.outbox.discardHeld(operationIds)
           }
         }
   }

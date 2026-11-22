@@ -82,24 +82,131 @@ class QuickAddFakeSourceTest {
 
   private class FakeSource(val jobs: CoroutineScope, summaries: List<ContactSummaryEntity>) :
       QuickAddSource {
-    val appended = CompletableDeferred<List<LedgerCommand>>()
+    val store = HoldingStore(jobs)
+    val appended
+      get() = store.appended
+
     override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
     override val summaryReady = MutableStateFlow(true)
     override val permissions = flowOf(emptyMap<String, Boolean>())
     override val blocked = flowOf(false)
 
-    override fun open(): QuickAddStore =
-        object : QuickAddStore {
-          override val jobs = this@FakeSource.jobs
+    override fun open(): QuickAddStore = store
+  }
 
-          override fun origin() = Events.origin
+  /**
+   * Records what the flow does with the outbox: [hold] writes, [release] queues ([appended]
+   * completes with the released commands, once), [discard] is the undo.
+   */
+  private class HoldingStore(override val jobs: CoroutineScope) : QuickAddStore {
+    val holds = ConcurrentLinkedQueue<List<LedgerCommand>>()
+    val releases = ConcurrentLinkedQueue<List<String>>()
+    val discards = ConcurrentLinkedQueue<List<String>>()
+    val appended = CompletableDeferred<List<LedgerCommand>>()
+    @Volatile var holdError: Exception? = null
 
-          override fun isOnline() = true
+    override fun origin() = Events.origin
 
-          override suspend fun append(commands: List<LedgerCommand>) {
-            appended.complete(commands)
-          }
+    override fun isOnline() = true
+
+    override suspend fun hold(commands: List<LedgerCommand>) {
+      holdError?.let { throw it }
+      holds += commands
+    }
+
+    override suspend fun release(operationIds: List<String>) {
+      releases += operationIds
+      appended.complete(holds.flatten().filter { it.operationId in operationIds })
+    }
+
+    override suspend fun discard(operationIds: List<String>) {
+      discards += operationIds
+    }
+  }
+
+  /** Types 85 for خالد and saves. */
+  private suspend fun savedDebt(undoWindowMs: Long = 100): Pair<FakeSource, QuickAddViewModel> {
+    val source =
+        FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
+    val model =
+        QuickAddViewModel(source, null, false, SavedStateHandle(), undoWindowMs).also {
+          viewModels.add(it)
         }
+    model.state.first { it.loaded }
+    model.pick(C1)
+    model.press("8")
+    model.press("5")
+    model.save(context)
+    return source to model
+  }
+
+  @Test
+  fun theSaveHoldsTheEntryBeforeTheDoneStepAndTheWindowsEndReleasesItOnce() = runBlocking {
+    withTimeout(5_000) {
+      val (source, model) = savedDebt()
+      model.state.first { it.step == QuickAddStep.DONE }
+      val held = source.store.holds.single()
+      assertEquals("the done step shows only once the hold returned", 1, held.size)
+
+      val released = source.appended.await()
+      assertEquals(held, released)
+      model.leave(context)
+      Thread.sleep(200)
+      assertEquals(listOf(held.map { it.operationId }), source.store.releases.toList())
+      assertTrue(source.store.discards.isEmpty())
+    }
+  }
+
+  @Test
+  fun undoInsideTheWindowDiscardsTheHeldRowsAndGoesBackToTheAmount() = runBlocking {
+    withTimeout(5_000) {
+      val (source, model) = savedDebt(undoWindowMs = 5_000)
+      model.state.first { it.step == QuickAddStep.DONE }
+      val ids = source.store.holds.single().map { it.operationId }
+
+      model.undo(context)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+      while (source.store.discards.isEmpty()) Thread.sleep(10)
+      assertEquals(listOf(ids), source.store.discards.toList())
+      assertTrue(source.store.releases.isEmpty())
+    }
+  }
+
+  @Test
+  fun leaveAndAnotherInsideTheWindowReleaseAtOnce() = runBlocking {
+    withTimeout(5_000) {
+      val (left, leaving) = savedDebt(undoWindowMs = 60_000)
+      leaving.state.first { it.step == QuickAddStep.DONE }
+      leaving.leave(context)
+      assertEquals(left.store.holds.single(), left.appended.await())
+
+      val (again, another) = savedDebt(undoWindowMs = 60_000)
+      another.state.first { it.step == QuickAddStep.DONE }
+      another.another(context)
+      assertEquals(again.store.holds.single(), again.appended.await())
+      assertEquals(QuickAddStep.PICKER, another.state.value.step)
+    }
+  }
+
+  @Test
+  fun aFailedHoldStaysOnTheAmountWithTheFailedTextAndStartsNoWindow() = runBlocking {
+    withTimeout(5_000) {
+      val source =
+          FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
+      source.store.holdError = IllegalStateException("disk full")
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+      model.press("8")
+      model.press("5")
+
+      model.save(context)
+      val failed = model.state.first { it.error != null }
+      assertEquals(context.getString(com.sadad.app.R.string.quickadd_failed), failed.error)
+      Thread.sleep(300)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+      assertTrue(source.store.releases.isEmpty())
+    }
   }
 
   private fun model(source: QuickAddSource, contactId: String? = null) =
@@ -388,7 +495,9 @@ class QuickAddFakeSourceTest {
       val person: LedgerView? = null,
       val personGate: CompletableDeferred<Unit>? = null,
   ) : QuickAddSource {
-    val appended = CompletableDeferred<List<LedgerCommand>>()
+    val store = HoldingStore(jobs)
+    val appended
+      get() = store.appended
 
     override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
     override val summaryReady = MutableStateFlow(true)
@@ -401,18 +510,7 @@ class QuickAddFakeSourceTest {
           emit(person)
         }
 
-    override fun open(): QuickAddStore =
-        object : QuickAddStore {
-          override val jobs = this@SummarySource.jobs
-
-          override fun origin() = Events.origin
-
-          override fun isOnline() = true
-
-          override suspend fun append(commands: List<LedgerCommand>) {
-            appended.complete(commands)
-          }
-        }
+    override fun open(): QuickAddStore = store
   }
 
   private fun summary(

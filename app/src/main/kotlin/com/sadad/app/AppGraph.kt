@@ -246,6 +246,9 @@ internal constructor(
   /** The epoch goes in first, so a sync pass starting right after opening has one to send. */
   private suspend fun loadRows(storeScope: StoreScope) {
     storeScope.setEpoch(storeScope.database.metaDao().get()?.epoch)
+    // Quick add holds an entry for its undo window; the app died inside one, and the screen had
+    // already said the entry was recorded.
+    if (storeScope.outbox.releaseAllHeld() > 0) storeScope.onQueued()
     // The one-time fill when the summary table is empty; answers with one count per table else.
     storeScope.repository.load()
     syncScheduler?.schedulePeriodic(storeScope.account.storeUserId)
