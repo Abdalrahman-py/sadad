@@ -1,17 +1,15 @@
 package com.sadad.app.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,14 +20,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,9 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -54,6 +57,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.sadad.app.R
+import com.sadad.app.ui.theme.sadadBrand
 import com.sadad.app.ui.theme.sadadPalette
 
 /*
@@ -63,7 +67,6 @@ import com.sadad.app.ui.theme.sadadPalette
  */
 
 // The radii: 12 for buttons and fields, 16 for blocks, 24 for panels.
-private val ButtonShape = RoundedCornerShape(12.dp)
 private val FieldShape = RoundedCornerShape(12.dp)
 
 /** The page ground: flat `bg`. */
@@ -85,17 +88,16 @@ fun SadadLogo(size: Dp, dark: Boolean, modifier: Modifier = Modifier) {
   )
 }
 
-/** The press feedback every Java button had: scale to 0.97 while held. */
-@Composable
-private fun pressScale(source: MutableInteractionSource): Float {
-  val pressed by source.collectIsPressedAsState()
-  val scale by animateFloatAsState(if (pressed) 0.97f else 1f, tween(if (pressed) 90 else 100))
-  return scale
-}
+/**
+ * The one corner every button keeps: material3 1.4 buttons default to a full pill, which no theme
+ * shape reaches.
+ */
+val SadadButtonShape: Shape = RoundedCornerShape(12.dp)
 
 /**
- * A full-width filled button as the boards draw it: 52dp tall, 12dp corners, `labelLarge`. Disabled
- * it turns `soft` with muted text, never a faded primary.
+ * A full-width button as the boards draw it: 52dp tall, 12dp corners, `labelLarge`, on the stock M3
+ * button of its [style]. Disabled it turns `surfaceContainerHighest` with `onSurfaceVariant` text,
+ * never a faded primary. The press feedback is M3's ripple and state layer.
  */
 @Composable
 fun SadadButton(
@@ -108,36 +110,88 @@ fun SadadButton(
     trailing: Painter? = null,
     height: Dp = 52.dp,
 ) {
-  val p = sadadPalette
-  val source = remember { MutableInteractionSource() }
-  val link = if (p.isDark) p.accent else p.primary
-  val (fill, ink, border) =
-      when (style) {
-        SadadButtonStyle.PRIMARY -> Triple(p.primary, Color.White, null)
-        SadadButtonStyle.SOFT -> Triple(p.surface, link, null)
-        SadadButtonStyle.SURFACE -> Triple(p.card, link, BorderStroke(1.dp, p.line))
-        SadadButtonStyle.DANGER -> Triple(p.debt, if (p.isDark) p.bg else Color.White, null)
-        SadadButtonStyle.TEXT -> Triple(Color.Transparent, link, null)
-      }
-  Surface(
-      onClick = onClick,
-      enabled = enabled,
-      shape = ButtonShape,
-      color = if (enabled || style == SadadButtonStyle.TEXT) fill else p.soft,
-      contentColor = if (enabled) ink else p.muted,
-      border = if (enabled) border else null,
-      interactionSource = source,
-      modifier = modifier.scale(pressScale(source)).defaultMinSize(minHeight = height),
-  ) {
-    Row(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      leading?.let { Icon(it, contentDescription = null, modifier = Modifier.size(20.dp)) }
-      Text(text, style = MaterialTheme.typography.labelLarge)
-      trailing?.let { Icon(it, contentDescription = null, modifier = Modifier.size(28.dp)) }
+  val c = MaterialTheme.colorScheme
+  val link = sadadBrand.link
+  val off = c.surfaceContainerHighest
+  val offInk = c.onSurfaceVariant
+  val sized = modifier.defaultMinSize(minHeight = height)
+  val padding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+  val content: @Composable RowScope.() -> Unit = {
+    leading?.let {
+      Icon(it, contentDescription = null, modifier = Modifier.size(20.dp))
+      Spacer(Modifier.width(8.dp))
     }
+    Text(text, style = MaterialTheme.typography.labelLarge)
+    trailing?.let {
+      Spacer(Modifier.width(8.dp))
+      Icon(it, contentDescription = null, modifier = Modifier.size(28.dp))
+    }
+  }
+  when (style) {
+    SadadButtonStyle.PRIMARY,
+    SadadButtonStyle.DANGER -> {
+      val danger = style == SadadButtonStyle.DANGER
+      Button(
+          onClick = onClick,
+          modifier = sized,
+          enabled = enabled,
+          shape = SadadButtonShape,
+          colors =
+              ButtonDefaults.buttonColors(
+                  containerColor = if (danger) c.error else c.primary,
+                  contentColor = if (danger) c.onError else c.onPrimary,
+                  disabledContainerColor = off,
+                  disabledContentColor = offInk,
+              ),
+          contentPadding = padding,
+          content = content,
+      )
+    }
+    SadadButtonStyle.SOFT ->
+        FilledTonalButton(
+            onClick = onClick,
+            modifier = sized,
+            enabled = enabled,
+            shape = SadadButtonShape,
+            colors =
+                ButtonDefaults.filledTonalButtonColors(
+                    containerColor = c.surfaceContainer,
+                    contentColor = link,
+                    disabledContainerColor = off,
+                    disabledContentColor = offInk,
+                ),
+            contentPadding = padding,
+            content = content,
+        )
+    SadadButtonStyle.SURFACE ->
+        OutlinedButton(
+            onClick = onClick,
+            modifier = sized,
+            enabled = enabled,
+            shape = SadadButtonShape,
+            colors =
+                ButtonDefaults.outlinedButtonColors(
+                    containerColor = c.surfaceContainerLowest,
+                    contentColor = link,
+                    disabledContainerColor = off,
+                    disabledContentColor = offInk,
+                ),
+            // The light divider tone: `outline` is for fields and switches.
+            border = if (enabled) BorderStroke(1.dp, c.outlineVariant) else null,
+            contentPadding = padding,
+            content = content,
+        )
+    SadadButtonStyle.TEXT ->
+        TextButton(
+            onClick = onClick,
+            modifier = sized,
+            enabled = enabled,
+            shape = SadadButtonShape,
+            colors =
+                ButtonDefaults.textButtonColors(contentColor = link, disabledContentColor = offInk),
+            contentPadding = padding,
+            content = content,
+        )
   }
 }
 
@@ -367,19 +421,16 @@ fun <T> SadadSegments(
   Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     options.forEach { (value, label) ->
       val chosen = value == selected
-      val source = remember { MutableInteractionSource() }
       Surface(
           onClick = { onSelect(value) },
-          shape = ButtonShape,
+          shape = SadadButtonShape,
           color = if (chosen) p.primary else p.surface,
           contentColor = if (chosen) Color.White else p.muted,
           border = if (chosen) null else BorderStroke(1.dp, p.line),
-          interactionSource = source,
           modifier =
-              Modifier.weight(1f)
-                  .scale(pressScale(source))
-                  .defaultMinSize(minHeight = 48.dp)
-                  .semantics { this.selected = chosen },
+              Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).semantics {
+                this.selected = chosen
+              },
       ) {
         Box(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), Alignment.Center) {
           Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
