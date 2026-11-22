@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -80,8 +80,9 @@ internal fun FrequentItemsEditor(
                 color = p.muted,
             )
           }
-          LazyColumn(Modifier.heightIn(max = 320.dp)) {
-            itemsIndexed(items) { index, item ->
+          // Twelve rows at most: a plain scrolling column is enough.
+          Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+            items.forEachIndexed { index, item ->
               Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(item, color = p.text, modifier = Modifier.weight(1f))
                 TextButton(

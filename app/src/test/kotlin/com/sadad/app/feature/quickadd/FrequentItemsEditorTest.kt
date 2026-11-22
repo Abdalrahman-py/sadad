@@ -6,7 +6,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
-import com.sadad.app.a11y.PHONE_QUALIFIERS
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
 import org.junit.Assert.assertEquals
@@ -17,7 +16,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = UiTestApplication::class, qualifiers = PHONE_QUALIFIERS)
+// Default qualifiers: under PHONE_QUALIFIERS a text field inside a dialog never lets Robolectric
+// idle.
+@Config(application = UiTestApplication::class)
 class FrequentItemsEditorTest {
   @get:Rule val compose = createComposeRule()
 
