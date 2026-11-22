@@ -333,4 +333,72 @@ class OutboxTest : LedgerTestCase() {
     outbox.compact(store::present)
     assertTrue(outbox.snapshot().isEmpty())
   }
+
+  /** Ticket 181: quick add holds its entry for the undo window; a held row is stored but unseen. */
+  @Test
+  fun aHeldRowIsStoredButNotQueuedNotSentAndNotProjected() = runTest {
+    val contact = contactCommand()
+    val debt = debtCommand(amount = 8_500, minute = 1)
+    outbox.hold(listOf(contact, debt))
+
+    val rows = outbox.snapshot()
+    assertEquals(listOf(OutboxState.HELD, OutboxState.HELD), rows.map { it.state })
+    assertTrue(rows.none { it.state == OutboxState.QUEUED })
+    assertTrue(outbox.queued().isEmpty())
+    assertTrue(pendingCommands(rows).isEmpty())
+  }
+
+  @Test
+  fun releaseQueuesTheNamedHeldRowsInTheirOrderAndLeavesOtherStatesAlone() = runTest {
+    val queued = contactCommand(name = "ليلى", id = OTHER_CONTACT_ID)
+    outbox.append(listOf(queued))
+    outbox.settle(listOf(receiptOf(queued, ReceiptStatus.REJECTED, sequence = 1)))
+    val first = contactCommand(minute = 1)
+    val second = debtCommand(amount = 8_500, id = OTHER_DEBT_ID, minute = 2)
+    val other = debtCommand(amount = 1_000, id = DEBT_ID, minute = 3)
+    outbox.hold(listOf(first, second))
+    outbox.hold(listOf(other))
+
+    outbox.release(listOf(second.operationId, first.operationId, queued.operationId))
+
+    val rows = outbox.snapshot()
+    assertEquals(
+        listOf(queued, first, second, other).map { it.operationId },
+        rows.map { it.operationId },
+    )
+    assertEquals(
+        listOf(OutboxState.REJECTED, OutboxState.QUEUED, OutboxState.QUEUED, OutboxState.HELD),
+        rows.map { it.state },
+    )
+    assertEquals(listOf(first, second), outbox.queued())
+  }
+
+  @Test
+  fun discardHeldDeletesOnlyTheNamedHeldRows() = runTest {
+    val queued = contactCommand(name = "ليلى", id = OTHER_CONTACT_ID)
+    outbox.append(listOf(queued))
+    val undone = debtCommand(amount = 8_500, id = OTHER_DEBT_ID, minute = 1)
+    val kept = debtCommand(amount = 1_000, id = DEBT_ID, minute = 2)
+    outbox.hold(listOf(undone))
+    outbox.hold(listOf(kept))
+
+    outbox.discardHeld(listOf(undone.operationId, queued.operationId))
+
+    assertEquals(
+        listOf(queued.operationId to OutboxState.QUEUED, kept.operationId to OutboxState.HELD),
+        outbox.snapshot().map { it.operationId to it.state },
+    )
+  }
+
+  @Test
+  fun releaseAllHeldQueuesEveryHeldRowAndCountsThem() = runTest {
+    val queued = contactCommand(name = "ليلى", id = OTHER_CONTACT_ID)
+    outbox.append(listOf(queued))
+    outbox.hold(listOf(contactCommand(minute = 1), debtCommand(amount = 8_500, minute = 2)))
+
+    assertEquals(2, outbox.releaseAllHeld())
+
+    assertTrue(outbox.snapshot().all { it.state == OutboxState.QUEUED })
+    assertEquals(0, outbox.releaseAllHeld())
+  }
 }

@@ -10,6 +10,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.quickadd.QuickAddNewPersonTags
 import com.sadad.app.feature.quickadd.QuickAddScreen
+import com.sadad.app.feature.quickadd.QuickAddStep
 import com.sadad.app.feature.quickadd.QuickAddTags
 import com.sadad.app.feature.quickadd.QuickAddViewModel
 import com.sadad.app.feature.quickadd.quickAddSource
@@ -68,6 +69,8 @@ class QuickAddA11yTest {
     compose.onNodeWithTag(QuickAddTags.key("2")).performClick()
     compose.onNodeWithTag(QuickAddTags.key("5")).performClick()
     compose.onNodeWithTag(QuickAddTags.SAVE).performClick()
+    // The done step shows once the outbox holds the entry (ticket 181), off the main thread.
+    compose.waitUntil(5_000) { model.state.value.step == QuickAddStep.DONE }
     compose.waitForIdle()
 
     compose.assertAccessible(
