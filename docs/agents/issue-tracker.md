@@ -22,6 +22,7 @@ Read the file at the referenced path. The user will normally pass the path or th
 
 Tickets in `.scratch/<feature-slug>/issues/` that OpenCode implements, one git worktree per ticket.
 
+- **Forced consequences**: when owner rules pin values (tokens, limits, orderings), work out what they force and list each visible consequence under the decisions, so the implementer meets no surprise stop-and-ask.
 - **Status flow**: `ready-for-agent` → `claimed` → `review-pending (commit <sha>, branch ticket-NN)` → `done (commit <sha>, merged to dev <sha>, <date>)`, or `blocked: <reason>`. The agent commits on its branch at every risk level; only `ticket close NN <sha>` writes `done`.
 - **Blocking**: a ticket is unblocked when every `Blocked by` ticket has a Status starting with `done`, so it always starts from a `dev` that has its blockers. The human picks the ticket number; agents never pick the next ticket themselves.
 - **Files section**: every repo path that Test first or Steps edits must appear under `Files you may edit`.

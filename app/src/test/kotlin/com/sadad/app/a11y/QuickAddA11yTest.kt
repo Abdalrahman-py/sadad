@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.quickadd.QuickAddNewPersonTags
 import com.sadad.app.feature.quickadd.QuickAddScreen
@@ -128,7 +129,12 @@ class QuickAddA11yTest {
         fixture.settleAll()
       }
     }
-    val model = QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle())
+    // The fixture cancels the model's scope before it closes the store, so nothing runs past
+    // resetMain.
+    val model =
+        QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle()).also {
+          fixture.closeWithStore(it.viewModelScope)
+        }
     awaiting { model.state.first { it.loaded && it.people.isNotEmpty() } }
     return model
   }
