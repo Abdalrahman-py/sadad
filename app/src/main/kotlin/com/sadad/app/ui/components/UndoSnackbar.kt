@@ -1,6 +1,8 @@
 package com.sadad.app.ui.components
 
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,11 +34,13 @@ fun UndoSnackbar(
   Snackbar(
       modifier = modifier,
       action = {
+        // A plain TextButton inks in `primary`, unreadable on the inverse surface.
         TextButton(
+            colors = ButtonDefaults.textButtonColors(contentColor = SnackbarDefaults.actionColor),
             onClick = {
               onUndo()
               onDismiss()
-            }
+            },
         ) {
           Text(stringResource(R.string.undo))
         }

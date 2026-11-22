@@ -108,23 +108,88 @@ val SadadDarkPalette =
 val LocalSadadPalette = staticCompositionLocalOf { SadadLightPalette }
 
 /** The palette of the current theme, for the brand components the Material roles do not cover. */
+@Deprecated(
+    "Read MaterialTheme.colorScheme for common roles and sadadBrand for the brand ones; " +
+        "the mapping is in docs/ui-theme.md. Ticket 208 removes the last reads."
+)
 val sadadPalette: SadadPalette
   @Composable get() = LocalSadadPalette.current
 
-private fun colorsFor(p: SadadPalette, dark: Boolean) =
+/**
+ * The brand roles Material 3 has no slot for. Everything else lives in `MaterialTheme.colorScheme`;
+ * docs/ui-theme.md maps every palette field to its role.
+ */
+@Immutable
+data class SadadBrand(
+    val isDark: Boolean,
+    /** Text-weight actions and links: `primary` in light, `secondary` (the accent) in dark. */
+    val link: Color,
+    /** «عليه»: the person owes the store. */
+    val owes: Color,
+    val owesSoft: Color,
+    /** «له»: the store holds the person's money. */
+    val credit: Color,
+    val creditSoft: Color,
+    /** Debts and the destructive actions. */
+    val debt: Color,
+    val debtSoft: Color,
+    /** The hero card runs diagonally from `heroStart` to `heroEnd`. */
+    val heroStart: Color,
+    val heroEnd: Color,
+    val onHero: Color,
+    val onHeroMuted: Color,
+    val badge: Color,
+    /** The bottom-bar sync dot: entries wait to sync, or sync is offline or stuck. */
+    val syncPending: Color,
+    val syncOffline: Color,
+)
+
+internal fun brandFor(p: SadadPalette) =
+    SadadBrand(
+        isDark = p.isDark,
+        link = if (p.isDark) p.accent else p.primary,
+        owes = p.owes,
+        owesSoft = p.owesSoft,
+        credit = p.credit,
+        creditSoft = p.creditSoft,
+        debt = p.debt,
+        debtSoft = p.debtSoft,
+        heroStart = p.primary,
+        heroEnd = p.heroEnd,
+        onHero = Color.White,
+        onHeroMuted = p.onHeroMuted,
+        badge = p.badge,
+        syncPending = Color(0xFFE0A23A),
+        syncOffline = Color(0xFFC13634),
+    )
+
+val LocalSadadBrand = staticCompositionLocalOf { brandFor(SadadLightPalette) }
+
+/** The brand roles of the current theme. */
+val sadadBrand: SadadBrand
+  @Composable get() = LocalSadadBrand.current
+
+/*
+ * Every role is set on purpose (docs/ui-theme.md has the contrast of each pair):
+ * - `outline` is at least 3:1 on `surface` and every container step, for field and switch borders;
+ *   `outlineVariant` stays the light `line` for dividers.
+ * - The container steps run Lowest (cards) → Highest in brand greens, distinct in both themes.
+ * - The three containers differ, and every on-colour pair is at least 4.5:1.
+ */
+internal fun colorsFor(p: SadadPalette, dark: Boolean) =
     if (dark)
         darkColorScheme(
             primary = p.primary,
             onPrimary = Color.White,
-            primaryContainer = p.soft,
-            onPrimaryContainer = p.text,
+            primaryContainer = Color(0xFF1F4D43),
+            onPrimaryContainer = p.onHeroMuted,
             secondary = p.accent,
             onSecondary = p.bg,
-            secondaryContainer = p.soft,
+            secondaryContainer = Color(0xFF2E3833),
             onSecondaryContainer = p.text,
             tertiary = p.warn,
             onTertiary = p.bg,
-            tertiaryContainer = p.soft,
+            tertiaryContainer = p.creditSoft,
             onTertiaryContainer = p.warn,
             background = p.bg,
             onBackground = p.text,
@@ -133,17 +198,18 @@ private fun colorsFor(p: SadadPalette, dark: Boolean) =
             surfaceVariant = p.surface,
             onSurfaceVariant = p.muted,
             surfaceTint = Color.Transparent,
-            surfaceBright = p.surface,
+            surfaceBright = p.soft,
             surfaceDim = p.bg,
-            surfaceContainerLowest = p.bg,
-            surfaceContainerLow = p.surface,
-            surfaceContainer = p.surface,
-            surfaceContainerHigh = p.surface,
+            surfaceContainerLowest = p.card,
+            surfaceContainerLow = Color(0xFF1C201E),
+            surfaceContainer = Color(0xFF1F2321),
+            surfaceContainerHigh = Color(0xFF222826),
             surfaceContainerHighest = p.soft,
             inverseSurface = p.text,
             inverseOnSurface = p.bg,
-            inversePrimary = p.accent,
-            outline = p.line,
+            // The snackbar action sits on the light inverse surface.
+            inversePrimary = SadadLightPalette.primary,
+            outline = Color(0xFF75827C),
             outlineVariant = p.line,
             error = p.debt,
             onError = p.bg,
@@ -155,35 +221,37 @@ private fun colorsFor(p: SadadPalette, dark: Boolean) =
         lightColorScheme(
             primary = p.primary,
             onPrimary = Color.White,
-            primaryContainer = p.soft,
+            primaryContainer = Color(0xFFB5E6D2),
             onPrimaryContainer = p.primary,
             secondary = p.accent,
-            onSecondary = Color.White,
+            // White on the accent is 3.38:1; this deep green is 5.09:1.
+            onSecondary = Color(0xFF00201A),
             secondaryContainer = p.soft,
             onSecondaryContainer = p.primary,
             tertiary = p.warn,
             onTertiary = Color.White,
-            tertiaryContainer = Color(0xFFFFF1DD),
+            tertiaryContainer = p.creditSoft,
             onTertiaryContainer = p.warn,
             background = p.bg,
             onBackground = p.text,
             surface = p.bg,
             onSurface = p.text,
             surfaceVariant = p.surface,
-            onSurfaceVariant = p.muted,
+            // `muted` on `soft` is 4.44:1; a hair darker reaches 4.65:1.
+            onSurfaceVariant = Color(0xFF586C60),
             surfaceTint = Color.Transparent,
             surfaceBright = Color.White,
-            surfaceDim = p.surface,
-            surfaceContainerLowest = Color.White,
-            surfaceContainerLow = p.surface,
+            surfaceDim = p.soft,
+            surfaceContainerLowest = p.card,
+            surfaceContainerLow = Color(0xFFEEF6F1),
             surfaceContainer = p.surface,
-            // Dialogs and sheets are white, as the boards draw their sheets.
-            surfaceContainerHigh = p.card,
+            surfaceContainerHigh = Color(0xFFDEF1E8),
             surfaceContainerHighest = p.soft,
             inverseSurface = p.text,
             inverseOnSurface = p.bg,
-            inversePrimary = p.soft,
-            outline = p.line,
+            // The snackbar action and the toast mark on the dark inverse surface.
+            inversePrimary = Color(0xFF78DEC0),
+            outline = Color(0xFF6E857A),
             outlineVariant = p.line,
             error = p.debt,
             onError = Color.White,
@@ -235,7 +303,10 @@ val SadadTypography =
 @Composable
 fun SadadTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
   val palette = if (dark) SadadDarkPalette else SadadLightPalette
-  CompositionLocalProvider(LocalSadadPalette provides palette) {
+  CompositionLocalProvider(
+      LocalSadadPalette provides palette,
+      LocalSadadBrand provides brandFor(palette),
+  ) {
     MaterialTheme(
         colorScheme = colorsFor(palette, dark),
         shapes = SadadShapes,
