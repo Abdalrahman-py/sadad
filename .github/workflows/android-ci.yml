@@ -80,6 +80,9 @@ jobs:
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           cache-provider: basic
+          # The basic cache key is write-once and shared with the android job; this job never resolves
+          # the unit-test classpath, so a cache it writes lacks Robolectric's jars for good.
+          cache-read-only: true
 
       - name: Set up Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
@@ -123,6 +126,9 @@ jobs:
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           cache-provider: basic
+          # Pushes to main and dev (team-release.yml calls this workflow) write the cache that pull
+          # requests restore; setup-gradle's default writes only on main.
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       # Robolectric fetches its android-all jars from Maven Central at test time into ~/.m2, which
       # the Gradle cache does not cover; parallel PR runs then hit Maven's 429 rate limit.
