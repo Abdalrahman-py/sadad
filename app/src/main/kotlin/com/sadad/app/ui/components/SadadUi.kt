@@ -155,7 +155,8 @@ fun SadadButton(
             shape = SadadButtonShape,
             colors =
                 ButtonDefaults.filledTonalButtonColors(
-                    containerColor = c.surfaceContainer,
+                    // `surface` of the palette in both themes.
+                    containerColor = c.surfaceVariant,
                     contentColor = link,
                     disabledContainerColor = off,
                     disabledContentColor = offInk,

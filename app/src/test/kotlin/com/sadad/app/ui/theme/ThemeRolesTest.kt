@@ -32,6 +32,7 @@ class ThemeRolesTest {
       assertEquals(Color(0xFFD6EFE4), surfaceContainerHighest)
       assertEquals(Color(0xFF6E857A), outline)
       assertEquals(Color(0xFFD5E5D9), outlineVariant)
+      assertEquals(Color(0xFF78DEC0), inversePrimary)
       assertEquals(Color(0xFFAB323A), error)
     }
   }
@@ -47,10 +48,10 @@ class ThemeRolesTest {
       assertEquals(Color(0xFF121514), surface)
       assertEquals(Color(0xFFEDF1EE), onSurface)
       assertEquals(Color(0xFF1A1E1C), surfaceContainerLowest)
-      assertEquals(Color(0xFF1D2220), surfaceContainerLow)
-      assertEquals(Color(0xFF202624), surfaceContainer)
-      assertEquals(Color(0xFF242B28), surfaceContainerHigh)
-      assertEquals(Color(0xFF29302D), surfaceContainerHighest)
+      assertEquals(Color(0xFF1C201E), surfaceContainerLow)
+      assertEquals(Color(0xFF1F2321), surfaceContainer)
+      assertEquals(Color(0xFF222826), surfaceContainerHigh)
+      assertEquals(Color(0xFF252B28), surfaceContainerHighest)
       assertEquals(Color(0xFF75827C), outline)
       assertEquals(Color(0xFF2E3532), outlineVariant)
       assertEquals(Color(0xFF064B42), inversePrimary)
@@ -60,12 +61,37 @@ class ThemeRolesTest {
 
   @Test
   fun theBrandRolesKeepTheirValues() {
-    val (l, d) = SadadLightPalette to SadadDarkPalette
-    assertEquals(Color(0xFFAB323A), l.owes)
-    assertEquals(Color(0xFF9A5A13), l.credit)
-    assertEquals(Color(0xFFF59A9F), d.owes)
-    assertEquals(Color(0xFFFFD08A), d.credit)
-    assertEquals(Color(0xFFC13634), l.badge)
+    with(brandFor(SadadLightPalette)) {
+      assertEquals(false, isDark)
+      assertEquals(Color(0xFF064B42), link)
+      assertEquals(Color(0xFFAB323A), owes)
+      assertEquals(Color(0xFFFFE1E1), owesSoft)
+      assertEquals(Color(0xFF9A5A13), credit)
+      assertEquals(Color(0xFFFFF1DD), creditSoft)
+      assertEquals(Color(0xFFAB323A), debt)
+      assertEquals(Color(0xFF064B42), heroStart)
+      assertEquals(Color(0xFF02302B), heroEnd)
+      assertEquals(Color(0xFFC13634), badge)
+      assertEquals(Color(0xFFE0A23A), syncPending)
+      assertEquals(Color(0xFFC13634), syncOffline)
+    }
+    with(brandFor(SadadDarkPalette)) {
+      assertEquals(true, isDark)
+      assertEquals(Color(0xFF78DEC0), link)
+      assertEquals(Color(0xFFF59A9F), owes)
+      assertEquals(Color(0xFF583B3D), owesSoft)
+      assertEquals(Color(0xFFFFD08A), credit)
+      assertEquals(Color(0xFF4A3A22), creditSoft)
+      assertEquals(Color(0xFF256C5A), heroStart)
+      assertEquals(Color(0xFFC13634), badge)
+    }
+  }
+
+  @Test
+  fun theLinkIsTextReadyOnThePage() {
+    listOf(SadadLightPalette to light, SadadDarkPalette to dark).forEach { (p, c) ->
+      assertTrue(contrast(brandFor(p).link, c.surface) >= 4.5f)
+    }
   }
 
   @Test

@@ -7,8 +7,8 @@ Ticket 201 (#371). Code reads common colours from `MaterialTheme.colorScheme`. T
 | `SadadPalette` field | Read instead | Notes |
 | --- | --- | --- |
 | `bg` | `colorScheme.surface` / `background` | The page. |
-| `surface` | `colorScheme.surfaceContainer` | Filled fields, soft buttons, light `surfaceVariant`. |
-| `soft` | `colorScheme.surfaceContainerHighest` | Also light `secondaryContainer`. |
+| `surface` | `colorScheme.surfaceVariant` | Filled fields, soft buttons; also light `surfaceContainer`. |
+| `soft` | `colorScheme.surfaceContainerHighest` | Disabled buttons, the dark toast; also light `secondaryContainer`. |
 | `card` | `colorScheme.surfaceContainerLowest` | Cards, panels, sticky action bars. |
 | `primary` | `colorScheme.primary` | Filled buttons. Also `sadadBrand.heroStart`. |
 | `accent` | `colorScheme.secondary` | Focus, cursor. |
@@ -55,12 +55,12 @@ The container steps are distinct and ordered in both themes, so light `surfaceCo
 | `onSurfaceVariant` | `#586C60` | `#A3ADA8` |
 | `inverseSurface` | `#142C24` | `#EDF1EE` |
 | `inverseOnSurface` | `#F5F8F3` | `#121514` |
-| `inversePrimary` | `#D6EFE4` | `#064B42` |
+| `inversePrimary` | `#78DEC0` | `#064B42` |
 | `surfaceContainerLowest` | `#FFFFFF` | `#1A1E1C` |
-| `surfaceContainerLow` | `#EEF6F1` | `#1D2220` |
-| `surfaceContainer` | `#E7F3ED` | `#202624` |
-| `surfaceContainerHigh` | `#DEF1E8` | `#242B28` |
-| `surfaceContainerHighest` | `#D6EFE4` | `#29302D` |
+| `surfaceContainerLow` | `#EEF6F1` | `#1C201E` |
+| `surfaceContainer` | `#E7F3ED` | `#1F2321` |
+| `surfaceContainerHigh` | `#DEF1E8` | `#222826` |
+| `surfaceContainerHighest` | `#D6EFE4` | `#252B28` |
 | `outline` | `#6E857A` | `#75827C` |
 | `outlineVariant` | `#D5E5D9` | `#2E3532` |
 
@@ -68,7 +68,7 @@ The container steps are distinct and ordered in both themes, so light `surfaceCo
 
 ## Contrast
 
-Ratios are WCAG 2 contrast. `ThemeRolesTest` checks every pair below, plus `onSurface` and `onSurfaceVariant` on every container step.
+Ratios are WCAG 2 contrast, computed from the hex values. `ThemeRolesTest` checks the thresholds (not the exact ratios) of every pair below, plus `onSurface` and `onSurfaceVariant` on every container step.
 
 | Pair | Light | Dark |
 | --- | --- | --- |
@@ -81,15 +81,15 @@ Ratios are WCAG 2 contrast. `ThemeRolesTest` checks every pair below, plus `onSu
 | `onError` on `error` | 6.46:1 | 8.75:1 |
 | `onErrorContainer` on `errorContainer` | 5.27:1 | 8.74:1 |
 | `onSurface` on `surface` | 13.85:1 | 16.11:1 |
-| `onSurfaceVariant` on `surfaceContainerHighest` | 4.65:1 | 5.85:1 |
+| `onSurfaceVariant` on `surfaceContainerHighest` | 4.65:1 | 6.26:1 |
 | `inverseOnSurface` on `inverseSurface` | 13.85:1 | 16.11:1 |
-| `inversePrimary` on `inverseSurface` | 12.24:1 | 8.80:1 |
+| `inversePrimary` on `inverseSurface` | 9.19:1 | 8.80:1 |
 | `outline` on `surface` | 3.70:1 | 4.58:1 |
 | `outline` on `surfaceContainerLowest` | 3.96:1 | 4.20:1 |
-| `outline` on `surfaceContainerLow` | 3.60:1 | 4.03:1 |
-| `outline` on `surfaceContainer` | 3.48:1 | 3.84:1 |
-| `outline` on `surfaceContainerHigh` | 3.37:1 | 3.61:1 |
-| `outline` on `surfaceContainerHighest` | 3.27:1 | 3.37:1 |
+| `outline` on `surfaceContainerLow` | 3.60:1 | 4.11:1 |
+| `outline` on `surfaceContainer` | 3.48:1 | 3.97:1 |
+| `outline` on `surfaceContainerHigh` | 3.37:1 | 3.74:1 |
+| `outline` on `surfaceContainerHighest` | 3.27:1 | 3.60:1 |
 
 ## Components
 

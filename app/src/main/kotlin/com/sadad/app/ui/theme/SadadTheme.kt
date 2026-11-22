@@ -144,7 +144,7 @@ data class SadadBrand(
     val syncOffline: Color,
 )
 
-private fun brandFor(p: SadadPalette) =
+internal fun brandFor(p: SadadPalette) =
     SadadBrand(
         isDark = p.isDark,
         link = if (p.isDark) p.accent else p.primary,
@@ -198,13 +198,13 @@ internal fun colorsFor(p: SadadPalette, dark: Boolean) =
             surfaceVariant = p.surface,
             onSurfaceVariant = p.muted,
             surfaceTint = Color.Transparent,
-            surfaceBright = Color(0xFF29302D),
+            surfaceBright = p.soft,
             surfaceDim = p.bg,
             surfaceContainerLowest = p.card,
-            surfaceContainerLow = Color(0xFF1D2220),
-            surfaceContainer = Color(0xFF202624),
-            surfaceContainerHigh = Color(0xFF242B28),
-            surfaceContainerHighest = Color(0xFF29302D),
+            surfaceContainerLow = Color(0xFF1C201E),
+            surfaceContainer = Color(0xFF1F2321),
+            surfaceContainerHigh = Color(0xFF222826),
+            surfaceContainerHighest = p.soft,
             inverseSurface = p.text,
             inverseOnSurface = p.bg,
             // The snackbar action sits on the light inverse surface.
@@ -249,7 +249,8 @@ internal fun colorsFor(p: SadadPalette, dark: Boolean) =
             surfaceContainerHighest = p.soft,
             inverseSurface = p.text,
             inverseOnSurface = p.bg,
-            inversePrimary = p.soft,
+            // The snackbar action and the toast mark on the dark inverse surface.
+            inversePrimary = Color(0xFF78DEC0),
             outline = Color(0xFF6E857A),
             outlineVariant = p.line,
             error = p.debt,

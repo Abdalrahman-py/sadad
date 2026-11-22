@@ -42,6 +42,7 @@ class MotionTest {
     compose.mainClock.advanceTimeByFrame()
     val first = compose.onNodeWithText("تم الحفظ").getBoundsInRoot()
     compose.mainClock.advanceTimeBy(1_000)
-    assertEquals(compose.onNodeWithText("تم الحفظ").getBoundsInRoot(), first)
+    val end = compose.onNodeWithText("تم الحفظ").getBoundsInRoot()
+    assertEquals(end, first)
   }
 }

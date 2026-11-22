@@ -21,12 +21,14 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun StickyActions(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
   Surface(
-      modifier = modifier.fillMaxWidth().topHairline(MaterialTheme.colorScheme.outlineVariant),
+      modifier = modifier.fillMaxWidth(),
       color = MaterialTheme.colorScheme.surfaceContainerLowest,
   ) {
+    // On the Row, so the line draws over the Surface fill.
     Row(
         modifier =
-            Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+            Modifier.topHairline(MaterialTheme.colorScheme.outlineVariant)
+                .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         content = content,

@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadad.app.R
-import com.sadad.app.ui.theme.SadadDarkPalette
 import com.sadad.app.ui.theme.sadadBrand
 import com.sadad.app.ui.theme.sadadPalette
 import kotlinx.coroutines.delay
@@ -409,7 +408,7 @@ fun SadadToastHost(
     val c = MaterialTheme.colorScheme
     val fill = if (error) c.error else if (dark) c.surfaceContainerHighest else c.inverseSurface
     val ink = if (error) c.onError else if (dark) c.onSurface else c.inverseOnSurface
-    val mark = if (error) c.onError else if (dark) c.secondary else SadadDarkPalette.accent
+    val mark = if (error) c.onError else if (dark) c.secondary else c.inversePrimary
     Row(
         Modifier.fillMaxWidth()
             .background(fill, RoundedCornerShape(12.dp))
