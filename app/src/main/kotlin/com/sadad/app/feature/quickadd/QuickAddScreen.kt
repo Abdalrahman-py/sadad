@@ -44,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +63,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -100,6 +100,7 @@ import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.launch
 
 /** The handles the screen tests and the a11y sweep hold on to. */
 object QuickAddTags {
@@ -116,6 +117,7 @@ object QuickAddTags {
   const val NOTE_CHIP = "quickadd:note-chip"
   const val DUE_DIALOG = "quickadd:due-dialog"
   const val NOTE_DIALOG = "quickadd:note-dialog"
+  const val NOTE_EDIT_ITEMS = "quickadd:note-edit-items"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -140,6 +142,7 @@ fun QuickAddScreen(
     onOpenContact: (String) -> Unit,
     onOpenTrash: () -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
+    frequentItems: FrequentItems = FrequentItems.get(LocalContext.current),
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
@@ -157,7 +160,14 @@ fun QuickAddScreen(
       QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose)
       QuickAddStep.NEW_PERSON -> NewPersonStep(state, viewModel)
       QuickAddStep.AMOUNT ->
-          AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
+          AmountStep(
+              state,
+              viewModel,
+              context,
+              onClose,
+              fromContact = contactId != null,
+              frequentItems = frequentItems,
+          )
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
     val anomaly = state.anomaly
@@ -488,6 +498,7 @@ private fun AmountStep(
     context: Context,
     onClose: () -> Unit,
     fromContact: Boolean,
+    frequentItems: FrequentItems,
 ) {
   val p = sadadPalette
   var choosingDue by rememberSaveable { mutableStateOf(false) }
@@ -659,6 +670,7 @@ private fun AmountStep(
     if (writingNote) {
       NoteDialog(
           current = state.note,
+          frequentItems = frequentItems,
           onSave = {
             model.onNoteChange(it)
             writingNote = false
@@ -878,12 +890,28 @@ private fun RightToLeft(content: @Composable () -> Unit) {
 
 /** «ملاحظة»: a line saying what the entry was for, kept with it in the ledger. */
 @Composable
-private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+private fun NoteDialog(
+    current: String,
+    frequentItems: FrequentItems,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
   var text by remember { mutableStateOf(current) }
-  val suggestions =
-      stringArrayResource(R.array.quickadd_note_suggestions)
-          .map { it.trim() }
-          .filter { it.isNotEmpty() }
+  var editing by remember { mutableStateOf(false) }
+  val suggestions by frequentItems.items.collectAsState(emptyList())
+  // The dialog's scope, not the editor's: the editor leaves the composition as it saves.
+  val scope = rememberCoroutineScope()
+  if (editing) {
+    FrequentItemsEditor(
+        initial = suggestions,
+        onSave = {
+          scope.launch { frequentItems.save(it) }
+          editing = false
+        },
+        onDismiss = { editing = false },
+    )
+    return
+  }
   AlertDialog(
       modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
@@ -919,7 +947,15 @@ private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () 
         }
       },
       dismissButton = {
-        TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        Row {
+          TextButton(
+              onClick = { editing = true },
+              modifier = Modifier.testTag(QuickAddTags.NOTE_EDIT_ITEMS),
+          ) {
+            Text(stringResource(R.string.quickadd_items_edit))
+          }
+          TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        }
       },
   )
 }
