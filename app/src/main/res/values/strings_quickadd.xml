@@ -100,4 +100,7 @@
     <string name="quickadd_new_person_title">شخص جديد</string>
     <string name="quickadd_new_person_continue">متابعة</string>
     <string name="quickadd_open_record">فتح سجل الشخص</string>
+    <string name="quickadd_restart_title">تجاهل المدخل الحالي؟</string>
+    <string name="quickadd_restart_confirm">تجاهل</string>
+    <string name="quickadd_restart_keep">متابعة</string>
 </resources>
