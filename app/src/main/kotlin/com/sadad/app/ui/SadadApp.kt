@@ -86,6 +86,7 @@ import com.sadad.app.feature.home.HomeScreen
 import com.sadad.app.feature.lock.LockGate
 import com.sadad.app.feature.notifications.NotificationsScreen
 import com.sadad.app.feature.people.PeopleScreen
+import com.sadad.app.feature.quickadd.QUICK_ADD_RESTART
 import com.sadad.app.feature.quickadd.QuickAddScreen
 import com.sadad.app.feature.recovery.RecoveryScreen
 import com.sadad.app.feature.settings.StoreScreen
@@ -421,8 +422,11 @@ internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) 
       navController.navigateTab(People())
     }
     RecordItem {
-      // Already adding an entry: a tap here must not restart it.
-      if (navController.currentDestination?.hasRoute<QuickAdd>() != true) {
+      val entry = navController.currentBackStackEntry
+      if (entry?.destination?.hasRoute<QuickAdd>() == true) {
+        // Already adding an entry: the screen starts a new one, asking before typing is lost.
+        entry.savedStateHandle[QUICK_ADD_RESTART] = true
+      } else {
         navController.navigate(QuickAdd()) { launchSingleTop = true }
       }
     }

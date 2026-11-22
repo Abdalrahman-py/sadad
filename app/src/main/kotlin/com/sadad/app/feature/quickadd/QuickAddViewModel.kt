@@ -98,6 +98,8 @@ data class QuickAddState(
     val newPerson: ContactFormState? = null,
     /** A picked number belongs to someone in the archive: the screen leaves for the trash. */
     val openTrash: Boolean = false,
+    /** The bottom bar's «+» would drop what is typed: «تجاهل المدخل الحالي؟» is open. */
+    val restartAsk: Boolean = false,
 ) {
   /** The saved person the entry is about. */
   val personName: String
@@ -661,6 +663,30 @@ class QuickAddViewModel(
       )
     }
   }
+
+  /**
+   * The bottom bar's «+» on this screen: a new blank entry. A typed amount, a running total, a note
+   * or a due date would be lost, so it asks first; a saved entry in the undo window is committed.
+   */
+  fun requestRestart(context: Context) {
+    val current = mutable.value
+    val typed =
+        current.amount.isNotEmpty() ||
+            current.terms.isNotEmpty() ||
+            current.note.isNotBlank() ||
+            current.dueDate != null
+    if (current.step != QuickAddStep.DONE && typed) {
+      mutable.update { it.copy(restartAsk = true) }
+    } else {
+      another(context)
+    }
+  }
+
+  /** «تجاهل»: the typed entry is dropped and the picker starts empty. */
+  fun confirmRestart(context: Context) = another(context)
+
+  /** «متابعة»: the entry stays as it was. */
+  fun dismissRestart() = mutable.update { it.copy(restartAsk = false) }
 
   /**
    * The user left the done step: the entry is theirs, so it is queued now instead of waiting out

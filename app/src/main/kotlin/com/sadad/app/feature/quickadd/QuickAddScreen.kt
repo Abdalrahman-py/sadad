@@ -74,10 +74,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import com.sadad.app.R
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceTone
@@ -125,11 +128,18 @@ object QuickAddTags {
   const val UNDO = "quickadd:undo"
   const val ANOTHER = "quickadd:another"
   const val ANOMALY = "quickadd:anomaly"
+  const val RESTART = "quickadd:restart"
 
   fun person(id: String) = "quickadd:person-$id"
 
   fun key(label: String) = "quickadd:key-$label"
 }
+
+/**
+ * The key the bottom bar's «+» sets on Quick Add's own back stack entry: start a new entry here
+ * instead of navigating, so the back stack is unchanged.
+ */
+const val QUICK_ADD_RESTART = "quickadd:restart"
 
 /** Records for a saved person, or for a new one created inside the flow with their first debt. */
 @Composable
@@ -141,10 +151,24 @@ fun QuickAddScreen(
     onOpenTrash: () -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
     frequentItems: FrequentItems = FrequentItems.get(LocalContext.current),
+    /** This screen's back stack entry's handle, where the bottom bar sets [QUICK_ADD_RESTART]. */
+    restartSignal: SavedStateHandle? =
+        (LocalViewModelStoreOwner.current as? NavBackStackEntry)?.savedStateHandle,
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
   val p = sadadPalette
+  if (restartSignal != null) {
+    val restart by
+        remember(restartSignal) { restartSignal.getStateFlow(QUICK_ADD_RESTART, false) }
+            .collectAsState()
+    LaunchedEffect(restart) {
+      if (restart) {
+        restartSignal[QUICK_ADD_RESTART] = false
+        viewModel.requestRestart(context)
+      }
+    }
+  }
   // A picked phone number of someone in the archive: they are restored from the trash, not here.
   LaunchedEffect(state.openTrash) {
     if (state.openTrash) {
@@ -201,6 +225,24 @@ fun QuickAddScreen(
           dismissButton = {
             TextButton(onClick = viewModel::dismissAnomaly) {
               Text(stringResource(R.string.quickadd_anomaly_edit))
+            }
+          },
+      )
+    }
+    if (state.restartAsk) {
+      AlertDialog(
+          modifier = Modifier.testTag(QuickAddTags.RESTART),
+          onDismissRequest = viewModel::dismissRestart,
+          containerColor = p.card,
+          title = { Text(stringResource(R.string.quickadd_restart_title)) },
+          confirmButton = {
+            TextButton(onClick = { viewModel.confirmRestart(context) }) {
+              Text(stringResource(R.string.quickadd_restart_confirm))
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = viewModel::dismissRestart) {
+              Text(stringResource(R.string.quickadd_restart_keep))
             }
           },
       )
