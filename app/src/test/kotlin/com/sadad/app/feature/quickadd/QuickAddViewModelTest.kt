@@ -750,7 +750,11 @@ class QuickAddViewModelTest {
 
                 override fun isOnline() = true
 
-                override suspend fun append(commands: List<com.sadad.ledger.LedgerCommand>) {}
+                override suspend fun hold(commands: List<com.sadad.ledger.LedgerCommand>) {}
+
+                override suspend fun release(operationIds: List<String>) {}
+
+                override suspend fun discard(operationIds: List<String>) {}
               }
         }
     try {
