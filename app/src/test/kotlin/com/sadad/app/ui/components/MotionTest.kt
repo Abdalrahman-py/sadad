@@ -3,6 +3,7 @@ package com.sadad.app.ui.components
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -37,9 +38,12 @@ class MotionTest {
     var message by mutableStateOf<String?>(null)
     compose.setContent { SadadTheme { SadadToastHost(message, onDismiss = {}) } }
     compose.mainClock.autoAdvance = false
-    message = "تم الحفظ"
-    compose.mainClock.advanceTimeByFrame()
-    compose.mainClock.advanceTimeByFrame()
+    compose.runOnUiThread {
+      message = "تم الحفظ"
+      Snapshot.sendApplyNotifications()
+    }
+    // Three frames: the 260ms slide is still near its start at normal speed.
+    compose.mainClock.advanceTimeBy(48)
     val first = compose.onNodeWithText("تم الحفظ").getBoundsInRoot()
     compose.mainClock.advanceTimeBy(1_000)
     val end = compose.onNodeWithText("تم الحفظ").getBoundsInRoot()
