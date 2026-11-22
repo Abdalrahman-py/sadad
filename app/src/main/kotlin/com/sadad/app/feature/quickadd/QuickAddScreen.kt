@@ -139,7 +139,7 @@ object QuickAddTags {
  * The key the bottom bar's «+» sets on Quick Add's own back stack entry: start a new entry here
  * instead of navigating, so the back stack is unchanged.
  */
-const val QUICK_ADD_RESTART = "quickadd:restart"
+const val QUICK_ADD_RESTART = "quickadd:restart-signal"
 
 /** Records for a saved person, or for a new one created inside the flow with their first debt. */
 @Composable

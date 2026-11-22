@@ -676,7 +676,7 @@ class QuickAddViewModel(
             current.note.isNotBlank() ||
             current.dueDate != null
     if (current.step != QuickAddStep.DONE && typed) {
-      mutable.update { it.copy(restartAsk = true) }
+      mutable.update { it.copy(restartAsk = true, anomaly = null) }
     } else {
       another(context)
     }
