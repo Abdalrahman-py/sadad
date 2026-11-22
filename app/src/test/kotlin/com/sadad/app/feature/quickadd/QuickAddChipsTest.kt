@@ -133,7 +133,7 @@ class QuickAddChipsTest {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val items =
         FrequentItems.create(scope, File(temporary.root, FrequentItems.FILE_NAME), listOf("كولا"))
-    runBlocking { items.save(listOf("خبز", "حليب")) }
+    runBlocking { items.save(listOf("خبز", "حليب")).join() }
     val fixture = runBlocking { TestGraph.signedIn() }
     try {
       fixture.use {

@@ -31,10 +31,10 @@ class FrequentItemsTest {
       val items = FrequentItems.create(first, file, seed)
       assertEquals(seed, items.items.first())
 
-      items.save(listOf("خبز"))
+      items.save(listOf("خبز")).join()
       assertEquals(listOf("خبز"), items.items.first())
 
-      items.save(emptyList())
+      items.save(emptyList()).join()
       assertEquals(emptyList<String>(), items.items.first())
     } finally {
       first.coroutineContext[Job]?.cancelAndJoin()

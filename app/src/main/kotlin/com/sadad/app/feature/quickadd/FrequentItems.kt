@@ -10,9 +10,11 @@ import com.sadad.app.R
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /**
  * `quickadd.preferences_pb`: the note dialog's frequent items, kept on this phone only (never
@@ -20,14 +22,21 @@ import kotlinx.coroutines.flow.map
  * that the saved list wins, an empty one included.
  */
 class FrequentItems
-private constructor(private val store: DataStore<Preferences>, private val seed: List<String>) {
+private constructor(
+    private val store: DataStore<Preferences>,
+    private val scope: CoroutineScope,
+    private val seed: List<String>,
+) {
   val items: Flow<List<String>> =
       store.data.map { saved ->
         saved[ITEMS]?.split(SEPARATOR)?.filter { it.isNotEmpty() } ?: seed
       }
 
-  /** Saves [items] as given; the editor builds them only through [add]. */
-  suspend fun save(items: List<String>) {
+  /**
+   * Saves [items] as given; the editor builds them only through [add]. The write runs on the
+   * store's own scope, so closing Quick Add right after «حفظ» does not cancel it.
+   */
+  fun save(items: List<String>): Job = scope.launch {
     store.edit { it[ITEMS] = items.joinToString(SEPARATOR) }
   }
 
@@ -66,6 +75,7 @@ private constructor(private val store: DataStore<Preferences>, private val seed:
     ): FrequentItems =
         FrequentItems(
             PreferenceDataStoreFactory.create(scope = scope, produceFile = produceFile),
+            scope,
             seed,
         )
 

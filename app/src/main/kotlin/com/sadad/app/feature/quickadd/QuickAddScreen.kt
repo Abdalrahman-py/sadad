@@ -44,7 +44,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -100,7 +99,6 @@ import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import kotlinx.coroutines.launch
 
 /** The handles the screen tests and the a11y sweep hold on to. */
 object QuickAddTags {
@@ -898,14 +896,14 @@ private fun NoteDialog(
 ) {
   var text by remember { mutableStateOf(current) }
   var editing by remember { mutableStateOf(false) }
-  val suggestions by frequentItems.items.collectAsState(emptyList())
-  // The dialog's scope, not the editor's: the editor leaves the composition as it saves.
-  val scope = rememberCoroutineScope()
-  if (editing) {
+  // Null until the file is read: the editor must not open on an empty list and save it.
+  val loaded by frequentItems.items.collectAsState(null)
+  val suggestions = loaded.orEmpty()
+  if (editing && loaded != null) {
     FrequentItemsEditor(
         initial = suggestions,
         onSave = {
-          scope.launch { frequentItems.save(it) }
+          frequentItems.save(it)
           editing = false
         },
         onDismiss = { editing = false },
@@ -949,6 +947,7 @@ private fun NoteDialog(
       dismissButton = {
         Row {
           TextButton(
+              enabled = loaded != null,
               onClick = { editing = true },
               modifier = Modifier.testTag(QuickAddTags.NOTE_EDIT_ITEMS),
           ) {
