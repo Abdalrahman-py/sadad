@@ -182,6 +182,8 @@ class QuickAddNewPersonTest {
       model.confirmNewPerson(context)
       model.press("5")
       model.save(context)
+      // «تراجع» exists only on the done step, which shows once the hold returned.
+      model.state.first { it.step == QuickAddStep.DONE }
       model.undo(context)
       delay(300)
 
