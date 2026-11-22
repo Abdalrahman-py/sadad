@@ -5,17 +5,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,8 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,13 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -69,16 +58,13 @@ import com.sadad.app.ui.theme.sadadPalette
 
 /*
  * The Java app's view helpers (`NativeScreens.java`, tag `pre-kotlin-app-2026-10`) as composables:
- * `button`, `input`/`addField`, `card`/`shape`, `pageHeading`, `sectionTitle`, `emptyCard`,
- * `switchRow`, the hero and the logo. Screens build from these, not from raw Material parts, so
- * the look stays the one the shop owners know.
+ * `button`, `input`/`addField`, `pageHeading` and the logo. Screens build from these, not from raw
+ * Material parts, so the look stays the one the shop owners know.
  */
 
-// The radii: 12 for buttons, fields, rows and cards, 16 for blocks, 24 for panels.
+// The radii: 12 for buttons and fields, 16 for blocks, 24 for panels.
 private val ButtonShape = RoundedCornerShape(12.dp)
 private val FieldShape = RoundedCornerShape(12.dp)
-private val RowShape = RoundedCornerShape(12.dp)
-private val CardShape = RoundedCornerShape(12.dp)
 
 /** The page ground: flat `bg`. */
 @Composable fun Modifier.sadadPageBackground(): Modifier = background(sadadPalette.bg)
@@ -318,109 +304,6 @@ fun SadadTextField(
   )
 }
 
-/** The search box: a filled field with the search glyph at its end, as `buildContacts()`. */
-@Composable
-fun SadadSearchField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    modifier: Modifier = Modifier,
-) {
-  SadadTextField(
-      value = value,
-      onValueChange = onValueChange,
-      placeholder = placeholder,
-      modifier = modifier.fillMaxWidth(),
-      trailingIcon = {
-        Icon(
-            painterResource(R.drawable.ic_search),
-            contentDescription = null,
-            tint = sadadPalette.muted,
-            modifier = Modifier.size(20.dp),
-        )
-      },
-  )
-}
-
-/** A rounded `surface` row with its title and a switch, as `switchRow()`. */
-@Composable
-fun SadadSwitchRow(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
-  val p = sadadPalette
-  Row(
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .clip(RowShape)
-              .background(p.surface)
-              .border(1.dp, p.line, RowShape)
-              .toggleable(
-                  value = checked,
-                  enabled = enabled,
-                  role = Role.Switch,
-                  onValueChange = onCheckedChange,
-              )
-              .padding(horizontal = 16.dp, vertical = 8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-    Switch(
-        checked = checked,
-        onCheckedChange = null,
-        enabled = enabled,
-        colors =
-            SwitchDefaults.colors(
-                checkedThumbColor = p.primary,
-                checkedTrackColor = p.soft,
-                checkedBorderColor = p.soft,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = p.line,
-                uncheckedBorderColor = p.line,
-            ),
-    )
-  }
-}
-
-/** A `surface` card with a `line` border and 12dp corners, as `card(surface)`. */
-@Composable
-fun SadadCard(
-    modifier: Modifier = Modifier,
-    color: Color = sadadPalette.surface,
-    onClick: (() -> Unit)? = null,
-    contentPadding: PaddingValues = PaddingValues(16.dp),
-    content: @Composable ColumnScope.() -> Unit,
-) {
-  val p = sadadPalette
-  val border = if (color == p.surface) BorderStroke(1.dp, p.line) else null
-  val inner: @Composable () -> Unit = {
-    Column(Modifier.padding(contentPadding), content = content)
-  }
-  if (onClick == null)
-      Surface(
-          modifier = modifier,
-          shape = CardShape,
-          color = color,
-          border = border,
-          shadowElevation = 1.dp,
-          content = inner,
-      )
-  else
-      Surface(
-          onClick = onClick,
-          modifier = modifier,
-          shape = CardShape,
-          color = color,
-          border = border,
-          shadowElevation = 1.dp,
-          content = inner,
-      )
-}
-
 /** The page title row: the back chevron at the start, then the 24sp title, then its subtitle. */
 @Composable
 fun SadadPageHeading(
@@ -470,54 +353,6 @@ fun SadadPageHeading(
   }
 }
 
-/** A `titleMedium` section title with an optional 12sp note, as `sectionTitle()`. */
-@Composable
-fun SadadSectionTitle(title: String, modifier: Modifier = Modifier, subtitle: String? = null) {
-  Column(modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleMedium,
-        color = sadadPalette.text,
-        modifier = Modifier.semantics { heading() },
-    )
-    if (!subtitle.isNullOrEmpty())
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = sadadPalette.muted,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-  }
-}
-
-/** The empty-list card: a ring, a title and a hint, centred, as `emptyCard()`. */
-@Composable
-fun SadadEmptyCard(title: String, detail: String, modifier: Modifier = Modifier) {
-  val p = sadadPalette
-  SadadCard(modifier.fillMaxWidth(), contentPadding = PaddingValues(20.dp, 24.dp)) {
-    Text(
-        "◌",
-        style = MaterialTheme.typography.headlineMedium,
-        color = p.accent,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Text(
-        title,
-        style = MaterialTheme.typography.titleMedium,
-        color = p.text,
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-    )
-    Text(
-        detail,
-        style = MaterialTheme.typography.bodySmall,
-        color = p.muted,
-        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-    )
-  }
-}
-
 /**
  * Equal-width filter buttons; the chosen one is `primary` with white text, as the contact chips.
  */
@@ -553,108 +388,3 @@ fun <T> SadadSegments(
     }
   }
 }
-
-/** A round `soft` icon button in the top bar (bell, account), 40dp. */
-@Composable
-fun SadadRoundIcon(
-    painter: Painter,
-    description: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    badge: Int = 0,
-) {
-  val p = sadadPalette
-  Box(modifier.size(44.dp), contentAlignment = Alignment.Center) {
-    Box(
-        modifier =
-            Modifier.size(40.dp)
-                .clip(CircleShape)
-                .background(p.soft)
-                .clickable(role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-      Icon(
-          painter,
-          contentDescription = null,
-          tint = if (p.bg.isDark()) p.text else p.primary,
-          modifier = Modifier.size(24.dp),
-      )
-    }
-    if (badge > 0) {
-      Box(
-          modifier =
-              Modifier.align(Alignment.TopEnd)
-                  .size(20.dp)
-                  .shadow(2.dp, CircleShape)
-                  .background(p.badge, CircleShape),
-          contentAlignment = Alignment.Center,
-      ) {
-        Text(
-            if (badge > 9) "9+" else badge.toString(),
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White,
-        )
-      }
-    }
-  }
-}
-
-/** The dark hero card: `primary` to [heroEnd] diagonally, 16dp corners, flat on the page. */
-@Composable
-fun SadadHeroCard(
-    modifier: Modifier = Modifier,
-    shape: Shape = MaterialTheme.shapes.large,
-    content: @Composable RowScope.() -> Unit,
-) {
-  val p = sadadPalette
-  Row(
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .clip(shape)
-              .drawWithCache {
-                val brush =
-                    Brush.linearGradient(
-                        listOf(p.primary, p.heroEnd),
-                        start = androidx.compose.ui.geometry.Offset(size.width, 0f),
-                        end = androidx.compose.ui.geometry.Offset(0f, size.height),
-                    )
-                onDrawBehind { drawRect(brush) }
-              }
-              .padding(horizontal = 20.dp, vertical = 24.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      content = content,
-  )
-}
-
-/**
- * A white figure card with a muted title, a coloured 20sp figure and a slot below, as
- * `monthMetric`.
- */
-@Composable
-fun SadadMetricCard(
-    title: String,
-    figure: String,
-    figureColor: Color,
-    modifier: Modifier = Modifier,
-    below: @Composable ColumnScope.() -> Unit = {},
-) {
-  val p = sadadPalette
-  SadadCard(modifier, color = p.card, contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 12.dp)) {
-    Text(
-        title,
-        style = MaterialTheme.typography.bodySmall,
-        color = p.muted,
-    )
-    Text(
-        figure,
-        style = MaterialTheme.typography.titleLarge,
-        color = figureColor,
-        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
-    )
-    below()
-  }
-}
-
-private fun Color.isDark(): Boolean = (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f
