@@ -30,10 +30,12 @@ import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -203,12 +205,18 @@ class QuickAddViewModel(
   /** Whether the Contact this flow was opened for has been made the subject already. */
   private var startContactApplied = false
 
-  /** The operation ids the done step holds; [commitJob] releases them when the window ends. */
-  @Volatile private var pending: List<String> = emptyList()
+  /**
+   * The store and operation ids the done step holds; [commitJob] releases them when the window
+   * ends. Taken atomically, so exactly one of release and undo acts on them.
+   */
+  private val pending = AtomicReference<Held?>(null)
   @Volatile private var commitJob: Job? = null
 
   /** The hold write of a save; a second tap while it runs saves nothing. */
   @Volatile private var holdJob: Job? = null
+
+  /** The user left while the hold was running: release as soon as it returns. */
+  @Volatile private var leftDuringHold = false
   private var anomalyApproved: String? = null
 
   init {
@@ -585,8 +593,9 @@ class QuickAddViewModel(
       return
     }
     val failed = context.getString(R.string.quickadd_failed)
-    // The hold runs on the store's jobs: a screen torn down mid-write must not leave a held row
-    // the user was never told about, nor lose one they were.
+    leftDuringHold = false
+    // The hold runs on the store's jobs, not the screen's: a screen torn down mid-write still gets
+    // its window. A store closed mid-write leaves the row held; the next open queues it.
     holdJob =
         store.jobs.launch {
           try {
@@ -610,8 +619,12 @@ class QuickAddViewModel(
       amount: Cents,
       sentence: String,
   ) {
-    pending = operationIds
+    pending.set(Held(store, operationIds))
     commitJob?.cancel()
+    if (leftDuringHold) {
+      commit(context)
+      return
+    }
     // One tick a second (the window split evenly, so a short test window still ends), counting
     // «تراجع · N ث» down to zero, where the entry is queued and the button goes grey.
     val ticks = maxOf(1, (undoWindowMs / 1_000).toInt())
@@ -656,12 +669,13 @@ class QuickAddViewModel(
   /** «تراجع»: the held rows are deleted, nothing was ever queued. */
   fun undo(context: Context) {
     // The window closed and the commands are queued: this screen can no longer take them back.
-    val held = pending
-    if (held.isEmpty()) return
+    val held = pending.getAndSet(null) ?: return
     commitJob?.cancel()
     commitJob = null
-    pending = emptyList()
-    source.open()?.let { store -> store.jobs.launch { store.discard(held) } }
+    // Not cancelled with the store's jobs: a held row left behind would be queued on the next open.
+    held.store.jobs.launch(NonCancellable) {
+      runCatching { held.store.discard(held.operationIds) }
+    }
     mutable.update {
       it.copy(
           step = QuickAddStep.AMOUNT,
@@ -673,7 +687,8 @@ class QuickAddViewModel(
 
   /** «تسجيل آخر»: the entry that is on screen is recorded first, then the picker starts empty. */
   fun another(context: Context) {
-    if (pending.isNotEmpty()) {
+    if (holdJob?.isActive == true) leftDuringHold = true
+    if (pending.get() != null) {
       commitJob?.cancel()
       commitJob = null
       commit(context)
@@ -699,7 +714,8 @@ class QuickAddViewModel(
    * the window. Called by every way out of the screen, so a closed flow never loses a record.
    */
   fun leave(context: Context) {
-    if (pending.isNotEmpty()) {
+    if (holdJob?.isActive == true) leftDuringHold = true
+    if (pending.get() != null) {
       commitJob?.cancel()
       commitJob = null
       commit(context)
@@ -911,10 +927,7 @@ class QuickAddViewModel(
 
   /** Queues the held rows and asks for a sync. */
   private fun commit(context: Context) {
-    val operationIds = pending
-    pending = emptyList()
-    val store = source.open()
-    if (operationIds.isEmpty() || store == null) return
+    val (store, operationIds) = pending.getAndSet(null) ?: return
     // The window is over the moment it is committed, so «تراجع» goes grey at once.
     mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     // The outbox write is not cancelled with this screen: it is one short write, not background
@@ -924,6 +937,9 @@ class QuickAddViewModel(
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
+
+  /** What a save holds: the store it wrote to and the rows it wrote. */
+  private data class Held(val store: QuickAddStore, val operationIds: List<String>)
 
   private fun members(people: List<QuickAddPerson>, current: QuickAddState): List<QuickAddPerson> {
     val selected = current.selected ?: return people

@@ -31,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -166,7 +167,8 @@ class QuickAddFakeSourceTest {
 
       model.undo(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
-      while (source.store.discards.isEmpty()) Thread.sleep(10)
+      val deadline = System.currentTimeMillis() + 3_000
+      while (source.store.discards.isEmpty() && System.currentTimeMillis() < deadline) delay(10)
       assertEquals(listOf(ids), source.store.discards.toList())
       assertTrue(source.store.releases.isEmpty())
     }
