@@ -172,6 +172,8 @@ class HomeSummaryQueriesTest {
     for (candidate in candidates) {
       val person = view.contacts.first { it.id == candidate.contactId }
       assertEquals(person.name, candidate.name)
+      assertEquals(person.phone, candidate.phone)
+      assertEquals(person.whatsappCode, candidate.whatsappCode)
       assertEquals(view.net(candidate.contactId).value, candidate.net)
       assertTrue(candidate.net > 0)
       assertTrue(candidate.earliestOpenDue!!.compareTo(today.toString()) <= 0)

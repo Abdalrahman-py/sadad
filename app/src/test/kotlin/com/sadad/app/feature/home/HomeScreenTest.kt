@@ -1,5 +1,6 @@
 package com.sadad.app.feature.home
 
+import android.content.Intent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.app.ui.theme.SadadTheme
@@ -20,12 +22,15 @@ import com.sadad.ledger.Cents
 import java.time.Instant
 import java.time.YearMonth
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
 
 /**
  * The three things a shop does from Home: see the two figures, open the people who are late, and —
@@ -34,6 +39,30 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class HomeScreenTest {
+  @Test
+  fun reminderButtonOpensTheSavedPersonsWhatsAppConversation() {
+    val person = HomeFollowUp("c1", "مريم حسن", 3, Cents(3_000), "0599123456", "972")
+    show(state.copy(followUps = listOf(person)))
+    compose.onNodeWithTag(HomeTags.remind("c1")).performScrollTo().performClick()
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val intent = shadowOf(app).nextStartedActivity
+    assertEquals(Intent.ACTION_VIEW, intent.action)
+    assertEquals("wa.me", intent.data!!.host)
+    assertEquals("/972599123456", intent.data!!.path)
+    assertTrue(intent.data!!.getQueryParameter("text")!!.contains("مريم حسن"))
+  }
+
+  @Test
+  fun missingPhoneShowsAnExplanationInsteadOfOpeningAContactPicker() {
+    val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+    openWhatsApp(app, HomeFollowUp("c1", "مريم", null, Cents(3_000)), "متجر")
+    assertNull(shadowOf(app).nextStartedActivity)
+    assertEquals(
+        app.getString(com.sadad.app.R.string.home_remind_invalid_phone),
+        ShadowToast.getTextOfLatestToast(),
+    )
+  }
+
   @get:Rule val compose = createComposeRule()
   @get:Rule val main = MainDispatcherRule()
 

@@ -448,6 +448,57 @@ class HomeViewModelTest {
   }
 
   @Test
+  fun roomFollowUpCarriesTheCustomersSavedWhatsAppNumberAndCountryCode() = runTest {
+    TestGraph.signedIn().use { fixture ->
+      val id = contactId(1)
+      fixture.seedCommands(
+          listOf(
+              Commands.contactCreate(
+                  Events.origin,
+                  at(2026, 10, 1),
+                  name = "سامي",
+                  entityId = id,
+                  phone = "0599123456",
+                  whatsappCode = "972",
+              ),
+              Commands.debtCreate(
+                  Events.origin,
+                  at(2026, 10, 16),
+                  contactId = id,
+                  direction = Direction.RECEIVABLE,
+                  amount = Cents(3_000),
+                  dueDate = "2026-10-20",
+              ),
+          )
+      )
+      val model = fixture.roomHome(MovableClock(at(2026, 10, 25), zone))
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.state.collect {} }
+      val person = model.state.first { it.loaded }.followUps.single()
+      assertEquals("0599123456", person.phone)
+      assertEquals("972", person.whatsappCode)
+      val newId =
+          fixture.graph.current.value!!
+              .repository
+              .addContact(
+                  "مريم",
+                  "0599765432",
+                  null,
+                  null,
+                  com.sadad.app.data.ledger.FirstDebt(Cents(4_000), dueDate = "2026-10-20"),
+                  whatsappCode = "972",
+              )
+              .getOrThrow()
+      val queued =
+          model.state
+              .first { it.followUps.any { row -> row.contactId == newId } }
+              .followUps
+              .first { it.contactId == newId }
+      assertEquals("972", queued.whatsappCode)
+      assertEquals("0599765432", queued.phone)
+    }
+  }
+
+  @Test
   fun whileSummaryIsNotReadyHomeShowsLoadingAndNeverAnEmptyStore() = runTest {
     TestGraph.signedIn().use { fixture ->
       val store = checkNotNull(fixture.graph.current.value)
