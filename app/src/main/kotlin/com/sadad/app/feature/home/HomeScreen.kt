@@ -22,12 +22,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,7 +67,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.requireGraph
+import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.BalanceWord
+import com.sadad.app.ui.components.EntrySign
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.components.sadadPageBackground
@@ -457,6 +459,7 @@ private fun FollowUpRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+      EntrySign(BalanceTone.OWES)
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(person.name, style = MaterialTheme.typography.titleMedium, color = p.text)
         Text(
@@ -469,14 +472,24 @@ private fun FollowUpRow(
       }
       BalanceWord(person.amount.value)
     }
-    FilledTonalIconButton(
+    // The same 40dp tinted circle as the row's sign, so the two read as one family.
+    Surface(
         onClick = onRemind,
+        shape = CircleShape,
+        color = p.soft,
+        contentColor = link,
         modifier =
-            Modifier.testTag(HomeTags.remind(person.contactId)).semantics {
+            Modifier.size(40.dp).testTag(HomeTags.remind(person.contactId)).semantics {
               contentDescription = remindLabel
             },
     ) {
-      Icon(painterResource(R.drawable.ic_whatsapp), contentDescription = null)
+      Box(contentAlignment = Alignment.Center) {
+        Icon(
+            painterResource(R.drawable.ic_whatsapp),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
+      }
     }
   }
 }

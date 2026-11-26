@@ -66,6 +66,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceWord
+import com.sadad.app.ui.components.EntrySign
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.sadadPalette
 
@@ -329,6 +330,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+      EntrySign(row.balance.tone)
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

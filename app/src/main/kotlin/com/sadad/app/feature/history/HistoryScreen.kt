@@ -62,7 +62,9 @@ import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.ShowSnackbar
+import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.EntrySign
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
@@ -349,12 +351,7 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Icon(
-          painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
-          contentDescription = null,
-          tint = color,
-          modifier = Modifier.size(24.dp),
-      )
+      EntrySign(if (debt) BalanceTone.OWES else BalanceTone.CREDIT)
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(movement.name, color = p.text, style = MaterialTheme.typography.titleMedium)
         // The kind and the time on one line.

@@ -82,6 +82,7 @@ import com.sadad.app.ui.components.Appear
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.EntrySign
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
@@ -90,6 +91,7 @@ import com.sadad.app.ui.components.StickyActions
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
+import com.sadad.app.ui.components.toneColor
 import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
@@ -519,12 +521,7 @@ private fun Identity(state: ContactDetailState, supplier: Boolean) {
 private fun BalanceBlock(net: Long, supplier: Boolean) {
   val p = sadadPalette
   val word = balanceWord(net)
-  val color =
-      when (word.tone) {
-        BalanceTone.OWES -> p.owes
-        BalanceTone.CREDIT -> p.credit
-        BalanceTone.SETTLED -> p.muted
-      }
+  val color = toneColor(word.tone)
   val arrow =
       when (word.tone) {
         BalanceTone.OWES -> R.drawable.ic_balance_owes
@@ -690,12 +687,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
       ) + (movement.method?.let { " · " + methodLabel(it) } ?: "")
   val meta = listOf(formatDate(movement.createdAt), movement.note).filter { it.isNotBlank() }
   val afterWord = balanceWord(afterNet)
-  val afterColor =
-      when (afterWord.tone) {
-        BalanceTone.OWES -> p.owes
-        BalanceTone.CREDIT -> p.credit
-        BalanceTone.SETTLED -> p.muted
-      }
+  val afterColor = toneColor(afterWord.tone)
   Card(
       colors =
           CardDefaults.cardColors(
@@ -719,12 +711,7 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Icon(
-          painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
-          null,
-          tint = if (debt) p.owes else link,
-          modifier = Modifier.size(24.dp),
-      )
+      EntrySign(if (debt) BalanceTone.OWES else BalanceTone.CREDIT)
       Column(Modifier.weight(1f)) {
         Text(
             title,
