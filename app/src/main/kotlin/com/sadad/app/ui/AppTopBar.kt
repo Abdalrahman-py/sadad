@@ -1,46 +1,41 @@
 package com.sadad.app.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.sadad.app.LocalGraph
 import com.sadad.app.R
 import com.sadad.app.feature.notifications.DueReminders
-import com.sadad.app.ui.theme.sadadPalette
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -48,15 +43,48 @@ import kotlinx.coroutines.flow.flowOf
 /** The bell's test tag, as it was on Home before the bar was shared by every tab. */
 const val BELL_TAG = "home:bell"
 
-private val BadgeRed = Color(0xFFC13634)
+/** The shared bar's test tag, so tests can tell its title from the rest of the screen. */
+const val TOP_BAR_TAG = "shell:topbar"
 
 /**
- * The bar every tab shares: the bell with its unread count. It owns the status-bar inset and the
- * page's side padding, so every tab's content starts at the same place.
+ * What the tab on screen adds to the shared bar beside the bell. The shell owns one; a screen fills
+ * it with [TopBarActions].
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@Stable
+class TopBarActionsHolder {
+  internal var content by mutableStateOf<(@Composable RowScope.() -> Unit)?>(null)
+}
+
+val LocalTopBarActions = staticCompositionLocalOf<TopBarActionsHolder?> { null }
+
+/**
+ * Puts [content] in the shared top bar, before the bell, while the calling screen is composed. Off
+ * the shell (a screen test) there is no bar, and nothing is drawn.
+ */
 @Composable
-internal fun AppTopBar(onOpenNotifications: () -> Unit) {
+fun TopBarActions(content: @Composable RowScope.() -> Unit) {
+  val holder = LocalTopBarActions.current ?: return
+  val latest by rememberUpdatedState(content)
+  val mine: @Composable RowScope.() -> Unit = remember { { latest() } }
+  DisposableEffect(holder) {
+    holder.content = mine
+    // The next tab may have set its own actions before this one leaves; keep those.
+    onDispose { if (holder.content === mine) holder.content = null }
+  }
+}
+
+/**
+ * The bar every tab shares: the tab's [title] at the start, then the screen's actions and the bell
+ * with its unread count. The bar owns the status-bar inset.
+ */
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalMaterial3Api::class)
+@Composable
+internal fun AppTopBar(
+    title: String,
+    scrollBehavior: TopAppBarScrollBehavior?,
+    onOpenNotifications: () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
   val context = LocalContext.current
   val graph = LocalGraph.current
   val reminders = remember(context) { DueReminders.get(context) }
@@ -68,60 +96,59 @@ internal fun AppTopBar(onOpenNotifications: () -> Unit) {
           }
           .collectAsStateWithLifecycle(0)
   AppTopBarContent(
+      title = title,
       unread = unread,
       onOpenNotifications = onOpenNotifications,
+      scrollBehavior = scrollBehavior,
+      actions = actions,
   )
 }
 
 /** [AppTopBar] without its data sources, as the screen tests draw it. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AppTopBarContent(unread: Int, onOpenNotifications: () -> Unit) {
-  val p = sadadPalette
+internal fun AppTopBarContent(
+    title: String,
+    unread: Int,
+    onOpenNotifications: () -> Unit,
+    scrollBehavior: TopAppBarScrollBehavior? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+  // The button's label carries the count, so TalkBack reads it once; the badge only draws it.
   val bellLabel =
       if (unread > 0) stringResource(R.string.home_bell_new, unread)
       else stringResource(R.string.home_bell)
-  Row(
-      Modifier.fillMaxWidth()
-          .background(p.bg)
-          .windowInsetsPadding(WindowInsets.statusBars)
-          .heightIn(min = 64.dp)
-          .padding(horizontal = 16.dp, vertical = 8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Spacer(Modifier.weight(1f))
-    Box(Modifier.size(44.dp)) {
-      Box(
-          Modifier.size(44.dp)
-              .clip(CircleShape)
-              .background(p.card)
-              .border(1.dp, p.line, CircleShape)
-              .clickable(onClick = onOpenNotifications)
-              .testTag(BELL_TAG)
-              .semantics {
-                contentDescription = bellLabel
-                role = Role.Button
-              },
-          contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-            painterResource(R.drawable.ic_notifications),
-            contentDescription = null,
-            tint = p.text,
-            modifier = Modifier.size(24.dp),
+  TopAppBar(
+      title = {
+        Text(
+            title,
+            modifier = Modifier.semantics { heading() },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-      }
-      if (unread > 0) {
-        Surface(
-            color = BadgeRed,
-            shape = CircleShape,
-            modifier = Modifier.align(Alignment.TopEnd).heightIn(min = 16.dp).widthIn(min = 16.dp),
+      },
+      actions = {
+        actions()
+        IconButton(
+            onClick = onOpenNotifications,
+            modifier = Modifier.testTag(BELL_TAG).semantics { contentDescription = bellLabel },
         ) {
-          Box(Modifier.padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-            Text("$unread", style = MaterialTheme.typography.bodySmall, color = Color.White)
+          BadgedBox(badge = { if (unread > 0) Badge { Text("$unread") } }) {
+            Icon(
+                painterResource(R.drawable.ic_notifications),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
           }
         }
-      }
-    }
-  }
+      },
+      colors =
+          TopAppBarDefaults.topAppBarColors(
+              // The page background shows through until content scrolls under the bar.
+              containerColor = Color.Transparent,
+              scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+          ),
+      scrollBehavior = scrollBehavior,
+      modifier = Modifier.testTag(TOP_BAR_TAG),
+  )
 }

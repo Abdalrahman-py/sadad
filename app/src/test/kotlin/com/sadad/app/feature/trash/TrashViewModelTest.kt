@@ -1,6 +1,8 @@
 package com.sadad.app.feature.trash
 
 import android.content.Context
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.ledger.FakeSession
@@ -15,6 +17,8 @@ import com.sadad.app.testing.TestGraph
 import com.sadad.app.testing.seedContactPayment
 import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
+import com.sadad.app.ui.WithAppSnackbar
+import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
 import com.sadad.ledger.ContactView
@@ -26,7 +30,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,6 +48,7 @@ import org.robolectric.annotation.Config
 @Config(application = UiTestApplication::class)
 class TrashViewModelTest {
   @get:Rule val main = MainDispatcherRule()
+  @get:Rule val compose = createComposeRule()
   @get:Rule val temporary = TemporaryFolder()
   private val context: Context = ApplicationProvider.getApplicationContext()
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -132,6 +139,31 @@ class TrashViewModelTest {
 
       assertEquals(whole, state.items.map { (it as TrashItem.Contact).contact })
     }
+  }
+
+  @Test
+  fun aRestoreShowsItsMessageOnTheSharedSnackbar() {
+    runBlocking { TestGraph.signedIn() }
+        .use { fixture ->
+          runBlocking { fixture.archiveOne() }
+          val model = fixture.model()
+          val item = runBlocking {
+            withTimeout(10_000) { model.state.first { it.items.isNotEmpty() } }
+          }
+              .items
+              .single()
+          compose.setContent { SadadTheme { WithAppSnackbar { TrashScreen(model) } } }
+
+          model.restore(item)
+
+          compose.waitUntil(10_000) {
+            compose
+                .onAllNodesWithText("أُضيف طلب الاستعادة إلى قائمة الانتظار.")
+                .fetchSemanticsNodes()
+                .isNotEmpty()
+          }
+          compose.waitForIdle()
+        }
   }
 
   @Test

@@ -1,7 +1,9 @@
 package com.sadad.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -199,5 +201,28 @@ class NavigationTest {
     compose.onNodeWithTag(ScreenTag.NAV_ACTIVITY).performClick()
     compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
     compose.onNodeWithText("stub-contact").assertIsDisplayed()
+  }
+
+  @Test
+  fun aSnackbarShownOnOneScreenStaysAfterNavigatingToAnother() {
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+          nav = rememberNavController()
+          SadadShell(navController = nav, startDestination = Home, syncDot = SyncDot.NONE) {
+            composable<Home> {
+              val snackbar = LocalAppSnackbar.current
+              Text("stub-home", Modifier.clickable { snackbar?.show("تم الحفظ") })
+            }
+            composable<People> { Text("stub-people") }
+          }
+        }
+      }
+    }
+    compose.onNodeWithText("stub-home").performClick()
+    compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
+
+    compose.onNodeWithText("stub-people").assertIsDisplayed()
+    compose.onNodeWithText("تم الحفظ").assertIsDisplayed()
   }
 }

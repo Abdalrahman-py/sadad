@@ -28,6 +28,7 @@ import com.sadad.app.testing.STORE_B
 import com.sadad.app.testing.TestGraph
 import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
+import com.sadad.app.ui.WithAppSnackbar
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import kotlinx.coroutines.flow.first
@@ -177,6 +178,16 @@ class SettingsScreenTest {
         runBlocking { kit.recording.syncNow.isNotEmpty() }
       }
       assertEquals(listOf(STORE_A), kit.recording.syncNow)
+    }
+  }
+
+  @Test
+  fun syncNowSaysItStartedOnTheSharedSnackbar() {
+    show { _, _, _ ->
+      scrollTo(hasTag(SettingsTags.SYNC_NOW))
+      compose.onNodeWithTag(SettingsTags.SYNC_NOW).performClick()
+
+      compose.onNodeWithText("جارٍ المزامنة…").assertIsDisplayed()
     }
   }
 
@@ -397,15 +408,17 @@ class SettingsScreenTest {
             compose.setContent {
               SadadTheme {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                  StoreScreen(
-                      onOpenTrash = { nav.trash++ },
-                      onOpenRecovery = { nav.recovery++ },
-                      onChangePassword = { nav.password++ },
-                      onAddStore = { nav.addStore++ },
-                      onNeedsLogin = { nav.login++ },
-                      settingsViewModel = model,
-                      selfUpdate = selfUpdate,
-                  )
+                  WithAppSnackbar {
+                    StoreScreen(
+                        onOpenTrash = { nav.trash++ },
+                        onOpenRecovery = { nav.recovery++ },
+                        onChangePassword = { nav.password++ },
+                        onAddStore = { nav.addStore++ },
+                        onNeedsLogin = { nav.login++ },
+                        settingsViewModel = model,
+                        selfUpdate = selfUpdate,
+                    )
+                  }
                 }
               }
             }

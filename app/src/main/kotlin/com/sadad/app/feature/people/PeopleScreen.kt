@@ -44,7 +44,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -72,7 +71,6 @@ import com.sadad.app.ui.theme.sadadPalette
 /** Stable handles the people tests find the screen's parts by. */
 internal object PeopleTags {
   const val SCREEN = "people:screen"
-  const val TITLE = "people:title"
   const val COUNT = "people:count"
   const val ADD = "people:add"
   const val FILTER = "people:filter"
@@ -145,34 +143,17 @@ fun PeopleContent(
 
 /* ------------------------------------------------------------------ header */
 
-/** «الأشخاص» with the store's total. */
+/** The store's total; «الأشخاص» itself is the shared bar's title. */
 @Composable
 private fun PeopleHeader(registered: Int) {
-  val p = sadadPalette
-  Row(
-      Modifier.fillMaxWidth().heightIn(min = 48.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Row(
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      Text(
-          stringResource(R.string.people_title),
-          modifier = Modifier.testTag(PeopleTags.TITLE).semantics { heading() },
-          style = MaterialTheme.typography.headlineMedium,
-          color = p.text,
-      )
-      Text(
-          registered.toString(),
-          modifier = Modifier.padding(bottom = 8.dp).testTag(PeopleTags.COUNT),
-          fontSize = 15.sp,
-          lineHeight = 20.sp,
-          fontWeight = FontWeight.Medium,
-          color = p.muted,
-      )
-    }
-  }
+  Text(
+      registered.toString(),
+      modifier = Modifier.testTag(PeopleTags.COUNT),
+      fontSize = 15.sp,
+      lineHeight = 20.sp,
+      fontWeight = FontWeight.Medium,
+      color = sadadPalette.muted,
+  )
 }
 
 /** Add a contact and choose one of the existing filters, directly below search. */

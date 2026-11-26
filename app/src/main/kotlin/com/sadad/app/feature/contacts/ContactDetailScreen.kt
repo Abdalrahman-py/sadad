@@ -32,7 +32,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,6 +74,8 @@ import com.sadad.app.R
 import com.sadad.app.export.MovementKind
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.requireGraph
+import com.sadad.app.ui.LocalAppSnackbar
+import com.sadad.app.ui.ShowSnackbar
 import com.sadad.app.ui.components.Appear
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.ConfirmDialog
@@ -83,7 +85,6 @@ import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.StickyActions
-import com.sadad.app.ui.components.UndoSnackbar
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
@@ -92,7 +93,6 @@ import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentMethod
 import java.time.YearMonth
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal object ContactsTag {
@@ -138,12 +138,8 @@ internal fun ContactDetailScreen(
   val context = LocalContext.current
   val scope = rememberCoroutineScope()
   LaunchedEffect(state.done) { if (state.done) onBack() }
-  LaunchedEffect(state.error) {
-    if (state.error != null) {
-      delay(5_000)
-      viewModel.clearError()
-    }
-  }
+  ShowSnackbar(state.error, onShown = viewModel::clearError)
+  UndoDeleteSnackbar(state.undoName, viewModel)
   val onWhatsApp: () -> Unit = {
     val number = viewModel.whatsAppNumber()
     if (number == null) {
@@ -273,22 +269,6 @@ internal fun ContactDetailScreen(
             }
           }
         }
-      }
-      state.error?.let { message ->
-        Snackbar(modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
-          Text(message)
-        }
-      }
-      // The five-second window lives in the ViewModel, so leaving this screen still queues the
-      // archive the confirm dialog promised.
-      state.undoName?.let { name ->
-        UndoSnackbar(
-            message = stringResource(R.string.contacts_delete_undo, name),
-            onUndo = viewModel::undoDelete,
-            onCommit = viewModel::commitDelete,
-            onDismiss = viewModel::clearUndo,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
       }
     }
     if (!state.missing && state.loaded && state.syncFailure == null) {
@@ -905,4 +885,28 @@ private fun contactDetailViewModel(contactId: String): ContactDetailViewModel {
             initializer { ContactDetailViewModel(graph.contactDetailSource(), contactId, context) }
           }
   )
+}
+
+/**
+ * «تراجع» on the shared host for the archive the confirm dialog promised. The five-second window
+ * lives in the ViewModel, so leaving this screen still queues the archive; the snackbar ends with
+ * that window, here or on the next screen.
+ */
+@Composable
+private fun UndoDeleteSnackbar(name: String?, viewModel: ContactDetailViewModel) {
+  val snackbar = LocalAppSnackbar.current ?: return
+  val message = name?.let { stringResource(R.string.contacts_delete_undo, it) }
+  val undo = stringResource(R.string.undo)
+  LaunchedEffect(message) {
+    if (message == null) {
+      // The window closed while this screen is open: the undo offer goes with it.
+      snackbar.host.currentSnackbarData?.takeIf { it.visuals.actionLabel == undo }?.dismiss()
+      return@LaunchedEffect
+    }
+    // The whole window is the person's, not spent behind another message.
+    snackbar.host.currentSnackbarData?.dismiss()
+    snackbar.show(message, undo, ContactDetailViewModel.UNDO_WINDOW_MS) {
+      if (it == SnackbarResult.ActionPerformed) viewModel.undoDelete()
+    }
+  }
 }

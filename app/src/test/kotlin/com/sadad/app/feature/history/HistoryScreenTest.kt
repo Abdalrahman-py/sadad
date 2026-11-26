@@ -18,6 +18,7 @@ import com.sadad.app.testing.TestGraph
 import com.sadad.app.testing.seedContactPayment
 import com.sadad.app.testing.seedDebt
 import com.sadad.app.ui.UiTestApplication
+import com.sadad.app.ui.WithAppSnackbar
 import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.ledger.Cents
 import java.time.Clock
@@ -48,7 +49,8 @@ class HistoryScreenTest {
   @Test
   fun theRecentFeedHasTwoFiltersAndNoLedgerOperationsTab() {
     show(seed = true) { history ->
-      compose.onNodeWithText("آخر الحركات").assertIsDisplayed()
+      // The title is the shared bar's, so the screen draws no second header.
+      compose.onNodeWithText("آخر الحركات").assertDoesNotExist()
       compose.onNodeWithText("عمليات الدفتر").assertDoesNotExist()
       compose.onNodeWithTag(HistoryTags.ORDER).assertIsDisplayed()
       compose.onNodeWithTag(HistoryTags.PERIOD).assertIsDisplayed().performClick()
@@ -98,6 +100,31 @@ class HistoryScreenTest {
   }
 
   /** Asserts inside the fixture's lifetime: closing the store empties every state flow. */
+  @Test
+  fun aSavedStatementShowsOnTheSharedSnackbar() {
+    var dismissed = 0
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+          WithAppSnackbar {
+            HistoryContent(
+                state = HistoryUiState(loaded = true, saved = true),
+                onNewestFirst = {},
+                onPresetSelected = {},
+                onCustomRange = { _, _ -> },
+                onOpenContact = {},
+                onSaveStatement = {},
+                onDismissExportResult = { dismissed++ },
+            )
+          }
+        }
+      }
+    }
+
+    compose.onNodeWithText("تم حفظ الكشف بنجاح.").assertIsDisplayed()
+    assertEquals(1, dismissed)
+  }
+
   private fun show(
       seed: Boolean,
       onOpen: (String) -> Unit = {},
