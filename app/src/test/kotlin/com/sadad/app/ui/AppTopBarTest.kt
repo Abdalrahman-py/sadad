@@ -85,7 +85,8 @@ class AppTopBarTest {
     }
     for ((tab, title) in
         listOf(
-            ScreenTag.NAV_HOME to "الرئيسية",
+            // No store open in this test: Home shows the default store name.
+            ScreenTag.NAV_HOME to "متجري",
             ScreenTag.NAV_PEOPLE to "الأشخاص",
             ScreenTag.NAV_ACTIVITY to "آخر الحركات",
             ScreenTag.NAV_STORE to "المتجر",

@@ -308,7 +308,12 @@ internal fun SadadShell(
           destination != null &&
           (!destination.isAny(AUTH_GATES) ||
               (fromStore && !destination.hasRoute<AwaitingApproval>()))
-  val title = tabTitle(destination)
+  val storeName by rememberStoreName()
+  val title =
+      tabTitle(destination)?.let { res ->
+        if (res == R.string.home_default_store) storeName.ifBlank { stringResource(res) }
+        else stringResource(res)
+      }
   val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
   // A tab opens with its bar shown, whatever the last tab scrolled it to.
   LaunchedEffect(destination) {
@@ -333,7 +338,7 @@ internal fun SadadShell(
         topBar = {
           if (title != null) {
             AppTopBar(
-                title = stringResource(title),
+                title = title,
                 scrollBehavior = scrollBehavior,
                 onOpenNotifications = {
                   navController.navigate(Notifications) { launchSingleTop = true }
@@ -366,7 +371,8 @@ private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApp
  */
 private fun tabTitle(destination: NavDestination?): Int? =
     when {
-      destination.isAny(listOf(Home::class)) -> R.string.nav_home
+      // Home carries the open store's name; this is its fallback before a name is saved.
+      destination.isAny(listOf(Home::class)) -> R.string.home_default_store
       destination.isAny(listOf(People::class)) -> R.string.people_title
       destination.isAny(listOf(Activity::class)) -> R.string.title_history
       destination.isAny(listOf(Store::class)) -> R.string.nav_store
