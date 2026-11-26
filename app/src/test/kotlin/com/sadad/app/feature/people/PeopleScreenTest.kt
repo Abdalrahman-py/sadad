@@ -59,8 +59,8 @@ class PeopleScreenTest {
     compose.setContent {
       SadadTheme { PeopleContent(PeopleState(registered = 13, incomplete = 6)) }
     }
-    compose.onNodeWithTag(PeopleTags.COUNT).assertIsDisplayed()
-    compose.onNodeWithText("13").assertIsDisplayed()
+    // The tab names no head count: «الأشخاص» is the bar's title and the list is the page.
+    compose.onNodeWithText("13").assertDoesNotExist()
     compose.onNodeWithText("6 إضافات محفوظة لم تكتمل مزامنتها").assertIsDisplayed()
   }
 
@@ -88,8 +88,10 @@ class PeopleScreenTest {
     val search = compose.onNodeWithTag(PeopleTags.SEARCH).fetchSemanticsNode().boundsInRoot
     val add = compose.onNodeWithTag(PeopleTags.ADD).fetchSemanticsNode().boundsInRoot
     val filter = compose.onNodeWithTag("people:filter").fetchSemanticsNode().boundsInRoot
+    // The filter is the search bar's trailing icon; the add button floats at the bottom.
+    assertTrue(filter.top >= search.top && filter.bottom <= search.bottom)
     assertTrue(add.top >= search.bottom)
-    assertEquals(add.center.y, filter.center.y, 1f)
+    compose.onNodeWithContentDescription("إضافة شخص").assertIsDisplayed()
     compose.onNodeWithTag(PeopleTags.ADD).performClick()
     assertEquals(1, added)
 
@@ -103,6 +105,27 @@ class PeopleScreenTest {
       compose.onNodeWithText(label).assertIsSelected()
       compose.onNodeWithText(label).performClick()
     }
+  }
+
+  @Test
+  fun anActiveFilterShowsADotAndARemovableChip() {
+    var chosen = PeopleFilter.LATE
+    compose.setContent {
+      var state by remember { mutableStateOf(PeopleState(filterChoice = PeopleFilter.LATE)) }
+      SadadTheme {
+        PeopleContent(
+            state,
+            onFilter = {
+              chosen = it
+              state = state.copy(filterChoice = it)
+            },
+        )
+      }
+    }
+    compose.onNodeWithContentDescription("تصفية: متأخرون").assertIsDisplayed()
+    compose.onNodeWithTag(PeopleTags.FILTER_CHIP).assertIsDisplayed().performClick()
+    assertEquals(PeopleFilter.ALL, chosen)
+    compose.onNodeWithTag(PeopleTags.FILTER_CHIP).assertDoesNotExist()
   }
 
   @Test
@@ -154,7 +177,6 @@ class PeopleScreenTest {
       compose.onNodeWithText(phone).assertIsDisplayed()
       // BalanceWord speaks its figure, so the row reads «عليه 125 شيكل» aloud.
       compose.onNodeWithContentDescription("عليه 125 شيكل").assertIsDisplayed()
-      compose.onNodeWithTag(PeopleTags.COUNT).assertIsDisplayed()
     }
   }
 
