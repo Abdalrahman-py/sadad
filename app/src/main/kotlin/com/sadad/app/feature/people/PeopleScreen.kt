@@ -6,26 +6,31 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,18 +40,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
@@ -63,17 +70,15 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceWord
-import com.sadad.app.ui.components.SadadButton
-import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.sadadPalette
 
 /** Stable handles the people tests find the screen's parts by. */
 internal object PeopleTags {
   const val SCREEN = "people:screen"
-  const val COUNT = "people:count"
   const val ADD = "people:add"
   const val FILTER = "people:filter"
+  const val FILTER_CHIP = "people:filter-chip"
   const val SEARCH = "people:search"
   const val LIST = "people:list"
   const val TOTAL = "people:total"
@@ -81,7 +86,7 @@ internal object PeopleTags {
   fun row(id: String) = "people:row:$id"
 }
 
-/** The people tab: search, add and filter controls, and the contact list. */
+/** The people tab: the search bar with its filter, the contact list and the add-person button. */
 @Composable
 fun PeopleScreen(
     onOpenContact: (String) -> Unit = {},
@@ -111,89 +116,138 @@ fun PeopleContent(
     onAdd: () -> Unit = {},
 ) {
   val p = sadadPalette
-  Column(Modifier.fillMaxSize().sadadPageBackground().testTag(PeopleTags.SCREEN)) {
-    Column(
-        Modifier.padding(start = 16.dp, end = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      PeopleHeader(registered = state.registered)
-      if (state.incomplete > 0)
-          Text(
-              stringResource(R.string.people_incomplete_count, state.incomplete),
-              color = p.owes,
-              fontSize = 13.sp,
-          )
-      PeopleSearch(value = state.queryInput, onValueChange = onQueryChange)
-      PeopleActions(state, onAdd, onFilter)
+  val list = rememberLazyListState()
+  Box(Modifier.fillMaxSize().sadadPageBackground().testTag(PeopleTags.SCREEN)) {
+    Column(Modifier.fillMaxSize()) {
+      Column(
+          Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        if (state.incomplete > 0)
+            Text(
+                stringResource(R.string.people_incomplete_count, state.incomplete),
+                color = p.owes,
+                fontSize = 13.sp,
+            )
+        PeopleSearch(
+            value = state.queryInput,
+            onValueChange = onQueryChange,
+            filter = state.filterChoice,
+            counts = state.counts,
+            onFilter = onFilter,
+        )
+        if (state.filterChoice != PeopleFilter.ALL) {
+          ActiveFilterChip(state.filterChoice, onClear = { onFilter(PeopleFilter.ALL) })
+        }
+      }
+      val total = state.totalLine
+      if (total != null) {
+        Text(
+            total,
+            modifier =
+                Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp).testTag(PeopleTags.TOTAL),
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = p.muted,
+        )
+      }
+      PeopleList(state, list, onOpenContact)
     }
-    val total = state.totalLine
-    if (total != null) {
-      Text(
-          total,
-          modifier =
-              Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp).testTag(PeopleTags.TOTAL),
-          fontSize = 13.sp,
-          lineHeight = 20.sp,
-          color = p.muted,
-      )
-    }
-    PeopleList(state, onOpenContact)
+    AddPersonFab(
+        expanded = !list.canScrollBackward,
+        onClick = onAdd,
+        // The physical right in the Arabic layout, where the owner wants it.
+        modifier = Modifier.align(AbsoluteAlignment.BottomRight).padding(16.dp),
+    )
   }
 }
 
-/* ------------------------------------------------------------------ header */
+/* ------------------------------------------------------------------- add */
 
-/** The store's total; «الأشخاص» itself is the shared bar's title. */
+/**
+ * The M3 extended FAB: tonal, at the end corner, so it never reads as the centre «+». It shrinks to
+ * its icon once the list scrolls; TalkBack keeps the full label either way.
+ */
 @Composable
-private fun PeopleHeader(registered: Int) {
-  Text(
-      registered.toString(),
-      modifier = Modifier.testTag(PeopleTags.COUNT),
-      fontSize = 15.sp,
-      lineHeight = 20.sp,
-      fontWeight = FontWeight.Medium,
-      color = sadadPalette.muted,
+private fun AddPersonFab(expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+  val label = stringResource(R.string.people_add_person)
+  ExtendedFloatingActionButton(
+      text = { Text(label) },
+      icon = { Icon(painterResource(R.drawable.ic_person_add), contentDescription = null) },
+      expanded = expanded,
+      onClick = onClick,
+      modifier =
+          modifier.testTag(PeopleTags.ADD).clearAndSetSemantics {
+            contentDescription = label
+            role = Role.Button
+          },
   )
 }
 
-/** Add a contact and choose one of the existing filters, directly below search. */
+/* ---------------------------------------------------------------- filter */
+
+/** Names the filter that is on, so the list is never narrowed without the user seeing why. */
 @Composable
-private fun PeopleActions(state: PeopleState, onAdd: () -> Unit, onFilter: (PeopleFilter) -> Unit) {
+private fun ActiveFilterChip(filter: PeopleFilter, onClear: () -> Unit) {
+  val name = filterLabel(filter)
+  val clear = stringResource(R.string.people_filter_clear, name)
+  InputChip(
+      selected = true,
+      onClick = onClear,
+      label = { Text(name) },
+      trailingIcon = {
+        Icon(
+            painterResource(R.drawable.ic_close),
+            contentDescription = null,
+            modifier = Modifier.size(InputChipDefaults.IconSize),
+        )
+      },
+      // One button that says what it removes; the menu stays the only selectable list of filters.
+      modifier =
+          Modifier.testTag(PeopleTags.FILTER_CHIP).clearAndSetSemantics {
+            contentDescription = clear
+            role = Role.Button
+            onClick {
+              onClear()
+              true
+            }
+          },
+  )
+}
+
+/** The filter icon inside the search bar, with a dot while a filter other than «الكل» is on. */
+@Composable
+private fun FilterButton(
+    filter: PeopleFilter,
+    counts: Map<PeopleFilter, Int>,
+    onFilter: (PeopleFilter) -> Unit,
+) {
   var expanded by remember { mutableStateOf(false) }
-  Row(
-      Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    SadadButton(
-        text = stringResource(R.string.people_add),
-        onClick = onAdd,
-        leading = painterResource(R.drawable.ic_person_add),
-        modifier = Modifier.weight(1f).fillMaxHeight().testTag(PeopleTags.ADD),
-    )
-    Box(Modifier.weight(1f).fillMaxHeight()) {
-      SadadButton(
-          text = stringResource(R.string.people_filter_selected, filterLabel(state.filterChoice)),
-          onClick = { expanded = true },
-          style = SadadButtonStyle.SURFACE,
-          trailing = painterResource(R.drawable.ic_chevron_down_wide),
-          modifier = Modifier.fillMaxSize().testTag(PeopleTags.FILTER),
-      )
-      DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        PeopleFilter.entries.forEach { filter ->
-          val chosen = filter == state.filterChoice
-          DropdownMenuItem(
-              text = { Text(filterLabel(filter)) },
-              leadingIcon = { Text((state.counts[filter] ?: 0).toString()) },
-              trailingIcon = {
-                if (chosen) Icon(painterResource(R.drawable.ic_check), contentDescription = null)
-              },
-              modifier = Modifier.semantics { selected = chosen },
-              onClick = {
-                expanded = false
-                onFilter(filter)
-              },
-          )
-        }
+  val label = stringResource(R.string.people_filter_selected, filterLabel(filter))
+  Box {
+    IconButton(
+        onClick = { expanded = true },
+        modifier = Modifier.testTag(PeopleTags.FILTER).semantics { contentDescription = label },
+    ) {
+      BadgedBox(badge = { if (filter != PeopleFilter.ALL) Badge() }) {
+        Icon(painterResource(R.drawable.ic_filter), contentDescription = null)
+      }
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+      PeopleFilter.entries.forEach { option ->
+        val chosen = option == filter
+        DropdownMenuItem(
+            text = { Text(filterLabel(option)) },
+            leadingIcon = { Text((counts[option] ?: 0).toString()) },
+            trailingIcon = {
+              if (chosen) Icon(painterResource(R.drawable.ic_check), contentDescription = null)
+            },
+            modifier = Modifier.semantics { selected = chosen },
+            onClick = {
+              expanded = false
+              onFilter(option)
+            },
+        )
       }
     }
   }
@@ -201,68 +255,57 @@ private fun PeopleActions(state: PeopleState, onAdd: () -> Unit, onFilter: (Peop
 
 /* ------------------------------------------------------------------ search */
 
-/** The board's 48dp field: card fill, 13dp corners, the glyph at the start. */
+/** The M3 search bar, always shown: search glyph at the start, the filter icon at the end. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PeopleSearch(value: String, onValueChange: (String) -> Unit) {
-  val p = sadadPalette
+private fun PeopleSearch(
+    value: String,
+    onValueChange: (String) -> Unit,
+    filter: PeopleFilter,
+    counts: Map<PeopleFilter, Int>,
+    onFilter: (PeopleFilter) -> Unit,
+) {
   val hint = stringResource(R.string.people_search)
   // The field owns its text: a value that comes back through the view model's flow arrives late,
   // and the cursor jumps while the owner types. Only a reset to empty flows back in.
   var text by rememberSaveable { mutableStateOf(value) }
   LaunchedEffect(value) { if (value.isEmpty()) text = "" }
-  Row(
-      Modifier.fillMaxWidth()
-          .height(48.dp)
-          .clip(RoundedCornerShape(12.dp))
-          .background(p.card)
-          .border(BorderStroke(1.dp, p.line), RoundedCornerShape(12.dp))
-          .padding(horizontal = 16.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Icon(
-        painterResource(R.drawable.ic_search),
-        contentDescription = null,
-        tint = p.muted,
-        modifier = Modifier.size(20.dp),
-    )
-    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
-      BasicTextField(
-          value = text,
-          onValueChange = {
-            text = it
-            onValueChange(it)
+  SearchBarDefaults.InputField(
+      query = text,
+      onQueryChange = {
+        text = it
+        onValueChange(it)
+      },
+      onSearch = {},
+      expanded = false,
+      onExpandedChange = {},
+      placeholder = { Text(hint, maxLines = 1) },
+      leadingIcon = { Icon(painterResource(R.drawable.ic_search), contentDescription = null) },
+      trailingIcon = { FilterButton(filter, counts, onFilter) },
+      colors =
+          SearchBarDefaults.inputFieldColors(
+              focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+              unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+          ),
+      modifier =
+          Modifier.fillMaxWidth().testTag(PeopleTags.SEARCH).semantics {
+            contentDescription = hint
           },
-          singleLine = true,
-          textStyle = TextStyle(fontSize = 15.sp, color = p.text),
-          cursorBrush = SolidColor(p.accent),
-          modifier =
-              Modifier.fillMaxWidth().testTag(PeopleTags.SEARCH).semantics {
-                contentDescription = hint
-              },
-          decorationBox = { field ->
-            if (text.isEmpty()) {
-              Text(hint, fontSize = 15.sp, color = p.muted, maxLines = 1)
-            }
-            field()
-          },
-      )
-    }
-  }
+  )
 }
 
 /* -------------------------------------------------------------------- list */
 
 @Composable
-private fun PeopleList(state: PeopleState, onOpenContact: (String) -> Unit) {
-  val list = rememberLazyListState()
+private fun PeopleList(state: PeopleState, list: LazyListState, onOpenContact: (String) -> Unit) {
   // A keyed list keeps the first visible person in place when the rows change, so clearing a search
   // would leave everyone above them out of view; a new search, chip or order starts at the top.
   LaunchedEffect(state.query, state.filter, state.sort) { list.scrollToItem(0) }
   LazyColumn(
       state = list,
       modifier = Modifier.fillMaxSize().testTag(PeopleTags.LIST),
-      contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 20.dp),
+      // The bottom clears the add button, so the last balance is never under it.
+      contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 88.dp),
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     if (state.loaded && state.rows.isEmpty()) item { NoResults() }
