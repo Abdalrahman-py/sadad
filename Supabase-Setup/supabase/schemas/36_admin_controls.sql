@@ -29,7 +29,8 @@ begin
         'approvedAt', approved_at,
         'approvedBy', approved_by,
         'revokedAt', revoked_at,
-        'reason', reason
+        'reason', reason,
+        'lastSeenAt', last_seen_at
       ) order by generation desc)
       from sadid_private.installations where store_id = p_store
     ), '[]'::jsonb),

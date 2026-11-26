@@ -78,6 +78,7 @@ export function detail(name = "بقالة الزاوية"): StoreDetail {
         approvedBy: null,
         revokedAt: null,
         reason: null,
+        lastSeenAt: null,
       },
       {
         installationId: REVOKED_ID,
@@ -92,6 +93,7 @@ export function detail(name = "بقالة الزاوية"): StoreDetail {
         approvedBy: "admin@sadad.test",
         revokedAt: "2026-10-16T07:00:00Z",
         reason: name,
+        lastSeenAt: null,
       },
     ],
     recoveryPermits: [],

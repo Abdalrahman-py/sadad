@@ -48,6 +48,9 @@ begin
     pg_catalog.sha256(pg_catalog.convert_to(v_token, 'UTF8')),
     p_user, p_session, i.store_id, p_installation, i.generation, p_scope, p_request, clock_timestamp() + interval '60 seconds'
   );
+  -- At most one write a minute per installation keeps the capability path cheap.
+  update sadid_private.installations set last_seen_at = clock_timestamp()
+  where id = p_installation and (last_seen_at is null or last_seen_at < clock_timestamp() - interval '1 minute');
   return jsonb_build_object('token', v_token, 'expiresIn', 60);
 end $$;
 
