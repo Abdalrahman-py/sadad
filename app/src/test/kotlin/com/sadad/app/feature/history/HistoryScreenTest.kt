@@ -71,7 +71,7 @@ class HistoryScreenTest {
     show(seed = true, onOpen = { opened = it }) { history ->
       val row = history.state.value.movements.first()
       compose.onNodeWithText("₪ 150").assertIsDisplayed()
-      compose.onNodeWithText("دفعة").assertIsDisplayed()
+      compose.onNodeWithText("دفعة", substring = true).assertIsDisplayed()
       compose.onNodeWithTag("history:movement:${row.id}").performClick()
       assertEquals(row.contactId, opened)
       val order = compose.onNodeWithTag(HistoryTags.ORDER).fetchSemanticsNode().boundsInRoot

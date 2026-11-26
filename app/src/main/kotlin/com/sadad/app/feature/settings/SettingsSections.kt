@@ -8,7 +8,6 @@ import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +26,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -606,7 +607,7 @@ internal fun LazyListScope.versionItem() {
 
 // --- The board's building blocks -------------------------------------------------------------
 
-/** The board's card: `--card` white, a 1 dp `--line` border, and the given corner radius. */
+/** The M3 card every store section sits on: the white lowest container, no border. */
 @Composable
 private fun BoardCard(
     radius: Dp = 12.dp,
@@ -615,26 +616,15 @@ private fun BoardCard(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-  val p = sadadPalette
   val shape = RoundedCornerShape(radius)
-  val border = BorderStroke(1.dp, p.line)
+  val colors =
+      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
   if (onClick == null) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = shape,
-        color = p.card,
-        border = border,
-    ) {
+    Card(modifier = modifier.fillMaxWidth(), shape = shape, colors = colors) {
       Column(Modifier.padding(contentPadding), content = content)
     }
   } else {
-    Surface(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = shape,
-        color = p.card,
-        border = border,
-    ) {
+    Card(onClick = onClick, modifier = modifier.fillMaxWidth(), shape = shape, colors = colors) {
       Column(Modifier.padding(contentPadding), content = content)
     }
   }
@@ -692,7 +682,7 @@ private fun LinkRow(
     ) {
       if (icon != null) RowGlyph(icon)
       Column(Modifier.weight(1f)) {
-        Text(title, color = p.text, fontSize = 15.sp, lineHeight = 22.sp)
+        Text(title, color = p.text, style = MaterialTheme.typography.bodyLarge)
         if (detail != null) {
           Text(detail, color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
         }

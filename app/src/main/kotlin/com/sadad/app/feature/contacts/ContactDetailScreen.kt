@@ -27,6 +27,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -80,6 +82,7 @@ import com.sadad.app.ui.components.Appear
 import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.EntrySign
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
@@ -88,6 +91,7 @@ import com.sadad.app.ui.components.StickyActions
 import com.sadad.app.ui.components.balanceWord
 import com.sadad.app.ui.components.formatCents
 import com.sadad.app.ui.components.formatDate
+import com.sadad.app.ui.components.toneColor
 import com.sadad.app.ui.theme.sadadPalette
 import com.sadad.ledger.Cents
 import com.sadad.ledger.Direction
@@ -517,12 +521,7 @@ private fun Identity(state: ContactDetailState, supplier: Boolean) {
 private fun BalanceBlock(net: Long, supplier: Boolean) {
   val p = sadadPalette
   val word = balanceWord(net)
-  val color =
-      when (word.tone) {
-        BalanceTone.OWES -> p.owes
-        BalanceTone.CREDIT -> p.credit
-        BalanceTone.SETTLED -> p.muted
-      }
+  val color = toneColor(word.tone)
   val arrow =
       when (word.tone) {
         BalanceTone.OWES -> R.drawable.ic_balance_owes
@@ -688,103 +687,93 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
       ) + (movement.method?.let { " · " + methodLabel(it) } ?: "")
   val meta = listOf(formatDate(movement.createdAt), movement.note).filter { it.isNotBlank() }
   val afterWord = balanceWord(afterNet)
-  val afterColor =
-      when (afterWord.tone) {
-        BalanceTone.OWES -> p.owes
-        BalanceTone.CREDIT -> p.credit
-        BalanceTone.SETTLED -> p.muted
-      }
-  Row(
-      Modifier.fillMaxWidth()
-          .heightIn(min = 64.dp)
-          .background(p.card, RoundedCornerShape(12.dp))
-          .border(1.dp, p.line, RoundedCornerShape(12.dp))
-          .clip(RoundedCornerShape(12.dp))
-          .then(
-              if (movement.canDelete)
-                  Modifier.combinedClickable(
-                      onLongClickLabel = deleteLabel,
-                      onLongClick = { showDelete = true },
-                      onClick = { showDelete = false },
-                  )
-              else Modifier
-          )
-          .padding(horizontal = 12.dp, vertical = 12.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+  val afterColor = toneColor(afterWord.tone)
+  Card(
+      colors =
+          CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+          ),
+      modifier = Modifier.fillMaxWidth(),
   ) {
-    Box(
-        Modifier.size(36.dp).background(if (debt) p.owesSoft else p.soft, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-      Icon(
-          painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
-          null,
-          tint = if (debt) p.owes else link,
-          modifier = Modifier.size(16.dp),
-      )
-    }
-    Column(Modifier.weight(1f)) {
-      Text(
-          title,
-          color = p.text,
-          style = MaterialTheme.typography.titleSmall,
-      )
-      Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
-      movement.settled?.let { settled ->
-        Text(
-            stringResource(
-                R.string.contacts_row_settled_credit,
-                formatCents(settled),
-                formatCents(movement.credit ?: Cents.ZERO),
-            ),
-            color = p.credit,
-            style = MaterialTheme.typography.bodySmall,
-        )
-      }
-      movement.offsetted?.let { used ->
-        Text(
-            stringResource(R.string.contacts_row_offset, formatCents(used)),
-            color = p.credit,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-        )
-      }
-      when {
-        movement.deletePending ->
-            Text(
-                stringResource(R.string.contacts_delete_entry_pending),
-                color = p.muted,
-                style = MaterialTheme.typography.bodySmall,
+    Row(
+        Modifier.fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .then(
+                if (movement.canDelete)
+                    Modifier.combinedClickable(
+                        onLongClickLabel = deleteLabel,
+                        onLongClick = { showDelete = true },
+                        onClick = { showDelete = false },
+                    )
+                else Modifier
             )
-        movement.canDelete && showDelete ->
-            TextButton(
-                onClick = {
-                  showDelete = false
-                  onDelete()
-                }
-            ) {
-              Text(deleteLabel, color = p.owes)
-            }
-        movement.blockedReason != null ->
-            Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
-      }
-    }
-    Column(horizontalAlignment = Alignment.End) {
-      MoneyText(
-          movement.amount,
-          style = MaterialTheme.typography.titleSmall,
-          color = if (debt) p.owes else link,
-      )
-      if (movement.pending) {
-        PendingBadge()
-      } else {
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      EntrySign(if (debt) BalanceTone.OWES else BalanceTone.CREDIT)
+      Column(Modifier.weight(1f)) {
         Text(
-            listOfNotNull(afterWord.word, afterWord.amount).joinToString(" "),
-            color = afterColor,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.semantics { contentDescription = afterWord.spoken },
+            title,
+            color = p.text,
+            style = MaterialTheme.typography.titleMedium,
         )
+        Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
+        movement.settled?.let { settled ->
+          Text(
+              stringResource(
+                  R.string.contacts_row_settled_credit,
+                  formatCents(settled),
+                  formatCents(movement.credit ?: Cents.ZERO),
+              ),
+              color = p.credit,
+              style = MaterialTheme.typography.bodySmall,
+          )
+        }
+        movement.offsetted?.let { used ->
+          Text(
+              stringResource(R.string.contacts_row_offset, formatCents(used)),
+              color = p.credit,
+              fontSize = 12.sp,
+              lineHeight = 18.sp,
+          )
+        }
+        when {
+          movement.deletePending ->
+              Text(
+                  stringResource(R.string.contacts_delete_entry_pending),
+                  color = p.muted,
+                  style = MaterialTheme.typography.bodySmall,
+              )
+          movement.canDelete && showDelete ->
+              TextButton(
+                  onClick = {
+                    showDelete = false
+                    onDelete()
+                  }
+              ) {
+                Text(deleteLabel, color = p.owes)
+              }
+          movement.blockedReason != null ->
+              Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
+        }
+      }
+      Column(horizontalAlignment = Alignment.End) {
+        MoneyText(
+            movement.amount,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (debt) p.owes else link,
+        )
+        if (movement.pending) {
+          PendingBadge()
+        } else {
+          Text(
+              listOfNotNull(afterWord.word, afterWord.amount).joinToString(" "),
+              color = afterColor,
+              style = MaterialTheme.typography.bodySmall,
+              modifier = Modifier.semantics { contentDescription = afterWord.spoken },
+          )
+        }
       }
     }
   }

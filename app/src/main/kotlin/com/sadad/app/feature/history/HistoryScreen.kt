@@ -3,10 +3,6 @@ package com.sadad.app.feature.history
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,20 +13,20 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,13 +35,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -61,8 +62,9 @@ import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.ShowSnackbar
-import com.sadad.app.ui.TopBarActions
+import com.sadad.app.ui.components.BalanceTone
 import com.sadad.app.ui.components.EmptyState
+import com.sadad.app.ui.components.EntrySign
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
@@ -80,6 +82,7 @@ object HistoryTags {
   const val ORDER = "history:order"
   const val PERIOD = "history:period"
   const val MOVEMENTS = "history:movements"
+  const val EXPORT = "history:export"
   const val LOADING = "history:loading"
   const val PERIOD_DAY = "history:period:day"
   const val PERIOD_MONTH = "history:period:month"
@@ -143,13 +146,14 @@ fun HistoryContent(
       message = state.error ?: if (state.saved) stringResource(R.string.history_saved) else null,
       onShown = onDismissExportResult,
   )
+  val list = rememberLazyListState()
   Box(modifier.fillMaxSize().sadadPageBackground()) {
-    // The title is the shared bar's; export is its action.
-    TopBarActions { ExportPill { choosingFormat = true } }
     Column(Modifier.fillMaxSize()) {
       LazyColumn(
+          state = list,
           modifier = Modifier.fillMaxSize().testTag(HistoryTags.MOVEMENTS),
-          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
+          // The bottom clears the export button, so the last amount is never under it.
+          contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         item(key = "filters") {
@@ -191,6 +195,12 @@ fun HistoryContent(
         }
       }
     }
+    ExportFab(
+        expanded = !list.canScrollBackward,
+        onClick = { choosingFormat = true },
+        // The physical right in the Arabic layout, as on People.
+        modifier = Modifier.align(AbsoluteAlignment.BottomRight).padding(16.dp),
+    )
   }
   if (choosingFormat) {
     FormatDialog(
@@ -322,79 +332,62 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
         else -> R.string.contacts_kind_payment
       }
   val open = stringResource(R.string.history_person_open, movement.name)
-  Row(
-      Modifier.fillMaxWidth()
-          .heightIn(min = 72.dp)
-          .clip(RoundedCornerShape(12.dp))
-          .background(p.card)
-          .border(1.dp, p.line, RoundedCornerShape(12.dp))
-          .clickable(onClickLabel = open) { onOpen(movement.contactId) }
-          .testTag("history:movement:${movement.id}")
-          .padding(horizontal = 12.dp, vertical = 12.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+  Card(
+      onClick = { onOpen(movement.contactId) },
+      colors =
+          CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+          ),
+      modifier =
+          Modifier.fillMaxWidth().testTag("history:movement:${movement.id}").semantics {
+            onClick(label = open) {
+              onOpen(movement.contactId)
+              true
+            }
+          },
   ) {
-    Box(
-        Modifier.size(36.dp).background(if (debt) p.owesSoft else p.soft, CircleShape),
-        contentAlignment = Alignment.Center,
+    Row(
+        Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Icon(
-          painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
-          contentDescription = null,
-          tint = color,
-          modifier = Modifier.size(20.dp),
-      )
+      EntrySign(if (debt) BalanceTone.OWES else BalanceTone.CREDIT)
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(movement.name, color = p.text, style = MaterialTheme.typography.titleMedium)
+        // The kind and the time on one line.
+        Text(
+            stringResource(label) +
+                " · " +
+                formatDate(movement.createdAt) +
+                " " +
+                TIME_FORMAT.withZone(ZoneId.systemDefault()).format(movement.createdAt),
+            color = p.muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (movement.pending) PendingBadge()
+      }
+      MoneyText(movement.amount, color = color, style = MaterialTheme.typography.titleMedium)
     }
-    Column(Modifier.weight(1f)) {
-      Text(
-          movement.name,
-          color = p.text,
-          style = MaterialTheme.typography.titleSmall,
-      )
-      Text(stringResource(label), color = color, fontSize = 13.sp, lineHeight = 20.sp)
-      Text(
-          formatDate(movement.createdAt) +
-              " · " +
-              TIME_FORMAT.withZone(ZoneId.systemDefault()).format(movement.createdAt),
-          color = p.muted,
-          fontSize = 12.sp,
-          lineHeight = 18.sp,
-      )
-      if (movement.pending) PendingBadge()
-    }
-    MoneyText(
-        movement.amount,
-        color = color,
-        style = MaterialTheme.typography.titleSmall,
-    )
   }
 }
 
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
+/** Export as the screen's M3 extended FAB; it shrinks to its icon once the list scrolls. */
 @Composable
-private fun ExportPill(onClick: () -> Unit) {
-  val p = sadadPalette
-  Surface(
+private fun ExportFab(expanded: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+  val label = stringResource(R.string.history_export_button)
+  ExtendedFloatingActionButton(
+      text = { Text(label) },
+      icon = { Icon(painterResource(R.drawable.ic_download), contentDescription = null) },
+      expanded = expanded,
       onClick = onClick,
-      color = p.card,
-      contentColor = if (p.isDark) p.accent else p.primary,
-      shape = RoundedCornerShape(12.dp),
-      border = BorderStroke(1.dp, p.line),
-      modifier = Modifier.heightIn(min = 40.dp),
-  ) {
-    Row(
-        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      Icon(painterResource(R.drawable.ic_payment_in), null, modifier = Modifier.size(16.dp))
-      Text(
-          stringResource(R.string.history_export_button),
-          style = MaterialTheme.typography.labelLarge,
-      )
-    }
-  }
+      modifier =
+          modifier.testTag(HistoryTags.EXPORT).clearAndSetSemantics {
+            contentDescription = label
+            role = Role.Button
+          },
+  )
 }
 
 @Composable

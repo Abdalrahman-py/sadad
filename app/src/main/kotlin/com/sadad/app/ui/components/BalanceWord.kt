@@ -1,15 +1,16 @@
 package com.sadad.app.ui.components
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -48,7 +49,9 @@ fun balanceWord(netCents: Long): BalanceWordText {
   )
 }
 
-/** The word over an arrow and the amount; never colour alone. */
+/**
+ * The amount in its tone's colour; the row's [EntrySign] carries the ±. TalkBack hears the word.
+ */
 @Composable
 fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
   BalanceWord(balanceWord(netCents), modifier)
@@ -57,37 +60,60 @@ fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
 /** Ready-made [text]: the row already formatted its amount once, so nothing is formatted here. */
 @Composable
 fun BalanceWord(text: BalanceWordText, modifier: Modifier = Modifier) {
+  val color = toneColor(text.tone)
+  val semantics = modifier.clearAndSetSemantics { contentDescription = text.spoken }
+  val amount = text.amount
+  if (amount == null) {
+    Text(
+        text.word,
+        color = color,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = semantics,
+    )
+  } else {
+    MoneyText(
+        amount,
+        style = MaterialTheme.typography.titleMedium,
+        color = color,
+        modifier = semantics,
+    )
+  }
+}
+
+/** Minus is red (they owe, or a debt); plus is green (the store holds theirs, or a payment). */
+@Composable
+fun toneColor(tone: BalanceTone): Color {
   val p = sadadPalette
-  val color =
-      when (text.tone) {
-        BalanceTone.OWES -> p.owes
-        BalanceTone.CREDIT -> p.credit
-        BalanceTone.SETTLED -> p.muted
+  return when (tone) {
+    BalanceTone.OWES -> p.owes
+    BalanceTone.CREDIT -> if (p.isDark) p.accent else p.primary
+    BalanceTone.SETTLED -> p.muted
+  }
+}
+
+/**
+ * The 40dp circle at the start of every person and entry row: − on red for a debt or what they owe,
+ * + on green for a payment or what the store holds, a check when settled. Decorative; the row's
+ *   text says it.
+ */
+@Composable
+fun EntrySign(tone: BalanceTone, modifier: Modifier = Modifier) {
+  val p = sadadPalette
+  val (fill, glyph) =
+      when (tone) {
+        BalanceTone.OWES -> p.owesSoft to R.drawable.ic_sign_minus
+        BalanceTone.CREDIT -> p.soft to R.drawable.ic_sign_plus
+        BalanceTone.SETTLED -> p.surface to R.drawable.ic_check
       }
-  Column(
-      modifier = modifier.clearAndSetSemantics { contentDescription = text.spoken },
-      horizontalAlignment = Alignment.End,
+  Box(
+      modifier.size(40.dp).background(fill, CircleShape).clearAndSetSemantics {},
+      contentAlignment = Alignment.Center,
   ) {
-    Text(text.word, color = color, style = MaterialTheme.typography.labelMedium)
-    val amount = text.amount ?: return@Column
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-      Icon(
-          painterResource(
-              if (text.tone == BalanceTone.OWES) R.drawable.ic_balance_owes
-              else R.drawable.ic_balance_credit
-          ),
-          contentDescription = null,
-          tint = color,
-          modifier = Modifier.size(16.dp),
-      )
-      MoneyText(
-          amount,
-          style = MaterialTheme.typography.titleSmall,
-          color = color,
-      )
-    }
+    Icon(
+        painterResource(glyph),
+        contentDescription = null,
+        tint = toneColor(tone),
+        modifier = Modifier.size(24.dp),
+    )
   }
 }
