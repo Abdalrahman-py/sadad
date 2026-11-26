@@ -1,9 +1,6 @@
 package com.sadad.app.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,42 +9,38 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -96,10 +89,12 @@ import com.sadad.app.feature.updates.UpdateCenter
 import com.sadad.app.feature.updates.UpdateState
 import com.sadad.app.rememberGraph
 import com.sadad.app.ui.components.sadadPageBackground
-import com.sadad.app.ui.components.topHairline
 import com.sadad.app.ui.theme.SadadTheme
+import com.sadad.app.ui.theme.sadadBrand
 import com.sadad.app.ui.theme.sadadPalette
 import kotlin.reflect.KClass
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun SadadApp(
@@ -291,12 +286,13 @@ private fun UpdatePrompt(onOpen: () -> Unit) {
 }
 
 /**
- * The bar and the padded content area every destination lives in. There is no top bar: each screen
- * draws its own header. Edge-to-edge is on, so the Scaffold hands the system-bar insets to the
- * content as padding; no screen handles them itself. `internal` so the shell and inset tests can
- * render real or stub destinations in the real shell.
+ * The bars and the padded content area every destination lives in. The four tabs share one top bar
+ * (their title, their actions, the bell); other pages draw their own header. Edge-to-edge is on, so
+ * the Scaffold hands the system-bar insets to the content as padding; no screen handles them
+ * itself. The one snackbar host sits above the bottom bar. `internal` so the shell and inset tests
+ * can render real or stub destinations in the real shell.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun SadadShell(
     navController: NavHostController,
@@ -312,39 +308,81 @@ internal fun SadadShell(
           destination != null &&
           (!destination.isAny(AUTH_GATES) ||
               (fromStore && !destination.hasRoute<AwaitingApproval>()))
-  // The four tabs share one top bar (store name and bell), so their pages start at one place.
-  val showTopBar = destination.isAny(TAB_ROOTS)
-  Scaffold(
-      modifier = Modifier.sadadPageBackground(),
-      containerColor = Color.Transparent,
-      contentColor = sadadPalette.text,
-      topBar = {
-        if (showTopBar) {
-          AppTopBar(
-              onOpenNotifications = {
-                navController.navigate(Notifications) { launchSingleTop = true }
-              }
-          )
-        }
-      },
-      bottomBar = { if (showNavigation) SadadBottomBar(navController, syncDot) },
-  ) { insets ->
-    NavHost(
-        navController = navController,
-        startDestination = startDestination,
-        // Consumed, so a destination with its own Scaffold does not add the bar insets again.
-        // imePadding after consume adds only the keyboard part the bar insets have not covered,
-        // so every destination clears the keyboard without handling it itself.
-        modifier = Modifier.padding(insets).consumeWindowInsets(insets).imePadding(),
-        builder = destinations,
-    )
+  val storeName by rememberStoreName()
+  val title =
+      tabTitle(destination)?.let { res ->
+        if (res == R.string.home_default_store) storeName.ifBlank { stringResource(res) }
+        else stringResource(res)
+      }
+  val snackbar = rememberAppSnackbar()
+  val actions = remember { TopBarActionsHolder() }
+  CompositionLocalProvider(
+      LocalAppSnackbar provides snackbar,
+      LocalTopBarActions provides actions,
+  ) {
+    Scaffold(
+        modifier = Modifier.sadadPageBackground(),
+        containerColor = Color.Transparent,
+        contentColor = sadadPalette.text,
+        topBar = {
+          if (title != null) {
+            AppTopBar(
+                title = title,
+                onOpenNotifications = {
+                  navController.navigate(Notifications) { launchSingleTop = true }
+                },
+                actions = { actions.content?.invoke(this) },
+            )
+          }
+        },
+        bottomBar = { if (showNavigation) SadadBottomBar(navController, syncDot) },
+        snackbarHost = { SnackbarHost(snackbar.host) },
+    ) { insets ->
+      NavHost(
+          navController = navController,
+          startDestination = startDestination,
+          // Consumed, so a destination with its own Scaffold does not add the bar insets again.
+          // imePadding after consume adds only the keyboard part the bar insets have not covered,
+          // so every destination clears the keyboard without handling it itself.
+          modifier = Modifier.padding(insets).consumeWindowInsets(insets).imePadding(),
+          builder = destinations,
+      )
+    }
   }
 }
 
 /** Entry gates hide navigation; account pages opened from Store remain inside the store flow. */
 private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApproval::class)
 
-private val TAB_ROOTS = listOf(Home::class, People::class, Activity::class, Store::class)
+/** The open store's name, as Home has always read it: the active account's saved name. */
+@Composable
+private fun rememberStoreName(): State<String> {
+  val graph = LocalGraph.current
+  return remember(graph) {
+        if (graph == null) flowOf("")
+        else
+            combine(graph.current, graph.accounts.accounts) { scope, accounts ->
+              accounts
+                  .firstOrNull { it.storeUserId == scope?.account?.storeUserId }
+                  ?.storeName
+                  .orEmpty()
+            }
+      }
+      .collectAsStateWithLifecycle("")
+}
+
+/**
+ * The title the shared bar shows on a tab's own page; null off the four tabs, where no bar shows.
+ */
+private fun tabTitle(destination: NavDestination?): Int? =
+    when {
+      // Home carries the open store's name; this is its fallback before a name is saved.
+      destination.isAny(listOf(Home::class)) -> R.string.home_default_store
+      destination.isAny(listOf(People::class)) -> R.string.people_title
+      destination.isAny(listOf(Activity::class)) -> R.string.title_history
+      destination.isAny(listOf(Store::class)) -> R.string.nav_store
+      else -> null
+    }
 
 private fun NavDestination?.isAny(routes: List<KClass<*>>) =
     this != null && routes.any { route -> hierarchy.any { it.hasRoute(route) } }
@@ -397,24 +435,14 @@ private fun NavHostController.navigateTab(destination: Any) {
 }
 
 /**
- * الرئيسية · الأشخاص · «+» تسجيل · الحركات · المتجر, right to left (the Nav board). The chosen tab
- * has a halo behind its icon; المتجر carries the [syncDot]. `internal` so the shell tests can
- * render it alone.
+ * الرئيسية · الأشخاص · «+» تسجيل · الحركات · المتجر, right to left (the Nav board), on the M3
+ * [NavigationBar]. المتجر carries the [syncDot] badge. `internal` so the shell tests can render it
+ * alone.
  */
 @Composable
 internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) {
   val active = activeTab(navController.currentBackStackEntryAsState().value?.destination)
-  val p = sadadPalette
-  Row(
-      modifier =
-          Modifier.fillMaxWidth()
-              .background(p.surface)
-              .topHairline(p.line)
-              .windowInsetsPadding(WindowInsets.navigationBars)
-              .padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 8.dp)
-              .selectableGroup(),
-      verticalAlignment = Alignment.Bottom,
-  ) {
+  NavigationBar(containerColor = barContainerColor()) {
     TabItem(R.string.nav_home, R.drawable.ic_home, ScreenTag.NAV_HOME, active == Tab.HOME) {
       navController.navigateTab(Home)
     }
@@ -459,12 +487,6 @@ private fun RowScope.TabItem(
     syncDot: SyncDot = SyncDot.NONE,
     onClick: () -> Unit,
 ) {
-  val p = sadadPalette
-  val ink = if (selected) (if (p.isDark) p.accent else p.primary) else p.muted
-  // The halo fades in over 580ms when the tab becomes the chosen one, as the Java animator did.
-  val halo by animateFloatAsState(if (selected) 1f else 0f, tween(580), label = "halo")
-  // The whole cell takes the tap, but the press shows on the pill, not as a square over the cell.
-  val press = remember { MutableInteractionSource() }
   val description =
       stringResource(
           when (syncDot) {
@@ -474,58 +496,58 @@ private fun RowScope.TabItem(
             SyncDot.STUCK -> R.string.nav_store_stuck
           }
       )
-  Column(
-      modifier =
-          Modifier.weight(1f)
-              .height(64.dp)
-              .selectable(
-                  selected = selected,
-                  interactionSource = press,
-                  indication = null,
-                  role = Role.Tab,
-                  onClick = onClick,
-              )
-              .semantics { contentDescription = description }
-              .testTag(tag),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-  ) {
-    Box(Modifier.size(52.dp, 36.dp), contentAlignment = Alignment.Center) {
-      Box(Modifier.matchParentSize().clip(PILL).indication(press, ripple()))
-      Box(
-          Modifier.matchParentSize()
-              .graphicsLayer { alpha = halo }
-              .background(p.accent.copy(alpha = if (p.isDark) 0.20f else 0.22f), PILL)
-      )
-      Icon(painterResource(iconRes), null, tint = ink, modifier = Modifier.size(24.dp))
-      if (syncDot != SyncDot.NONE) {
-        Box(
-            Modifier.align(AbsoluteAlignment.TopLeft)
-                .absoluteOffset(x = 12.dp, y = 4.dp)
-                .size(12.dp)
-                .background(
-                    if (syncDot == SyncDot.OFFLINE || syncDot == SyncDot.STUCK) OFFLINE_RED
-                    else PENDING_AMBER,
-                    CircleShape,
-                )
-                .border(2.dp, p.surface, CircleShape)
-        )
+  NavigationBarItem(
+      selected = selected,
+      onClick = onClick,
+      icon = {
+        BadgedBox(badge = { SyncBadge(syncDot) }) {
+          Icon(painterResource(iconRes), null, modifier = Modifier.size(24.dp))
+        }
+      },
+      label = { Text(stringResource(labelRes)) },
+      modifier = Modifier.semantics { contentDescription = description }.testTag(tag),
+  )
+}
+
+/** Pending shows a clock, offline or stuck an alert mark: the state is never colour alone. */
+@Composable
+private fun SyncBadge(syncDot: SyncDot) {
+  val brand = sadadBrand
+  val (fill, ink, glyph, tag) =
+      when (syncDot) {
+        SyncDot.NONE -> return
+        SyncDot.PENDING ->
+            BadgeLook(
+                brand.syncPending,
+                Color.Black,
+                R.drawable.ic_sync_pending,
+                ScreenTag.SYNC_PENDING,
+            )
+        SyncDot.OFFLINE,
+        SyncDot.STUCK ->
+            BadgeLook(brand.syncOffline, Color.White, R.drawable.ic_alert, ScreenTag.SYNC_OFFLINE)
       }
-    }
-    Text(stringResource(labelRes), color = ink, style = MaterialTheme.typography.labelMedium)
+  Badge(containerColor = fill, contentColor = ink, modifier = Modifier.testTag(tag)) {
+    Icon(painterResource(glyph), null, modifier = Modifier.size(12.dp))
   }
 }
 
-/** The raised round «تسجيل»: a debt or a payment, starting from the person. */
+private data class BadgeLook(val fill: Color, val ink: Color, val glyph: Int, val tag: String)
+
+/**
+ * The raised round «تسجيل»: a debt or a payment, starting from the person. A button, not a tab: it
+ * is never selected, and its filled pill sets it apart from the tabs and from any screen's FAB.
+ */
 @Composable
 private fun RowScope.RecordItem(onClick: () -> Unit) {
-  val p = sadadPalette
   val description = stringResource(R.string.nav_record_description)
+  val c = MaterialTheme.colorScheme
+  // The whole cell takes the tap, but the press shows on the pill, not as a square over the cell.
   val press = remember { MutableInteractionSource() }
   Column(
       modifier =
-          // The pill, gap and label (70dp) stand 6dp taller than the tabs, bottoms aligned.
           Modifier.weight(1f)
+              .align(Alignment.CenterVertically)
               .clickable(
                   interactionSource = press,
                   indication = null,
@@ -535,38 +557,33 @@ private fun RowScope.RecordItem(onClick: () -> Unit) {
               .semantics { contentDescription = description }
               .testTag(ScreenTag.NAV_RECORD),
       horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.Bottom),
+      verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
   ) {
-    // A 60x44 pill in a 4dp ring of the page colour (68x52), on a soft 2dp shadow.
     Box(
         modifier =
-            Modifier.size(68.dp, 52.dp)
+            Modifier.size(56.dp, 40.dp)
                 .shadow(2.dp, PILL)
-                .background(p.bg, PILL)
-                .padding(4.dp)
                 .clip(PILL)
-                .background(p.primary)
-                .indication(press, ripple(color = Color.White)),
+                .background(c.primary)
+                .indication(press, ripple(color = c.onPrimary)),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
           painterResource(R.drawable.ic_record),
           null,
-          tint = Color.White,
+          tint = c.onPrimary,
           modifier = Modifier.size(28.dp),
       )
     }
     Text(
         stringResource(R.string.nav_record),
-        color = if (p.isDark) p.accent else p.primary,
+        color = c.primary,
         style = MaterialTheme.typography.labelMedium,
     )
   }
 }
 
 private val PILL = RoundedCornerShape(percent = 50)
-private val PENDING_AMBER = Color(0xFFE0A23A)
-private val OFFLINE_RED = Color(0xFFC13634)
 
 /** The back-stack key the contacts picker stores its [PickedContact] result under. */
 private const val PICKED = "pickedContact"

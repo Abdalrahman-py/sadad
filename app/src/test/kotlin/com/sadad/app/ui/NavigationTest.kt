@@ -1,12 +1,17 @@
 package com.sadad.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -82,9 +87,9 @@ class NavigationTest {
     }
     // Right to left: each item starts left of the one before it.
     assertEquals(order.sortedDescending(), order)
-    // The visible labels.
+    // The visible labels; Home's title in the top bar is not one of them.
     listOf("الرئيسية", "الأشخاص", "تسجيل", "الحركات", "المتجر").forEach {
-      compose.onNodeWithText(it).assertIsDisplayed()
+      compose.onNode(hasText(it) and !hasAnyAncestor(hasTestTag(TOP_BAR_TAG))).assertIsDisplayed()
     }
   }
 
@@ -199,5 +204,28 @@ class NavigationTest {
     compose.onNodeWithTag(ScreenTag.NAV_ACTIVITY).performClick()
     compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
     compose.onNodeWithText("stub-contact").assertIsDisplayed()
+  }
+
+  @Test
+  fun aSnackbarShownOnOneScreenStaysAfterNavigatingToAnother() {
+    compose.setContent {
+      SadadTheme {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+          nav = rememberNavController()
+          SadadShell(navController = nav, startDestination = Home, syncDot = SyncDot.NONE) {
+            composable<Home> {
+              val snackbar = LocalAppSnackbar.current
+              Text("stub-home", Modifier.clickable { snackbar?.show("تم الحفظ") })
+            }
+            composable<People> { Text("stub-people") }
+          }
+        }
+      }
+    }
+    compose.onNodeWithText("stub-home").performClick()
+    compose.onNodeWithTag(ScreenTag.NAV_PEOPLE).performClick()
+
+    compose.onNodeWithText("stub-people").assertIsDisplayed()
+    compose.onNodeWithText("تم الحفظ").assertIsDisplayed()
   }
 }

@@ -8,4 +8,6 @@ object ScreenTag {
   const val NAV_RECORD = "nav:record"
   const val NAV_ACTIVITY = "nav:activity"
   const val NAV_STORE = "nav:store"
+  const val SYNC_PENDING = "nav:store:sync-pending"
+  const val SYNC_OFFLINE = "nav:store:sync-offline"
 }

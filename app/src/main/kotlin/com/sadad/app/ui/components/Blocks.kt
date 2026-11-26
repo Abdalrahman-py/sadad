@@ -1,12 +1,8 @@
 package com.sadad.app.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,9 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,11 +48,9 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -70,7 +62,6 @@ import androidx.compose.ui.unit.sp
 import com.sadad.app.R
 import com.sadad.app.ui.theme.sadadBrand
 import com.sadad.app.ui.theme.sadadPalette
-import kotlinx.coroutines.delay
 
 /*
  * The blocks the boards repeat across screens: the white panel, the step intro, the brand block,
@@ -376,61 +367,3 @@ fun PinDots(filled: Int, count: Int, description: String, modifier: Modifier = M
 @Suppress("UNUSED_PARAMETER")
 @Composable
 fun Appear(delayMillis: Int = 0, content: @Composable () -> Unit) = content()
-
-/**
- * The boards' dark toast at the foot of a screen: [message] slides up, stays about three seconds,
- * then [onDismiss] clears it. A failure is [error] so it is read out at once.
- */
-@Composable
-fun SadadToastHost(
-    message: String?,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier,
-    error: Boolean = false,
-) {
-  val dark = sadadBrand.isDark
-  // Keep the last text while the toast fades out.
-  var shown by remember { mutableStateOf(message) }
-  if (message != null && message != shown) shown = message
-  LaunchedEffect(message) {
-    if (message != null) {
-      delay(TOAST_MILLIS)
-      onDismiss()
-    }
-  }
-  AnimatedVisibility(
-      visible = message != null,
-      enter = fadeIn(tween(200)) + slideInVertically(tween(260)) { it / 2 },
-      exit = fadeOut(tween(200)),
-      modifier = modifier,
-  ) {
-    // Light: the inverse surface. Dark: the highest container, as the boards draw it.
-    val c = MaterialTheme.colorScheme
-    val fill = if (error) c.error else if (dark) c.surfaceContainerHighest else c.inverseSurface
-    val ink = if (error) c.onError else if (dark) c.onSurface else c.inverseOnSurface
-    val mark = if (error) c.onError else if (dark) c.secondary else c.inversePrimary
-    Row(
-        Modifier.fillMaxWidth()
-            .background(fill, RoundedCornerShape(12.dp))
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .semantics { liveRegion = LiveRegionMode.Assertive },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Icon(
-          painterResource(if (error) R.drawable.ic_alert else R.drawable.ic_check),
-          contentDescription = null,
-          tint = mark,
-          modifier = Modifier.size(20.dp),
-      )
-      Text(
-          shown.orEmpty(),
-          color = ink,
-          style = MaterialTheme.typography.bodyMedium,
-          modifier = Modifier.weight(1f),
-      )
-    }
-  }
-}
-
-private const val TOAST_MILLIS = 3_000L

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -14,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -39,8 +37,7 @@ import com.sadad.app.feature.photo.PhotoKind
 import com.sadad.app.feature.trash.TrashHidden
 import com.sadad.app.feature.updates.UpdateCenter
 import com.sadad.app.requireGraph
-import com.sadad.app.ui.components.SadadToastHost
-import com.sadad.app.ui.components.ScreenHeader
+import com.sadad.app.ui.ShowSnackbar
 import java.time.Clock
 import kotlinx.coroutines.delay
 
@@ -111,7 +108,7 @@ fun StoreScreen(
   val openStore = state.store.accounts.firstOrNull { it.active }?.storeUserId
   // «مزامنة الآن» says it started, then how it ended: sent, offline, or what refused.
   var syncAsked by rememberSaveable { mutableStateOf(false) }
-  var toast by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+  var toast by remember { mutableStateOf<String?>(null) }
   val syncStarted = stringResource(R.string.settings_sync_started)
   val syncDone = stringResource(R.string.settings_sync_done)
   val phrase = statusPhrase(state.devices.sync)
@@ -120,11 +117,11 @@ fun StoreScreen(
     when (state.devices.sync) {
       SyncLine.Running -> Unit
       SyncLine.Idle -> {
-        toast = syncDone to false
+        toast = syncDone
         syncAsked = false
       }
       else -> {
-        toast = (phrase ?: syncDone) to true
+        toast = phrase ?: syncDone
         syncAsked = false
       }
     }
@@ -134,7 +131,7 @@ fun StoreScreen(
     if (syncAsked) {
       delay(6_000)
       if (syncAsked && state.devices.sync == SyncLine.Idle) {
-        toast = syncDone to false
+        toast = syncDone
         syncAsked = false
       }
     }
@@ -158,13 +155,13 @@ fun StoreScreen(
           onNeedsLogin = onNeedsLogin,
           onSyncNow = {
             syncAsked = true
-            toast = syncStarted to false
+            toast = syncStarted
             settingsViewModel.devices.downloadLatest()
           },
       )
+  ShowSnackbar(message = toast, onShown = { toast = null })
   Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-      ScreenHeader(stringResource(R.string.nav_store))
       LazyColumn(
           modifier = Modifier.fillMaxSize().testTag(SettingsTags.LIST),
           contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp),
@@ -189,12 +186,6 @@ fun StoreScreen(
         versionItem()
       }
     }
-    SadadToastHost(
-        message = toast?.first,
-        error = toast?.second == true,
-        onDismiss = { toast = null },
-        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-    )
   }
   if (showStorePhoto && openStore != null) {
     PhotoEditor(openStore, PhotoKind.STORE, { showStorePhoto = false }) {

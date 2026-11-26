@@ -226,7 +226,8 @@ internal fun colorsFor(p: SadadPalette, dark: Boolean) =
             secondary = p.accent,
             // White on the accent is 3.38:1; this deep green is 5.09:1.
             onSecondary = Color(0xFF00201A),
-            secondaryContainer = p.soft,
+            // A step darker than the bars, so the selected tab and chips stand out on them.
+            secondaryContainer = Color(0xFFC3E4D5),
             onSecondaryContainer = p.primary,
             tertiary = p.warn,
             onTertiary = Color.White,
@@ -237,21 +238,24 @@ internal fun colorsFor(p: SadadPalette, dark: Boolean) =
             surface = p.bg,
             onSurface = p.text,
             surfaceVariant = p.surface,
-            // `muted` on `soft` is 4.44:1; a hair darker reaches 4.65:1.
-            onSurfaceVariant = Color(0xFF586C60),
+            // 4.5:1 or more on every container step, the darker bar step included.
+            onSurfaceVariant = Color(0xFF51655A),
             surfaceTint = Color.Transparent,
             surfaceBright = Color.White,
             surfaceDim = p.soft,
             surfaceContainerLowest = p.card,
             surfaceContainerLow = Color(0xFFEEF6F1),
             surfaceContainer = p.surface,
-            surfaceContainerHigh = Color(0xFFDEF1E8),
-            surfaceContainerHighest = p.soft,
+            // The top and bottom bars: a clear step below the page, not a near-match.
+            surfaceContainerHigh = Color(0xFFD9E9E0),
+            // A step below the bars, so the steps stay ordered.
+            surfaceContainerHighest = Color(0xFFD1E4D9),
             inverseSurface = p.text,
             inverseOnSurface = p.bg,
             // The snackbar action and the toast mark on the dark inverse surface.
             inversePrimary = Color(0xFF78DEC0),
-            outline = Color(0xFF6E857A),
+            // 3:1 or more on every container step.
+            outline = Color(0xFF667D72),
             outlineVariant = p.line,
             error = p.debt,
             onError = Color.White,

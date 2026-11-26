@@ -46,7 +46,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -61,12 +60,13 @@ import com.sadad.app.export.MovementKind
 import com.sadad.app.export.StatementFormat
 import com.sadad.app.feature.lock.AppLock
 import com.sadad.app.requireGraph
+import com.sadad.app.ui.ShowSnackbar
+import com.sadad.app.ui.TopBarActions
 import com.sadad.app.ui.components.EmptyState
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.PendingBadge
 import com.sadad.app.ui.components.SadadButton
 import com.sadad.app.ui.components.SadadButtonStyle
-import com.sadad.app.ui.components.SadadToastHost
 import com.sadad.app.ui.components.formatDate
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.sadadPalette
@@ -139,20 +139,14 @@ fun HistoryContent(
     onDismissExportResult: () -> Unit = {},
 ) {
   var choosingFormat by rememberSaveable { mutableStateOf(false) }
+  ShowSnackbar(
+      message = state.error ?: if (state.saved) stringResource(R.string.history_saved) else null,
+      onShown = onDismissExportResult,
+  )
   Box(modifier.fillMaxSize().sadadPageBackground()) {
+    // The title is the shared bar's; export is its action.
+    TopBarActions { ExportPill { choosingFormat = true } }
     Column(Modifier.fillMaxSize()) {
-      Row(
-          Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp),
-          verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Text(
-            stringResource(R.string.title_history),
-            color = sadadPalette.text,
-            style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.weight(1f).semantics { heading() },
-        )
-        ExportPill { choosingFormat = true }
-      }
       LazyColumn(
           modifier = Modifier.fillMaxSize().testTag(HistoryTags.MOVEMENTS),
           contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
@@ -197,12 +191,6 @@ fun HistoryContent(
         }
       }
     }
-    SadadToastHost(
-        message = state.error ?: if (state.saved) stringResource(R.string.history_saved) else null,
-        onDismiss = onDismissExportResult,
-        error = state.error != null,
-        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-    )
   }
   if (choosingFormat) {
     FormatDialog(

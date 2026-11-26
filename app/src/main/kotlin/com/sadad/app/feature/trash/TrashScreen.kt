@@ -1,9 +1,5 @@
 package com.sadad.app.feature.trash
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -23,11 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -39,6 +31,7 @@ import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.feature.notifications.DueReminders
 import com.sadad.app.requireGraph
+import com.sadad.app.ui.ShowSnackbar
 import com.sadad.app.ui.components.Avatar
 import com.sadad.app.ui.components.ConfirmDialog
 import com.sadad.app.ui.components.EmptyState
@@ -61,6 +54,8 @@ fun TrashScreen(onBack: () -> Unit) {
 fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val p = sadadPalette
+  // The message stays in the state after it is shown: the same text again does not show twice.
+  ShowSnackbar(state.message)
 
   Box(modifier.fillMaxSize()) {
     LazyColumn(
@@ -97,24 +92,6 @@ fun TrashScreen(viewModel: TrashViewModel, modifier: Modifier = Modifier) {
           )
         }
       }
-    }
-    // The board's dark toast after a restore or a refusal.
-    AnimatedVisibility(
-        visible = state.message != null,
-        enter = fadeIn() + slideInVertically { it / 2 },
-        exit = fadeOut(),
-        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-    ) {
-      Text(
-          state.message.orEmpty(),
-          color = Color.White,
-          fontSize = 14.sp,
-          modifier =
-              Modifier.fillMaxWidth()
-                  .background(TOAST, RoundedCornerShape(12.dp))
-                  .padding(horizontal = 16.dp, vertical = 12.dp)
-                  .semantics { liveRegion = LiveRegionMode.Polite },
-      )
     }
   }
 
@@ -180,8 +157,6 @@ private fun TrashRow(
     }
   }
 }
-
-private val TOAST = Color(0xFF142C24)
 
 @Composable
 private fun TrashItem.title(): String =

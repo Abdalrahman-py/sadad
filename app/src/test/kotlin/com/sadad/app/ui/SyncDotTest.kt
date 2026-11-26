@@ -2,6 +2,8 @@ package com.sadad.app.ui
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -36,6 +38,24 @@ class SyncDotTest {
       withStore(queued = false, SyncDot.STUCK, "المتجر، إدخالات لا يمكن إرسالها", stuck = true)
 
   @Test fun nothingWaitingShowsNoDot() = withStore(queued = false, SyncDot.NONE, "المتجر")
+
+  @Test
+  fun pendingAndOfflineBadgesDifferInMoreThanColour() {
+    var dot by mutableStateOf(SyncDot.PENDING)
+    compose.setContent { SadadTheme { SadadBottomBar(rememberNavController(), dot) } }
+    // Pending draws a clock, offline an alert mark: two different badge nodes, not one recoloured.
+    compose.onNodeWithTag(ScreenTag.SYNC_PENDING, useUnmergedTree = true).assertExists()
+    compose.onNodeWithTag(ScreenTag.SYNC_OFFLINE, useUnmergedTree = true).assertDoesNotExist()
+
+    dot = SyncDot.OFFLINE
+
+    compose.onNodeWithTag(ScreenTag.SYNC_OFFLINE, useUnmergedTree = true).assertExists()
+    compose.onNodeWithTag(ScreenTag.SYNC_PENDING, useUnmergedTree = true).assertDoesNotExist()
+
+    dot = SyncDot.NONE
+
+    compose.onNodeWithTag(ScreenTag.SYNC_OFFLINE, useUnmergedTree = true).assertDoesNotExist()
+  }
 
   private fun withStore(
       queued: Boolean,
