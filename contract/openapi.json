@@ -672,13 +672,18 @@
                     "reason": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "lastSeenAt": {
+                      "type": "string",
+                      "nullable": true
                     }
                   },
                   "required": [
                     "approvedAt",
                     "approvedBy",
                     "revokedAt",
-                    "reason"
+                    "reason",
+                    "lastSeenAt"
                   ]
                 }
               ]
