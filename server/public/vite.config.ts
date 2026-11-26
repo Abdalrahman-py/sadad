@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 
@@ -23,13 +24,17 @@ const CSP = [
 const contentSecurityPolicy = (): Plugin => ({
   name: "sadad-csp",
   apply: "build",
-  transformIndexHtml: () => [
-    {
-      tag: "meta",
-      attrs: { "http-equiv": "Content-Security-Policy", content: CSP },
-      injectTo: "head-prepend",
-    },
-  ],
+  // The privacy page carries its own policy: no scripts, and its styles stay in the page.
+  transformIndexHtml: (_html, ctx) =>
+    ctx.filename.endsWith("privacy.html")
+      ? []
+      : [
+          {
+            tag: "meta",
+            attrs: { "http-equiv": "Content-Security-Policy", content: CSP },
+            injectTo: "head-prepend",
+          },
+        ],
 });
 
 export default defineConfig({
@@ -41,6 +46,13 @@ export default defineConfig({
     emptyOutDir: true,
     // No data: URLs, so img-src and font-src stay 'self'.
     assetsInlineLimit: 0,
+    // The public privacy page Play links to (/sadad/privacy), built next to the dashboard.
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("index.html", import.meta.url)),
+        privacy: fileURLToPath(new URL("privacy.html", import.meta.url)),
+      },
+    },
   },
   test: {
     environment: "happy-dom",
