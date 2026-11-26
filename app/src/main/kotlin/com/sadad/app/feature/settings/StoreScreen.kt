@@ -27,6 +27,7 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.sadad.app.BuildConfig
 import com.sadad.app.R
 import com.sadad.app.SadadApplication
 import com.sadad.app.data.sync.SyncScheduler
@@ -93,11 +94,18 @@ fun StoreScreen(
     onNeedsLogin: () -> Unit = {},
     onOpenUpdates: () -> Unit = {},
     settingsViewModel: SettingsViewModel = storeViewModel(),
+    /** False on the Play build: no update row, and the updater is never created. */
+    selfUpdate: Boolean = BuildConfig.SELF_UPDATE,
 ) {
   val state by settingsViewModel.state.collectAsStateWithLifecycle()
   val context = LocalContext.current
-  val updates = remember(context) { UpdateCenter.get(context.applicationContext) }
-  val update by updates.state.collectAsStateWithLifecycle()
+  val update =
+      if (selfUpdate) {
+        val updates = remember(context) { UpdateCenter.get(context.applicationContext) }
+        updates.state.collectAsStateWithLifecycle().value
+      } else {
+        null
+      }
   var storesOpen by rememberSaveable { mutableStateOf(false) }
   var showStorePhoto by rememberSaveable { mutableStateOf(false) }
   val openStore = state.store.accounts.firstOrNull { it.active }?.storeUserId
@@ -177,7 +185,7 @@ fun StoreScreen(
         appearanceSection(state.theme, settingsViewModel.appearance, context)
         accountSection(settingsViewModel.account, state.busy, state.error)
         supportItem(context)
-        updateItem(update, onOpenUpdates)
+        if (update != null) updateItem(update, onOpenUpdates)
         versionItem()
       }
     }

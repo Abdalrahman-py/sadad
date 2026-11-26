@@ -10,7 +10,6 @@ import com.sadad.app.data.ledger.toContactView
 import com.sadad.app.data.ledger.traced
 import com.sadad.app.feature.contactform.ContactFormState
 import com.sadad.app.feature.contactpicker.ContactNumberRow
-import com.sadad.app.feature.contactpicker.ContactPermission
 import com.sadad.app.feature.contactpicker.ContactPickerRows
 import com.sadad.app.feature.contactpicker.ContactRow
 import com.sadad.app.feature.contactpicker.DeviceContact
@@ -31,9 +30,12 @@ import com.sadad.ledger.PaymentAllocation
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,6 +84,8 @@ data class QuickAddState(
     /** True when the amount being entered is a payment; false for a debt. */
     val payment: Boolean = false,
     val amount: String = "",
+    /** The amounts the «+» key has already added up; [amount] is the one being typed. */
+    val terms: List<String> = emptyList(),
     val method: PaymentMethod = PaymentMethod.CASH,
     /** `yyyy-MM-dd`, exactly as the wire carries it. */
     val dueDate: String? = null,
@@ -95,18 +99,23 @@ data class QuickAddState(
     val done: QuickAddDone? = null,
     /** The new person's fields; kept through the amount step, saved with the debt as one batch. */
     val newPerson: ContactFormState? = null,
-    /** Whether the phone's contacts may be read; the picker asks only from its own row. */
-    val contactsPermission: ContactPermission = ContactPermission.NotAsked,
-    /** The phone's contacts that match the query, below the store's own people. */
-    val contactRows: List<ContactRow> = emptyList(),
-    /** A phone contact with several numbers, asking which one. */
-    val contactChooser: ContactRow? = null,
     /** A picked number belongs to someone in the archive: the screen leaves for the trash. */
     val openTrash: Boolean = false,
+    /** The bottom bar's «+» would drop what is typed: «تجاهل المدخل الحالي؟» is open. */
+    val restartAsk: Boolean = false,
 ) {
   /** The saved person the entry is about. */
   val personName: String
     get() = selected?.name.orEmpty()
+
+  /** What the entry adds up to: every added amount plus the one being typed. */
+  val total: Cents
+    get() =
+        (terms + amount).fold(Cents.ZERO) { sum, text -> sum + (parseCents(text) ?: Cents.ZERO) }
+
+  /** The whole entry as typed, to tell an edit from a repeat tap on save. */
+  val entry: String
+    get() = (terms + amount).joinToString("+")
 
   /**
    * Whether the amount on screen may be saved: a positive amount, and a supplier payment within the
@@ -114,7 +123,7 @@ data class QuickAddState(
    */
   val canSave: Boolean
     get() {
-      val value = parseCents(amount) ?: return false
+      val value = total
       if (value <= Cents.ZERO) return false
       if (blocked) return false
       if (payment && value > overBalance && selected?.kind != ContactKind.CUSTOMER) return false
@@ -124,9 +133,9 @@ data class QuickAddState(
 
 /**
  * The one flow that records anything: pick a saved person, type the amount, save with a sentence
- * that states what will be recorded, and undo for eight seconds. Nothing reaches the outbox before
- * the window ends: the commands are built here and handed to [QuickAddStore.append] on commit, so
- * «تراجع» is truly a no-op.
+ * that states what will be recorded, and undo for eight seconds. The save holds the commands in the
+ * outbox before the done step shows (ticket 181), so a process death inside the window cannot lose
+ * them; a held row is not sent or shown. The window's end releases them, «تراجع» deletes them.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class QuickAddViewModel(
@@ -143,14 +152,13 @@ class QuickAddViewModel(
         { people, query ->
           PersonSearch.search(people, query)
         },
-    private val contactSearch: (List<ContactRow>, String) -> List<ContactRow> =
-        ContactPickerRows::search,
 ) : ViewModel() {
   private val mutable =
       MutableStateFlow(
           QuickAddState(
               payment = payment,
               amount = saved.get<String>(AMOUNT).orEmpty(),
+              terms = saved.get<String>(TERMS)?.split(',')?.filter { it.isNotEmpty() }.orEmpty(),
               note = saved.get<String>(NOTE).orEmpty(),
               dueDate = saved.get<String>(DUE),
               method = saved.get<String>(METHOD)?.let(::methodOf) ?: PaymentMethod.CASH,
@@ -193,52 +201,42 @@ class QuickAddViewModel(
   /** Everyone the store holds, before the picker's query narrows it. */
   @Volatile private var allPeople: List<QuickAddPerson> = emptyList()
 
-  /** The phone's contacts as last read, and their rows parsed against the store's people. */
-  @Volatile private var deviceList: List<DeviceContact> = emptyList()
-  @Volatile private var parsedRows: List<ContactRow> = emptyList()
-
   /** The entity id the new person's contact.create will carry. */
   private var newPersonId: String = newId()
 
   /** Whether the Contact this flow was opened for has been made the subject already. */
   private var startContactApplied = false
 
-  /** The commands the done step holds; [commitJob] appends them when the window ends. */
-  @Volatile private var pending: List<LedgerCommand> = emptyList()
+  /**
+   * The store and operation ids the done step holds; [commitJob] releases them when the window
+   * ends. Taken atomically, so exactly one of release and undo acts on them.
+   */
+  private val pending = AtomicReference<Held?>(null)
   @Volatile private var commitJob: Job? = null
+
+  /** The hold write of a save; a second tap while it runs saves nothing. */
+  @Volatile private var holdJob: Job? = null
+
+  /** The user left while the hold was running: release as soon as it returns. */
+  @Volatile private var leftDuringHold = false
   private var anomalyApproved: String? = null
 
   init {
-    if (source.contactsGranted()) {
-      mutable.update { it.copy(contactsPermission = ContactPermission.Granted) }
-      readContacts()
-    }
     viewModelScope.launch {
       queries
           .mapLatest { (query, _) ->
             val searched = allPeople
-            val parsed = parsedRows
-            SearchResult(
-                query,
-                searched,
-                parsed,
-                personSearch(searched, query),
-                contactSearch(parsed, query),
-            )
+            SearchResult(query, searched, personSearch(searched, query))
           }
           .flowOn(Dispatchers.Default)
           .collect { found ->
             mutable.update { current ->
               // A newer keystroke, or a newer store projection, already replaced this result: the
               // first search runs before the people are loaded and must not blank the list after.
-              if (
-                  current.query != found.query ||
-                      found.searched !== allPeople ||
-                      found.parsed !== parsedRows
-              ) {
+              if (current.query != found.query || found.searched !== allPeople) {
                 current
               } else {
-                current.copy(people = members(found.people, current), contactRows = found.contacts)
+                current.copy(people = members(found.people, current))
               }
             }
           }
@@ -264,13 +262,7 @@ class QuickAddViewModel(
           }
           .map { facts ->
             val query = mutable.value.query
-            val parsed = parsedRows
-            facts.copy(
-                shownPeople = personSearch(facts.people, query),
-                shownContacts = contactSearch(parsed, query),
-                searchedQuery = query,
-                searchedParsed = parsed,
-            )
+            facts.copy(shownPeople = personSearch(facts.people, query), searchedQuery = query)
           }
           .flowOn(Dispatchers.Default)
           .collect { facts ->
@@ -292,16 +284,14 @@ class QuickAddViewModel(
               if (started != null) startContactApplied = true
               val selected = chosen ?: started
               if (selected != null) watchPerson(selected.id)
-              // The rows were found off the main thread for the query and device contacts as they
-              // stood then; if either moved since, the queries collector finds the new rows.
-              val searched =
-                  current.query == facts.searchedQuery && facts.searchedParsed === parsedRows
+              // The rows were found off the main thread for the query as it stood then; if it moved
+              // since, the queries collector finds the new rows.
+              val searched = current.query == facts.searchedQuery
               current.copy(
                   loaded = facts.loaded,
                   blocked = facts.blocked,
                   restricted = facts.restricted,
                   people = if (searched) members(facts.shownPeople, current) else current.people,
-                  contactRows = if (searched) facts.shownContacts else current.contactRows,
                   selected = selected,
                   overBalance =
                       selected?.let { person -> facts.openBalances[person.id] } ?: Cents.ZERO,
@@ -313,7 +303,7 @@ class QuickAddViewModel(
                       },
               )
             }
-            if (mutable.value.query != facts.searchedQuery || facts.searchedParsed !== parsedRows) {
+            if (mutable.value.query != facts.searchedQuery) {
               val query = mutable.value.query
               queries.value = query to queries.value.second + 1
             }
@@ -339,6 +329,7 @@ class QuickAddViewModel(
           selected = person,
           step = if (person == null) current.step else QuickAddStep.AMOUNT,
           amount = "",
+          terms = emptyList(),
           overBalance = openBalances[personId] ?: Cents.ZERO,
           anomaly = null,
           error = null,
@@ -361,41 +352,28 @@ class QuickAddViewModel(
     mutable.update {
       // A new person's amount goes back to their fields, not past them.
       val step = if (it.newPerson != null) QuickAddStep.NEW_PERSON else QuickAddStep.PICKER
-      it.copy(step = step, amount = "", anomaly = null, error = null, done = null)
+      it.copy(
+          step = step,
+          amount = "",
+          terms = emptyList(),
+          anomaly = null,
+          error = null,
+          done = null,
+      )
     }
   }
 
-  /** The permission launcher's answer to «اسمح بقراءة جهات الاتصال». */
-  fun onContactsPermission(granted: Boolean, canAskAgain: Boolean = true) {
-    val permission =
-        when {
-          granted -> ContactPermission.Granted
-          canAskAgain -> ContactPermission.Denied
-          else -> ContactPermission.DeniedForever
-        }
-    mutable.update { it.copy(contactsPermission = permission) }
-    if (granted) readContacts()
+  /** The system picker's contact: someone the store keeps opens them, anyone else a new person. */
+  fun pickPhoneContact(contact: DeviceContact) {
+    val people = SadadPeople(allContacts, archivedPeople)
+    val row = ContactPickerRows.build(listOf(contact), people).singleOrNull() ?: return
+    resolvePhoneContact(row, row.numbers.first())
   }
-
-  /** A phone contact's row: one number decides at once, several ask which. */
-  fun pickPhoneContact(row: ContactRow) {
-    val number = row.numbers.singleOrNull()
-    if (number == null) mutable.update { it.copy(contactChooser = row) }
-    else resolvePhoneContact(row, number)
-  }
-
-  fun choosePhoneNumber(number: ContactNumberRow) {
-    val row = mutable.value.contactChooser ?: return
-    resolvePhoneContact(row, number)
-  }
-
-  fun dismissPhoneChooser() = mutable.update { it.copy(contactChooser = null) }
 
   /** The screen has opened the trash for an archived match. */
   fun onTrashHandled() = mutable.update { it.copy(openTrash = false) }
 
   private fun resolvePhoneContact(row: ContactRow, number: ContactNumberRow) {
-    mutable.update { it.copy(contactChooser = null) }
     when (val status = number.status) {
       is NumberStatus.InLedger -> pick(status.contactId)
       is NumberStatus.InArchive -> mutable.update { it.copy(openTrash = true) }
@@ -469,6 +447,7 @@ class QuickAddViewModel(
                         asOf = Instant.now(),
                     ),
                 amount = "",
+                terms = emptyList(),
                 overBalance = Cents.ZERO,
                 error = null,
             )
@@ -488,21 +467,13 @@ class QuickAddViewModel(
     it.copy(step = QuickAddStep.PICKER, newPerson = null, selected = null, error = null)
   }
 
-  private fun readContacts() =
-      viewModelScope.launch(Dispatchers.Default) {
-        deviceList = source.contacts.list()
-        reparseContacts()
-        mutable.update { it.copy(contactRows = contactSearch(parsedRows, it.query)) }
-      }
-
-  private fun reparseContacts() {
-    if (deviceList.isEmpty()) return
-    parsedRows = ContactPickerRows.build(deviceList, SadadPeople(allContacts, archivedPeople))
-  }
-
   /** One key of the on-screen keypad: a digit, or «.» for the decimal mark. */
   fun press(key: String) {
     if (mutable.value.step != QuickAddStep.AMOUNT) return
+    if (key == "+") {
+      addTerm()
+      return
+    }
     val next =
         when (key) {
           "." -> {
@@ -530,12 +501,35 @@ class QuickAddViewModel(
     mutable.update { it.copy(amount = next, anomaly = null, error = null) }
   }
 
+  /**
+   * The «+» key: the typed amount joins the total and the next one starts. Nothing typed, or a
+   * zero, adds nothing.
+   */
+  private fun addTerm() {
+    val current = mutable.value
+    val typed = parseCents(current.amount) ?: return
+    if (typed <= Cents.ZERO || current.terms.size >= MAX_TERMS) return
+    val terms = current.terms + current.amount
+    saved[TERMS] = terms.joinToString(",")
+    saved[AMOUNT] = ""
+    anomalyApproved = null
+    mutable.update { it.copy(terms = terms, amount = "", anomaly = null, error = null) }
+  }
+
   fun delete() {
     if (mutable.value.step != QuickAddStep.AMOUNT) return
-    val next = mutable.value.amount.dropLast(1)
+    val current = mutable.value
+    // With nothing typed, delete reopens the last added amount instead of doing nothing.
+    val (terms, next) =
+        if (current.amount.isEmpty() && current.terms.isNotEmpty()) {
+          current.terms.dropLast(1) to current.terms.last()
+        } else {
+          current.terms to current.amount.dropLast(1)
+        }
     saved[AMOUNT] = next
+    saved[TERMS] = terms.joinToString(",")
     anomalyApproved = null
-    mutable.update { it.copy(amount = next, anomaly = null, error = null) }
+    mutable.update { it.copy(terms = terms, amount = next, anomaly = null, error = null) }
   }
 
   fun onMethodChange(method: PaymentMethod) {
@@ -560,10 +554,10 @@ class QuickAddViewModel(
   fun save(context: Context) {
     val current = mutable.value
     // Saving is the amount step's action; the done step cannot queue the same entry again.
-    if (current.step != QuickAddStep.AMOUNT) return
-    val amount = parseCents(current.amount)
-    if (!current.canSave || amount == null) return
-    if (amount >= ANOMALY_LIMIT && anomalyApproved != current.amount) {
+    if (current.step != QuickAddStep.AMOUNT || holdJob?.isActive == true) return
+    val amount = current.total
+    if (!current.canSave) return
+    if (amount >= ANOMALY_LIMIT && anomalyApproved != current.entry) {
       mutable.update { it.copy(anomaly = amount) }
       return
     }
@@ -579,7 +573,7 @@ class QuickAddViewModel(
         val now = mutable.value
         if (
             now.selected?.id == chosen.id &&
-                now.amount == current.amount &&
+                now.entry == current.entry &&
                 now.payment == current.payment
         ) {
           save(context)
@@ -600,8 +594,39 @@ class QuickAddViewModel(
       mutable.update { it.copy(error = context.getString(R.string.quickadd_failed)) }
       return
     }
-    pending = commands
+    val failed = context.getString(R.string.quickadd_failed)
+    leftDuringHold = false
+    // The hold runs on the store's jobs, not the screen's: a screen torn down mid-write still gets
+    // its window. A store closed mid-write leaves the row held; the next open queues it.
+    holdJob =
+        store.jobs.launch {
+          try {
+            traced("save_debt") { store.hold(commands) }
+          } catch (error: CancellationException) {
+            throw error
+          } catch (error: Exception) {
+            mutable.update { it.copy(error = failed) }
+            return@launch
+          }
+          showDone(context, store, commands.map { it.operationId }, current, amount, sentence)
+        }
+  }
+
+  /** The entry is held: start the window and show the done step. */
+  private fun showDone(
+      context: Context,
+      store: QuickAddStore,
+      operationIds: List<String>,
+      current: QuickAddState,
+      amount: Cents,
+      sentence: String,
+  ) {
+    pending.set(Held(store, operationIds))
     commitJob?.cancel()
+    if (leftDuringHold) {
+      commit(context)
+      return
+    }
     // One tick a second (the window split evenly, so a short test window still ends), counting
     // «تراجع · N ث» down to zero, where the entry is queued and the button goes grey.
     val ticks = maxOf(1, (undoWindowMs / 1_000).toInt())
@@ -637,19 +662,22 @@ class QuickAddViewModel(
   fun confirmAnomaly() {
     val current = mutable.value
     if (current.anomaly == null) return
-    anomalyApproved = current.amount
+    anomalyApproved = current.entry
     mutable.update { it.copy(anomaly = null) }
   }
 
   fun dismissAnomaly() = mutable.update { it.copy(anomaly = null) }
 
-  /** «تراجع»: the held commands are dropped, nothing was ever queued. */
+  /** «تراجع»: the held rows are deleted, nothing was ever queued. */
   fun undo(context: Context) {
     // The window closed and the commands are queued: this screen can no longer take them back.
-    if (pending.isEmpty()) return
+    val held = pending.getAndSet(null) ?: return
     commitJob?.cancel()
     commitJob = null
-    pending = emptyList()
+    // Not cancelled with the store's jobs: a held row left behind would be queued on the next open.
+    held.store.jobs.launch(NonCancellable) {
+      runCatching { held.store.discard(held.operationIds) }
+    }
     mutable.update {
       it.copy(
           step = QuickAddStep.AMOUNT,
@@ -661,13 +689,15 @@ class QuickAddViewModel(
 
   /** «تسجيل آخر»: the entry that is on screen is recorded first, then the picker starts empty. */
   fun another(context: Context) {
-    if (pending.isNotEmpty()) {
+    if (holdJob?.isActive == true) leftDuringHold = true
+    if (pending.get() != null) {
       commitJob?.cancel()
       commitJob = null
       commit(context)
     }
     anomalyApproved = null
     saved[AMOUNT] = ""
+    saved[TERMS] = ""
     saved[NOTE] = ""
     saved[DUE] = null
     mutable.update {
@@ -682,11 +712,36 @@ class QuickAddViewModel(
   }
 
   /**
+   * The bottom bar's «+» on this screen: a new blank entry. A typed amount, a running total, a note
+   * or a due date would be lost, so it asks first; a saved entry in the undo window is committed.
+   */
+  fun requestRestart(context: Context) {
+    val current = mutable.value
+    val typed =
+        current.amount.isNotEmpty() ||
+            current.terms.isNotEmpty() ||
+            current.note.isNotBlank() ||
+            current.dueDate != null
+    if (current.step != QuickAddStep.DONE && typed) {
+      mutable.update { it.copy(restartAsk = true, anomaly = null) }
+    } else {
+      another(context)
+    }
+  }
+
+  /** «تجاهل»: the typed entry is dropped and the picker starts empty. */
+  fun confirmRestart(context: Context) = another(context)
+
+  /** «متابعة»: the entry stays as it was. */
+  fun dismissRestart() = mutable.update { it.copy(restartAsk = false) }
+
+  /**
    * The user left the done step: the entry is theirs, so it is queued now instead of waiting out
    * the window. Called by every way out of the screen, so a closed flow never loses a record.
    */
   fun leave(context: Context) {
-    if (pending.isNotEmpty()) {
+    if (holdJob?.isActive == true) leftDuringHold = true
+    if (pending.get() != null) {
       commitJob?.cancel()
       commitJob = null
       commit(context)
@@ -697,7 +752,7 @@ class QuickAddViewModel(
   fun sentence(context: Context): String {
     val current = mutable.value
     val name = current.personName
-    val amount = typedAmountLabel(current.amount)
+    val amount = formatAmount(current.total)
     val supplier = current.selected?.kind == ContactKind.SUPPLIER
     val template =
         when {
@@ -712,7 +767,7 @@ class QuickAddViewModel(
   /** The line under the amount that states what the entry does to the balance. */
   fun preview(context: Context): String {
     val current = mutable.value
-    val amount = parseCents(current.amount) ?: Cents.ZERO
+    val amount = current.total
     if (amount <= Cents.ZERO) return context.getString(R.string.quickadd_preview_empty)
     val supplier = current.selected?.kind == ContactKind.SUPPLIER
     if (current.payment && amount > current.overBalance) {
@@ -896,21 +951,21 @@ class QuickAddViewModel(
     return listOfNotNull(create) + debt + offsets
   }
 
-  /** Appends the held commands: the only place this flow writes to the outbox. */
+  /** Queues the held rows and asks for a sync. */
   private fun commit(context: Context) {
-    val commands = pending
-    pending = emptyList()
-    val store = source.open()
-    if (commands.isEmpty() || store == null) return
+    val (store, operationIds) = pending.getAndSet(null) ?: return
     // The window is over the moment it is committed, so «تراجع» goes grey at once.
     mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     // The outbox write is not cancelled with this screen: it is one short write, not background
     // work, and the done step already told the user the record was made.
     store.jobs.launch {
-      traced("save_debt") { store.append(commands) }
+      store.release(operationIds)
       mutable.update { it.copy(done = it.done?.copy(secondsLeft = 0)) }
     }
   }
+
+  /** What a save holds: the store it wrote to and the rows it wrote. */
+  private data class Held(val store: QuickAddStore, val operationIds: List<String>)
 
   private fun members(people: List<QuickAddPerson>, current: QuickAddState): List<QuickAddPerson> {
     val selected = current.selected ?: return people
@@ -921,9 +976,7 @@ class QuickAddViewModel(
   private class SearchResult(
       val query: String,
       val searched: List<QuickAddPerson>,
-      val parsed: List<ContactRow>,
       val people: List<QuickAddPerson>,
-      val contacts: List<ContactRow>,
   )
 
   private data class Facts(
@@ -935,9 +988,7 @@ class QuickAddViewModel(
       val startContact: String? = null,
       /** The picker's rows for [searchedQuery], found off the main thread upstream. */
       val shownPeople: List<QuickAddPerson> = emptyList(),
-      val shownContacts: List<ContactRow> = emptyList(),
       val searchedQuery: String = "",
-      val searchedParsed: List<ContactRow> = emptyList(),
   )
 
   private fun projectSummaries(
@@ -950,7 +1001,6 @@ class QuickAddViewModel(
     if (rows == null) return Facts(blocked = blocked, restricted = restricted)
     allContacts = rows.map { it.toContactView() }
     archivedPeople = archived
-    reparseContacts()
     val now = Instant.now()
     val people = rows.map { row ->
       QuickAddPerson(
@@ -1008,6 +1058,8 @@ class QuickAddViewModel(
     private const val MAX_INTEGER_DIGITS = 7
 
     private const val AMOUNT = "quickadd:amount"
+    private const val TERMS = "quickadd:terms"
+    private const val MAX_TERMS = 30
     private const val METHOD = "quickadd:method"
     private const val NOTE = "quickadd:note"
     private const val DUE = "quickadd:due-date"

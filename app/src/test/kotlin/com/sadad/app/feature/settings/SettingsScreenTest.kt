@@ -67,6 +67,22 @@ class SettingsScreenTest {
   }
 
   @Test
+  fun thePlayBuildHasNoUpdateRow() {
+    show(selfUpdate = false) { _, _, _ ->
+      scrollTo(hasText("الحساب"))
+      compose.onNodeWithTag(SettingsTags.UPDATE).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun aTeamBuildKeepsTheUpdateRow() {
+    show(selfUpdate = true) { _, _, _ ->
+      scrollTo(hasTag(SettingsTags.UPDATE))
+      compose.onNodeWithTag(SettingsTags.UPDATE).assertIsDisplayed()
+    }
+  }
+
+  @Test
   fun theSwitcherStaysHiddenWithOneStore() {
     show { _, _, _ -> compose.onNodeWithTag(SettingsTags.SWITCHER).assertDoesNotExist() }
   }
@@ -336,6 +352,7 @@ class SettingsScreenTest {
       twoStores: Boolean = false,
       sensor: Boolean = false,
       canDelete: Boolean = true,
+      selfUpdate: Boolean = true,
       check: (SettingsKit, SettingsViewModel, Nav) -> Unit,
   ) {
     runBlocking { TestGraph.signedIn() }
@@ -387,6 +404,7 @@ class SettingsScreenTest {
                       onAddStore = { nav.addStore++ },
                       onNeedsLogin = { nav.login++ },
                       settingsViewModel = model,
+                      selfUpdate = selfUpdate,
                   )
                 }
               }

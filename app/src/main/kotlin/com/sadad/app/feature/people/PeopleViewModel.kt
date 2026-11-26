@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sadad.app.data.db.ContactSummaryEntity
+import com.sadad.app.data.ledger.OutboxRow
 import com.sadad.app.feature.quickadd.PersonSearch
 import com.sadad.app.ui.components.BalanceWordText
 import com.sadad.app.ui.components.balanceWord
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -216,6 +218,24 @@ internal fun summaryRows(
   return rows + failed
 }
 
+/**
+ * Every person's row from the summary and the outbox rows: the failed drafts are the outbox rows
+ * the summary does not know (ticket 215), so a person is in the list at most once even while a
+ * rejected contact settles.
+ */
+internal fun summaryRowsFrom(
+    summaries: List<ContactSummaryEntity>,
+    outboxRows: List<OutboxRow>,
+    zone: ZoneId,
+    today: LocalDate,
+): List<PeopleRow> =
+    summaryRows(
+        summaries,
+        failedDraftContacts(outboxRows, summaries.mapTo(HashSet()) { it.contactId }),
+        zone,
+        today,
+    )
+
 /** [rows] in [sort]'s order; run when the rows or the order change, so a search only filters. */
 internal fun sortRows(rows: List<PeopleRow>, sort: PeopleSort): List<PeopleRow> =
     when (sort) {
@@ -361,13 +381,10 @@ class PeopleViewModel(
         combine(source.summaryReady, day) { ready, current -> ready to current }
             .flatMapLatest { (ready, current) ->
               if (ready) {
-                combine(source.summaries, source.failedDrafts) { summaries, drafts ->
-                  summaries?.let {
-                    Rows(
-                        summaryRows(it, drafts, current.zone, current.today),
-                        it.size,
-                        drafts.size,
-                    )
+                source.summariesAndOutbox.map { pair ->
+                  pair?.let { (summaries, outboxRows) ->
+                    val all = summaryRowsFrom(summaries, outboxRows, current.zone, current.today)
+                    Rows(all, summaries.size, all.count { it.syncFailed })
                   }
                 }
               } else {

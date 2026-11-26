@@ -11,6 +11,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.work.Configuration
+import androidx.work.WorkManager
 import com.sadad.app.crash.CrashReporting
 import com.sadad.app.feature.notifications.DueReminderWorker
 import com.sadad.app.feature.updates.UpdateCenter
@@ -102,13 +103,22 @@ open class SadadApplication : Application(), Configuration.Provider {
     reminderScope.launch {
       runCatching { DueReminderWorker.schedule(this@SadadApplication) }
           .onFailure { Log.w(TAG, "Due reminders not scheduled", it) }
-      runCatching { UpdateCheckWorker.schedule(this@SadadApplication) }
+      runCatching {
+        if (BuildConfig.SELF_UPDATE) {
+          UpdateCheckWorker.schedule(this@SadadApplication)
+        } else {
+          // A sideloaded release scheduled this before Play; the Play build never checks.
+          WorkManager.getInstance(this@SadadApplication).cancelUniqueWork("app-updates")
+        }
+      }
           .onFailure { Log.w(TAG, "Update check not scheduled", it) }
     }
     // The launch check: throttled inside, and skipped entirely for a local debug build.
-    reminderScope.launch {
-      runCatching { UpdateCenter.get(this@SadadApplication).refreshIfStale() }
-          .onFailure { Log.w(TAG, "Launch update check did not start", it) }
+    if (BuildConfig.SELF_UPDATE) {
+      reminderScope.launch {
+        runCatching { UpdateCenter.get(this@SadadApplication).refreshIfStale() }
+            .onFailure { Log.w(TAG, "Launch update check did not start", it) }
+      }
     }
   }
 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The in-app updater lives only in team and debug builds (BuildConfig.SELF_UPDATE). Play forbids
+     an app on Play updating itself outside Play, so the release manifest has neither entry. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application>
+        <!-- The installer's result: confirmed, done, cancelled or failed. Addressed by the app's own
+             pending intent, so it stays unexported. -->
+        <receiver
+            android:name="com.sadad.app.feature.updates.UpdateInstallReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

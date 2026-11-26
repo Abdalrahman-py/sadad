@@ -6,9 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
-import com.sadad.app.feature.contactpicker.ContactPermission
 import com.sadad.app.feature.contactpicker.DeviceContact
-import com.sadad.app.feature.contactpicker.DeviceContacts
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -35,7 +33,6 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -66,11 +63,10 @@ class QuickAddNewPersonTest {
   private class FakeSource(
       val jobs: CoroutineScope,
       private val view: LedgerView,
-      private val phone: List<DeviceContact> = emptyList(),
-      private val granted: Boolean = true,
       private val limit: Int? = null,
   ) : QuickAddSource {
     val appended = CompletableDeferred<List<LedgerCommand>>()
+    val held = java.util.concurrent.ConcurrentLinkedQueue<LedgerCommand>()
     override val summaries =
         MutableStateFlow<List<ContactSummaryEntity>?>(view.contacts.map(::summaryOf))
     override val summaryReady = MutableStateFlow(true)
@@ -79,13 +75,6 @@ class QuickAddNewPersonTest {
     override val blocked = flowOf(false)
 
     override fun personView(contactId: String): Flow<LedgerView?> = flowOf(view)
-
-    override val contacts =
-        object : DeviceContacts {
-          override suspend fun list() = phone
-        }
-
-    override fun contactsGranted() = granted
 
     override fun contactLimit() = limit
 
@@ -99,8 +88,16 @@ class QuickAddNewPersonTest {
 
           override fun isOnline() = true
 
-          override suspend fun append(commands: List<LedgerCommand>) {
-            appended.complete(commands)
+          override suspend fun hold(commands: List<LedgerCommand>) {
+            held += commands
+          }
+
+          override suspend fun release(operationIds: List<String>) {
+            appended.complete(held.filter { it.operationId in operationIds })
+          }
+
+          override suspend fun discard(operationIds: List<String>) {
+            held.removeAll { it.operationId in operationIds }
           }
         }
   }
@@ -108,10 +105,10 @@ class QuickAddNewPersonTest {
   private fun model(source: QuickAddSource) =
       QuickAddViewModel(source, null, false, SavedStateHandle(), undoWindowMs = 100)
 
-  private suspend fun QuickAddViewModel.search(query: String, rows: Int = 1): QuickAddState {
+  /** The store's people must be loaded before a picked number can be matched against them. */
+  private suspend fun QuickAddViewModel.pickOnceLoaded(contact: DeviceContact) {
     state.first { it.loaded }
-    onQueryChange(query)
-    return state.first { it.contactRows.size >= rows }
+    pickPhoneContact(contact)
   }
 
   @Test
@@ -121,12 +118,10 @@ class QuickAddNewPersonTest {
           FakeSource(
               jobs,
               ledger(contact(KHALED, "خالد")),
-              listOf(DeviceContact("منى", listOf("+972 59 912 3456"))),
           )
       val model = model(source)
 
-      val searched = model.search("منى")
-      model.pickPhoneContact(searched.contactRows.single())
+      model.pickOnceLoaded(DeviceContact("منى", listOf("+972 59 912 3456")))
       val step = model.state.value
       assertEquals(QuickAddStep.NEW_PERSON, step.step)
       assertEquals("منى", step.newPerson?.name)
@@ -187,6 +182,8 @@ class QuickAddNewPersonTest {
       model.confirmNewPerson(context)
       model.press("5")
       model.save(context)
+      // «تراجع» exists only on the done step, which shows once the hold returned.
+      model.state.first { it.step == QuickAddStep.DONE }
       model.undo(context)
       delay(300)
 
@@ -219,11 +216,10 @@ class QuickAddNewPersonTest {
           FakeSource(
               jobs,
               ledger(contact(KHALED, "خالد", "0599123456")),
-              listOf(DeviceContact("أبو محمد", listOf("0599123456"))),
           )
       val model = model(source)
 
-      model.pickPhoneContact(model.search("محمد").contactRows.single())
+      model.pickOnceLoaded(DeviceContact("أبو محمد", listOf("0599123456")))
 
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
       assertEquals(KHALED, model.state.value.selected?.id)
@@ -239,11 +235,10 @@ class QuickAddNewPersonTest {
           FakeSource(
               jobs,
               ledger().copy(archivedContacts = listOf(archived)),
-              listOf(DeviceContact("سارة", listOf("0599888777"))),
           )
       val model = model(source)
 
-      model.pickPhoneContact(model.search("سارة").contactRows.single())
+      model.pickOnceLoaded(DeviceContact("سارة", listOf("0599888777")))
 
       assertTrue(model.state.value.openTrash)
       assertEquals(QuickAddStep.PICKER, model.state.value.step)
@@ -293,29 +288,6 @@ class QuickAddNewPersonTest {
       noLease.onQueryChange("منى")
       noLease.addNewPerson()
       assertEquals(QuickAddStep.NEW_PERSON, noLease.state.value.step)
-    }
-  }
-
-  @Test
-  fun withoutThePermissionThePhoneContactsAreNotRead() = runBlocking {
-    withTimeout(5_000) {
-      val model =
-          model(
-              FakeSource(
-                  jobs,
-                  ledger(),
-                  listOf(DeviceContact("منى", listOf("0599123456"))),
-                  granted = false,
-              )
-          )
-      model.state.first { it.loaded }
-      model.onQueryChange("منى")
-
-      assertEquals(ContactPermission.NotAsked, model.state.value.contactsPermission)
-      assertTrue(model.state.value.contactRows.isEmpty())
-
-      model.onContactsPermission(granted = true)
-      assertNotNull(model.state.first { it.contactRows.isNotEmpty() })
     }
   }
 

@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app installs its own update (team and debug only, BuildConfig.SELF_UPDATE): this
+         permission only unlocks the system's «install unknown apps» page and its confirmation
+         sheet. Never a silent install. Play forbids it, so release has none. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application>
+        <!-- The installer's result: confirmed, done, cancelled or failed. Addressed by the app's own
+             pending intent, so it stays unexported. -->
+        <receiver
+            android:name="com.sadad.app.feature.updates.UpdateInstallReceiver"
+            android:exported="false" />
         <!-- Debug-only crash source for ticket 77. Exported so the shell can reach it with
              `adb shell am broadcast -n com.sadad.app.debug/com.sadad.app.crash.SentryProbe`:
              the shell runs as uid 2000 and a non-exported receiver rejects it with "not exported

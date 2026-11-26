@@ -2,14 +2,11 @@ package com.sadad.app.feature.quickadd
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
 import com.sadad.app.feature.auth.MainDispatcherRule
-import com.sadad.app.feature.contactpicker.ContactPickerRows
-import com.sadad.app.feature.contactpicker.ContactRow
-import com.sadad.app.feature.contactpicker.DeviceContact
-import com.sadad.app.feature.contactpicker.DeviceContacts
 import com.sadad.app.ui.UiTestApplication
 import com.sadad.ledger.Cents
 import com.sadad.ledger.CommandType
@@ -23,16 +20,18 @@ import com.sadad.ledger.LedgerView
 import com.sadad.ledger.PaymentCreate
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -40,6 +39,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -68,36 +68,153 @@ class QuickAddFakeSourceTest {
   @get:Rule val main = MainDispatcherRule()
   private val context: Context = ApplicationProvider.getApplicationContext()
   private val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+  private val viewModels = mutableListOf<QuickAddViewModel>()
 
   @After
   fun tearDown() {
+    runBlocking { stopViewModels() }
     jobs.cancel()
+  }
+
+  /** Cancels each view model and waits until its collectors have ended, before Main changes. */
+  private suspend fun stopViewModels() {
+    viewModels.forEach { vm -> vm.viewModelScope.coroutineContext[Job]?.cancelAndJoin() }
   }
 
   private class FakeSource(val jobs: CoroutineScope, summaries: List<ContactSummaryEntity>) :
       QuickAddSource {
-    val appended = CompletableDeferred<List<LedgerCommand>>()
+    val store = HoldingStore(jobs)
+    val appended
+      get() = store.appended
+
     override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
     override val summaryReady = MutableStateFlow(true)
     override val permissions = flowOf(emptyMap<String, Boolean>())
     override val blocked = flowOf(false)
 
-    override fun open(): QuickAddStore =
-        object : QuickAddStore {
-          override val jobs = this@FakeSource.jobs
+    override fun open(): QuickAddStore = store
+  }
 
-          override fun origin() = Events.origin
+  /**
+   * Records what the flow does with the outbox: [hold] writes, [release] queues ([appended]
+   * completes with the released commands, once), [discard] is the undo.
+   */
+  private class HoldingStore(override val jobs: CoroutineScope) : QuickAddStore {
+    val holds = ConcurrentLinkedQueue<List<LedgerCommand>>()
+    val releases = ConcurrentLinkedQueue<List<String>>()
+    val discards = ConcurrentLinkedQueue<List<String>>()
+    val appended = CompletableDeferred<List<LedgerCommand>>()
+    @Volatile var holdError: Exception? = null
 
-          override fun isOnline() = true
+    override fun origin() = Events.origin
 
-          override suspend fun append(commands: List<LedgerCommand>) {
-            appended.complete(commands)
-          }
+    override fun isOnline() = true
+
+    override suspend fun hold(commands: List<LedgerCommand>) {
+      holdError?.let { throw it }
+      holds += commands
+    }
+
+    override suspend fun release(operationIds: List<String>) {
+      releases += operationIds
+      appended.complete(holds.flatten().filter { it.operationId in operationIds })
+    }
+
+    override suspend fun discard(operationIds: List<String>) {
+      discards += operationIds
+    }
+  }
+
+  /** Types 85 for خالد and saves. */
+  private suspend fun savedDebt(undoWindowMs: Long = 100): Pair<FakeSource, QuickAddViewModel> {
+    val source =
+        FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
+    val model =
+        QuickAddViewModel(source, null, false, SavedStateHandle(), undoWindowMs).also {
+          viewModels.add(it)
         }
+    model.state.first { it.loaded }
+    model.pick(C1)
+    model.press("8")
+    model.press("5")
+    model.save(context)
+    return source to model
+  }
+
+  @Test
+  fun theSaveHoldsTheEntryBeforeTheDoneStepAndTheWindowsEndReleasesItOnce() = runBlocking {
+    withTimeout(5_000) {
+      val (source, model) = savedDebt()
+      model.state.first { it.step == QuickAddStep.DONE }
+      val held = source.store.holds.single()
+      assertEquals("the done step shows only once the hold returned", 1, held.size)
+
+      val released = source.appended.await()
+      assertEquals(held, released)
+      model.leave(context)
+      Thread.sleep(200)
+      assertEquals(listOf(held.map { it.operationId }), source.store.releases.toList())
+      assertTrue(source.store.discards.isEmpty())
+    }
+  }
+
+  @Test
+  fun undoInsideTheWindowDiscardsTheHeldRowsAndGoesBackToTheAmount() = runBlocking {
+    withTimeout(5_000) {
+      val (source, model) = savedDebt(undoWindowMs = 5_000)
+      model.state.first { it.step == QuickAddStep.DONE }
+      val ids = source.store.holds.single().map { it.operationId }
+
+      model.undo(context)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+      val deadline = System.currentTimeMillis() + 3_000
+      while (source.store.discards.isEmpty() && System.currentTimeMillis() < deadline) delay(10)
+      assertEquals(listOf(ids), source.store.discards.toList())
+      assertTrue(source.store.releases.isEmpty())
+    }
+  }
+
+  @Test
+  fun leaveAndAnotherInsideTheWindowReleaseAtOnce() = runBlocking {
+    withTimeout(5_000) {
+      val (left, leaving) = savedDebt(undoWindowMs = 60_000)
+      leaving.state.first { it.step == QuickAddStep.DONE }
+      leaving.leave(context)
+      assertEquals(left.store.holds.single(), left.appended.await())
+
+      val (again, another) = savedDebt(undoWindowMs = 60_000)
+      another.state.first { it.step == QuickAddStep.DONE }
+      another.another(context)
+      assertEquals(again.store.holds.single(), again.appended.await())
+      assertEquals(QuickAddStep.PICKER, another.state.value.step)
+    }
+  }
+
+  @Test
+  fun aFailedHoldStaysOnTheAmountWithTheFailedTextAndStartsNoWindow() = runBlocking {
+    withTimeout(5_000) {
+      val source =
+          FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
+      source.store.holdError = IllegalStateException("disk full")
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+      model.press("8")
+      model.press("5")
+
+      model.save(context)
+      val failed = model.state.first { it.error != null }
+      assertEquals(context.getString(com.sadad.app.R.string.quickadd_failed), failed.error)
+      Thread.sleep(300)
+      assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
+      assertTrue(source.store.releases.isEmpty())
+    }
   }
 
   private fun model(source: QuickAddSource, contactId: String? = null) =
-      QuickAddViewModel(source, contactId, false, SavedStateHandle(), undoWindowMs = 100)
+      QuickAddViewModel(source, contactId, false, SavedStateHandle(), undoWindowMs = 100).also {
+        viewModels.add(it)
+      }
 
   @Test
   fun thePickerListsTheSourcesPeopleAndTheRouteContactStartsAtTheAmount() = runBlocking {
@@ -141,6 +258,37 @@ class QuickAddFakeSourceTest {
       assertEquals(Direction.RECEIVABLE, payload.direction)
       assertEquals(Cents(8_500), payload.amountCents)
       assertEquals(C1, payload.contactId)
+    }
+  }
+
+  @Test
+  fun thePlusKeyAddsAmountsUpAndDeleteReopensTheLastOne() = runBlocking {
+    withTimeout(5_000) {
+      val source =
+          FakeSource(jobs, listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)))
+      val model = model(source)
+      model.state.first { it.loaded }
+      model.pick(C1)
+
+      model.press("+") // nothing typed: adds nothing
+      model.press("1")
+      model.press("2")
+      model.press("+")
+      model.press("3")
+      model.press("0")
+      model.press(".")
+      model.press("5")
+      assertEquals(listOf("12"), model.state.value.terms)
+      assertEquals(Cents(4_250), model.state.value.total)
+
+      model.press("+")
+      model.delete() // nothing typed: reopens 30.5
+      assertEquals(listOf("12"), model.state.value.terms)
+      assertEquals("30.5", model.state.value.amount)
+
+      model.save(context)
+      val payload = source.appended.await().single().payload() as DebtCreate
+      assertEquals(Cents(4_250), payload.amountCents)
     }
   }
 
@@ -270,16 +418,11 @@ class QuickAddFakeSourceTest {
       Dispatchers.setMain(testMain)
       try {
         val personThreads = ConcurrentLinkedQueue<String>()
-        val contactThreads = ConcurrentLinkedQueue<String>()
         val personSearch: (List<QuickAddPerson>, String) -> List<QuickAddPerson> =
             { people, query ->
               personThreads.add(Thread.currentThread().name)
               PersonSearch.search(people, query)
             }
-        val contactSearch: (List<ContactRow>, String) -> List<ContactRow> = { rows, query ->
-          contactThreads.add(Thread.currentThread().name)
-          ContactPickerRows.search(rows, query)
-        }
         val source =
             SummarySource(
                 jobs,
@@ -290,20 +433,19 @@ class QuickAddFakeSourceTest {
             )
         val model =
             QuickAddViewModel(
-                source,
-                null,
-                false,
-                SavedStateHandle(),
-                100,
-                personSearch,
-                contactSearch,
-            )
+                    source,
+                    null,
+                    false,
+                    SavedStateHandle(),
+                    100,
+                    personSearch,
+                )
+                .also { viewModels.add(it) }
         model.state.first { it.loaded && it.people.size == 2 }
         model.onQueryChange("سا")
         model.state.first { it.people.map { person -> person.name } == listOf("سارة") }
 
         personThreads.clear()
-        contactThreads.clear()
         source.summaries.value =
             listOf(
                 summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 2),
@@ -315,69 +457,17 @@ class QuickAddFakeSourceTest {
 
         assertEquals(listOf("سامي", "سارة"), updated.people.map { it.name })
         assertTrue("the projection searched: $personThreads", personThreads.isNotEmpty())
-        assertTrue("the projection searched contacts: $contactThreads", contactThreads.isNotEmpty())
         assertTrue(
             "no person search on the main thread: $personThreads",
             personThreads.none { it.startsWith("TestMain") },
         )
-        assertTrue(
-            "no contact search on the main thread: $contactThreads",
-            contactThreads.none { it.startsWith("TestMain") },
-        )
       } finally {
+        // Stop the view model while its Main still runs: after resetMain, Main is Robolectric's
+        // paused looper, and a join from tearDown would wait on it forever.
+        withContext(NonCancellable) { stopViewModels() }
         Dispatchers.resetMain()
         executor.shutdownNow()
       }
-    }
-  }
-
-  @Test
-  fun deviceContactsReadDuringTheProjectionsSearchAreNotOverwrittenByItsOlderRows() = runBlocking {
-    withTimeout(5_000) {
-      // The projection searches the empty contact rows; the device contacts land before it applies.
-      val projectionSearching = CompletableDeferred<Unit>()
-      val contactsShown = CountDownLatch(1)
-      // Only the projection searches people before they are loaded into the ViewModel.
-      val projecting = ThreadLocal.withInitial { false }
-      val personSearch: (List<QuickAddPerson>, String) -> List<QuickAddPerson> = { people, query ->
-        projecting.set(people.isNotEmpty())
-        PersonSearch.search(people, query)
-      }
-      val contactSearch: (List<ContactRow>, String) -> List<ContactRow> = { rows, query ->
-        if (projecting.get() && rows.isEmpty() && projectionSearching.complete(Unit)) {
-          contactsShown.await(5, TimeUnit.SECONDS)
-        }
-        ContactPickerRows.search(rows, query)
-      }
-      val device =
-          object : DeviceContacts {
-            override suspend fun list(): List<DeviceContact> {
-              projectionSearching.await()
-              return listOf(DeviceContact("نمر", listOf("0599123456")))
-            }
-          }
-      val source =
-          SummarySource(
-              jobs,
-              listOf(summary(C1, "خالد", net = 0, openReceivable = 0, atHours = 1)),
-              device = device,
-          )
-      val model =
-          QuickAddViewModel(
-              source,
-              null,
-              false,
-              SavedStateHandle(),
-              100,
-              personSearch,
-              contactSearch,
-          )
-      model.state.first { it.contactRows.isNotEmpty() }
-      contactsShown.countDown()
-
-      val loaded = model.state.first { it.loaded }
-
-      assertTrue("the device contacts stay listed", loaded.contactRows.isNotEmpty())
     }
   }
 
@@ -406,14 +496,10 @@ class QuickAddFakeSourceTest {
       summaries: List<ContactSummaryEntity>,
       val person: LedgerView? = null,
       val personGate: CompletableDeferred<Unit>? = null,
-      val device: DeviceContacts? = null,
   ) : QuickAddSource {
-    override val contacts: DeviceContacts
-      get() = device ?: super.contacts
-
-    override fun contactsGranted() = device != null
-
-    val appended = CompletableDeferred<List<LedgerCommand>>()
+    val store = HoldingStore(jobs)
+    val appended
+      get() = store.appended
 
     override val summaries = MutableStateFlow<List<ContactSummaryEntity>?>(summaries)
     override val summaryReady = MutableStateFlow(true)
@@ -426,18 +512,7 @@ class QuickAddFakeSourceTest {
           emit(person)
         }
 
-    override fun open(): QuickAddStore =
-        object : QuickAddStore {
-          override val jobs = this@SummarySource.jobs
-
-          override fun origin() = Events.origin
-
-          override fun isOnline() = true
-
-          override suspend fun append(commands: List<LedgerCommand>) {
-            appended.complete(commands)
-          }
-        }
+    override fun open(): QuickAddStore = store
   }
 
   private fun summary(

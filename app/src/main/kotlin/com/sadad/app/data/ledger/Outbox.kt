@@ -22,6 +22,11 @@ import kotlinx.coroutines.flow.map
 
 /** The outbox row states; [column] is the text Room stores. */
 enum class OutboxState(val column: String) {
+  /**
+   * Written by quick add's save but still inside its undo window: not sent, not projected, not
+   * counted. It becomes [QUEUED] when the window ends, or when the store next opens.
+   */
+  HELD("held"),
   QUEUED("queued"),
   ACCEPTED("accepted"),
   REJECTED("rejected"),
@@ -80,6 +85,28 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
     if (commands.isEmpty()) return
     dao.insertAll(commands.map { it.toEntity() })
   }
+
+  /**
+   * Writes every command [OutboxState.HELD], in one transaction: stored, so a process death cannot
+   * lose them, but invisible to sync and the views until [release].
+   */
+  suspend fun hold(commands: List<LedgerCommand>) {
+    if (commands.isEmpty()) return
+    dao.insertAll(commands.map { it.toEntity(OutboxState.HELD) })
+  }
+
+  /** Queues the held rows [operationIds] names; their order stays the order they were held in. */
+  suspend fun release(operationIds: List<String>) {
+    if (operationIds.isNotEmpty()) dao.releaseHeld(operationIds)
+  }
+
+  /** Deletes the held rows [operationIds] names: the undo of a [hold]. */
+  suspend fun discardHeld(operationIds: List<String>) {
+    if (operationIds.isNotEmpty()) dao.deleteHeld(operationIds)
+  }
+
+  /** Queues every held row, the ones a process death left behind; returns how many. */
+  suspend fun releaseAllHeld(): Int = dao.releaseAllHeld()
 
   /** The next queued commands, oldest first, decoded for a sync batch. */
   suspend fun queued(limit: Int = OperationsRequest.MAX_BATCH): List<LedgerCommand> =
@@ -230,12 +257,12 @@ class Outbox(private val dao: OutboxDao, private val dataKey: SecretKey) {
         )
       }
 
-  private fun LedgerCommand.toEntity(): OutboxEntity =
+  private fun LedgerCommand.toEntity(state: OutboxState = OutboxState.QUEUED): OutboxEntity =
       OutboxEntity(
           operationId = operationId,
           entityId = entityId,
           type = type.wireName,
-          state = OutboxState.QUEUED.column,
+          state = state.column,
           code = null,
           createdAt = ServerTime.parse(createdAt).toEpochMilli(),
           recoveryPermit = null,

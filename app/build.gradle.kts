@@ -92,6 +92,8 @@ android {
     buildConfigField("String", "LEASE_PUBLIC_KEY_Y", quoted(leaseKeyY))
     buildConfigField("String", "SENTRY_DSN", quoted(sentryDsn))
     buildConfigField("String", "UPDATE_REPO", quoted(updateRepo))
+    // The in-app updater: team builds only. Play forbids an app updating itself outside Play.
+    buildConfigField("boolean", "SELF_UPDATE", "false")
     manifestPlaceholders["allowCleartextTraffic"] = "false"
   }
   signingConfigs {
@@ -113,6 +115,8 @@ android {
   buildTypes {
     debug {
       applicationIdSuffix = ".debug"
+      // `team` copies this through initWith; release and benchmark keep the default false.
+      buildConfigField("boolean", "SELF_UPDATE", "true")
     }
     release {
       manifestPlaceholders["allowCleartextTraffic"] = "false"
@@ -168,6 +172,12 @@ val contract = rootProject.layout.projectDirectory.dir("contract")
 tasks.withType<Test>().configureEach {
   inputs.dir(contract).withPropertyName("contract").withPathSensitivity(PathSensitivity.RELATIVE)
   systemProperty("sadad.fixtures", contract.dir("fixtures").asFile.absolutePath)
+  // Robolectric fetches android-all at test time; Central rate-limits CI (429), so it uses Google's
+  // Maven Central mirror, the same one settings.gradle.kts uses for org.robolectric.
+  systemProperty(
+      "robolectric.dependency.repo.url",
+      "https://maven-central.storage-download.googleapis.com/maven2/",
+  )
   // The migration test builds a v1 database from Room's exported schema, so the JSON Room wrote
   // reaches the test the same way: a path property, not a copy in the build directory.
   val schemas = layout.projectDirectory.dir("schemas")
@@ -209,6 +219,7 @@ dependencies {
   implementation(libs.compose.ui.tooling.preview)
   implementation(libs.activity.compose)
   implementation(libs.core.ktx)
+  implementation(libs.core.splashscreen)
   implementation(libs.biometric)
   // MainActivity uses FragmentActivity; biometric's transitive 1.2.5 rejects Activity Result codes.
   implementation(libs.fragment)
@@ -231,6 +242,9 @@ dependencies {
 
   debugImplementation(libs.compose.ui.tooling)
   debugImplementation(libs.compose.ui.test.manifest)
+  // Names every composable in system traces, so a stall is traced to a function. Debug builds only.
+  debugImplementation("androidx.compose.runtime:runtime-tracing")
+  debugImplementation("androidx.tracing:tracing-perfetto-binary:1.0.1")
 
   testImplementation(libs.junit)
   testImplementation(libs.ext.junit)

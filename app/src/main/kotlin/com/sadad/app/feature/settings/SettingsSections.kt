@@ -197,7 +197,7 @@ private fun StorePhoto(storeUserId: String?, onOpenPhoto: () -> Unit) {
   Box(
       modifier =
           Modifier.size(48.dp)
-              .clip(RoundedCornerShape(16.dp))
+              .clip(RoundedCornerShape(12.dp))
               .background(p.primary)
               .clickable(enabled = storeUserId != null, role = Role.Button) {
                 if (storeUserId != null) onOpenPhoto()

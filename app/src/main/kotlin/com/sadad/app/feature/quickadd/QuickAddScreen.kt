@@ -62,7 +62,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -75,11 +74,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import com.sadad.app.R
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceTone
@@ -93,10 +94,9 @@ import com.sadad.app.ui.components.SadadButtonStyle
 import com.sadad.app.ui.components.SadadKeypad
 import com.sadad.app.ui.components.SadadTextField
 import com.sadad.app.ui.components.balanceWord
-import com.sadad.app.ui.components.parseCents
+import com.sadad.app.ui.components.formatAmount
 import com.sadad.app.ui.components.sadadPageBackground
 import com.sadad.app.ui.theme.sadadPalette
-import com.sadad.ledger.Cents
 import com.sadad.ledger.ContactKind
 import com.sadad.ledger.PaymentMethod
 import java.time.Instant
@@ -118,6 +118,7 @@ object QuickAddTags {
   const val NOTE_CHIP = "quickadd:note-chip"
   const val DUE_DIALOG = "quickadd:due-dialog"
   const val NOTE_DIALOG = "quickadd:note-dialog"
+  const val NOTE_EDIT_ITEMS = "quickadd:note-edit-items"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -127,11 +128,18 @@ object QuickAddTags {
   const val UNDO = "quickadd:undo"
   const val ANOTHER = "quickadd:another"
   const val ANOMALY = "quickadd:anomaly"
+  const val RESTART = "quickadd:restart"
 
   fun person(id: String) = "quickadd:person-$id"
 
   fun key(label: String) = "quickadd:key-$label"
 }
+
+/**
+ * The key the bottom bar's «+» sets on Quick Add's own back stack entry: start a new entry here
+ * instead of navigating, so the back stack is unchanged.
+ */
+const val QUICK_ADD_RESTART = "quickadd:restart-signal"
 
 /** Records for a saved person, or for a new one created inside the flow with their first debt. */
 @Composable
@@ -142,10 +150,25 @@ fun QuickAddScreen(
     onOpenContact: (String) -> Unit,
     onOpenTrash: () -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
+    frequentItems: FrequentItems = FrequentItems.get(LocalContext.current),
+    /** This screen's back stack entry's handle, where the bottom bar sets [QUICK_ADD_RESTART]. */
+    restartSignal: SavedStateHandle? =
+        (LocalViewModelStoreOwner.current as? NavBackStackEntry)?.savedStateHandle,
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
   val p = sadadPalette
+  if (restartSignal != null) {
+    val restart by
+        remember(restartSignal) { restartSignal.getStateFlow(QUICK_ADD_RESTART, false) }
+            .collectAsState()
+    LaunchedEffect(restart) {
+      if (restart) {
+        restartSignal[QUICK_ADD_RESTART] = false
+        viewModel.requestRestart(context)
+      }
+    }
+  }
   // A picked phone number of someone in the archive: they are restored from the trash, not here.
   LaunchedEffect(state.openTrash) {
     if (state.openTrash) {
@@ -159,10 +182,16 @@ fun QuickAddScreen(
       QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose)
       QuickAddStep.NEW_PERSON -> NewPersonStep(state, viewModel)
       QuickAddStep.AMOUNT ->
-          AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
+          AmountStep(
+              state,
+              viewModel,
+              context,
+              onClose,
+              fromContact = contactId != null,
+              frequentItems = frequentItems,
+          )
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
-    PhoneNumberChooser(state, viewModel)
     val anomaly = state.anomaly
     if (anomaly != null) {
       AlertDialog(
@@ -200,6 +229,24 @@ fun QuickAddScreen(
           },
       )
     }
+    if (state.restartAsk) {
+      AlertDialog(
+          modifier = Modifier.testTag(QuickAddTags.RESTART),
+          onDismissRequest = viewModel::dismissRestart,
+          containerColor = p.card,
+          title = { Text(stringResource(R.string.quickadd_restart_title)) },
+          confirmButton = {
+            TextButton(onClick = { viewModel.confirmRestart(context) }) {
+              Text(stringResource(R.string.quickadd_restart_confirm))
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = viewModel::dismissRestart) {
+              Text(stringResource(R.string.quickadd_restart_keep))
+            }
+          },
+      )
+    }
   }
 }
 
@@ -211,7 +258,7 @@ private fun quickAddViewModel(contactId: String?, payment: Boolean): QuickAddVie
           viewModelFactory {
             initializer {
               QuickAddViewModel(
-                  graph.quickAddSource(this[APPLICATION_KEY]),
+                  graph.quickAddSource(),
                   contactId,
                   payment,
                   createSavedStateHandle(),
@@ -255,6 +302,8 @@ private fun PickerStep(
         onQuery = model::onQueryChange,
         onClear = model::clearQuery,
     )
+    // A new person is someone to record a debt for; the payment flow has nobody new to pay.
+    if (!state.payment) FromContactsRow(model)
     if (state.blocked) BlockedCard()
     state.error?.let {
       Text(
@@ -291,7 +340,6 @@ private fun PickerStep(
       // A new person is someone to record a debt for; the payment flow has nobody new to pay.
       if (state.query.isNotBlank() && !state.payment) {
         item { AddNewRow(name = state.query.trim(), onClick = model::addNewPerson) }
-        phoneContacts(state, model)
       }
     }
   }
@@ -490,6 +538,7 @@ private fun AmountStep(
     context: Context,
     onClose: () -> Unit,
     fromContact: Boolean,
+    frequentItems: FrequentItems,
 ) {
   val p = sadadPalette
   var choosingDue by rememberSaveable { mutableStateOf(false) }
@@ -559,15 +608,32 @@ private fun AmountStep(
           Text(SHEKEL, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, color = p.text)
           Spacer(Modifier.width(8.dp))
           Text(
-              text = typedAmountLabel(state.amount),
+              text =
+                  if (state.terms.isEmpty()) typedAmountLabel(state.amount)
+                  else formatAmount(state.total),
               fontSize = 52.sp,
               fontWeight = FontWeight.SemiBold,
-              color = if (state.amount.isEmpty()) Ghost else p.text,
+              color = if (state.terms.isEmpty() && state.amount.isEmpty()) Ghost else p.text,
               modifier = Modifier.testTag(QuickAddTags.AMOUNT),
           )
         }
       }
-      val amount = parseCents(state.amount) ?: Cents.ZERO
+      if (state.terms.isNotEmpty()) {
+        // «12 + 30 +»: what the total is made of, read left to right like the amount.
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+          Text(
+              text =
+                  (if (state.amount.isEmpty()) state.terms else state.terms + state.amount)
+                      .joinToString(" + ")
+                      .let { if (state.amount.isEmpty()) "$it +" else it },
+              fontSize = 16.sp,
+              color = p.muted,
+              maxLines = 1,
+              modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+          )
+        }
+      }
+      val amount = state.total
       val over = state.payment && amount > state.overBalance
       Surface(
           color = if (over) p.creditSoft else Color.Transparent,
@@ -628,7 +694,7 @@ private fun AmountStep(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-      Keypad(onKey = model::press, onDelete = model::delete)
+      Keypad(onKey = model::press, onLongKey = { model.press(".") }, onDelete = model::delete)
     }
 
     if (choosingDue) {
@@ -644,6 +710,7 @@ private fun AmountStep(
     if (writingNote) {
       NoteDialog(
           current = state.note,
+          frequentItems = frequentItems,
           onSave = {
             model.onNoteChange(it)
             writingNote = false
@@ -741,18 +808,20 @@ private fun ModeCell(
 
 /** The shared keypad, tagged per key as the quick add tests find them. */
 @Composable
-private fun Keypad(onKey: (String) -> Unit, onDelete: () -> Unit) {
-  val dot = stringResource(R.string.quickadd_key_dot)
+private fun Keypad(onKey: (String) -> Unit, onLongKey: (String) -> Unit, onDelete: () -> Unit) {
+  val plus = stringResource(R.string.quickadd_key_plus)
   val keys =
       listOf("1", "2", "3", "4", "5", "6", "7", "8", "9").map { KeypadKey.Char(it) } +
           listOf(
-              KeypadKey.Char(".", dot),
+              // Tap adds the typed amount to the total; a long press types the decimal mark.
+              KeypadKey.Char("+", plus, longLabel = "."),
               KeypadKey.Char("0"),
               KeypadKey.Delete(stringResource(R.string.quickadd_key_delete)),
           )
   SadadKeypad(
       keys = keys,
       onChar = onKey,
+      onLongChar = onLongKey,
       onDelete = onDelete,
       modifier = Modifier.testTag(QuickAddTags.KEYPAD),
       tagFor = { key ->
@@ -817,40 +886,72 @@ private fun DueDateDialog(current: String?, onPick: (String?) -> Unit, onDismiss
       modifier = Modifier.testTag(QuickAddTags.DUE_DIALOG),
       onDismissRequest = onDismiss,
       confirmButton = {
-        TextButton(
-            enabled = picked != null,
-            onClick = {
-              if (picked != null) {
-                onPick(Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate().toString())
-              }
-            },
-        ) {
-          Text(stringResource(R.string.quickadd_due_confirm))
+        RightToLeft {
+          TextButton(
+              enabled = picked != null,
+              onClick = {
+                if (picked != null) {
+                  onPick(
+                      Instant.ofEpochMilli(picked).atZone(ZoneOffset.UTC).toLocalDate().toString()
+                  )
+                }
+              },
+          ) {
+            Text(stringResource(R.string.quickadd_due_confirm))
+          }
         }
       },
       dismissButton = {
-        Row {
-          if (current != null) {
-            TextButton(onClick = { onPick(null) }) {
-              Text(stringResource(R.string.quickadd_due_clear))
+        RightToLeft {
+          Row {
+            if (current != null) {
+              TextButton(onClick = { onPick(null) }) {
+                Text(stringResource(R.string.quickadd_due_clear))
+              }
             }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
           }
-          TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
         }
       },
   ) {
-    DatePicker(state = state)
+    RightToLeft { DatePicker(state = state) }
   }
+}
+
+/**
+ * A dialog is its own window: its first frame takes the device's direction, and the page's right to
+ * left reaches it one frame later, so the picker drew left to right for a moment. Set here, the
+ * direction is right from the first frame.
+ */
+@Composable
+private fun RightToLeft(content: @Composable () -> Unit) {
+  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl, content = content)
 }
 
 /** «ملاحظة»: a line saying what the entry was for, kept with it in the ledger. */
 @Composable
-private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+private fun NoteDialog(
+    current: String,
+    frequentItems: FrequentItems,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
   var text by remember { mutableStateOf(current) }
-  val suggestions =
-      stringArrayResource(R.array.quickadd_note_suggestions)
-          .map { it.trim() }
-          .filter { it.isNotEmpty() }
+  var editing by remember { mutableStateOf(false) }
+  // Null until the file is read: the editor must not open on an empty list and save it.
+  val loaded by frequentItems.items.collectAsState(null)
+  val suggestions = loaded.orEmpty()
+  if (editing && loaded != null) {
+    FrequentItemsEditor(
+        initial = suggestions,
+        onSave = {
+          frequentItems.save(it)
+          editing = false
+        },
+        onDismiss = { editing = false },
+    )
+    return
+  }
   AlertDialog(
       modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
@@ -886,7 +987,16 @@ private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () 
         }
       },
       dismissButton = {
-        TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        Row {
+          TextButton(
+              enabled = loaded != null,
+              onClick = { editing = true },
+              modifier = Modifier.testTag(QuickAddTags.NOTE_EDIT_ITEMS),
+          ) {
+            Text(stringResource(R.string.quickadd_items_edit))
+          }
+          TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        }
       },
   )
 }
@@ -1005,26 +1115,16 @@ private fun DoneStep(
         onClick = { model.another(context) },
         modifier = Modifier.fillMaxWidth().height(56.dp).testTag(QuickAddTags.ANOTHER),
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-      if (person != null) {
-        SadadButton(
-            text = stringResource(R.string.quickadd_open_contact, firstWord(person.name)),
-            onClick = {
-              model.leave(context)
-              onOpenContact(person.id)
-            },
-            style = SadadButtonStyle.SOFT,
-            modifier = Modifier.weight(1f).height(48.dp),
-        )
-      }
+    // One way on besides «تسجيل آخر»: the bar below already leads home.
+    if (person != null) {
       SadadButton(
-          text = stringResource(R.string.quickadd_home),
+          text = stringResource(R.string.quickadd_open_contact, firstWord(person.name)),
           onClick = {
             model.leave(context)
-            onClose()
+            onOpenContact(person.id)
           },
           style = SadadButtonStyle.SOFT,
-          modifier = Modifier.weight(1f).height(48.dp),
+          modifier = Modifier.fillMaxWidth().height(48.dp),
       )
     }
   }
@@ -1166,14 +1266,14 @@ private fun BackGlyph(color: Color) {
     val stroke = this.size.minDimension * 0.09f
     drawLine(
         color,
-        Offset(this.size.width * 0.62f, this.size.height * 0.22f),
-        Offset(this.size.width * 0.36f, this.size.height * 0.5f),
+        Offset(this.size.width * 0.38f, this.size.height * 0.22f),
+        Offset(this.size.width * 0.64f, this.size.height * 0.5f),
         stroke,
     )
     drawLine(
         color,
-        Offset(this.size.width * 0.36f, this.size.height * 0.5f),
-        Offset(this.size.width * 0.62f, this.size.height * 0.78f),
+        Offset(this.size.width * 0.64f, this.size.height * 0.5f),
+        Offset(this.size.width * 0.38f, this.size.height * 0.78f),
         stroke,
     )
   }

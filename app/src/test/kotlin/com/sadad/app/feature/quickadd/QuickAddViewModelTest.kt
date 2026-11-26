@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.sadad.app.data.db.ContactSummaryEntity
 import com.sadad.app.data.db.Events
+import com.sadad.app.data.ledger.OutboxState
 import com.sadad.app.data.session.StoredInstallation
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.testing.TestGraph
@@ -122,7 +123,11 @@ class QuickAddViewModelTest {
       // The save waits off the main thread for the person's own view when it has not landed yet.
       model.state.first { it.step == QuickAddStep.DONE }
       assertEquals("سجّل ₪85 على خالد", model.state.value.done?.sentence)
-      assertTrue("the undo window holds the command", store.outbox.snapshot().isEmpty())
+      assertEquals(
+          "the undo window holds the command, stored but not queued",
+          listOf(OutboxState.HELD),
+          store.outbox.snapshot().map { it.state },
+      )
 
       store.awaitOutbox(1)
 
@@ -174,6 +179,47 @@ class QuickAddViewModelTest {
       assertEquals(contact, state.selected?.id)
       assertEquals(QuickAddStep.AMOUNT, state.step)
       assertEquals("خالد", state.personName)
+    }
+  }
+
+  /** Ticket 181: the app dies inside the undo window; the next open records the entry. */
+  @Test
+  fun anEntryHeldWhenTheStoreClosesIsQueuedAndSyncedWhenItOpensAgain() = runTest {
+    val asked = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    val recorder =
+        object : com.sadad.app.data.sync.SyncScheduling {
+          override fun syncNow(storeUserId: String) {
+            asked += storeUserId
+          }
+
+          override fun schedulePeriodic(storeUserId: String) {}
+
+          override fun cancel(storeUserId: String) {}
+        }
+    TestGraph.signedIn(sync = com.sadad.app.testing.SyncSettings(scheduler = recorder)).use {
+        fixture ->
+      val store = checkNotNull(fixture.graph.quickAddSource().open())
+      val entry = Commands.contactCreate(Events.origin, Events.at(0), name = "خالد")
+      store.hold(listOf(entry))
+      asked.clear()
+
+      // The crash: the store closes with the row still held and nothing released it.
+      fixture.graph.closeStore()
+      fixture.graph.startRoute()
+
+      val deadline = System.currentTimeMillis() + 5_000
+      suspend fun reopened() = fixture.graph.current.value?.outbox?.snapshot().orEmpty()
+      while (
+          (reopened().none { it.state == OutboxState.QUEUED } || asked.isEmpty()) &&
+              System.currentTimeMillis() < deadline
+      ) {
+        Thread.sleep(10)
+      }
+      assertEquals(
+          listOf(entry.operationId to OutboxState.QUEUED),
+          reopened().map { it.operationId to it.state },
+      )
+      assertTrue("the reopen asks for a sync", com.sadad.app.testing.STORE_A in asked)
     }
   }
 
@@ -601,6 +647,11 @@ class QuickAddViewModelTest {
       model.undo(context)
       assertEquals(QuickAddStep.AMOUNT, model.state.value.step)
 
+      // The undo deletes the held debt off the main thread.
+      val deadline = System.currentTimeMillis() + 5_000
+      while (store.outbox.snapshot().size > 1 && System.currentTimeMillis() < deadline) {
+        Thread.sleep(10)
+      }
       assertEquals(CommandType.CONTACT_CREATE, store.outbox.snapshot().single().type)
       // Undo removes only the debt; the separately saved person remains queued.
       model.save(context)
@@ -699,7 +750,11 @@ class QuickAddViewModelTest {
 
                 override fun isOnline() = true
 
-                override suspend fun append(commands: List<com.sadad.ledger.LedgerCommand>) {}
+                override suspend fun hold(commands: List<com.sadad.ledger.LedgerCommand>) {}
+
+                override suspend fun release(operationIds: List<String>) {}
+
+                override suspend fun discard(operationIds: List<String>) {}
               }
         }
     try {
@@ -824,12 +879,17 @@ class QuickAddViewModelTest {
             closeWithStore(it.viewModelScope)
           }
 
-  /** The outbox is written from another coroutine; polling keeps the assertion about the row. */
+  /**
+   * The outbox is written from another coroutine; polling keeps the assertion about the row. Only
+   * queued rows count: a held row is still inside its undo window.
+   */
   private suspend fun com.sadad.app.data.session.StoreScope.awaitOutbox(count: Int) {
+    suspend fun queued() = outbox.snapshot().count { it.state == OutboxState.QUEUED }
     val deadline = System.currentTimeMillis() + 5_000
-    while (outbox.snapshot().size < count && System.currentTimeMillis() < deadline) {
+    while (queued() < count && System.currentTimeMillis() < deadline) {
       Thread.sleep(10)
     }
+    assertEquals(count, queued())
     assertEquals(count, outbox.snapshot().size)
   }
 }

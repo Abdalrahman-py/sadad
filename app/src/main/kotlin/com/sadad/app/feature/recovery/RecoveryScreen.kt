@@ -352,8 +352,8 @@ fun RecoveryContent(
     }
     Column(
         Modifier.fillMaxWidth()
-            .background(p.card, RoundedCornerShape(16.dp))
-            .border(1.dp, p.line, RoundedCornerShape(16.dp))
+            .background(p.card, RoundedCornerShape(12.dp))
+            .border(1.dp, p.line, RoundedCornerShape(12.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
