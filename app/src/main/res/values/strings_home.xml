@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="home_remind_invalid_phone">أضف رقم واتساب صحيحًا في بيانات الزبون أولًا.</string>
     <!-- The board's two questions: what people owe the store, and what the store owes. -->
     <string name="home_owed_to_store">لك عند الناس</string>
     <string name="home_store_owes">عليك للناس</string>

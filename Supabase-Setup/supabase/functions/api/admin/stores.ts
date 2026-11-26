@@ -97,7 +97,7 @@ const RecoveryPermitSchema = z.object({
   createdAt: z.string(),
 });
 
-const StoreDetailSchema = z
+export const StoreDetailSchema = z
   .object({
     store: StoreSchema,
     hasDeviceHistory: z.boolean(),
@@ -108,6 +108,7 @@ const StoreDetailSchema = z
       approvedBy: z.string().nullable(),
       revokedAt: z.string().nullable(),
       reason: z.string().nullable(),
+      lastSeenAt: z.string().nullable(),
     })),
     recoveryPermits: z.array(RecoveryPermitSchema),
   })
@@ -390,13 +391,19 @@ const deleteRoute = createRoute({
 type Store = z.infer<typeof StoreSchema>;
 type Summary = z.infer<typeof SummarySchema>;
 
+/** Capitals and digits without the look-alikes 0/O and 1/I: 32 symbols, so a byte & 31 stays uniform. */
+const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
 /**
- * 8 random digits, easy to read out to the owner. Random, never a fixed run: whoever signs in first
- * with it becomes the store's approved first phone.
+ * A 6-character one-time code (K7M2QX), short enough to send in a message. Random, never a fixed
+ * run: whoever signs in first with it becomes the store's approved first phone, and the owner must
+ * replace it at that first sign-in.
  */
 export function temporaryPassword(): string {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  return String(value % 100_000_000).padStart(8, "0");
+  return Array.from(
+    crypto.getRandomValues(new Uint8Array(6)),
+    (byte) => CODE_ALPHABET[byte & 31],
+  ).join("");
 }
 
 function authFailure(error: unknown): Error {

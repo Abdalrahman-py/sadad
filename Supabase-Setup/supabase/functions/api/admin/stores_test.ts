@@ -1,5 +1,6 @@
 import { assert, assertEqual } from "../test_support.ts";
 import { adminHarness, assertRefusal, dbTest } from "./test_admin.ts";
+import { StoreDetailSchema, temporaryPassword } from "./stores.ts";
 import createFixture from "../../../../../contract/fixtures/admin/create-store.json" with {
   type: "json",
 };
@@ -51,8 +52,8 @@ dbTest(
       createFixture.response,
     );
     assert(
-      /^[0-9]{8}$/.test(body.temporaryPassword),
-      "a 24-character password",
+      /^[2-9A-HJ-NP-Z]{6}$/.test(body.temporaryPassword),
+      "a 6-character code without look-alikes",
     );
 
     const [createUser] = h.authAdmin.calls.filter((call) =>
@@ -129,6 +130,14 @@ dbTest(
   },
 );
 
+Deno.test("temporary passwords never use the look-alikes 0, O, 1 or I", () => {
+  for (let i = 0; i < 2000; i++) {
+    const code = temporaryPassword();
+    assert(/^[2-9A-HJ-NP-Z]{6}$/.test(code), `bad code ${code}`);
+    assert(!/[0O1I]/.test(code), `look-alike in ${code}`);
+  }
+});
+
 dbTest("create store refuses bad input before calling Auth", async () => {
   const calls = h.authAdmin.calls.length;
   for (
@@ -164,6 +173,10 @@ dbTest(
     assertEqual(res.status, 200);
     const body = await res.json();
     assertEqual(body.username, store.username);
+    assert(
+      /^[2-9A-HJ-NP-Z]{6}$/.test(body.temporaryPassword),
+      "a 6-character code without look-alikes",
+    );
 
     const reset = h.authAdmin.calls.at(-1)!;
     assertEqual(reset, {
@@ -298,7 +311,7 @@ dbTest(
     );
     assertEqual(res.status, 500);
     const lines = h.logs.slice(before);
-    assert(sent.length === 8, "a password was sent to Auth");
+    assert(sent.length === 6, "a password was sent to Auth");
     assert(lines.length === 2, "one error line and one request line");
     assert(!lines.some((line) => line.includes(sent)), "never logged");
     assert(
@@ -694,6 +707,30 @@ dbTest(
     assertEqual(n, 0);
   },
 );
+
+dbTest("store detail returns when each device last connected", async () => {
+  const store = await h.seedStore(3);
+  const never = await addInstallation(store.storeId, "pending");
+  const seen = await addInstallation(store.storeId, "active");
+  await h.database.query(
+    "update sadid_private.installations set last_seen_at = '2026-11-15T12:00:00Z' where id = $1",
+    [seen],
+  );
+  const body = await (await h.send(
+    admin.jwt,
+    "GET",
+    `/admin/stores/${store.storeId}`,
+  )).json();
+  const detail = StoreDetailSchema.parse(body.detail);
+  const lastSeen = Object.fromEntries(
+    detail.installations.map((i) => [i.installationId, i.lastSeenAt]),
+  );
+  assertEqual(lastSeen[never], null);
+  assertEqual(
+    new Date(lastSeen[seen]!).toISOString(),
+    "2026-11-15T12:00:00.000Z",
+  );
+});
 
 dbTest("store detail and overview", async () => {
   const store = await h.seedStore(3);

@@ -3,6 +3,7 @@ package com.sadad.app.feature.home
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -65,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
+import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.formatShekels
@@ -595,12 +597,22 @@ private fun moneyText(cents: com.sadad.ledger.Cents): String = formatShekels(cen
 internal fun clockTime(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     TIME_FORMAT.withZone(zone).format(Instant.ofEpochMilli(epochMillis))
 
-private fun openWhatsApp(context: Context, person: HomeFollowUp, storeName: String) {
+internal fun openWhatsApp(context: Context, person: HomeFollowUp, storeName: String) {
+  val parsed = WhatsAppPhone.parse(person.phone)
+  if (parsed == null) {
+    Toast.makeText(context, R.string.home_remind_invalid_phone, Toast.LENGTH_LONG).show()
+    return
+  }
+  val number =
+      WhatsAppPhone.waNumber(
+          parsed.phone,
+          parsed.code ?: person.whatsappCode,
+      )
   val body =
       "مرحبًا ${person.name}، معك $storeName. تذكير ودّي: عليك ${formatShekels(person.amount)}."
   runCatching {
     context.startActivity(
-        Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/?text=${Uri.encode(body)}"))
+        Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$number?text=${Uri.encode(body)}"))
     )
   }
 }
