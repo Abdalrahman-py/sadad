@@ -2,12 +2,12 @@ package com.sadad.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -26,9 +26,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -66,6 +68,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadad.app.R
+import com.sadad.app.ui.theme.sadadBrand
 import com.sadad.app.ui.theme.sadadPalette
 import kotlinx.coroutines.delay
 
@@ -75,8 +78,9 @@ import kotlinx.coroutines.delay
  */
 
 /**
- * The white panel of the sign-in and password boards: `card` fill, `line` border, 24dp corners and
- * the boards' `0 12px 32px rgba(6,75,66,0.08)` shadow.
+ * The white panel of the sign-in and password boards, an M3 [OutlinedCard]:
+ * `surfaceContainerLowest` fill, `outlineVariant` border, 24dp corners and the boards' `0 12px 32px
+ * rgba(6,75,66,0.08)` shadow.
  */
 @Composable
 fun SadadPanel(
@@ -86,19 +90,25 @@ fun SadadPanel(
     contentPadding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-  val p = sadadPalette
   val shape = RoundedCornerShape(radius)
-  Column(
+  OutlinedCard(
       modifier =
           modifier
               .fillMaxWidth()
-              .then(if (shadow && !p.isDark) Modifier.softShadow(radius) else Modifier)
-              .background(p.card, shape)
-              .border(1.dp, p.line, shape)
-              .padding(contentPadding),
-      verticalArrangement = Arrangement.spacedBy(16.dp),
-      content = content,
-  )
+              .then(if (shadow && !sadadBrand.isDark) Modifier.softShadow(radius) else Modifier),
+      shape = shape,
+      colors =
+          CardDefaults.outlinedCardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+          ),
+      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+  ) {
+    Column(
+        modifier = Modifier.padding(contentPadding),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        content = content,
+    )
+  }
 }
 
 /** A CSS-like soft shadow: `Modifier.shadow` scales the colour by the system alpha and vanishes. */
@@ -222,7 +232,6 @@ fun SadadKeypad(
             val plain = plainSpecials && special
             val source = remember { MutableInteractionSource() }
             val pressed by source.collectIsPressedAsState()
-            val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(90), label = "key")
             val tint by
                 animateColorAsState(
                     if (pressed) p.soft else if (plain) Color.Transparent else p.card,
@@ -240,7 +249,6 @@ fun SadadKeypad(
             val keyModifier =
                 Modifier.weight(1f)
                     .height(keyHeight)
-                    .scale(scale)
                     .then(if (plain) Modifier else Modifier.keyUnderline(p.line))
                     .then(if (tag != null) Modifier.testTag(tag) else Modifier)
                     .semantics {
@@ -361,18 +369,13 @@ fun PinDots(filled: Int, count: Int, description: String, modifier: Modifier = M
   }
 }
 
-/** Fades and lifts [content] in once, the boards' entrance for a screen's main blocks. */
+/**
+ * Renders [content] at once. The entrance fade is gone (ticket 201); ticket 208 removes the
+ * wrappers from the screens.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
-fun Appear(delayMillis: Int = 0, content: @Composable () -> Unit) {
-  val state = remember { MutableTransitionState(false).apply { targetState = true } }
-  AnimatedVisibility(
-      visibleState = state,
-      enter =
-          fadeIn(tween(320, delayMillis)) + slideInVertically(tween(320, delayMillis)) { it / 12 },
-  ) {
-    content()
-  }
-}
+fun Appear(delayMillis: Int = 0, content: @Composable () -> Unit) = content()
 
 /**
  * The boards' dark toast at the foot of a screen: [message] slides up, stays about three seconds,
@@ -385,7 +388,7 @@ fun SadadToastHost(
     modifier: Modifier = Modifier,
     error: Boolean = false,
 ) {
-  val p = sadadPalette
+  val dark = sadadBrand.isDark
   // Keep the last text while the toast fades out.
   var shown by remember { mutableStateOf(message) }
   if (message != null && message != shown) shown = message
@@ -401,12 +404,14 @@ fun SadadToastHost(
       exit = fadeOut(tween(200)),
       modifier = modifier,
   ) {
+    // Light: the inverse surface. Dark: the highest container, as the boards draw it.
+    val c = MaterialTheme.colorScheme
+    val fill = if (error) c.error else if (dark) c.surfaceContainerHighest else c.inverseSurface
+    val ink = if (error) c.onError else if (dark) c.onSurface else c.inverseOnSurface
+    val mark = if (error) c.onError else if (dark) c.secondary else c.inversePrimary
     Row(
         Modifier.fillMaxWidth()
-            .background(
-                if (error) p.debt else if (p.isDark) p.soft else Color(0xFF142C24),
-                RoundedCornerShape(12.dp),
-            )
+            .background(fill, RoundedCornerShape(12.dp))
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics { liveRegion = LiveRegionMode.Assertive },
         verticalAlignment = Alignment.CenterVertically,
@@ -415,14 +420,12 @@ fun SadadToastHost(
       Icon(
           painterResource(if (error) R.drawable.ic_alert else R.drawable.ic_check),
           contentDescription = null,
-          tint =
-              if (error && !p.isDark) Color.White
-              else if (p.isDark) p.accent else Color(0xFF78DEC0),
+          tint = mark,
           modifier = Modifier.size(20.dp),
       )
       Text(
           shown.orEmpty(),
-          color = if (error && !p.isDark) Color.White else if (p.isDark) p.text else Color.White,
+          color = ink,
           style = MaterialTheme.typography.bodyMedium,
           modifier = Modifier.weight(1f),
       )

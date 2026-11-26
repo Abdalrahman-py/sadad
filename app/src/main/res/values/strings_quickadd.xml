@@ -57,7 +57,16 @@
     <string name="quickadd_due_clear">إزالة</string>
     <string name="quickadd_note_hint">مثلا: كولا و حاجات</string>
     <string name="quickadd_note_save">حفظ</string>
-    <!-- The suggestions the note dialog offers to fill the line with a tap. -->
+    <!-- The frequent items editor the note dialog opens; the list is kept on this phone only. -->
+    <string name="quickadd_items_edit">تعديل</string>
+    <string name="quickadd_items_title">الأصناف المتكررة</string>
+    <string name="quickadd_items_hint">صنف جديد</string>
+    <string name="quickadd_items_add">إضافة</string>
+    <string name="quickadd_items_up">أعلى</string>
+    <string name="quickadd_items_down">أسفل</string>
+    <string name="quickadd_items_remove">حذف</string>
+    <string name="quickadd_items_full">الحد %1$d أصناف</string>
+    <!-- The first-run frequent items, until the owner saves a list of their own. -->
     <string-array name="quickadd_note_suggestions">
         <item>حاجات</item>
         <item>كولا</item>
@@ -91,4 +100,7 @@
     <string name="quickadd_new_person_title">شخص جديد</string>
     <string name="quickadd_new_person_continue">متابعة</string>
     <string name="quickadd_open_record">فتح سجل الشخص</string>
+    <string name="quickadd_restart_title">تجاهل المدخل الحالي؟</string>
+    <string name="quickadd_restart_confirm">تجاهل</string>
+    <string name="quickadd_restart_keep">متابعة</string>
 </resources>

@@ -1,6 +1,6 @@
 import { assert, assertEqual } from "../test_support.ts";
 import { adminHarness, assertRefusal, dbTest } from "./test_admin.ts";
-import { temporaryPassword } from "./stores.ts";
+import { StoreDetailSchema, temporaryPassword } from "./stores.ts";
 import createFixture from "../../../../../contract/fixtures/admin/create-store.json" with {
   type: "json",
 };
@@ -707,6 +707,30 @@ dbTest(
     assertEqual(n, 0);
   },
 );
+
+dbTest("store detail returns when each device last connected", async () => {
+  const store = await h.seedStore(3);
+  const never = await addInstallation(store.storeId, "pending");
+  const seen = await addInstallation(store.storeId, "active");
+  await h.database.query(
+    "update sadid_private.installations set last_seen_at = '2026-11-15T12:00:00Z' where id = $1",
+    [seen],
+  );
+  const body = await (await h.send(
+    admin.jwt,
+    "GET",
+    `/admin/stores/${store.storeId}`,
+  )).json();
+  const detail = StoreDetailSchema.parse(body.detail);
+  const lastSeen = Object.fromEntries(
+    detail.installations.map((i) => [i.installationId, i.lastSeenAt]),
+  );
+  assertEqual(lastSeen[never], null);
+  assertEqual(
+    new Date(lastSeen[seen]!).toISOString(),
+    "2026-11-15T12:00:00.000Z",
+  );
+});
 
 dbTest("store detail and overview", async () => {
   const store = await h.seedStore(3);

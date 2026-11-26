@@ -120,17 +120,17 @@ class ContactDetailScreenTest {
           }
       compose.setContent { SadadTheme { ContactDetailScreen(model, {}, {}, {}, {}) } }
       compose.waitUntil(5_000) { model.state.value.syncFailure != null }
-      compose
-          .onNodeWithText(context.getString(com.sadad.app.R.string.contacts_saved_draft))
-          .assertIsDisplayed()
-      compose
-          .onNodeWithText(
-              context.getString(
-                  com.sadad.app.R.string.contacts_sync_failed,
-                  "وصل المتجر إلى حد عدد الأشخاص.",
-              )
+      val draft = context.getString(com.sadad.app.R.string.contacts_saved_draft)
+      val reason =
+          context.getString(
+              com.sadad.app.R.string.contacts_sync_failed,
+              "وصل المتجر إلى حد عدد الأشخاص.",
           )
-          .assertIsDisplayed()
+      // Both notices sit in the movements list; scroll each into view before asserting it shows.
+      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToNode(hasText(draft))
+      compose.onNodeWithText(draft).assertIsDisplayed()
+      compose.onNodeWithTag(ContactsTag.MOVEMENTS).performScrollToNode(hasText(reason))
+      compose.onNodeWithText(reason).assertIsDisplayed()
       compose.onNodeWithTag(ContactsTag.MENU).assertDoesNotExist()
       compose
           .onNodeWithText(context.getString(com.sadad.app.R.string.contacts_record_debt))

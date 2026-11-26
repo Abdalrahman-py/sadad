@@ -172,6 +172,12 @@ val contract = rootProject.layout.projectDirectory.dir("contract")
 tasks.withType<Test>().configureEach {
   inputs.dir(contract).withPropertyName("contract").withPathSensitivity(PathSensitivity.RELATIVE)
   systemProperty("sadad.fixtures", contract.dir("fixtures").asFile.absolutePath)
+  // Robolectric fetches android-all at test time; Central rate-limits CI (429), so it uses Google's
+  // Maven Central mirror, the same one settings.gradle.kts uses for org.robolectric.
+  systemProperty(
+      "robolectric.dependency.repo.url",
+      "https://maven-central.storage-download.googleapis.com/maven2/",
+  )
   // The migration test builds a v1 database from Room's exported schema, so the JSON Room wrote
   // reaches the test the same way: a path property, not a copy in the build directory.
   val schemas = layout.projectDirectory.dir("schemas")

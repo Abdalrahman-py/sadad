@@ -278,6 +278,17 @@ interface OutboxDao {
   )
   suspend fun deleteDismissed(operationId: String)
 
+  @Query(
+      "UPDATE outbox SET state = 'queued' WHERE state = 'held' AND operationId IN (:operationIds)"
+  )
+  suspend fun releaseHeld(operationIds: List<String>)
+
+  @Query("DELETE FROM outbox WHERE state = 'held' AND operationId IN (:operationIds)")
+  suspend fun deleteHeld(operationIds: List<String>)
+
+  @Query("UPDATE outbox SET state = 'queued' WHERE state = 'held'")
+  suspend fun releaseAllHeld(): Int
+
   @Query("DELETE FROM outbox WHERE state = 'accepted' AND operationId IN (:operationIds)")
   suspend fun deleteAccepted(operationIds: List<String>)
 }

@@ -7,9 +7,11 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import com.sadad.app.feature.auth.MainDispatcherRule
 import com.sadad.app.feature.quickadd.QuickAddNewPersonTags
 import com.sadad.app.feature.quickadd.QuickAddScreen
+import com.sadad.app.feature.quickadd.QuickAddStep
 import com.sadad.app.feature.quickadd.QuickAddTags
 import com.sadad.app.feature.quickadd.QuickAddViewModel
 import com.sadad.app.feature.quickadd.quickAddSource
@@ -68,6 +70,8 @@ class QuickAddA11yTest {
     compose.onNodeWithTag(QuickAddTags.key("2")).performClick()
     compose.onNodeWithTag(QuickAddTags.key("5")).performClick()
     compose.onNodeWithTag(QuickAddTags.SAVE).performClick()
+    // The done step shows once the outbox holds the entry (ticket 181), off the main thread.
+    compose.waitUntil(5_000) { model.state.value.step == QuickAddStep.DONE }
     compose.waitForIdle()
 
     compose.assertAccessible(
@@ -125,7 +129,12 @@ class QuickAddA11yTest {
         fixture.settleAll()
       }
     }
-    val model = QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle())
+    // The fixture cancels the model's scope before it closes the store, so nothing runs past
+    // resetMain.
+    val model =
+        QuickAddViewModel(fixture.graph.quickAddSource(), null, false, SavedStateHandle()).also {
+          fixture.closeWithStore(it.viewModelScope)
+        }
     awaiting { model.state.first { it.loaded && it.people.isNotEmpty() } }
     return model
   }

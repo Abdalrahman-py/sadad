@@ -62,7 +62,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -75,10 +74,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.navigation.NavBackStackEntry
 import com.sadad.app.R
 import com.sadad.app.requireGraph
 import com.sadad.app.ui.components.BalanceTone
@@ -116,6 +118,7 @@ object QuickAddTags {
   const val NOTE_CHIP = "quickadd:note-chip"
   const val DUE_DIALOG = "quickadd:due-dialog"
   const val NOTE_DIALOG = "quickadd:note-dialog"
+  const val NOTE_EDIT_ITEMS = "quickadd:note-edit-items"
   const val SAVE = "quickadd:save"
   const val KEYPAD = "quickadd:keypad"
   const val BACK = "quickadd:back"
@@ -125,11 +128,18 @@ object QuickAddTags {
   const val UNDO = "quickadd:undo"
   const val ANOTHER = "quickadd:another"
   const val ANOMALY = "quickadd:anomaly"
+  const val RESTART = "quickadd:restart"
 
   fun person(id: String) = "quickadd:person-$id"
 
   fun key(label: String) = "quickadd:key-$label"
 }
+
+/**
+ * The key the bottom bar's «+» sets on Quick Add's own back stack entry: start a new entry here
+ * instead of navigating, so the back stack is unchanged.
+ */
+const val QUICK_ADD_RESTART = "quickadd:restart-signal"
 
 /** Records for a saved person, or for a new one created inside the flow with their first debt. */
 @Composable
@@ -140,10 +150,25 @@ fun QuickAddScreen(
     onOpenContact: (String) -> Unit,
     onOpenTrash: () -> Unit,
     viewModel: QuickAddViewModel = quickAddViewModel(contactId, payment),
+    frequentItems: FrequentItems = FrequentItems.get(LocalContext.current),
+    /** This screen's back stack entry's handle, where the bottom bar sets [QUICK_ADD_RESTART]. */
+    restartSignal: SavedStateHandle? =
+        (LocalViewModelStoreOwner.current as? NavBackStackEntry)?.savedStateHandle,
 ) {
   val state by viewModel.state.collectAsState()
   val context = LocalContext.current
   val p = sadadPalette
+  if (restartSignal != null) {
+    val restart by
+        remember(restartSignal) { restartSignal.getStateFlow(QUICK_ADD_RESTART, false) }
+            .collectAsState()
+    LaunchedEffect(restart) {
+      if (restart) {
+        restartSignal[QUICK_ADD_RESTART] = false
+        viewModel.requestRestart(context)
+      }
+    }
+  }
   // A picked phone number of someone in the archive: they are restored from the trash, not here.
   LaunchedEffect(state.openTrash) {
     if (state.openTrash) {
@@ -157,7 +182,14 @@ fun QuickAddScreen(
       QuickAddStep.PICKER -> PickerStep(state, viewModel, onClose)
       QuickAddStep.NEW_PERSON -> NewPersonStep(state, viewModel)
       QuickAddStep.AMOUNT ->
-          AmountStep(state, viewModel, context, onClose, fromContact = contactId != null)
+          AmountStep(
+              state,
+              viewModel,
+              context,
+              onClose,
+              fromContact = contactId != null,
+              frequentItems = frequentItems,
+          )
       QuickAddStep.DONE -> DoneStep(state, viewModel, context, onClose, onOpenContact)
     }
     val anomaly = state.anomaly
@@ -193,6 +225,24 @@ fun QuickAddScreen(
           dismissButton = {
             TextButton(onClick = viewModel::dismissAnomaly) {
               Text(stringResource(R.string.quickadd_anomaly_edit))
+            }
+          },
+      )
+    }
+    if (state.restartAsk) {
+      AlertDialog(
+          modifier = Modifier.testTag(QuickAddTags.RESTART),
+          onDismissRequest = viewModel::dismissRestart,
+          containerColor = p.card,
+          title = { Text(stringResource(R.string.quickadd_restart_title)) },
+          confirmButton = {
+            TextButton(onClick = { viewModel.confirmRestart(context) }) {
+              Text(stringResource(R.string.quickadd_restart_confirm))
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = viewModel::dismissRestart) {
+              Text(stringResource(R.string.quickadd_restart_keep))
             }
           },
       )
@@ -488,6 +538,7 @@ private fun AmountStep(
     context: Context,
     onClose: () -> Unit,
     fromContact: Boolean,
+    frequentItems: FrequentItems,
 ) {
   val p = sadadPalette
   var choosingDue by rememberSaveable { mutableStateOf(false) }
@@ -659,6 +710,7 @@ private fun AmountStep(
     if (writingNote) {
       NoteDialog(
           current = state.note,
+          frequentItems = frequentItems,
           onSave = {
             model.onNoteChange(it)
             writingNote = false
@@ -878,12 +930,28 @@ private fun RightToLeft(content: @Composable () -> Unit) {
 
 /** «ملاحظة»: a line saying what the entry was for, kept with it in the ledger. */
 @Composable
-private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+private fun NoteDialog(
+    current: String,
+    frequentItems: FrequentItems,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
   var text by remember { mutableStateOf(current) }
-  val suggestions =
-      stringArrayResource(R.array.quickadd_note_suggestions)
-          .map { it.trim() }
-          .filter { it.isNotEmpty() }
+  var editing by remember { mutableStateOf(false) }
+  // Null until the file is read: the editor must not open on an empty list and save it.
+  val loaded by frequentItems.items.collectAsState(null)
+  val suggestions = loaded.orEmpty()
+  if (editing && loaded != null) {
+    FrequentItemsEditor(
+        initial = suggestions,
+        onSave = {
+          frequentItems.save(it)
+          editing = false
+        },
+        onDismiss = { editing = false },
+    )
+    return
+  }
   AlertDialog(
       modifier = Modifier.testTag(QuickAddTags.NOTE_DIALOG),
       onDismissRequest = onDismiss,
@@ -919,7 +987,16 @@ private fun NoteDialog(current: String, onSave: (String) -> Unit, onDismiss: () 
         }
       },
       dismissButton = {
-        TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        Row {
+          TextButton(
+              enabled = loaded != null,
+              onClick = { editing = true },
+              modifier = Modifier.testTag(QuickAddTags.NOTE_EDIT_ITEMS),
+          ) {
+            Text(stringResource(R.string.quickadd_items_edit))
+          }
+          TextButton(onClick = onDismiss) { Text(stringResource(R.string.quickadd_cancel)) }
+        }
       },
   )
 }

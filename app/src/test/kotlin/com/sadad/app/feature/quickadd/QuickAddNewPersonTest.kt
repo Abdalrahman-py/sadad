@@ -66,6 +66,7 @@ class QuickAddNewPersonTest {
       private val limit: Int? = null,
   ) : QuickAddSource {
     val appended = CompletableDeferred<List<LedgerCommand>>()
+    val held = java.util.concurrent.ConcurrentLinkedQueue<LedgerCommand>()
     override val summaries =
         MutableStateFlow<List<ContactSummaryEntity>?>(view.contacts.map(::summaryOf))
     override val summaryReady = MutableStateFlow(true)
@@ -87,8 +88,16 @@ class QuickAddNewPersonTest {
 
           override fun isOnline() = true
 
-          override suspend fun append(commands: List<LedgerCommand>) {
-            appended.complete(commands)
+          override suspend fun hold(commands: List<LedgerCommand>) {
+            held += commands
+          }
+
+          override suspend fun release(operationIds: List<String>) {
+            appended.complete(held.filter { it.operationId in operationIds })
+          }
+
+          override suspend fun discard(operationIds: List<String>) {
+            held.removeAll { it.operationId in operationIds }
           }
         }
   }
@@ -173,6 +182,8 @@ class QuickAddNewPersonTest {
       model.confirmNewPerson(context)
       model.press("5")
       model.save(context)
+      // «تراجع» exists only on the done step, which shows once the hold returned.
+      model.state.first { it.step == QuickAddStep.DONE }
       model.undo(context)
       delay(300)
 

@@ -25,7 +25,7 @@ Done when the issue is assigned only to you and labelled `claimed`.
 - Read every file under the ticket's "Read first". Write the ticket's "Test first" tests with the `tdd` skill.
 - Commit the tests, `git push -u origin ticket-<NN>`, then open a draft PR:
   `gh pr create -R Abdalrahman-py/sadad --draft --base <base> --title "<NN>: <issue title>" --body "Closes #<N>"`.
-- Wait for CI: `gh pr checks <pr> -R Abdalrahman-py/sadad --watch`. Read the failing job's log: `gh run view <run-id> -R Abdalrahman-py/sadad --log-failed`.
+- Wait for CI: `gh pr checks <pr> -R Abdalrahman-py/sadad --watch`. In Claude Code, run this watch as a background command (`run_in_background: true`) so its exit wakes you, and keep one running whenever you end a turn with CI still running. Read the failing job's log: `gh run view <run-id> -R Abdalrahman-py/sadad --log-failed`.
 
 Done when CI fails on the new tests for the reason the ticket expects (the ticket's "Red:" line). Keep the run link and the failing lines.
 
@@ -59,8 +59,8 @@ Done when every finding is fixed or answered and the last review raised nothing 
 
 ## 6. Merge
 
-- Wait for the required checks: `gh pr checks <pr> -R Abdalrahman-py/sadad --watch --required`. Both `ci-ok` and `scope` must pass.
-- `scope` red: a file outside "Files you may edit" changed. Remove that change. If the ticket cannot be done without it, stop: comment on the issue naming the file and why, and leave the PR open for the maintainer.
+- Wait for the required checks: `gh pr checks <pr> -R Abdalrahman-py/sadad --watch --required`, in the background as in step 2. Both `ci-ok` and `scope` must pass.
+- `scope` red: a file outside "Files you may edit" changed. Remove that change. If the ticket cannot be done without it, stop: comment on the PR naming the exact paths and why, leave the issue body unchanged, and end your report with `NEEDS-OWNER: scope-approved <paths>`. The owner widens scope with a ``scope-approved: `path` `` PR comment (docs/agents/issue-tracker.md), then you rerun `scope`.
 - Green: `gh pr merge <pr> -R Abdalrahman-py/sadad --merge --delete-branch`. Merge stacked PRs bottom first: deleting the merged base branch moves the next PR onto `dev`, where its checks run again before you merge it.
 - Close the issue: `gh issue close <N> -R Abdalrahman-py/sadad --reason completed`.
 
@@ -72,4 +72,4 @@ Tell the human: the PR link, the merge commit, the review findings and what you 
 
 ## Guardrails
 
-Change `dev` only through a merged PR, and merge only your own ticket PR. The maintainer promotes `dev` to `main`. Deploys and every Supabase cloud command belong to the maintainer.
+Change `dev` only through a merged PR, and merge only your own ticket PR. A non-ticket PR (CI or infra) you open is merged by the session that started you or by the owner; name its number in your report. The maintainer promotes `dev` to `main`. Deploys and every Supabase cloud command belong to the maintainer.

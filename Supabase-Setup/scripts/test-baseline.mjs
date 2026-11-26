@@ -511,6 +511,45 @@ try {
     );
   });
 
+  await check('A capability records when the installation last connected, at most once a minute, and the store detail returns it', async () => {
+    const lastSeen = async inst => {
+      await db.exec('reset role');
+      return (await db.query('select last_seen_at from sadid_private.installations where id = $1', [inst])).rows[0].last_seen_at;
+    };
+    const pending = await pendingInstallation();
+    await asAdmin('support', supportUser);
+    const before = (await db.query('select public.sadid_admin_controls(1) as result')).rows[0].result.installations;
+    assert.equal(before.find(i => i.installationId === pending).lastSeenAt, null, 'a pending device that never connected');
+
+    await db.exec('reset role');
+    await db.query('update sadid_private.installations set last_seen_at = null where id = $1', [installation]);
+    assert.equal(await lastSeen(installation), null);
+    await capability('read');
+    const first = await lastSeen(installation);
+    assert.ok(first, 'issuing a capability sets last_seen_at');
+    await capability('read');
+    assert.equal((await lastSeen(installation)).getTime(), first.getTime(), 'a second issue within a minute keeps it');
+
+    await db.query("update sadid_private.installations set last_seen_at = clock_timestamp() - interval '2 minutes' where id = $1", [installation]);
+    const aged = await lastSeen(installation);
+    await capability('read');
+    const later = await lastSeen(installation);
+    assert.ok(later > aged, 'an issue after a minute moves it forward');
+
+    await asAdmin('support', supportUser);
+    const detail = (await db.query('select public.sadid_admin_controls(1) as result')).rows[0].result.installations;
+    assert.equal(new Date(detail.find(i => i.installationId === installation).lastSeenAt).getTime(), later.getTime());
+
+    await db.exec('reset role; begin');
+    try {
+      await asAdmin('admin');
+      await db.query('select public.sadid_revoke_installation($1, $2)', [installation, 'هاتف مفقود']);
+      assert.equal((await lastSeen(installation)).getTime(), later.getTime(), 'revoking keeps last_seen_at');
+    } finally {
+      await db.exec('rollback; reset role');
+    }
+  });
+
   const contact = command('contact.create', { kind: 'customer', name: 'عميل تجربة', phone: '', externalReference: 'TEST-001' });
 
   await check('Refuses operation with wrong epoch', async () => {
