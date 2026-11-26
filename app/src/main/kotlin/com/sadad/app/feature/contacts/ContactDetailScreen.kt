@@ -905,8 +905,11 @@ private fun UndoDeleteSnackbar(name: String?, viewModel: ContactDetailViewModel)
     }
     // The whole window is the person's, not spent behind another message.
     snackbar.host.currentSnackbarData?.dismiss()
-    snackbar.show(message, undo, ContactDetailViewModel.UNDO_WINDOW_MS) {
+    snackbar.show(message, undo, UNDO_WINDOW_MS) {
       if (it == SnackbarResult.ActionPerformed) viewModel.undoDelete()
     }
   }
 }
+
+/** The ViewModel's undo window (its private `UNDO_WINDOW_MS`); the snackbar closes with it. */
+private const val UNDO_WINDOW_MS = 5_000L

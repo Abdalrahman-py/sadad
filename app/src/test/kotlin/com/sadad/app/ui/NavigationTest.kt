@@ -9,6 +9,9 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -84,9 +87,9 @@ class NavigationTest {
     }
     // Right to left: each item starts left of the one before it.
     assertEquals(order.sortedDescending(), order)
-    // The visible labels.
+    // The visible labels; Home's title in the top bar is not one of them.
     listOf("الرئيسية", "الأشخاص", "تسجيل", "الحركات", "المتجر").forEach {
-      compose.onNodeWithText(it).assertIsDisplayed()
+      compose.onNode(hasText(it) and !hasAnyAncestor(hasTestTag(TOP_BAR_TAG))).assertIsDisplayed()
     }
   }
 

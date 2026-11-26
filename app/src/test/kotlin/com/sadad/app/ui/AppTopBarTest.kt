@@ -1,12 +1,11 @@
 package com.sadad.app.ui
 
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTouchHeightIsAtLeast
-import androidx.compose.ui.test.assertTouchWidthIsAtLeast
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -31,6 +30,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /** The bar every tab shares: the tab's title beside a bell that speaks its count. */
+@OptIn(ExperimentalMaterial3Api::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(application = UiTestApplication::class)
 class AppTopBarTest {
@@ -58,10 +58,10 @@ class AppTopBarTest {
   fun theBellIsAFullTouchTargetWithAMaterialBadge() {
     show(unread = 3)
 
-    compose
-        .onNodeWithTag(BELL_TAG)
-        .assertTouchHeightIsAtLeast(48.dp)
-        .assertTouchWidthIsAtLeast(48.dp)
+    // The touch area, as TalkBack and the a11y checks measure it, not the 40dp drawn circle.
+    val touch = compose.onNodeWithTag(BELL_TAG).fetchSemanticsNode().touchBoundsInRoot
+    val minimum = with(compose.density) { 48.dp.toPx() }
+    assertTrue(touch.width >= minimum && touch.height >= minimum)
     // The badge draws the count; the button's label is what TalkBack reads.
     compose.onNodeWithText("3", useUnmergedTree = true).assertIsDisplayed()
     compose.onNodeWithContentDescription("الإشعارات، 3 جديدة").assertIsDisplayed()
