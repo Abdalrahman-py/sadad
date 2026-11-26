@@ -97,7 +97,7 @@ const RecoveryPermitSchema = z.object({
   createdAt: z.string(),
 });
 
-const StoreDetailSchema = z
+export const StoreDetailSchema = z
   .object({
     store: StoreSchema,
     hasDeviceHistory: z.boolean(),
@@ -108,6 +108,7 @@ const StoreDetailSchema = z
       approvedBy: z.string().nullable(),
       revokedAt: z.string().nullable(),
       reason: z.string().nullable(),
+      lastSeenAt: z.string().nullable(),
     })),
     recoveryPermits: z.array(RecoveryPermitSchema),
   })

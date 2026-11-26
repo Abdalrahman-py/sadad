@@ -75,6 +75,7 @@ create table sadid_private.installations (
   revoked_at timestamptz,
   reason text,
   created_at timestamptz not null default now(),
+  last_seen_at timestamptz,
   unique (store_id, id, generation)
 );
 create index sadid_installations_store_status on sadid_private.installations(store_id, status);
