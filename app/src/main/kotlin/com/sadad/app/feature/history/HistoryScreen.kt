@@ -347,7 +347,7 @@ private fun MovementRow(movement: HistoryMovement, onOpen: (String) -> Unit) {
           },
   ) {
     Row(
-        Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

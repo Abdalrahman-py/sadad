@@ -326,7 +326,7 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
       modifier = Modifier.fillMaxWidth().testTag(PeopleTags.row(row.id)),
   ) {
     Row(
-        Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
