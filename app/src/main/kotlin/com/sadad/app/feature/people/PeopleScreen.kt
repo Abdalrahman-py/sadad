@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -119,7 +120,7 @@ fun PeopleContent(
   Box(Modifier.fillMaxSize().sadadPageBackground().testTag(PeopleTags.SCREEN)) {
     Column(Modifier.fillMaxSize()) {
       Column(
-          Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+          Modifier.padding(16.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         if (state.incomplete > 0)
@@ -155,7 +156,8 @@ fun PeopleContent(
     AddPersonFab(
         expanded = !list.canScrollBackward,
         onClick = onAdd,
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+        // The physical right in the Arabic layout, where the owner wants it.
+        modifier = Modifier.align(AbsoluteAlignment.BottomRight).padding(16.dp),
     )
   }
 }
@@ -282,8 +284,8 @@ private fun PeopleSearch(
       trailingIcon = { FilterButton(filter, counts, onFilter) },
       colors =
           SearchBarDefaults.inputFieldColors(
-              focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-              unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+              focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+              unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
           ),
       modifier =
           Modifier.fillMaxWidth().testTag(PeopleTags.SEARCH).semantics {
@@ -303,7 +305,7 @@ private fun PeopleList(state: PeopleState, list: LazyListState, onOpenContact: (
       state = list,
       modifier = Modifier.fillMaxSize().testTag(PeopleTags.LIST),
       // The bottom clears the add button, so the last balance is never under it.
-      contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
+      contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 88.dp),
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     if (state.loaded && state.rows.isEmpty()) item { NoResults() }
