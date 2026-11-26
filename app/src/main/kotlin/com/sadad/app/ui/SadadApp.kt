@@ -35,6 +35,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -95,6 +96,8 @@ import com.sadad.app.ui.theme.SadadTheme
 import com.sadad.app.ui.theme.sadadBrand
 import com.sadad.app.ui.theme.sadadPalette
 import kotlin.reflect.KClass
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun SadadApp(
@@ -365,6 +368,23 @@ internal fun SadadShell(
 
 /** Entry gates hide navigation; account pages opened from Store remain inside the store flow. */
 private val AUTH_GATES = listOf(Login::class, PasswordChange::class, AwaitingApproval::class)
+
+/** The open store's name, as Home has always read it: the active account's saved name. */
+@Composable
+private fun rememberStoreName(): State<String> {
+  val graph = LocalGraph.current
+  return remember(graph) {
+        if (graph == null) flowOf("")
+        else
+            combine(graph.current, graph.accounts.accounts) { scope, accounts ->
+              accounts
+                  .firstOrNull { it.storeUserId == scope?.account?.storeUserId }
+                  ?.storeName
+                  .orEmpty()
+            }
+      }
+      .collectAsStateWithLifecycle("")
+}
 
 /**
  * The title the shared bar shows on a tab's own page; null off the four tabs, where no bar shows.
