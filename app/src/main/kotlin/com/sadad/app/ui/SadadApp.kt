@@ -30,11 +30,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -317,12 +314,6 @@ internal fun SadadShell(
         if (res == R.string.home_default_store) storeName.ifBlank { stringResource(res) }
         else stringResource(res)
       }
-  val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
-  // A tab opens with its bar shown, whatever the last tab scrolled it to.
-  LaunchedEffect(destination) {
-    scrollBehavior.state.heightOffset = 0f
-    scrollBehavior.state.contentOffset = 0f
-  }
   val snackbar = rememberAppSnackbar()
   val actions = remember { TopBarActionsHolder() }
   CompositionLocalProvider(
@@ -330,19 +321,13 @@ internal fun SadadShell(
       LocalTopBarActions provides actions,
   ) {
     Scaffold(
-        modifier =
-            Modifier.sadadPageBackground()
-                .then(
-                    if (title != null) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-                    else Modifier
-                ),
+        modifier = Modifier.sadadPageBackground(),
         containerColor = Color.Transparent,
         contentColor = sadadPalette.text,
         topBar = {
           if (title != null) {
             AppTopBar(
                 title = title,
-                scrollBehavior = scrollBehavior,
                 onOpenNotifications = {
                   navController.navigate(Notifications) { launchSingleTop = true }
                 },

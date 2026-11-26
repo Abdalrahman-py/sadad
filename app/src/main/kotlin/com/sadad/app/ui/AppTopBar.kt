@@ -7,11 +7,10 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
@@ -22,7 +21,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -81,7 +79,6 @@ fun TopBarActions(content: @Composable RowScope.() -> Unit) {
 @Composable
 internal fun AppTopBar(
     title: String,
-    scrollBehavior: TopAppBarScrollBehavior?,
     onOpenNotifications: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -99,7 +96,6 @@ internal fun AppTopBar(
       title = title,
       unread = unread,
       onOpenNotifications = onOpenNotifications,
-      scrollBehavior = scrollBehavior,
       actions = actions,
   )
 }
@@ -111,7 +107,6 @@ internal fun AppTopBarContent(
     title: String,
     unread: Int,
     onOpenNotifications: () -> Unit,
-    scrollBehavior: TopAppBarScrollBehavior? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
   // The button's label carries the count, so TalkBack reads it once; the badge only draws it.
@@ -143,12 +138,10 @@ internal fun AppTopBarContent(
         }
       },
       colors =
-          TopAppBarDefaults.topAppBarColors(
-              // The page background shows through until content scrolls under the bar.
-              containerColor = Color.Transparent,
-              scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-          ),
-      scrollBehavior = scrollBehavior,
+          NavigationBarDefaults.containerColor.let { bar ->
+            // The bottom bar's tint at rest and when scrolled, so the bar never flashes.
+            TopAppBarDefaults.topAppBarColors(containerColor = bar, scrolledContainerColor = bar)
+          },
       modifier = Modifier.testTag(TOP_BAR_TAG),
   )
 }
