@@ -7,6 +7,7 @@ import com.sadad.app.data.session.Account
 import com.sadad.app.data.session.StoreScope
 import com.sadad.app.data.sync.SyncStatus
 import com.sadad.ledger.Cents
+import com.sadad.ledger.ContactCreate
 import com.sadad.ledger.DebtCreate
 import com.sadad.ledger.Direction
 import com.sadad.ledger.PaymentCreate
@@ -26,6 +27,8 @@ data class HomeFollowUpCandidate(
     val name: String,
     val earliestOpenDue: String,
     val net: Cents,
+    val phone: String = "",
+    val whatsappCode: String = "970",
 )
 
 /** Everything Home draws from Room for one month and day, queued entries included. */
@@ -106,9 +109,25 @@ private fun homeRoomData(
   val owes = summaries.owesTotal().map { Cents(it) }
   val empty = summaries.observeCount().map { it == 0 }
   val followUps =
-      summaries.followUpCandidates(today.toString()).map { rows ->
+      combine(summaries.followUpCandidates(today.toString()), scope.outbox.rows) { rows, outbox ->
+        val newContactCodes =
+            outbox
+                .mapNotNull { row ->
+                  if (row.state != OutboxState.QUEUED && row.state != OutboxState.ACCEPTED)
+                      return@mapNotNull null
+                  val contact = row.command.payload() as? ContactCreate ?: return@mapNotNull null
+                  row.entityId to (contact.whatsappCode ?: "970")
+                }
+                .toMap()
         rows.map {
-          HomeFollowUpCandidate(it.contactId, it.name, it.earliestOpenDue!!, Cents(it.net))
+          HomeFollowUpCandidate(
+              it.contactId,
+              it.name,
+              it.earliestOpenDue!!,
+              Cents(it.net),
+              it.phone,
+              it.whatsappCode ?: newContactCodes[it.contactId] ?: "970",
+          )
         }
       }
   // One subscription to the queued part: the three month figures share it.

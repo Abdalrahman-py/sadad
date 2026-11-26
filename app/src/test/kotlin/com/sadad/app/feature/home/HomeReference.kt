@@ -67,8 +67,28 @@ fun homeUiState(
         }
       }
       when {
-        late != null -> add(HomeFollowUp(contact.id, contact.name, late, net))
-        dueToday -> add(HomeFollowUp(contact.id, contact.name, null, net))
+        late != null ->
+            add(
+                HomeFollowUp(
+                    contact.id,
+                    contact.name,
+                    late,
+                    net,
+                    contact.phone,
+                    contact.whatsappCode,
+                )
+            )
+        dueToday ->
+            add(
+                HomeFollowUp(
+                    contact.id,
+                    contact.name,
+                    null,
+                    net,
+                    contact.phone,
+                    contact.whatsappCode,
+                )
+            )
       }
     }
   }

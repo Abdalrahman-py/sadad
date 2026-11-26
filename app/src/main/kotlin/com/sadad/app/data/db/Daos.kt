@@ -227,15 +227,25 @@ interface ContactSummaryDao {
    */
   @Query(
       """
-      SELECT * FROM contact_summary
-      WHERE net > 0 AND earliestOpenDue IS NOT NULL AND earliestOpenDue <= :today
-      ORDER BY earliestOpenDue ASC, net DESC, name ASC
+      SELECT s.contactId, s.name, s.net, s.earliestOpenDue, s.phone, c.whatsappCode
+      FROM contact_summary s LEFT JOIN contacts c ON c.id = s.contactId
+      WHERE s.net > 0 AND s.earliestOpenDue IS NOT NULL AND s.earliestOpenDue <= :today
+      ORDER BY s.earliestOpenDue ASC, s.net DESC, s.name ASC
       """
   )
-  fun followUpCandidates(today: String): Flow<List<ContactSummaryEntity>>
+  fun followUpCandidates(today: String): Flow<List<HomeFollowUpRow>>
 
   @Query("SELECT * FROM contact_summary") fun observe(): Flow<List<ContactSummaryEntity>>
 }
+
+data class HomeFollowUpRow(
+    val contactId: String,
+    val name: String,
+    val net: Long,
+    val earliestOpenDue: String?,
+    val phone: String,
+    val whatsappCode: String?,
+)
 
 /** One answered command for [OutboxDao.settle]; the SQL keeps a cancelled row cancelled. */
 data class OutboxAnswer(val operationId: String, val state: String, val code: String?)

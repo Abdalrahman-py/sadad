@@ -31,6 +31,8 @@ data class HomeFollowUp(
     val name: String,
     val lateDays: Int?,
     val amount: Cents,
+    val phone: String = "",
+    val whatsappCode: String = "970",
 )
 
 /** The offline banner: how many entries wait, and how long the store may keep recording. */
@@ -151,6 +153,8 @@ internal constructor(
                   candidate.name,
                   if (days > 0) days else null,
                   candidate.net,
+                  candidate.phone,
+                  candidate.whatsappCode,
               )
             }
             .sortedWith(followUpOrder)
