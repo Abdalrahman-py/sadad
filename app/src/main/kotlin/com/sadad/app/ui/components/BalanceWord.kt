@@ -1,7 +1,6 @@
 package com.sadad.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -48,7 +47,7 @@ fun balanceWord(netCents: Long): BalanceWordText {
   )
 }
 
-/** The word over an arrow and the amount; never colour alone. */
+/** The ± circle and the amount; TalkBack hears the word, so it is never colour alone. */
 @Composable
 fun BalanceWord(netCents: Long, modifier: Modifier = Modifier) {
   BalanceWord(balanceWord(netCents), modifier)
@@ -64,30 +63,25 @@ fun BalanceWord(text: BalanceWordText, modifier: Modifier = Modifier) {
         BalanceTone.CREDIT -> p.credit
         BalanceTone.SETTLED -> p.muted
       }
-  Column(
+  val amount = text.amount
+  Row(
       modifier = modifier.clearAndSetSemantics { contentDescription = text.spoken },
-      horizontalAlignment = Alignment.End,
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
-    Text(text.word, color = color, style = MaterialTheme.typography.labelMedium)
-    val amount = text.amount ?: return@Column
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-      Icon(
-          painterResource(
-              if (text.tone == BalanceTone.OWES) R.drawable.ic_balance_owes
-              else R.drawable.ic_balance_credit
-          ),
-          contentDescription = null,
-          tint = color,
-          modifier = Modifier.size(16.dp),
-      )
-      MoneyText(
-          amount,
-          style = MaterialTheme.typography.titleSmall,
-          color = color,
-      )
+    if (amount == null) {
+      Text(text.word, color = color, style = MaterialTheme.typography.labelLarge)
+      return@Row
     }
+    Icon(
+        painterResource(
+            if (text.tone == BalanceTone.OWES) R.drawable.ic_balance_owes
+            else R.drawable.ic_balance_credit
+        ),
+        contentDescription = null,
+        tint = color,
+        modifier = Modifier.size(20.dp),
+    )
+    MoneyText(amount, style = MaterialTheme.typography.titleMedium, color = color)
   }
 }

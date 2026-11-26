@@ -27,6 +27,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -694,97 +696,97 @@ private fun MovementRow(movement: ContactMovement, afterNet: Long, onDelete: () 
         BalanceTone.CREDIT -> p.credit
         BalanceTone.SETTLED -> p.muted
       }
-  Row(
-      Modifier.fillMaxWidth()
-          .heightIn(min = 64.dp)
-          .background(p.card, RoundedCornerShape(12.dp))
-          .border(1.dp, p.line, RoundedCornerShape(12.dp))
-          .clip(RoundedCornerShape(12.dp))
-          .then(
-              if (movement.canDelete)
-                  Modifier.combinedClickable(
-                      onLongClickLabel = deleteLabel,
-                      onLongClick = { showDelete = true },
-                      onClick = { showDelete = false },
-                  )
-              else Modifier
-          )
-          .padding(horizontal = 12.dp, vertical = 12.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+  Card(
+      colors =
+          CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+          ),
+      modifier = Modifier.fillMaxWidth(),
   ) {
-    Box(
-        Modifier.size(36.dp).background(if (debt) p.owesSoft else p.soft, CircleShape),
-        contentAlignment = Alignment.Center,
+    Row(
+        Modifier.fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .then(
+                if (movement.canDelete)
+                    Modifier.combinedClickable(
+                        onLongClickLabel = deleteLabel,
+                        onLongClick = { showDelete = true },
+                        onClick = { showDelete = false },
+                    )
+                else Modifier
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
       Icon(
           painterResource(if (debt) R.drawable.ic_payment_out else R.drawable.ic_payment_in),
           null,
           tint = if (debt) p.owes else link,
-          modifier = Modifier.size(16.dp),
+          modifier = Modifier.size(24.dp),
       )
-    }
-    Column(Modifier.weight(1f)) {
-      Text(
-          title,
-          color = p.text,
-          style = MaterialTheme.typography.titleSmall,
-      )
-      Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
-      movement.settled?.let { settled ->
+      Column(Modifier.weight(1f)) {
         Text(
-            stringResource(
-                R.string.contacts_row_settled_credit,
-                formatCents(settled),
-                formatCents(movement.credit ?: Cents.ZERO),
-            ),
-            color = p.credit,
-            style = MaterialTheme.typography.bodySmall,
+            title,
+            color = p.text,
+            style = MaterialTheme.typography.titleMedium,
         )
+        Text(meta.joinToString(" · "), color = p.muted, fontSize = 12.sp, lineHeight = 18.sp)
+        movement.settled?.let { settled ->
+          Text(
+              stringResource(
+                  R.string.contacts_row_settled_credit,
+                  formatCents(settled),
+                  formatCents(movement.credit ?: Cents.ZERO),
+              ),
+              color = p.credit,
+              style = MaterialTheme.typography.bodySmall,
+          )
+        }
+        movement.offsetted?.let { used ->
+          Text(
+              stringResource(R.string.contacts_row_offset, formatCents(used)),
+              color = p.credit,
+              fontSize = 12.sp,
+              lineHeight = 18.sp,
+          )
+        }
+        when {
+          movement.deletePending ->
+              Text(
+                  stringResource(R.string.contacts_delete_entry_pending),
+                  color = p.muted,
+                  style = MaterialTheme.typography.bodySmall,
+              )
+          movement.canDelete && showDelete ->
+              TextButton(
+                  onClick = {
+                    showDelete = false
+                    onDelete()
+                  }
+              ) {
+                Text(deleteLabel, color = p.owes)
+              }
+          movement.blockedReason != null ->
+              Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
+        }
       }
-      movement.offsetted?.let { used ->
-        Text(
-            stringResource(R.string.contacts_row_offset, formatCents(used)),
-            color = p.credit,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
+      Column(horizontalAlignment = Alignment.End) {
+        MoneyText(
+            movement.amount,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (debt) p.owes else link,
         )
-      }
-      when {
-        movement.deletePending ->
-            Text(
-                stringResource(R.string.contacts_delete_entry_pending),
-                color = p.muted,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        movement.canDelete && showDelete ->
-            TextButton(
-                onClick = {
-                  showDelete = false
-                  onDelete()
-                }
-            ) {
-              Text(deleteLabel, color = p.owes)
-            }
-        movement.blockedReason != null ->
-            Text(movement.blockedReason, color = p.muted, fontSize = 11.sp, lineHeight = 16.sp)
-      }
-    }
-    Column(horizontalAlignment = Alignment.End) {
-      MoneyText(
-          movement.amount,
-          style = MaterialTheme.typography.titleSmall,
-          color = if (debt) p.owes else link,
-      )
-      if (movement.pending) {
-        PendingBadge()
-      } else {
-        Text(
-            listOfNotNull(afterWord.word, afterWord.amount).joinToString(" "),
-            color = afterColor,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.semantics { contentDescription = afterWord.spoken },
-        )
+        if (movement.pending) {
+          PendingBadge()
+        } else {
+          Text(
+              listOfNotNull(afterWord.word, afterWord.amount).joinToString(" "),
+              color = afterColor,
+              style = MaterialTheme.typography.bodySmall,
+              modifier = Modifier.semantics { contentDescription = afterWord.spoken },
+          )
+        }
       }
     }
   }

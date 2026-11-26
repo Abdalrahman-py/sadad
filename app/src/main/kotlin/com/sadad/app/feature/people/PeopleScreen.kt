@@ -1,8 +1,6 @@
 package com.sadad.app.feature.people
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +8,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +17,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,10 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.InputChipDefaults
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBarDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,7 +51,6 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -319,79 +315,60 @@ private fun PeopleList(state: PeopleState, list: LazyListState, onOpenContact: (
 @Composable
 private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
   val p = sadadPalette
-  val subInk = if (row.lateDays != null) p.credit else p.muted
-  Surface(
+  val late = row.lateDays != null
+  Card(
       onClick = { onOpenContact(row.id) },
-      shape = RoundedCornerShape(12.dp),
-      color = p.card,
-      border = BorderStroke(1.dp, p.line),
-      modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).testTag(PeopleTags.row(row.id)),
+      colors =
+          CardDefaults.cardColors(
+              containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+          ),
+      modifier = Modifier.fillMaxWidth().testTag(PeopleTags.row(row.id)),
   ) {
     Row(
-        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      PersonAvatar(row.initials, row.supplier)
-      Column(Modifier.weight(1f)) {
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
           Text(
               row.name,
-              style = MaterialTheme.typography.titleSmall,
+              style = MaterialTheme.typography.titleMedium,
               color = p.text,
               maxLines = 1,
               overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
           )
           if (row.supplier) SupplierBadge()
         }
-        // What the person is, then the number to reach them, then what happened last.
-        val identity = row.identityLine
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          if (identity.isNotEmpty()) {
-            Text(
-                identity,
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                color = p.muted,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-            if (row.phone.isNotBlank())
-                Text(" · ", fontSize = 12.sp, lineHeight = 18.sp, color = p.muted)
-          }
-          if (row.phone.isNotBlank()) {
-            Text(
-                row.phone,
-                style =
-                    LocalTextStyle.current.copy(
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        color = p.muted,
-                        textDirection = TextDirection.Ltr,
-                    ),
-            )
-          }
-          if (identity.isEmpty() && row.phone.isBlank()) {
-            Text(
-                stringResource(R.string.people_no_details),
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                color = p.muted,
-            )
-          }
+        // One line: how late they are when they are, otherwise how to reach them.
+        when {
+          late ->
+              Text(
+                  row.activity,
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = p.credit,
+                  maxLines = 1,
+              )
+          row.phone.isNotBlank() ->
+              Text(
+                  row.phone,
+                  style =
+                      MaterialTheme.typography.bodyMedium.copy(
+                          color = p.muted,
+                          textDirection = TextDirection.Ltr,
+                      ),
+              )
+          else ->
+              Text(
+                  row.identityLine.ifEmpty { stringResource(R.string.people_no_details) },
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = p.muted,
+                  maxLines = 1,
+              )
         }
-        Text(
-            row.activity,
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-            color = subInk,
-            fontWeight = if (row.lateDays != null) FontWeight.Medium else FontWeight.Normal,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-        )
       }
       if (row.syncFailed) {
         Text(stringResource(R.string.contacts_saved_draft), color = p.owes, fontSize = 12.sp)
@@ -399,25 +376,6 @@ private fun PeopleRowItem(row: PeopleRow, onOpenContact: (String) -> Unit) {
         BalanceWord(row.balance)
       }
     }
-  }
-}
-
-/** The 42dp initials tile: a circle for a customer, the board's rounded square for a supplier. */
-@Composable
-private fun PersonAvatar(initials: String, supplier: Boolean) {
-  val p = sadadPalette
-  Box(
-      Modifier.size(40.dp)
-          .clip(RoundedCornerShape(if (supplier) 12.dp else 20.dp))
-          .background(p.soft)
-          .clearAndSetSemantics {},
-      contentAlignment = Alignment.Center,
-  ) {
-    Text(
-        initials,
-        color = if (p.isDark) p.accent else p.primary,
-        style = MaterialTheme.typography.titleSmall,
-    )
   }
 }
 

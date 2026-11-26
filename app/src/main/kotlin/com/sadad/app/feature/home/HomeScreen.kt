@@ -6,9 +6,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,14 +19,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -54,7 +54,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +67,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.sadad.app.R
 import com.sadad.app.data.ledger.WhatsAppPhone
 import com.sadad.app.requireGraph
+import com.sadad.app.ui.components.BalanceWord
 import com.sadad.app.ui.components.MoneyText
 import com.sadad.app.ui.components.formatShekels
 import com.sadad.app.ui.components.sadadPageBackground
@@ -399,10 +399,11 @@ private fun FollowUpSection(
         )
       }
     }
-    Surface(
-        color = p.card,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, p.line),
+    Card(
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+            ),
         modifier = Modifier.fillMaxWidth(),
     ) {
       Column {
@@ -415,7 +416,7 @@ private fun FollowUpSection(
           )
         }
         followUps.forEachIndexed { index, person ->
-          if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(p.line))
+          if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceContainer)
           FollowUpRow(
               person = person,
               onOpenContact = onOpenContact,
@@ -456,66 +457,26 @@ private fun FollowUpRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Box(
-          Modifier.sizeIn(minWidth = 40.dp, minHeight = 40.dp)
-              .clip(CircleShape)
-              .background(p.soft)
-              .padding(horizontal = 8.dp),
-          contentAlignment = Alignment.Center,
-      ) {
-        Text(
-            initialsOf(person.name),
-            style = MaterialTheme.typography.labelMedium,
-            color = link,
-        )
-      }
-      Column(Modifier.weight(1f)) {
-        Text(
-            person.name,
-            style = MaterialTheme.typography.titleSmall,
-            color = p.text,
-        )
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(person.name, style = MaterialTheme.typography.titleMedium, color = p.text)
         Text(
             text =
                 if (late) lateLabel(person.lateDays ?: 0)
                 else stringResource(R.string.home_follow_today),
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.bodyMedium,
             color = if (late) p.credit else p.muted,
         )
       }
-      Column(horizontalAlignment = Alignment.End) {
-        Text(
-            stringResource(R.string.home_follow_owes),
-            style = MaterialTheme.typography.bodySmall,
-            color = p.owes,
-        )
-        MoneyText(
-            cents = person.amount,
-            style = MaterialTheme.typography.titleSmall,
-            color = p.owes,
-        )
-      }
+      BalanceWord(person.amount.value)
     }
-    Box(
-        Modifier.size(44.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(p.surface)
-            .clickable(onClick = onRemind)
-            .testTag(HomeTags.remind(person.contactId))
-            .semantics {
+    FilledTonalIconButton(
+        onClick = onRemind,
+        modifier =
+            Modifier.testTag(HomeTags.remind(person.contactId)).semantics {
               contentDescription = remindLabel
-              role = Role.Button
             },
-        contentAlignment = Alignment.Center,
     ) {
-      Icon(
-          painterResource(R.drawable.ic_whatsapp),
-          contentDescription = null,
-          tint = link,
-          modifier = Modifier.size(24.dp),
-      )
+      Icon(painterResource(R.drawable.ic_whatsapp), contentDescription = null)
     }
   }
 }
