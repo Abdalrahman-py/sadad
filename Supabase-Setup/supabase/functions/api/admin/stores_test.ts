@@ -1,6 +1,6 @@
 import { assert, assertEqual } from "../test_support.ts";
 import { adminHarness, assertRefusal, dbTest } from "./test_admin.ts";
-import { StoreDetailSchema } from "./stores.ts";
+import { StoreDetailSchema, temporaryPassword } from "./stores.ts";
 import createFixture from "../../../../../contract/fixtures/admin/create-store.json" with {
   type: "json",
 };
@@ -52,8 +52,8 @@ dbTest(
       createFixture.response,
     );
     assert(
-      /^[0-9]{8}$/.test(body.temporaryPassword),
-      "a 24-character password",
+      /^[2-9A-HJ-NP-Z]{6}$/.test(body.temporaryPassword),
+      "a 6-character code without look-alikes",
     );
 
     const [createUser] = h.authAdmin.calls.filter((call) =>
@@ -130,6 +130,14 @@ dbTest(
   },
 );
 
+Deno.test("temporary passwords never use the look-alikes 0, O, 1 or I", () => {
+  for (let i = 0; i < 2000; i++) {
+    const code = temporaryPassword();
+    assert(/^[2-9A-HJ-NP-Z]{6}$/.test(code), `bad code ${code}`);
+    assert(!/[0O1I]/.test(code), `look-alike in ${code}`);
+  }
+});
+
 dbTest("create store refuses bad input before calling Auth", async () => {
   const calls = h.authAdmin.calls.length;
   for (
@@ -165,6 +173,10 @@ dbTest(
     assertEqual(res.status, 200);
     const body = await res.json();
     assertEqual(body.username, store.username);
+    assert(
+      /^[2-9A-HJ-NP-Z]{6}$/.test(body.temporaryPassword),
+      "a 6-character code without look-alikes",
+    );
 
     const reset = h.authAdmin.calls.at(-1)!;
     assertEqual(reset, {
@@ -299,7 +311,7 @@ dbTest(
     );
     assertEqual(res.status, 500);
     const lines = h.logs.slice(before);
-    assert(sent.length === 8, "a password was sent to Auth");
+    assert(sent.length === 6, "a password was sent to Auth");
     assert(lines.length === 2, "one error line and one request line");
     assert(!lines.some((line) => line.includes(sent)), "never logged");
     assert(
