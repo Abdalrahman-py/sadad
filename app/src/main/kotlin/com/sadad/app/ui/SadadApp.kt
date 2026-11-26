@@ -442,7 +442,7 @@ private fun NavHostController.navigateTab(destination: Any) {
 @Composable
 internal fun SadadBottomBar(navController: NavHostController, syncDot: SyncDot) {
   val active = activeTab(navController.currentBackStackEntryAsState().value?.destination)
-  NavigationBar {
+  NavigationBar(containerColor = barContainerColor()) {
     TabItem(R.string.nav_home, R.drawable.ic_home, ScreenTag.NAV_HOME, active == Tab.HOME) {
       navController.navigateTab(Home)
     }

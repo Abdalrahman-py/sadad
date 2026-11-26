@@ -7,7 +7,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -37,6 +37,9 @@ import com.sadad.app.feature.notifications.DueReminders
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+
+/** The one tint the top and bottom bars share: a clear step darker than the page. */
+@Composable internal fun barContainerColor() = MaterialTheme.colorScheme.surfaceContainerHigh
 
 /** The bell's test tag, as it was on Home before the bar was shared by every tab. */
 const val BELL_TAG = "home:bell"
@@ -138,7 +141,7 @@ internal fun AppTopBarContent(
         }
       },
       colors =
-          NavigationBarDefaults.containerColor.let { bar ->
+          barContainerColor().let { bar ->
             // The bottom bar's tint at rest and when scrolled, so the bar never flashes.
             TopAppBarDefaults.topAppBarColors(containerColor = bar, scrolledContainerColor = bar)
           },

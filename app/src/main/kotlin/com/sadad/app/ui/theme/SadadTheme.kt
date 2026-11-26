@@ -226,7 +226,8 @@ internal fun colorsFor(p: SadadPalette, dark: Boolean) =
             secondary = p.accent,
             // White on the accent is 3.38:1; this deep green is 5.09:1.
             onSecondary = Color(0xFF00201A),
-            secondaryContainer = p.soft,
+            // A step darker than the bars, so the selected tab and chips stand out on them.
+            secondaryContainer = Color(0xFFC3E4D5),
             onSecondaryContainer = p.primary,
             tertiary = p.warn,
             onTertiary = Color.White,
@@ -245,7 +246,8 @@ internal fun colorsFor(p: SadadPalette, dark: Boolean) =
             surfaceContainerLowest = p.card,
             surfaceContainerLow = Color(0xFFEEF6F1),
             surfaceContainer = p.surface,
-            surfaceContainerHigh = Color(0xFFDEF1E8),
+            // The top and bottom bars: a clear step below the page, not a near-match.
+            surfaceContainerHigh = Color(0xFFD9E9E0),
             surfaceContainerHighest = p.soft,
             inverseSurface = p.text,
             inverseOnSurface = p.bg,
